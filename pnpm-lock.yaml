@@ -319,6 +319,22 @@ importers:
         specifier: 3.10.2
         version: 3.10.2
 
+  packages/adapter-epub:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      dompurify:
+        specifier: ^3.4.17
+        version: 3.4.17
+    devDependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
   packages/adapter-html:
     dependencies:
       '@swarmloom/adapter-code':
@@ -381,6 +397,31 @@ importers:
         specifier: ^31.0.0
         version: 31.0.0(@napi-rs/canvas@1.1.0)
 
+  packages/adapter-odf:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      '@swarmloom/snapshot-dom':
+        specifier: workspace:*
+        version: link:../snapshot-dom
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
+  packages/adapter-ofd:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
   packages/adapter-office:
     dependencies:
       '@swarmloom/core':
@@ -398,6 +439,15 @@ importers:
       pdfjs-dist:
         specifier: 6.5.438
         version: 6.5.438
+
+  packages/adapter-rtf:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/adapter-svg:
     dependencies:
