@@ -1,0 +1,47 @@
+{
+  "name": "SwarmLoom",
+  "nameZh": "群织",
+  "tagline": {
+    "zh": "让一群光标，把它织出来。",
+    "en": "Watch a swarm of cursors weave it into being."
+  },
+  "primary": "#5B5BF7",
+  "accent": "#FF4F7B",
+  "select": "#5B5BF7",
+  "cursors": [
+    { "name": "indigo", "hex": "#5B5BF7" },
+    { "name": "coral", "hex": "#FF6B5B" },
+    { "name": "teal", "hex": "#14B8A6" },
+    { "name": "amber", "hex": "#F5A524" },
+    { "name": "orchid", "hex": "#D946EF" },
+    { "name": "sky", "hex": "#3BA7F5" },
+    { "name": "lime", "hex": "#84CC16" },
+    { "name": "violet", "hex": "#9B5CF6" },
+    { "name": "rose", "hex": "#F43F5E" },
+    { "name": "cyan", "hex": "#0EA5E9" },
+    { "name": "green", "hex": "#22C55E" },
+    { "name": "orange", "hex": "#FB923C" }
+  ],
+  "neutrals": {
+    "ink": "#0B0B12",
+    "paper": "#FAFAFC",
+    "lineLight": "rgba(11,11,18,.12)",
+    "lineDark": "rgba(255,255,255,.14)"
+  },
+  "mark": {
+    "tileFrom": "#6E6EFA",
+    "tileTo": "#4949E8",
+    "tileFromDark": "#7676FC",
+    "tileToDark": "#5151EE",
+    "weft": "#FF6B5B",
+    "warp": "rgba(255,255,255,.38)",
+    "cursor": "#FFFFFF"
+  },
+  "nameTag": {
+    "radius": 6,
+    "fontSize": 11,
+    "fontWeight": 600,
+    "text": "#FFFFFF",
+    "highlight": "rgba(255,255,255,.28)"
+  }
+}
