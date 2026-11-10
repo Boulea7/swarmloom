@@ -1,45 +1,165 @@
 import type { SoundEvent, SoundOptions } from "../types";
+import { offlineContextCtor } from "./audio-context";
+import { createMasterBus } from "./bus";
+import { type AdmittedEvent, EventPolicy } from "./policy";
+import { resolveSettings, type SoundSettings } from "./settings";
+import { Synth } from "./synth";
+
+export { encodeWav } from "./wav";
 
 export interface RenderOfflineOptions {
-  /** Output sample rate in Hz. Default 48000. */
+  /** Output sample rate in Hz, 8000..192000. Default 48000. */
   sampleRate?: number;
   /** Output channels (1 or 2). Default 2. */
   channels?: number;
-  /** Sound pack, volume and tempo, same meaning as `PlayerOptions.sound`. */
-  sound?: SoundOptions;
+  /** Sound pack id (see `SoundOptions.pack`). Overrides `sound.pack`. */
+  pack?: string;
+  /** Master volume 0..1. Overrides `sound.volume`. */
+  volume?: number;
+  /** Grid tempo. Overrides `sound.bpm`. Default 112. */
+  bpm?: number;
+  /** Seed for per-event humanization; the same seed and events give bit-identical audio. Default 0. */
+  seed?: number;
+  /**
+   * Sound settings as passed to `PlayerOptions.sound`. `false` or `{ enabled: false }` renders
+   * silence of the requested length.
+   */
+  sound?: boolean | Partial<SoundOptions>;
+}
+
+/** Longest render accepted, in ms (10 minutes keeps the float buffer within a few hundred MB). */
+export const MAX_RENDER_MS = 10 * 60 * 1000;
+const MIN_SAMPLE_RATE = 8000;
+const MAX_SAMPLE_RATE = 192000;
+/** Events are scheduled in slices of this length while rendering, bounding live audio nodes. */
+const SLICE_SECONDS = 2;
+/** Each slice is scheduled this long before the render reaches it. */
+const SLICE_MARGIN_SECONDS = 0.1;
+
+interface RenderPlan {
+  sampleRate: number;
+  channels: number;
+  length: number;
+  enabled: boolean;
+  settings: SoundSettings;
+}
+
+function plan(durationMs: number, opts: RenderOfflineOptions): RenderPlan {
+  if (typeof durationMs !== "number" || !(durationMs > 0) || durationMs > MAX_RENDER_MS) {
+    throw new RangeError(`durationMs must be in (0, ${MAX_RENDER_MS}], got ${durationMs}`);
+  }
+  const sampleRate = opts.sampleRate ?? 48000;
+  if (!Number.isInteger(sampleRate) || sampleRate < MIN_SAMPLE_RATE || sampleRate > MAX_SAMPLE_RATE) {
+    throw new RangeError(
+      `sampleRate must be an integer in [${MIN_SAMPLE_RATE}, ${MAX_SAMPLE_RATE}], got ${sampleRate}`,
+    );
+  }
+  const channels = opts.channels ?? 2;
+  if (channels !== 1 && channels !== 2) throw new RangeError(`channels must be 1 or 2, got ${channels}`);
+  const sound = typeof opts.sound === "object" && opts.sound !== null ? opts.sound : {};
+  const enabled = opts.sound !== false && sound.enabled !== false;
+  const settings = resolveSettings({
+    pack: opts.pack ?? sound.pack,
+    volume: opts.volume ?? sound.volume,
+    bpm: opts.bpm ?? sound.bpm,
+    beatSync: sound.beatSync,
+    seed: opts.seed,
+  });
+  return { sampleRate, channels, length: Math.ceil((durationMs / 1000) * sampleRate), enabled, settings };
+}
+
+/** Runs admission over the time-ordered events; the result is independent of the audio context. */
+function admitAll(events: readonly SoundEvent[], durationMs: number, settings: SoundSettings): AdmittedEvent[] {
+  const { bpm, beatSync, pack } = settings;
+  const policy = new EventPolicy({ bpm, beatSync, voiced: (name) => pack.voices[name] !== undefined });
+  const ordered = events
+    .map((ev, index) => ({ ev, index }))
+    .filter(({ ev }) => typeof ev === "object" && ev !== null && Number.isFinite(ev.t))
+    // Stable order by time; ties keep log order (index) so the result never depends on sort internals.
+    .sort((a, b) => a.ev.t - b.ev.t || a.index - b.index);
+  const admitted: AdmittedEvent[] = [];
+  for (const { ev, index } of ordered) {
+    const event = policy.admit(ev, index);
+    if (event && event.at < durationMs) admitted.push(event);
+  }
+  return admitted;
+}
+
+function startRendering(ctx: OfflineAudioContext): Promise<AudioBuffer> {
+  return new Promise((resolve, reject) => {
+    // Old WebKit returns undefined from startRendering() and only fires `complete`.
+    ctx.oncomplete = (e) => resolve(e.renderedBuffer);
+    const rendering = ctx.startRendering() as Promise<AudioBuffer> | undefined;
+    rendering?.then(resolve, reject);
+  });
 }
 
 /**
- * Renders a recorded sound event log to audio with an `OfflineAudioContext`.
+ * Renders a recorded sound event log to audio with an `OfflineAudioContext`, using the same
+ * synthesis graph as realtime playback.
  *
- * Used by exports so the soundtrack matches the frames exactly: event `t` values are engine ms
- * and map 1:1 to audio time.
+ * Used by exports so the soundtrack matches the frames: event `t` values are engine ms and map 1:1
+ * to audio time (musical events snap to the same eighth-note grid as live playback). Every random
+ * choice (detune, noise offsets, room) comes from seeded PRNGs keyed by event index, so the same
+ * events, options and browser produce bit-identical output.
  *
- * @param events Sound events, usually `Player.soundLog`.
- * @param durationMs Length of the output in ms; events after it are dropped.
- * @param opts Sample rate, channel count and sound pack.
- * @returns The rendered buffer.
- * @throws Error "not implemented yet" until the sound module lands.
+ * @param events Sound events, usually `Player.soundLog` (any order; sorted by `t`). Malformed
+ *   entries and events at or after `durationMs` are skipped.
+ * @param durationMs Length of the output in ms, at most {@link MAX_RENDER_MS}.
+ * @param opts Sample rate, channels, pack, volume, tempo and seed.
+ * @returns The rendered buffer, `ceil(durationMs / 1000 * sampleRate)` frames long.
+ * @throws RangeError for an invalid duration, sample rate or channel count; Error when the
+ *   environment has no `OfflineAudioContext` (outside a browser).
  */
 export async function renderOffline(
   events: readonly SoundEvent[],
   durationMs: number,
-  opts?: RenderOfflineOptions,
+  opts: RenderOfflineOptions = {},
 ): Promise<AudioBuffer> {
-  void events;
-  void durationMs;
-  void opts;
-  throw new Error("not implemented yet");
-}
+  if (!Array.isArray(events)) throw new TypeError("renderOffline() needs an array of sound events");
+  const { sampleRate, channels, length, enabled, settings } = plan(durationMs, opts);
+  const Ctor = offlineContextCtor();
+  if (!Ctor) throw new Error("renderOffline() needs OfflineAudioContext (run it in a browser)");
 
-/**
- * Encodes an `AudioBuffer` as a 16-bit PCM RIFF/WAVE file.
- *
- * @param buffer Audio to encode (all channels, interleaved in the output).
- * @returns The complete `.wav` file bytes.
- * @throws Error "not implemented yet" until the sound module lands.
- */
-export function encodeWav(buffer: AudioBuffer): Uint8Array {
-  void buffer;
-  throw new Error("not implemented yet");
+  const ctx = new Ctor(channels, length, sampleRate);
+  const synth = new Synth(ctx, createMasterBus(ctx, { volume: settings.volume, muted: false }), settings);
+  const admitted = enabled ? admitAll(events, durationMs, settings) : [];
+
+  let next = 0;
+  const scheduleUntil = (endSeconds: number): void => {
+    while (next < admitted.length && admitted[next].at / 1000 < endSeconds) {
+      const ev = admitted[next++];
+      synth.play(ev, ev.at / 1000);
+    }
+  };
+
+  const total = length / sampleRate;
+  let sliceError: unknown = null;
+  const fail = (error: unknown): void => {
+    sliceError ??= error;
+  };
+  if (typeof ctx.suspend === "function" && total > SLICE_SECONDS) {
+    // Schedule slice by slice while rendering so long exports never hold every node at once.
+    scheduleUntil(SLICE_SECONDS);
+    for (let start = SLICE_SECONDS; start < total; start += SLICE_SECONDS) {
+      const sliceStart = start;
+      ctx
+        .suspend(sliceStart - SLICE_MARGIN_SECONDS)
+        .then(() => {
+          try {
+            scheduleUntil(sliceStart + SLICE_SECONDS);
+          } finally {
+            // Always resume, or a throwing slice would stall the render forever.
+            ctx.resume().catch(fail);
+          }
+        })
+        .catch(fail);
+    }
+  } else {
+    scheduleUntil(Number.POSITIVE_INFINITY);
+  }
+  const buffer = await startRendering(ctx);
+  // A failed slice means missing sounds; an incomplete soundtrack must not pass silently.
+  if (sliceError !== null) throw new Error("renderOffline() could not schedule every event", { cause: sliceError });
+  return buffer;
 }
