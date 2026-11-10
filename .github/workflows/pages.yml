@@ -29,22 +29,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # Layout: /swarmloom/ landing site, /swarmloom/docs/, /swarmloom/studio/, /swarmloom/bm/.
       - name: Build docs
         run: pnpm docs:build
         env:
-          SWARMLOOM_DOCS_BASE: /swarmloom/
+          SWARMLOOM_DOCS_BASE: /swarmloom/docs/
       - name: Build Studio
         run: pnpm --filter @swarmloom/studio build
         env:
           SWARMLOOM_STUDIO_BASE: /swarmloom/studio/
       - name: Assemble site
         run: |
-          mkdir -p docs/.vitepress/dist/studio
-          cp -R apps/studio/dist/. docs/.vitepress/dist/studio/
+          mkdir -p _site/docs _site/studio
+          cp -R docs/.vitepress/dist/. _site/docs/
+          cp -R apps/studio/dist/. _site/studio/
+          # The landing site (apps/site) is not built yet: the root forwards to the docs until it is.
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><title>SwarmLoom</title>' \
+            '<meta http-equiv="refresh" content="0; url=./docs/">' \
+            '<link rel="canonical" href="./docs/"><a href="./docs/">SwarmLoom docs</a>' > _site/index.html
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/.vitepress/dist
+          path: _site
 
   deploy:
     needs: build
