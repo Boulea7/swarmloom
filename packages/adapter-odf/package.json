@@ -1,0 +1,39 @@
+{
+  "name": "@swarmloom/adapter-odf",
+  "version": "0.1.0",
+  "description": "OpenDocument adapter for SwarmLoom: ODT text, ODS sheets and ODP slides (and their flat XML variants) rendered as HTML sheets, then snapshotted.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./kit": {
+      "@swarmloom/source": "./src/kit/index.ts",
+      "types": "./dist/kit/index.d.ts",
+      "import": "./dist/kit/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-odf"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/kit/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/snapshot-dom": "workspace:*",
+    "fflate": "^0.8.3"
+  }
+}
