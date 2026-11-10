@@ -305,7 +305,7 @@ export interface SoundOptions {
   enabled: boolean;
   /** 0..1 master volume. */
   volume?: number;
-  /** Sound pack id: "studio" (default, clicky + glass notes), "soft", "8bit", "silent-keys". */
+  /** Sound pack id: "studio" (default), "soft", "8bit", "silent-keys" (musical events only, no keys or clicks). */
   pack?: string;
   /** Musical grid tempo; notes and task starts quantize to it when `beatSync` is on. */
   bpm?: number;
