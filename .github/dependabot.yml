@@ -4,6 +4,13 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    ignore:
+      # tsup's dts build still needs the TypeScript 6 compiler API; revisit when tsup supports TS 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # Types follow the Node major we support and test on (.nvmrc / CI).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-patch:
         update-types:
