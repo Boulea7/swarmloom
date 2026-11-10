@@ -118,6 +118,20 @@ describe("createControls", () => {
     expect(player.setSound).not.toHaveBeenCalled();
   });
 
+  it("keeps sound on when the unlock lands between the press and the click", () => {
+    let locked = true;
+    const { player, onUnlockSound, shadow } = mount({ soundLocked: () => locked });
+    const sound = shadow.querySelector<HTMLButtonElement>('[data-cmd="toggleSound"]');
+    sound?.dispatchEvent(new Event("pointerdown", { bubbles: true, composed: true }));
+    locked = false; // the page-wide gesture listener resumed audio before the click arrived
+    sound?.click();
+    expect(onUnlockSound).toHaveBeenCalledTimes(1);
+    expect(player.setSound).not.toHaveBeenCalled();
+    sound?.dispatchEvent(new Event("pointerdown", { bubbles: true, composed: true }));
+    sound?.click();
+    expect(player.setSound).toHaveBeenLastCalledWith(false);
+  });
+
   it("mirrors engine settings, exposes toolbar semantics and cleans up on destroy", () => {
     const settings = { speed: 3, sound: true, follow: "tour" as const };
     const { shadow, host, listenerCount } = mount({ settings: () => settings });

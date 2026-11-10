@@ -246,11 +246,25 @@ export function createControls(opts: ToolbarOptions): Controls {
     return isCommandKind(cmd) ? { kind: cmd } : null;
   };
 
+  // Lock state when the press began. The sound engine resumes audio from its own page-wide
+  // pointerdown/keydown listener, which runs first; the context reports "running" a moment later,
+  // usually before the click. Without this snapshot that first click would mute the sound it
+  // just unlocked.
+  let lockedAtPress = false;
+  const notePress = (): void => {
+    lockedAtPress = safe(() => opts.soundLocked(), false);
+  };
+  listen(dom.bar, "pointerdown", notePress, { capture: true });
+  listen(dom.bar, "keydown", notePress, { capture: true });
+
   listen<MouseEvent>(dom.bar, "click", (e) => {
+    const pressLocked = lockedAtPress;
+    lockedAtPress = false;
     const target = (e.target as Element | null)?.closest?.("[data-cmd]");
     if (!target || !dom.bar.contains(target)) return;
     const command = commandFromButton(target);
-    if (command) dispatch(command);
+    if (command?.kind === "toggleSound") dispatch({ kind: "toggleSound", lockedAtPress: pressLocked });
+    else if (command) dispatch(command);
   });
 
   /* ------------------------------------------------------ roving tab focus */

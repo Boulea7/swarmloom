@@ -46,7 +46,12 @@ export function phaseOf(state: PlayerState): Phase {
 export type Command =
   | { kind: "close" }
   | { kind: "togglePlay" }
-  | { kind: "toggleSound" }
+  /**
+   * `lockedAtPress`: audio was still locked when the press that produced this command began. The
+   * page-wide unlock listener resumes audio on that press, so by the time the click arrives the
+   * lock may be gone; the press must still count as "unlock", never as "mute".
+   */
+  | { kind: "toggleSound"; lockedAtPress?: boolean }
   | { kind: "toggleTour" }
   | { kind: "speed"; speed: number }
   | { kind: "replay" }

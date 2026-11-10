@@ -55,7 +55,7 @@ export function createActions(deps: ActionDeps): Actions {
         return true;
       case "toggleSound": {
         const current = settings();
-        if (current.sound && deps.soundLocked()) {
+        if (current.sound && (command.lockedAtPress || deps.soundLocked())) {
           // The first press while the browser blocks audio unlocks it instead of muting.
           deps.onUnlockSound();
           return true;

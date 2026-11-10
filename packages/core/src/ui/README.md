@@ -14,4 +14,6 @@ Owner: ui zone. The built-in toolbar (`createControls`, see `../internal.ts` "ui
 | `placement.ts` | Fold-aware placement from `window.viewport.segments` |
 | `announcer.ts` | Live-region milestones: start, halfway, done |
 
+While audio is locked, the first press on the sound button only unlocks it: the lock state is read when the press starts, because the sound engine resumes audio from its own page-wide listener before the click arrives.
+
 The toolbar never feeds the engine clock, so its wall-clock timers do not affect exports.
