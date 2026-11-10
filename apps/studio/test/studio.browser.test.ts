@@ -1,0 +1,95 @@
+import { afterEach, describe, expect, it } from "vitest";
+import "../src/styles/studio.css";
+import { mountStudio, type StudioApp } from "../src/app";
+import {
+  type ExampleEntry,
+  type ExampleManifest,
+  isHousekeeping,
+  planExamples,
+  sortEntries,
+} from "../src/examples/manifest";
+import { fakeServices } from "./fakes";
+
+/** Every file of the repository's examples folder, as the build would see it (paths only). */
+const FILES = Object.keys(import.meta.glob("../../../examples/**/*"))
+  .map((p) => p.replace(/^(\.\.\/)+examples\//, ""))
+  .filter((p) => !isHousekeeping(p))
+  .sort();
+
+const MANIFEST: ExampleManifest = {
+  version: 1,
+  entries: sortEntries(
+    planExamples(FILES).map(
+      (c): ExampleEntry => ({ id: c.id, path: c.path, format: c.format, title: c.path, size: 1024, group: c.group }),
+    ),
+  ),
+};
+
+const EXAMPLES_BASE = new URL("/examples/", location.origin).href;
+
+let app: StudioApp | null = null;
+
+async function mount(search = "") {
+  history.replaceState(null, "", `${location.pathname}${search}`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const fake = fakeServices({ manifest: MANIFEST, examplesBase: EXAMPLES_BASE });
+  app = await mountStudio(root, fake.services);
+  return { root, ...fake };
+}
+
+async function until<T>(probe: () => T | null | undefined, timeoutMs = 4000): Promise<T> {
+  const start = performance.now();
+  for (;;) {
+    const value = probe();
+    if (value) return value;
+    if (performance.now() - start > timeoutMs) throw new Error("timed out");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+afterEach(() => {
+  app?.destroy();
+  app = null;
+  document.body.replaceChildren();
+  history.replaceState(null, "", location.pathname);
+});
+
+describe("Studio in a browser", () => {
+  it("renders home with the open actions and one card per repository example", async () => {
+    const { root } = await mount();
+    expect(document.documentElement.dataset.view).toBe("home");
+    expect(root.querySelector("h1")?.textContent).not.toBe("");
+    expect(root.querySelector(".dropzone")).not.toBeNull();
+    expect(root.querySelector(".url-form input")).not.toBeNull();
+
+    expect(MANIFEST.entries.length).toBeGreaterThanOrEqual(4);
+    const ids = [...root.querySelectorAll<HTMLAnchorElement>(".card")].map((card) => card.dataset.example);
+    expect(ids).toEqual(MANIFEST.entries.map((e) => e.id));
+  });
+
+  it("opens an example into the inline stage", async () => {
+    const { root, log } = await mount();
+    const card = root.querySelector<HTMLAnchorElement>('.card[data-example="svg-chart"]');
+    expect(card).not.toBeNull();
+    card?.click();
+
+    const stage = await until(() => root.querySelector<HTMLElement>(".stage-host [data-fake-stage]"));
+    expect(document.documentElement.dataset.view).toBe("player");
+    expect(new URL(location.href).searchParams.get("example")).toBe("svg-chart");
+    expect(stage.dataset.fakeStage).toBe("svg");
+    expect(log.loads[0]?.name).toBe("chart.svg");
+    expect(log.loads[0]?.text).toContain("<svg");
+    expect(log.contexts[0]?.network).toBe("https");
+    expect(log.players[0]).toMatchObject({ mode: "inline", host: root.querySelector(".stage-host") });
+
+    root.querySelector<HTMLButtonElement>(".play-big")?.click();
+    expect(log.calls).toContain("play");
+  });
+
+  it("explains an unknown example instead of mounting a player", async () => {
+    const { root, log } = await mount("?example=missing");
+    await until(() => root.querySelector(".stage-error"));
+    expect(log.players).toHaveLength(0);
+  });
+});

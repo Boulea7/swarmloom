@@ -1,0 +1,302 @@
+/* Static example thumbnails: posters and images, or CSS miniatures of the content. */
+.thumb {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.thumb-cover {
+  object-fit: cover;
+}
+
+.thumb-contain {
+  padding: 14%;
+  object-fit: contain;
+  background: var(--surface);
+}
+
+/* A sheet of paper with the first lines of a Markdown document. */
+.thumb-doc {
+  position: absolute;
+  inset: 12px 14px -8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  overflow: hidden;
+  border-radius: 6px 6px 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+  font-size: 8.5px;
+  line-height: 1.45;
+}
+
+.thumb-doc > div {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.thumb-doc .t-h {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.thumb-doc .t-h1 {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.thumb-doc .t-h2 {
+  margin-top: 2px;
+  font-size: 10.5px;
+}
+
+.thumb-doc .t-h3 {
+  font-size: 9.5px;
+}
+
+.thumb-doc .t-p {
+  color: var(--ink-2);
+}
+
+.thumb-doc .t-li {
+  padding-left: 9px;
+  color: var(--ink-2);
+  background: radial-gradient(circle at 2.5px 50%, var(--indigo) 1.6px, transparent 2px) no-repeat;
+}
+
+.thumb-doc .t-quote {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.thumb-doc .t-code {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 8px;
+}
+
+.thumb-doc .t-gap {
+  height: 2px;
+}
+
+/* A dark editor pane with tokens coloured like the stage does. */
+.thumb-code {
+  position: absolute;
+  inset: 0;
+  padding: 14px 16px;
+  overflow: hidden;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  line-height: 1.6;
+}
+
+.thumb-code .t-line {
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: clip;
+}
+
+.thumb-code .t-keyword {
+  color: oklch(76% 0.13 277);
+}
+
+.thumb-code .t-string {
+  color: oklch(80% 0.12 160);
+}
+
+.thumb-code .t-comment {
+  color: oklch(62% 0.02 277);
+}
+
+/* A spreadsheet grid. */
+.thumb-sheet {
+  position: absolute;
+  inset: 12px 14px -1px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-content: start;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px 6px 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.thumb-sheet .t-cell {
+  height: 19px;
+  padding: 0 5px;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  line-height: 19px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.thumb-sheet .t-head {
+  background: var(--indigo-soft);
+  color: var(--ink);
+  font-weight: 650;
+}
+
+/* Illustrations for binary formats */
+.thumb-page,
+.thumb-slide,
+.thumb-browser {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.thumb-page {
+  inset: 12px 22% -8px;
+  padding: 14px 12px;
+  border-radius: 5px 5px 0 0;
+}
+
+.thumb-slide {
+  inset: 15% 12%;
+  justify-content: center;
+  padding: 8% 9%;
+  border-radius: 6px;
+}
+
+.thumb-browser {
+  inset: 12px 14px -8px;
+  padding: 0 0 12px;
+  border-radius: 7px 7px 0 0;
+}
+
+.thumb .t-chrome {
+  display: flex;
+  gap: 4px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.thumb .t-chrome i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.thumb .t-hero {
+  height: 34%;
+  margin: 0 10px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, var(--indigo-soft), color-mix(in oklch, var(--accent) 14%, var(--surface)));
+}
+
+.thumb .t-title {
+  width: 62%;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--ink);
+  opacity: 0.85;
+}
+
+.thumb-slide .t-title {
+  height: 10px;
+}
+
+.thumb .t-stack {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 5px;
+}
+
+.thumb-browser .t-stack {
+  padding: 0 10px;
+}
+
+.thumb .t-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-3);
+}
+
+.thumb .t-bar:nth-child(3n + 1) {
+  width: 92%;
+}
+
+.thumb .t-bar:nth-child(3n + 2) {
+  width: 78%;
+}
+
+.thumb .t-bar:nth-child(3n) {
+  width: 86%;
+}
+
+.thumb .t-bar:last-child {
+  width: 54%;
+}
+
+.thumb .t-cols {
+  display: flex;
+  gap: 8px;
+}
+
+.thumb .t-figure {
+  flex: 0 0 38%;
+  aspect-ratio: 4 / 3;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--indigo) 16%, var(--surface));
+}
+
+.thumb-model-wrap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, var(--surface), var(--surface-2) 70%);
+}
+
+.thumb-model {
+  width: 46%;
+  height: auto;
+}
+
+.thumb-model .t-face {
+  fill: color-mix(in oklch, var(--indigo) 12%, var(--surface));
+  stroke: var(--indigo);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.thumb-model .t-edge {
+  fill: none;
+  stroke: var(--indigo);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.thumb-model .t-wire {
+  fill: none;
+  stroke: color-mix(in oklch, var(--indigo) 40%, transparent);
+  stroke-width: 0.8;
+  stroke-dasharray: 2 2;
+}

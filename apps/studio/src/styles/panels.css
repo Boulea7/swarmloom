@@ -1,0 +1,364 @@
+/* Panels on the native <dialog>: centred dialogs, the desktop drawer, the phone bottom sheet. */
+.panel {
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+}
+
+.panel[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel::backdrop {
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.panel-grip {
+  display: none;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 6px 22px;
+}
+
+.panel-title {
+  font-size: var(--text-lg);
+  font-weight: 650;
+  letter-spacing: -0.008em;
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 22px 22px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* Centred dialogs (export, shortcuts) */
+.panel-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(760px, calc(100dvh - 48px));
+  margin: auto;
+  border-radius: var(--radius-xl);
+}
+
+.panel-dialog[open] {
+  animation: panel-in var(--slow) var(--ease-out);
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+/* Settings: a drawer beside the content on wide screens. */
+.panel-settings {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 30;
+  width: min(var(--drawer-width), 100vw);
+  height: 100dvh;
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+}
+
+.panel-settings[open]:not(.is-modal) {
+  animation: drawer-in var(--slow) var(--ease-out);
+}
+
+.panel-settings .panel-head {
+  padding-top: calc(14px + env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@media (min-width: 1180px) {
+  :root[data-drawer="open"] .view-slot {
+    margin-right: var(--drawer-width);
+  }
+
+  :root[data-drawer="open"] .panel-settings {
+    box-shadow: none;
+  }
+}
+
+/* Phones: a bottom sheet. */
+.panel-settings.is-modal {
+  inset: auto 0 0;
+  width: 100%;
+  height: auto;
+  max-height: 88dvh;
+  border-left: 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: sheet-in var(--slow) var(--ease-out);
+}
+
+.panel-settings.is-modal .panel-head {
+  padding-top: 6px;
+  border-bottom: 0;
+}
+
+.panel-settings.is-modal .panel-grip {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 0;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 719px) {
+  .panel-dialog {
+    inset: auto 0 0;
+    width: 100%;
+    max-height: 90dvh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .panel-dialog[open] {
+    animation: sheet-in var(--slow) var(--ease-out);
+  }
+}
+
+/* Settings form */
+.settings-form {
+  display: grid;
+}
+
+.settings-group {
+  display: grid;
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-group:first-child {
+  padding-top: 10px;
+  border-top: 0;
+}
+
+.settings-group-title {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-reset {
+  display: flex;
+  justify-content: flex-start;
+  margin-left: -10px;
+}
+
+/* Export */
+.export-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px 0 20px;
+}
+
+.export-section + .export-section {
+  border-top: 1px solid var(--line);
+}
+
+.export-section:first-child {
+  padding-top: 6px;
+}
+
+.export-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-base);
+  font-weight: 650;
+}
+
+.export-title svg {
+  color: var(--indigo-text);
+}
+
+.export-body {
+  color: var(--ink-2);
+  font-size: var(--text-md);
+}
+
+.export-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 479px) {
+  .export-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cli-block {
+  display: grid;
+  gap: 10px;
+}
+
+.cli-pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.cli-copy {
+  justify-self: start;
+}
+
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.export-status {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.export-status:empty {
+  display: none;
+}
+
+/* Shortcuts */
+.keys-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.keys {
+  display: grid;
+}
+
+.keys-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.keys-row:last-child {
+  border-bottom: 0;
+}
+
+.keys-row dt {
+  display: flex;
+  order: 2;
+  gap: 4px;
+}
+
+.keys-row dd {
+  color: var(--ink-2);
+  font-size: var(--text-md);
+}
+
+/* Toasts */
+.toasts {
+  position: fixed;
+  inset: auto 0 calc(20px + env(safe-area-inset-bottom));
+  z-index: 50;
+  display: grid;
+  justify-items: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+:root[data-view="player"] .toasts {
+  bottom: calc(68px + env(safe-area-inset-bottom));
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, 100%);
+  min-height: 44px;
+  padding: 8px 8px 8px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--text-md);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  animation: toast-in var(--slow) var(--ease-out);
+}
+
+.toast:not(:has(.toast-action)) {
+  padding-right: 16px;
+}
+
+.toast-text {
+  flex: 1;
+}
+
+.toast-action {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--paper) 14%, transparent);
+  color: var(--paper);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: color-mix(in oklch, var(--paper) 22%, transparent);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
