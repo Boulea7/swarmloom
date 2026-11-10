@@ -1,0 +1,71 @@
+import type { Rect, Size } from "@swarmloom/core";
+import { parseNumberList } from "./path/parse";
+
+export const SVG_NS = "http://www.w3.org/2000/svg";
+export const XLINK_NS = "http://www.w3.org/1999/xlink";
+
+/** CSS absolute units in px. Font-relative units assume the 16px default. */
+const UNIT_PX: Record<string, number> = {
+  "": 1,
+  px: 1,
+  pt: 4 / 3,
+  pc: 16,
+  in: 96,
+  cm: 96 / 2.54,
+  mm: 96 / 25.4,
+  q: 96 / 101.6,
+  em: 16,
+  rem: 16,
+  ex: 8,
+};
+
+const LENGTH_RE = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Z%]*)\s*$/;
+
+/**
+ * Parses an SVG/CSS length to px. Percentages resolve against `percentBase` when given, otherwise
+ * the result is null (unknown). Unknown units and keywords such as "auto" give null.
+ */
+export function parseLength(value: string | null | undefined, percentBase?: number): number | null {
+  if (value == null) return null;
+  const m = LENGTH_RE.exec(value);
+  if (!m) return null;
+  const num = Number(m[1]);
+  const unit = (m[2] ?? "").toLowerCase();
+  if (unit === "%") return percentBase === undefined ? null : (num * percentBase) / 100;
+  const k = UNIT_PX[unit];
+  return k === undefined ? null : num * k;
+}
+
+/** Parses a `viewBox`; null when missing or invalid (non-positive size disables the viewBox). */
+export function parseViewBox(value: string | null | undefined): Rect | null {
+  if (!value) return null;
+  const n = parseNumberList(value);
+  if (n.length !== 4) return null;
+  const [x = 0, y = 0, w = 0, h = 0] = n;
+  if (!(w > 0 && h > 0)) return null;
+  return { x, y, w, h };
+}
+
+/**
+ * Intrinsic size of a root `<svg>` in px from its width/height attributes and viewBox
+ * (percentages count as unspecified). Null when nothing determines a size.
+ */
+export function intrinsicSize(width: string | null, height: string | null, viewBox: Rect | null): Size | null {
+  const w = parseLength(width);
+  const h = parseLength(height);
+  const wOk = w !== null && w > 0;
+  const hOk = h !== null && h > 0;
+  if (wOk && hOk) return { w, h };
+  if (viewBox) {
+    const ratio = viewBox.h / viewBox.w;
+    if (wOk) return { w, h: w * ratio };
+    if (hOk) return { w: h / ratio, h };
+    return { w: viewBox.w, h: viewBox.h };
+  }
+  return null;
+}
+
+/** Normalised diagonal used to resolve percentages that are neither horizontal nor vertical. */
+export function normalizedDiagonal(size: Size): number {
+  return Math.sqrt((size.w * size.w + size.h * size.h) / 2);
+}
