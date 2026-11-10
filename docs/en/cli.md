@@ -167,15 +167,18 @@ Browser discovery order:
 
 1. `--chrome`;
 2. `SWARMLOOM_CHROME`;
-3. Common install paths on Windows, macOS and Linux;
-4. An installed Playwright browser.
+3. chromium-headless-shell in the Playwright cache;
+4. System Chrome, Chromium or Edge.
+
+When none is found, `doctor` suggests `npx playwright install chromium-headless-shell`.
 
 ffmpeg discovery order:
 
 1. `--ffmpeg`;
 2. `SWARMLOOM_FFMPEG`;
-3. `PATH`;
-4. The optional `ffmpeg-static` dependency.
+3. `PATH`.
+
+The CLI does not ship ffmpeg; install it yourself.
 
 ```bash
 SWARMLOOM_CHROME=/path/to/chromium \
@@ -196,6 +199,6 @@ Normal progress, including frames and ETA, goes to stderr and does not contamina
 
 ## Determinism
 
-The CLI fixes viewport, DPR, seed and frame step, then waits for frame resources before capture. Sound events render offline to WAV and are muxed with the video.
+The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once its resources are ready, without relying on the browser's BeginFrame. Sound events render offline to WAV and are muxed with the video; muxing does not use `-shortest`, so audio and video have the same length.
 
 Deterministic validation compares raw frames and PCM, not MP4/WebM bytes. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.

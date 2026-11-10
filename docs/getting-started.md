@@ -16,7 +16,7 @@ SwarmLoom 有三种使用方式：在原网页上重建、在 Studio 中打开�
 适合文章、文档站、落地页和普通应用界面。
 
 1. 按[安装指南](./install)安装浏览器扩展。
-2. 打开普通网页，点击工具栏中的 SwarmLoom 图标，或按 <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>。
+2. 打开普通网页，点击工具栏中的 SwarmLoom 图标，或按 <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd>。
 3. 页面淡入空白舞台后，光标开始重建。空格暂停或继续，<kbd>1</kbd>、<kbd>2</kbd>、<kbd>3</kbd> 切换速度。
 4. 按 <kbd>M</kbd> 开关声音，按 <kbd>T</kbd> 开关自动巡航。
 5. 构建结束后选择“上线”，或按 <kbd>L</kbd>，恢复可交互的原页面。按 <kbd>R</kbd> 可以重播。

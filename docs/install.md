@@ -15,12 +15,13 @@ description: 在 Chrome、Edge、Firefox、Safari、PWA、折叠屏和手表上�
 | --- | --- | --- |
 | Chrome / Edge 桌面 | Manifest V3 扩展 | 原页重建、选区重建、Studio 文件导入 |
 | Brave / Opera / Vivaldi 桌面 | Chromium 扩展包 | 复用 Chrome 包，逐一做兼容验证 |
-| Firefox 桌面 | Firefox MV3 扩展 | 正式安装需要 Mozilla 签名 |
-| Firefox Android | 独立 Android 包 | 移动界面；使用 Android 兼容的 manifest 和 API 子集 |
+| Firefox 桌面与 Android | 同一个 Firefox 扩展包（MV2 事件页） | 桌面和 Android 共用一个 AMO 条目；正式安装需要 Mozilla 签名 |
 | Safari macOS / iOS / iPadOS / visionOS | 容器 App 内的 Safari Web Extension | 用 Xcode 转换、签名和运行 |
 | 桌面 / Android / iOS | Studio PWA | 文件、文本、URL 和示例；不能注入其他标签页 |
 | 折叠屏 | 扩展或 Studio | 双屏布局是渐进增强，普通响应式布局始终可用 |
 | watchOS / Wear OS | 精简播放器或导出动画 | 不提供浏览器扩展，不承诺完整 PWA 能力 |
+
+正式承诺的是 Chrome/Edge、Firefox、Safari 扩展和 Studio PWA。Brave、Opera、Vivaldi 只做兼容验证，Orion（iOS/iPadOS）仅做实验。Samsung Internet 扩展需先加入其开发计划，折叠屏和手表是实验性补充。Arc、Kiwi 不作为发布目标。
 
 ## 构建开发包
 
@@ -35,7 +36,7 @@ pnpm build
 pnpm --filter @swarmloom/extension build
 ```
 
-产物位于 `apps/extension/dist/`：`chrome/`、`edge/`、`firefox/` 和 `safari/`。Firefox Android 的独立产物属于规划工作，不要直接套用桌面 manifest。
+产物位于 `apps/extension/dist/`：`chrome/`、`edge/`、`firefox/` 和 `safari/`。`firefox/` 同时用于桌面和 Android，没有单独的 Android 包。
 
 ## Chrome <Badge type="warning" text="开发包" />
 
@@ -72,7 +73,7 @@ Chromium 同源不代表行为完全一致。权限提示、音频解锁、工�
 
 ## Firefox 桌面 <Badge type="warning" text="临时调试" />
 
-正式版规划为带固定 Gecko ID 的 MV3 包，并通过 AMO 签名。Release 和 Beta 版 Firefox 不能永久安装未签名 XPI。
+正式版规划为带固定 Gecko ID 的 MV2 事件页包，`browser_specific_settings` 同时声明 `gecko` 和 `gecko_android`，通过 AMO 签名。Release 和 Beta 版 Firefox 不能永久安装未签名 XPI。
 
 临时加载开发目录：
 
@@ -84,7 +85,7 @@ Chromium 同源不代表行为完全一致。权限提示、音频解锁、工�
 
 ## Firefox Android <Badge type="warning" text="规划中" />
 
-Android 版计划使用独立的 Android 兼容包和非持久后台页，不照搬桌面 MV3 manifest。移动端没有桌面快捷键、右键菜单和窗口管理，入口放在扩展菜单和触控工具条中。
+Android 与桌面使用同一个 Firefox 包和同一个 AMO 条目。移动端没有桌面快捷键、右键菜单和窗口管理，入口放在扩展菜单和触控工具条中。
 
 正式安装仍需要 AMO 签名。开发验证通过 Mozilla 的 `web-ext`、ADB 和已启用调试的设备进行；在真机完成验证前，建议使用 Studio PWA。
 

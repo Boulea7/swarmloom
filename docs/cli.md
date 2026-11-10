@@ -167,15 +167,18 @@ swarmloom doctor
 
 1. `--chrome`；
 2. `SWARMLOOM_CHROME` 环境变量；
-3. Windows、macOS、Linux 的常见安装路径；
-4. 已安装的 Playwright 浏览器。
+3. Playwright 缓存中的 chromium-headless-shell；
+4. 系统安装的 Chrome、Chromium 或 Edge。
+
+都找不到时，`doctor` 会提示运行 `npx playwright install chromium-headless-shell`。
 
 ffmpeg 发现顺序：
 
 1. `--ffmpeg`；
 2. `SWARMLOOM_FFMPEG` 环境变量；
-3. `PATH`；
-4. 可选的 `ffmpeg-static` 依赖。
+3. `PATH`。
+
+CLI 不随包分发 ffmpeg，请自行安装。
 
 ```bash
 SWARMLOOM_CHROME=/path/to/chromium \
@@ -196,6 +199,6 @@ swarmloom doctor
 
 ## 确定性说明
 
-CLI 固定视口、DPR、种子和帧步长，等待当前帧资源就绪后截图。声音事件离线渲染为 WAV，再与视频合流。
+CLI 固定视口、DPR、种子和帧步长。确定性来自播放器自己的虚拟时钟：每帧推进 `1000 / fps` 毫秒，等待当前帧资源就绪后截图，不依赖浏览器的 BeginFrame。声音事件离线渲染为 WAV，再与视频合流；合流不使用 `-shortest`，音频和视频时长一致。
 
 确定性验收比较原始帧与 PCM，而不是 MP4/WebM 文件字节。编码器版本、线程和平台可能改变压缩字节，即使画面与声音一致。要复现结果，还应记录输入内容、CLI/适配器版本、浏览器、字体、ffmpeg 和导出参数。

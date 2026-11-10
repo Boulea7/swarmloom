@@ -16,7 +16,7 @@ There are three ways to use SwarmLoom: rebuild a page in place, open content in 
 This is the best route for articles, documentation, landing pages and ordinary application screens.
 
 1. Install the extension by following the [installation guide](./install).
-2. Open a normal web page. Click the SwarmLoom toolbar icon or press <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>.
+2. Open a normal web page. Click the SwarmLoom toolbar icon or press <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd>.
 3. The page fades into a blank stage and the swarm starts building. Press Space to pause or resume, and <kbd>1</kbd>, <kbd>2</kbd> or <kbd>3</kbd> to change speed.
 4. Press <kbd>M</kbd> for sound and <kbd>T</kbd> for automatic touring.
 5. When the build completes, choose **Go live** or press <kbd>L</kbd> to return to the interactive page. Press <kbd>R</kbd> to replay.

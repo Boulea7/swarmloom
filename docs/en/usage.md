@@ -13,12 +13,13 @@ The player and toolbar are still being implemented. This page describes v1 inter
 
 | Key | Action |
 | --- | --- |
-| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | Start or close extension rebuilding on a supported page |
+| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> | Start or close extension rebuilding on a supported page |
 | <kbd>Space</kbd> | Pause or resume |
 | <kbd>M</kbd> | Toggle sound |
 | <kbd>T</kbd> | Toggle automatic touring |
 | <kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> | Set 1×, 2× or 3× speed |
 | <kbd>R</kbd> | Replay from the beginning |
+| <kbd>F</kbd> | Finish now: the remaining layers complete quickly (when the player supports it) |
 | <kbd>L</kbd> | Go live: return to the original page or final static content |
 | <kbd>Esc</kbd> | Close the player |
 
@@ -55,7 +56,7 @@ Effects are synthesised with Web Audio rather than downloaded recordings. Four s
 
 | Pack | Character |
 | --- | --- |
-| `studio` | Default; clear keyboard, mouse and glass-like notes |
+| `studio` | Default; crisp keyboard and mouse sounds with pitched completion notes |
 | `soft` | Quieter and softer |
 | `8bit` | Retro digital timbres |
 | `silent-keys` | Keeps interface and completion cues while muting keys |
