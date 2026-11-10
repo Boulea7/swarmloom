@@ -1,0 +1,41 @@
+{
+  "name": "@swarmloom/adapter-notebook",
+  "version": "0.1.0",
+  "description": "Jupyter notebooks for SwarmLoom: code typed into cells, run, and their outputs revealed.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-notebook"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/adapter-terminal": "workspace:*",
+    "@swarmloom/core": "workspace:*",
+    "dompurify": "^3.4.17",
+    "highlight.js": "^11.12.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4"
+  }
+}
