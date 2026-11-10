@@ -8,6 +8,8 @@ const lock = readFileSync(new URL("../pnpm-lock.yaml", import.meta.url), "utf8")
 const problems = [];
 
 lock.split("\n").forEach((line, i) => {
+  // Deprecation notices are free text copied from the registry and may cite any website.
+  if (/^\s*deprecated:/.test(line)) return;
   for (const [url] of line.matchAll(/[a-z][a-z0-9+.-]*:\/\/[^\s'"),}]+/gi)) {
     let host = "";
     try {
