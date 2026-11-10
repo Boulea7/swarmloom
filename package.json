@@ -21,10 +21,15 @@
     "bench": "node scripts/bench.mjs",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "check:lockfile": "node scripts/check-lockfile.mjs"
+    "check:lockfile": "node scripts/check-lockfile.mjs",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.6",
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
     "@types/node": "^22.20.5",
     "@vitest/browser": "^5.1.0",
     "@vitest/browser-playwright": "^5.1.0",
@@ -35,6 +40,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.6",
     "vitepress": "^1.6.4",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "yaml": "^2.9.1"
   }
 }
