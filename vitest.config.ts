@@ -36,6 +36,9 @@ export default defineConfig({
         test: {
           name: "browser",
           include: ["packages/*/test/**/*.browser.test.ts", "apps/*/test/**/*.browser.test.ts"],
+          // One file at a time: Chromium throttles requestAnimationFrame and screenshots in the
+          // background pages of parallel files, which timed out frame-driven tests in full runs.
+          fileParallelism: false,
           browser: {
             enabled: true,
             headless: true,
