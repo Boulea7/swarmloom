@@ -212,6 +212,15 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
 
+  apps/bookmarklet:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@swarmloom/snapshot-dom':
+        specifier: workspace:*
+        version: link:../../packages/snapshot-dom
+
   apps/cli:
     dependencies:
       playwright-core:
