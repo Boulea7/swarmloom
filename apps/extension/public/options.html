@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title data-i18n="optionsTitle">SwarmLoom settings</title>
+  <link rel="icon" href="icons/icon-32.png">
+  <link rel="stylesheet" href="pages.css">
+  <script type="module" src="pages/options.js"></script>
+</head>
+<body>
+  <main class="page narrow">
+    <header class="brand">
+      <img src="icons/icon-48.png" alt="" width="40" height="40">
+      <div>
+        <h1 data-i18n="optionsTitle">SwarmLoom settings</h1>
+        <p class="muted" data-i18n="optionsIntro">Changes are saved right away and apply the next time the swarm starts.</p>
+      </div>
+    </header>
+
+    <form id="prefs" novalidate>
+      <fieldset>
+        <legend data-i18n="optSectionPlayback">Playback</legend>
+        <div class="field">
+          <label for="speed" data-i18n="optSpeed">Speed</label>
+          <div class="range">
+            <input type="range" id="speed" name="speed" min="0.5" max="3" step="0.25">
+            <output id="speed-out" for="speed"></output>
+          </div>
+        </div>
+        <div class="field">
+          <label for="agents" data-i18n="optAgents">Cursors</label>
+          <select id="agents" name="agents"></select>
+        </div>
+        <div class="field">
+          <label for="finale" data-i18n="optFinale">When the build is done</label>
+          <select id="finale" name="finale"></select>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="optSectionLook">Look and sound</legend>
+        <div class="field">
+          <label for="labels" data-i18n="optLabels">Name tags</label>
+          <select id="labels" name="labels"></select>
+        </div>
+        <div class="field">
+          <label for="theme" data-i18n="optTheme">Theme</label>
+          <select id="theme" name="theme"></select>
+        </div>
+        <div class="field check">
+          <input type="checkbox" id="sound" name="sound">
+          <label for="sound" data-i18n="optSound">Sound effects</label>
+        </div>
+        <div class="field">
+          <label for="soundPack" data-i18n="optSoundPack">Sound pack</label>
+          <select id="soundPack" name="soundPack"></select>
+        </div>
+        <div class="field">
+          <label for="volume" data-i18n="optVolume">Volume</label>
+          <div class="range">
+            <input type="range" id="volume" name="volume" min="0" max="1" step="0.05">
+            <output id="volume-out" for="volume"></output>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="optSectionAccess">Accessibility and language</legend>
+        <div class="field">
+          <label for="reducedMotion" data-i18n="optMotion">Reduce motion</label>
+          <select id="reducedMotion" name="reducedMotion"></select>
+        </div>
+        <div class="field">
+          <label for="locale" data-i18n="optLanguage">Language</label>
+          <select id="locale" name="locale"></select>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="optSectionAbout">Shortcut and privacy</legend>
+        <h2 class="sub" data-i18n="optShortcut">Keyboard shortcut</h2>
+        <p id="shortcut-text"></p>
+        <p><button type="button" id="shortcut-change" class="secondary" data-i18n="optShortcutChange" hidden>Change shortcut</button></p>
+        <div id="file-access" hidden>
+          <h2 class="sub" data-i18n="optFileAccess">Local files</h2>
+          <p id="file-access-text"></p>
+          <p><button type="button" id="file-access-open" class="secondary" data-i18n="noticeOpenDetails" hidden>Open extension details</button></p>
+        </div>
+        <p class="muted" data-i18n="optPrivacy">SwarmLoom only runs on the page where you start it. Nothing is collected or sent anywhere.</p>
+      </fieldset>
+
+      <div class="row">
+        <button type="button" id="reset" class="secondary" data-i18n="optReset">Reset to defaults</button>
+        <button type="button" id="open-welcome" class="link" data-i18n="optOpenWelcome">Open the welcome page</button>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </form>
+  </main>
+</body>
+</html>

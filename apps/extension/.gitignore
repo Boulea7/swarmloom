@@ -1,0 +1,4 @@
+# Build output (dist/ is ignored at the repo root)
+dist-e2e/
+build/
+.e2e-profile*/

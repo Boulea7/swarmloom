@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harbor Kites</title>
+  <style>
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1d1b2f; background: #f7f6fb; }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; background: #fff; }
+    nav a { margin-left: 16px; color: #4b48c9; }
+    .hero { display: grid; grid-template-columns: 1fr 200px; gap: 32px; padding: 48px 32px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px #0002; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 0 32px 48px; }
+    button { font: inherit; padding: 8px 16px; border: 0; border-radius: 8px; background: #4b48c9; color: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Harbor Kites</strong>
+    <nav aria-label="Main"><a href="#kites">Kites</a><a href="#visit">Visit</a></nav>
+  </header>
+  <main>
+    <section class="hero">
+      <div>
+        <h1>Kites stitched by the sea</h1>
+        <p>Light frames, bright sails and a workshop that smells of salt and cedar.</p>
+        <button type="button">Book a flight lesson</button>
+      </div>
+      <svg viewBox="0 0 100 100" width="200" height="200" aria-hidden="true">
+        <path d="M50 5 L90 50 L50 95 L10 50 Z" fill="#ff7a59"/>
+        <path d="M50 5 L50 95 M10 50 L90 50" stroke="#1d1b2f" stroke-width="2"/>
+      </svg>
+    </section>
+    <section class="grid" id="kites">
+      <article class="card"><h2>Diamond</h2><p>The classic, easy in any breeze.</p></article>
+      <article class="card"><h2>Delta</h2><p>Steady climbs for gusty afternoons.</p></article>
+      <article class="card"><h2>Box</h2><p>Strong lift for the windiest days.</p></article>
+    </section>
+  </main>
+  <footer id="visit"><p>Pier 4, open every day the wind blows.</p></footer>
+</body>
+</html>

@@ -1,0 +1,263 @@
+/* Bundled demo page: a fictional lamp shop with varied layout for the swarm to rebuild. */
+:root {
+  --night: #2e2a4f;
+  --amber: #f2a541;
+  --sand: #f7d08a;
+  --coral: #e86a4f;
+  --cream: #faf3e8;
+  --text: #26233d;
+  font:
+    17px / 1.6 Georgia,
+    "Iowan Old Style",
+    "Palatino Linotype",
+    serif;
+  color: var(--text);
+  background: var(--cream);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+a {
+  color: inherit;
+}
+
+.demo-banner {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  background: #5b5bf7;
+  color: #fff;
+  font:
+    15px / 1.4 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+.demo-banner p {
+  margin: 0;
+}
+.demo-banner button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 0;
+  background: #fff;
+  color: #3b3bd9;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.demo-banner button:focus-visible,
+.btn:focus-visible,
+input:focus-visible {
+  outline: 3px solid #ff4f7b;
+  outline-offset: 2px;
+}
+
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 6vw;
+}
+.logo {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 700;
+  font-size: 1.2rem;
+  text-decoration: none;
+}
+nav {
+  display: flex;
+  gap: 20px;
+}
+nav a {
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+nav a:hover {
+  border-color: var(--amber);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 40px;
+  align-items: center;
+  padding: 40px 6vw 56px;
+}
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font:
+    600 0.8rem / 1 system-ui,
+    sans-serif;
+  color: var(--coral);
+}
+h1 {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.1;
+  margin: 0.3em 0;
+  color: var(--night);
+}
+.hero-art {
+  margin: 0;
+  justify-self: center;
+}
+.hero-art svg {
+  width: min(100%, 360px);
+  height: auto;
+  filter: drop-shadow(0 18px 30px rgb(46 42 79 / 25%));
+}
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  text-decoration: none;
+  font:
+    600 1rem / 1 system-ui,
+    sans-serif;
+  border: 2px solid var(--night);
+  cursor: pointer;
+}
+.btn.primary {
+  background: var(--night);
+  color: var(--cream);
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--night);
+}
+
+.cards {
+  padding: 24px 6vw 48px;
+  background: #fff;
+}
+.cards h2,
+.split h2,
+.visit h2 {
+  font-size: 1.8rem;
+  color: var(--night);
+  margin: 0 0 20px;
+}
+.cards ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.card {
+  border: 1px solid #eadfcd;
+  border-radius: 18px;
+  padding: 20px;
+  background: var(--cream);
+}
+.card h3 {
+  margin: 12px 0 4px;
+}
+.swatch {
+  display: block;
+  height: 96px;
+  border-radius: 12px;
+}
+.swatch.amber {
+  background: linear-gradient(135deg, var(--amber), #f7c46c);
+}
+.swatch.sand {
+  background: repeating-linear-gradient(90deg, var(--sand) 0 12px, #f3c56f 12px 24px);
+}
+.swatch.coral {
+  background: radial-gradient(circle at 30% 30%, #f59a83, var(--coral));
+}
+.price {
+  font:
+    700 1.05rem / 1 system-ui,
+    sans-serif;
+  color: var(--night);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  padding: 56px 6vw;
+  align-items: center;
+}
+blockquote {
+  margin: 0;
+  padding: 28px;
+  border-radius: 20px;
+  background: var(--night);
+  color: var(--cream);
+  font-size: 1.15rem;
+}
+blockquote footer {
+  margin-top: 12px;
+  font:
+    0.9rem / 1 system-ui,
+    sans-serif;
+  color: var(--sand);
+}
+.steps li {
+  margin: 6px 0;
+}
+
+.visit {
+  padding: 48px 6vw;
+  background: var(--sand);
+}
+.newsletter label {
+  display: block;
+  margin-bottom: 8px;
+}
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.inline input {
+  min-height: 44px;
+  min-width: 260px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 2px solid var(--night);
+  font: inherit;
+}
+.site-footer {
+  padding: 24px 6vw;
+  font:
+    0.9rem / 1.4 system-ui,
+    sans-serif;
+  color: #6b6785;
+}
+
+@media (max-width: 760px) {
+  .hero,
+  .split {
+    grid-template-columns: 1fr;
+  }
+  nav {
+    gap: 12px;
+  }
+}

@@ -6,10 +6,22 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "node scripts/build.mjs --browser all",
-    "typecheck": "tsc --noEmit -p ."
+    "build": "node scripts/build.mjs --target all",
+    "build:e2e": "node scripts/build.mjs --target chrome --e2e",
+    "build:amo-source": "node scripts/amo-source.mjs",
+    "check:package": "node scripts/audit.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "test:e2e": "node scripts/build.mjs --target chrome --e2e && node --test test/e2e/extension.e2e.mjs",
+    "lint:firefox": "web-ext lint --source-dir dist/firefox",
+    "package:safari": "bash scripts/safari-package.sh"
   },
   "dependencies": {
-    "@swarmloom/core": "workspace:*"
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/element": "workspace:*",
+    "@swarmloom/snapshot-dom": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "web-ext": "10.8.0"
   }
 }

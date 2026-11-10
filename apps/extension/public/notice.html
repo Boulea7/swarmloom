@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title data-i18n="noticeTitle">SwarmLoom can't rebuild this page</title>
+  <link rel="icon" href="icons/icon-32.png">
+  <link rel="stylesheet" href="pages.css">
+  <script type="module" src="pages/notice.js"></script>
+</head>
+<body>
+  <main class="page narrow">
+    <header class="brand">
+      <img src="icons/icon-48.png" alt="" width="40" height="40">
+      <h1 data-i18n="noticeTitle">SwarmLoom can't rebuild this page</h1>
+    </header>
+
+    <p id="reason" class="lead" role="alert"></p>
+    <div id="page" class="url-box" hidden>
+      <span class="muted" data-i18n="noticePageLabel">Page</span>
+      <code id="page-url" tabindex="-1"></code>
+    </div>
+    <div id="file-help" class="card" hidden>
+      <p data-i18n="noticeFileAccessHelp">To allow it, open the extension's details and turn on "Allow access to file URLs".</p>
+      <p><button type="button" id="open-details" class="secondary" data-i18n="noticeOpenDetails" hidden>Open extension details</button></p>
+    </div>
+
+    <h2 data-i18n="noticeIntro">Here is what you can do instead:</h2>
+    <ol class="choices">
+      <li class="card">
+        <a class="button" id="open-studio" href="https://boulea7.github.io/swarmloom/studio/" data-i18n="noticeOpenStudio">Open in Studio</a>
+        <p id="open-studio-hint" class="muted"></p>
+      </li>
+      <li class="card">
+        <a class="button secondary" id="import" href="https://boulea7.github.io/swarmloom/studio/?import=1" data-i18n="noticeImport">Import a file</a>
+        <p class="muted" data-i18n="noticeImportHint">Choose or drop a PDF, Word, Markdown, SVG, image or 3D file in Studio.</p>
+      </li>
+      <li class="card" id="copy-card">
+        <button type="button" class="secondary" id="copy" data-i18n="noticeCopy">Copy link</button>
+        <p class="muted" data-i18n="noticeCopyHint">Paste the link into Studio, or open it in a normal tab.</p>
+        <p id="copy-status" class="status" role="status" aria-live="polite"></p>
+      </li>
+    </ol>
+  </main>
+</body>
+</html>
