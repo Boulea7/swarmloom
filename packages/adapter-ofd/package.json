@@ -1,0 +1,36 @@
+{
+  "name": "@swarmloom/adapter-ofd",
+  "version": "0.1.0",
+  "description": "OFD adapter for SwarmLoom: GB/T 33190 fixed-layout pages (text, paths, images) rendered as positioned HTML and SVG sheets, then snapshotted.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-ofd"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/adapter-odf": "workspace:*",
+    "@swarmloom/core": "workspace:*"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3"
+  }
+}
