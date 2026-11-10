@@ -13,8 +13,8 @@ SwarmLoom 是一段可视化重放：一群虚拟光标当着你的面，把网�
 
 项目正在开发中，**暂无可安装的版本**。第一个公开版本会包含：
 
-- 浏览器扩展：Chrome、Edge、Firefox（桌面与 Android）、Safari（macOS、iOS、iPadOS）
-- Studio：可安装的网页应用，支持拖入文件、手机、平板、折叠屏和手表播放器
+- 浏览器扩展：Chrome、Edge、Firefox（桌面与 Android 共用一个包）、Safari（macOS、iOS、iPadOS、visionOS）
+- Studio：可安装的网页应用，支持拖入文件，适配桌面、手机和平板；折叠屏布局和手表小播放器是实验性补充
 - CLI：逐帧确定性导出 MP4/WebM/GIF
 - `<swarm-loom>` Web Component
 

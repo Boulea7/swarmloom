@@ -21,6 +21,8 @@ Store listings and signed packages have not been published, and extension featur
 | Foldables | Extension or Studio | Dual-screen layouts enhance a working responsive fallback |
 | watchOS / Wear OS | Tiny player or exported animation | No browser extension and no promise of full PWA support |
 
+The committed targets are the Chrome/Edge, Firefox and Safari extensions and the Studio PWA. Brave, Opera and Vivaldi get compatibility checks only, and Orion (iOS/iPadOS) is experimental. Samsung Internet extensions need its developer programme first, and foldables and watches are experimental extras. Arc and Kiwi are not release targets.
+
 ## Build development packages
 
 All browsers share one source tree. Build workspace dependencies, then generate the extension directories:

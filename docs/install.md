@@ -21,6 +21,8 @@ description: 在 Chrome、Edge、Firefox、Safari、PWA、折叠屏和手表上�
 | 折叠屏 | 扩展或 Studio | 双屏布局是渐进增强，普通响应式布局始终可用 |
 | watchOS / Wear OS | 精简播放器或导出动画 | 不提供浏览器扩展，不承诺完整 PWA 能力 |
 
+正式承诺的是 Chrome/Edge、Firefox、Safari 扩展和 Studio PWA。Brave、Opera、Vivaldi 只做兼容验证，Orion（iOS/iPadOS）仅做实验。Samsung Internet 扩展需先加入其开发计划，折叠屏和手表是实验性补充。Arc、Kiwi 不作为发布目标。
+
 ## 构建开发包
 
 所有浏览器共用一份源码。先构建工作区依赖，再生成扩展目录：
