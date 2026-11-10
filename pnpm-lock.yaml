@@ -326,6 +326,21 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/adapter-lottie:
+    dependencies:
+      '@swarmloom/adapter-svg':
+        specifier: workspace:*
+        version: link:../adapter-svg
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
+      lottie-web:
+        specifier: 5.13.0
+        version: 5.13.0
+
   packages/adapter-markdown:
     dependencies:
       '@swarmloom/adapter-code':
@@ -2727,6 +2742,9 @@ packages:
 
   longest-streak@3.1.0:
     resolution: {integrity: sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g==}
+
+  lottie-web@5.13.0:
+    resolution: {integrity: sha512-+gfBXl6sxXMPe8tKQm7qzLnUy5DUPJPKIyRHwtpCpyUEYjHYRJC/5gjUvdkuO2c3JllrPtHXH5UJJK8LRYl5yQ==}
 
   lru-cache@11.5.3:
     resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
@@ -5896,6 +5914,8 @@ snapshots:
   lodash.once@4.1.1: {}
 
   longest-streak@3.1.0: {}
+
+  lottie-web@5.13.0: {}
 
   lru-cache@11.5.3: {}
 
