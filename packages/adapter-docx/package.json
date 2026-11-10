@@ -1,7 +1,7 @@
 {
   "name": "@swarmloom/adapter-docx",
   "version": "0.1.0",
-  "description": "DOCX adapter for SwarmLoom: Word documents rendered as paged HTML, then snapshotted.",
+  "description": "DOCX adapter for SwarmLoom: Word documents rendered as paged HTML (docx-preview, with a built-in plain fallback), then snapshotted.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -10,6 +10,11 @@
       "@swarmloom/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./paged": {
+      "@swarmloom/source": "./src/paged/index.ts",
+      "types": "./dist/paged/index.d.ts",
+      "import": "./dist/paged/index.js"
     }
   },
   "main": "./dist/index.js",
@@ -23,11 +28,13 @@
     "directory": "packages/adapter-docx"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/paged/index.ts --format esm --dts --clean",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/snapshot-dom": "workspace:*"
+    "@swarmloom/snapshot-dom": "workspace:*",
+    "docx-preview": "0.4.1",
+    "jszip": "3.10.2"
   }
 }
