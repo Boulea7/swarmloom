@@ -1,20 +1,8 @@
-import type { Adapter, AdapterContext, LoadedSource, SourceInput } from "@swarmloom/core";
-
 /**
- * Raster image -> edge sketch -> tile-by-tile painting.
- *
- * Stub: `load()` rejects until the implementation lands.
+ * @swarmloom/adapter-image: raster images rebuilt as a pencil sketch of their edges, painted in
+ * quadtree tiles and finished with the exact picture.
  */
-export const imageAdapter: Adapter = {
-  id: "image",
-  label: "Image",
-  extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp"],
-  mime: ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp"],
-  async load(input: SourceInput, ctx: AdapterContext): Promise<LoadedSource> {
-    void input;
-    void ctx;
-    throw new Error("not implemented yet");
-  },
-};
-
-export default imageAdapter;
+export { createImageAdapter, type ImageAdapterOptions, imageAdapter, imageAdapter as default } from "./adapter";
+export { type Analysis, type AnalyzeOptions, createKernel, type Kernel, type Stroke, type Tile } from "./kernel";
+export { smoothPath } from "./layers";
+export { type ImageFormat, type ImageProbe, probeImage, sniffFormat } from "./source";
