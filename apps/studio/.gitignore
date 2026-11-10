@@ -1,0 +1,4 @@
+# Extension-mode build output (STUDIO_TARGET=extension / vite build --mode extension)
+dist-extension/
+# Local screenshots from scripts/screens.mjs; review them, never commit them
+test/__screens__/
