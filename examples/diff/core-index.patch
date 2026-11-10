@@ -1,0 +1,139 @@
+From d301690ded09fc718db94f2593395b4acfeb7a47 Mon Sep 17 00:00:00 2001
+From: boulea7
+Date: Tue, 10 Nov 2026 17:24:46 +0800
+Subject: [PATCH] chore(adapters): drop unused snapshot-dom dependency from svg
+ and image adapters
+
+Both adapters now produce layers directly and no longer need the DOM snapshot package.
+---
+ packages/adapter-image/package.json | 3 +--
+ packages/adapter-svg/package.json   | 3 +--
+ pnpm-lock.yaml                      | 6 ------
+ 3 files changed, 2 insertions(+), 10 deletions(-)
+
+diff --git a/packages/adapter-image/package.json b/packages/adapter-image/package.json
+index c034e52..3b7a96f 100644
+--- a/packages/adapter-image/package.json
++++ b/packages/adapter-image/package.json
+@@ -27,7 +27,6 @@
+     "typecheck": "tsc --noEmit -p ."
+   },
+   "dependencies": {
+-    "@swarmloom/core": "workspace:*",
+-    "@swarmloom/snapshot-dom": "workspace:*"
++    "@swarmloom/core": "workspace:*"
+   }
+ }
+diff --git a/packages/adapter-svg/package.json b/packages/adapter-svg/package.json
+index bf67b13..a93d335 100644
+--- a/packages/adapter-svg/package.json
++++ b/packages/adapter-svg/package.json
+@@ -27,7 +27,6 @@
+     "typecheck": "tsc --noEmit -p ."
+   },
+   "dependencies": {
+-    "@swarmloom/core": "workspace:*",
+-    "@swarmloom/snapshot-dom": "workspace:*"
++    "@swarmloom/core": "workspace:*"
+   }
+ }
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index f078934..7c9ff9e 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -261,9 +261,6 @@ importers:
+       '@swarmloom/core':
+         specifier: workspace:*
+         version: link:../core
+-      '@swarmloom/snapshot-dom':
+-        specifier: workspace:*
+-        version: link:../snapshot-dom
+ 
+   packages/adapter-markdown:
+     dependencies:
+@@ -297,9 +294,6 @@ importers:
+       '@swarmloom/core':
+         specifier: workspace:*
+         version: link:../core
+-      '@swarmloom/snapshot-dom':
+-        specifier: workspace:*
+-        version: link:../snapshot-dom
+ 
+   packages/adapter-three:
+     dependencies:
+From 4e065e337376fcd79f2b7cd498018493521e0832 Mon Sep 17 00:00:00 2001
+From: boulea7
+Date: Tue, 10 Nov 2026 20:21:04 +0800
+Subject: [PATCH] feat(core): export quantize, createI18n and LOCALES from the
+ public index
+
+The sound and ui zones landed: re-export quantize (public per internal.ts)
+next to renderOffline/encodeWav from ./sound/index, and createI18n/LOCALES
+plus the Locale and I18n types, as the engine zone's index is specified to.
+
+core.test.ts asserted the old "not implemented yet" stubs for
+renderOffline and encodeWav, which now fail. It now checks the public
+index wiring: quantize snaps to the grid, i18n negotiates a locale,
+renderOffline reports the missing OfflineAudioContext in happy-dom and
+encodeWav rejects a non-buffer. createPlayer keeps its stub assertion
+until the engine merges.
+---
+ packages/core/src/index.ts      |  7 +++++--
+ packages/core/test/core.test.ts | 17 ++++++++++++-----
+ 2 files changed, 17 insertions(+), 7 deletions(-)
+
+diff --git a/packages/core/src/index.ts b/packages/core/src/index.ts
+index 1363086..37c1f76 100644
+--- a/packages/core/src/index.ts
++++ b/packages/core/src/index.ts
+@@ -6,9 +6,12 @@
+ 
+ export type { RealtimeClockOptions } from "./clock";
+ export { RealtimeClock, VirtualClock } from "./clock";
++export type { Locale } from "./i18n/index";
++export { createI18n, LOCALES } from "./i18n/index";
++export type { I18n } from "./internal";
+ export { createPlayer } from "./player";
+ export { definePlugin } from "./plugin";
+ export { createRng } from "./rng";
+-export type { RenderOfflineOptions } from "./sound/offline";
+-export { encodeWav, renderOffline } from "./sound/offline";
++export type { RenderOfflineOptions } from "./sound/index";
++export { encodeWav, quantize, renderOffline } from "./sound/index";
+ export type * from "./types";
+diff --git a/packages/core/test/core.test.ts b/packages/core/test/core.test.ts
+index cc7b618..e85b83a 100644
+--- a/packages/core/test/core.test.ts
++++ b/packages/core/test/core.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from "vitest";
+ import type { Blueprint } from "../src/index";
+-import { createPlayer, definePlugin, encodeWav, renderOffline } from "../src/index";
++import { createI18n, createPlayer, definePlugin, encodeWav, LOCALES, quantize, renderOffline } from "../src/index";
+ 
+ const blueprint: Blueprint = {
+   version: 1,
+@@ -10,12 +10,19 @@ const blueprint: Blueprint = {
+   layers: [],
+ };
+ 
+-describe("@swarmloom/core stubs", () => {
+-  it("definePlugin is the identity and pending APIs throw", async () => {
++describe("@swarmloom/core public index", () => {
++  it("exports the sound and i18n entry points of their zones", async () => {
+     const plugin = { name: "demo" };
+     expect(definePlugin(plugin)).toBe(plugin);
++    expect(quantize(1001, 120)).toBe(1250);
++    expect(LOCALES).toContain("zh-CN");
++    expect(createI18n("fr-CA").locale).toBe("fr");
++    // happy-dom has no Web Audio: offline rendering reports that instead of failing obscurely.
++    await expect(renderOffline([], 100)).rejects.toThrow("OfflineAudioContext");
++    expect(() => encodeWav({} as AudioBuffer)).toThrow(TypeError);
++  });
++
++  it("still rejects createPlayer until the engine lands", () => {
+     expect(() => createPlayer({ blueprint })).toThrow("not implemented yet");
+-    await expect(renderOffline([], 100)).rejects.toThrow("not implemented yet");
+-    expect(() => encodeWav({} as AudioBuffer)).toThrow("not implemented yet");
+   });
+ });

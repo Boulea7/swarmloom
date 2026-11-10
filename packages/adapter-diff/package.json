@@ -1,0 +1,37 @@
+{
+  "name": "@swarmloom/adapter-diff",
+  "version": "0.1.0",
+  "description": "Unified diffs, git patches and logs for SwarmLoom: code-review panels where removed lines are struck and added lines typed.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./github": {
+      "@swarmloom/source": "./src/github.ts",
+      "types": "./dist/github.d.ts",
+      "import": "./dist/github.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-diff"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/github.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*"
+  }
+}
