@@ -13,8 +13,8 @@ SwarmLoom is a visual replay: a swarm of virtual cursors builds a web page, Mark
 
 Work in progress. **There is no installable release yet.** The first public release will include:
 
-- Browser extension: Chrome, Edge, Firefox (desktop and Android), Safari (macOS, iOS, iPadOS)
-- Studio: an installable web app with file drop, phone, tablet, foldable and watch player layouts
+- Browser extension: Chrome, Edge, Firefox (one package for desktop and Android), Safari (macOS, iOS, iPadOS, visionOS)
+- Studio: an installable web app with file drop for desktop, phone and tablet; foldable layouts and a small watch player are experimental extras
 - CLI: deterministic frame-by-frame export to MP4/WebM/GIF
 - `<swarm-loom>` web component
 
