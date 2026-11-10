@@ -1,12 +1,16 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { get } from "node:http";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { networkVerdict } from "../src/browser/network";
 import type { FfmpegCaps } from "../src/discovery/ffmpeg";
 import { parseEncoders } from "../src/discovery/ffmpeg";
 import { InterruptedError } from "../src/errors";
 import { planMux, planVideo } from "../src/pipeline/encode";
 import { type FrameSource, runFrameLoop } from "../src/pipeline/frames";
-import { servedInput, toRenderInput } from "../src/pipeline/input";
-import { resolveRequestPath } from "../src/server/static";
+import { inputBase, isSiblingAsset, servedInput, toRenderInput } from "../src/pipeline/input";
+import { resolveRequestPath, startStaticServer } from "../src/server/static";
 import { guard } from "../src/util/async";
 
 /** A page whose build is done once `doneAt` engine ms have elapsed. */
@@ -112,24 +116,55 @@ describe("encoder plans", () => {
 });
 
 describe("render input", () => {
-  const origin = "http://127.0.0.1:4000";
-  it("inlines text and serves files and downloads from the page origin", () => {
-    const md = { kind: "file" as const, name: "a.md", format: "markdown", content: { text: "# Hi" } };
-    expect(toRenderInput(md, origin)).toEqual({ name: "a.md", type: "markdown", text: "# Hi" });
-    expect(servedInput(md).size).toBe(0);
+  const base = inputBase("tok");
+  const inputUrl = `http://127.0.0.1:4000${base}`;
 
+  it("inlines text, with the published input as base URL only for local files", () => {
+    const md = { kind: "file" as const, name: "a b.md", format: "markdown", content: { text: "# Hi" } };
+    expect(toRenderInput(md, inputUrl)).toEqual({ name: "a b.md", type: "markdown", text: "# Hi" });
+    const local = { ...md, dir: "/docs" };
+    expect(toRenderInput(local, inputUrl).url).toBe("http://127.0.0.1:4000/input/tok/a%20b.md");
+    const served = servedInput(local, base);
+    expect(served.files.size).toBe(0);
+    expect(served.mounts).toEqual([expect.objectContaining({ prefix: "/input/tok/", dir: "/docs" })]);
+    expect(["/docs/shot.PNG", "/docs/notes.md", "/docs/run.js"].map(served.mounts[0]?.accept ?? (() => 0))).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it("serves binaries from the page origin instead of passing them as base64", () => {
     const deck = {
       kind: "file" as const,
       name: "my deck.pptx",
       format: "slides",
       content: { path: "/in/my deck.pptx" },
     };
-    expect(toRenderInput(deck, origin)).toEqual({
+    expect(toRenderInput(deck, inputUrl)).toEqual({
       name: "my deck.pptx",
       type: "slides",
-      url: "http://127.0.0.1:4000/input/my%20deck.pptx",
+      url: "http://127.0.0.1:4000/input/tok/my%20deck.pptx",
     });
-    expect([...servedInput(deck)]).toEqual([["/input/my%20deck.pptx", "/in/my deck.pptx"]]);
+    expect([...servedInput(deck, base).files]).toEqual([["/input/tok/my%20deck.pptx", "/in/my deck.pptx"]]);
+  });
+});
+
+describe("network policy", () => {
+  const policy = { localOrigin: "http://127.0.0.1:4000", remoteAssets: true };
+  it.each([
+    ["http://127.0.0.1:4000/chunks/adapter-pdf.js", "script", policy, "allow"],
+    ["data:image/png;base64,AAAA", "image", policy, "allow"],
+    ["https://cdn.example/logo.png", "image", policy, "anonymous"],
+    ["https://fonts.example/a.woff2", "font", policy, "anonymous"],
+    ["https://cdn.example/app.js", "script", policy, "block"],
+    ["https://cdn.example/site.css", "stylesheet", policy, "block"],
+    ["https://api.example/data", "fetch", policy, "block"],
+    ["http://cdn.example/logo.png", "image", policy, "block"],
+    ["http://127.0.0.1:4001/x.png", "image", policy, "block"],
+    ["https://cdn.example/logo.png", "image", { ...policy, remoteAssets: false }, "block"],
+  ] as const)("%s (%s)", (url, type, p, verdict) => {
+    expect(networkVerdict(url, type, p)).toBe(verdict);
   });
 });
 
@@ -144,5 +179,40 @@ describe("static server paths", () => {
     ["/other/index.html", null],
   ])("%s", (urlPath, expected) => {
     expect(resolveRequestPath(root, "/app/", urlPath)).toBe(expected);
+  });
+});
+
+describe("static server input mount", () => {
+  it("publishes only sibling assets, never documents, scripts or dotfiles", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "swarmloom-mount-"));
+    await mkdir(path.join(dir, "img"));
+    for (const name of ["img/shot.png", "notes.md", ".hidden.png", "index.html"]) {
+      await writeFile(path.join(dir, name), "x");
+    }
+    const server = await startStaticServer({
+      root: dir,
+      mounts: [{ prefix: "/input/tok/", dir, accept: isSiblingAsset }],
+    });
+    try {
+      // node:http rather than fetch: the unit project's DOM environment replaces fetch.
+      const status = (p: string) =>
+        new Promise<number | undefined>((resolve, reject) =>
+          get(new URL(p, server.url), (res) => resolve(res.resume().statusCode)).on("error", reject),
+        );
+      expect(
+        await Promise.all(
+          [
+            "/input/tok/img/shot.png",
+            "/input/tok/notes.md",
+            "/input/tok/.hidden.png",
+            "/input/tok/",
+            "/input/x/img/shot.png",
+          ].map(status),
+        ),
+      ).toEqual([200, 404, 404, 404, 404]);
+    } finally {
+      await server.close();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

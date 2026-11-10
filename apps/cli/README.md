@@ -27,7 +27,7 @@ npx swarmloom doctor
 | `formats` | Lists the supported input formats (`--json` for scripts). |
 | `doctor` | Checks Node.js, the browser, ffmpeg and the bundled pages. |
 
-Every command has `--help`. Common `render` options: `--width`/`--height` (CSS px, default 1280x720), `--scale` (device pixel ratio of the frames), `--fps` (default 30), `--agents`, `--speed`, `--seed`, `--theme`, `--labels`, `--finale`, `--tail` (hold after the build, ms), `--no-sound`, `--max-duration` (seconds, default 120; the video stops there even if the build is not done) and `--quiet`.
+Every command has `--help`. Common `render` options: `--width`/`--height` (CSS px, default 1280x720), `--scale` (device pixel ratio of the frames), `--fps` (default 30), `--agents`, `--speed`, `--seed`, `--theme`, `--labels`, `--finale`, `--tail` (hold after the build, ms), `--no-sound`, `--no-remote`, `--max-duration` (seconds, default 120; the video stops there even if the build is not done) and `--quiet`.
 
 Progress goes to stderr: a bar with the remaining time on a terminal, a line per quarter otherwise. Ctrl+C stops the render, closes the browser, stops ffmpeg and deletes temporary files; a second Ctrl+C quits at once. The CLI only ever stops processes it started.
 
@@ -44,6 +44,8 @@ Progress goes to stderr: a bar with the remaining time on a terminal, a line per
 ## How it works
 
 `render` serves the render page of `@swarmloom/export` from a loopback port, opens it in the browser with Playwright at the requested viewport and scale, and calls its `init` once. Each frame is a `step(1000 / fps)` on the page's virtual clock followed by a CDP `Page.captureScreenshot`; frames are piped into ffmpeg with backpressure. After the last frame the page renders the sound log offline to WAV, and ffmpeg muxes it in at the exact video length. Web pages are captured live in the browser first (the snapshot script is injected into the page) and played as a Blueprint.
+
+While rendering, the render page only loads files from the CLI's own loopback server: the page itself, the input, and the images, fonts, style sheets, media and 3D model parts next to a local input file (published under a random path for that one render). `https:` images and fonts the input links to are fetched without a `Referer`; `--no-remote` turns that off. Scripts, style sheets, data requests and plain-`http:` files from other sites are always blocked; `--verbose` lists each blocked request.
 
 Only `playwright-core` is installed with the CLI. The render page, the snapshot script and Studio are bundled into `dist/` at build time (`pnpm build` in a source checkout). For development, `SWARMLOOM_RENDER_DIR`, `SWARMLOOM_STUDIO_DIR` and `SWARMLOOM_SNAPSHOT_BUNDLE` point the CLI at other copies.
 

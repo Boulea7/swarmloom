@@ -61,6 +61,17 @@ export interface StaticServerOptions {
    * to stream or the bytes themselves. Nothing else from their directories is exposed.
    */
   files?: ReadonlyMap<string, string | Uint8Array>;
+  /** Extra directories, each published under its own URL prefix and limited to the files it accepts. */
+  mounts?: readonly StaticMount[];
+}
+
+/** A directory outside `root` published read-only under `prefix` (no listings, no index files). */
+export interface StaticMount {
+  /** URL path prefix starting and ending with "/", e.g. "/input/x7Q/". */
+  prefix: string;
+  dir: string;
+  /** Absolute file path filter; files it rejects answer 404. */
+  accept(file: string): boolean;
 }
 
 export interface StaticServer {
@@ -117,6 +128,24 @@ async function sendExtra(req: IncomingMessage, res: ServerResponse, urlPath: str
   else res.end(body);
 }
 
+/** True when a URL path has a segment starting with "." (dotfiles, ".."), which mounts never serve. */
+function hasDotSegment(relative: string): boolean {
+  return relative.split(/[\\/]/).some((segment) => segment.startsWith("."));
+}
+
+async function sendMounted(req: IncomingMessage, res: ServerResponse, mount: StaticMount, urlPath: string) {
+  const file = resolveRequestPath(mount.dir, mount.prefix, urlPath);
+  const relative = file ? path.relative(path.resolve(mount.dir), file) : "";
+  const stats = file && !hasDotSegment(relative) && mount.accept(file) ? await fileStats(file) : null;
+  if (!file || !stats?.isFile()) {
+    res.writeHead(404).end("Not found");
+    return;
+  }
+  res.writeHead(200, { ...HEADERS, "Content-Type": contentType(file), "Content-Length": stats.size });
+  if (req.method === "HEAD") res.end();
+  else streamFile(file, res);
+}
+
 function streamFile(file: string, res: ServerResponse): void {
   const stream = createReadStream(file);
   stream.on("error", () => res.destroy());
@@ -142,6 +171,11 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
     const extra = opts.files?.get(urlPath);
     if (extra !== undefined) {
       await sendExtra(req, res, urlPath, extra);
+      return;
+    }
+    const mount = opts.mounts?.find((m) => urlPath.startsWith(m.prefix));
+    if (mount) {
+      await sendMounted(req, res, mount, urlPath);
       return;
     }
     if (base !== "/" && (urlPath === "/" || urlPath === base.slice(0, -1))) {

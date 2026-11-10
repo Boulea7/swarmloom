@@ -93,9 +93,11 @@ export function watchPage(page: Page, io: CliIo, verbose: boolean): PageLog {
     if (verbose) io.err(`[page] uncaught: ${error.message}`);
   });
   page.on("console", (message) => {
-    // The browser's automatic favicon request is noise, not a cause of failures.
+    // The automatic favicon request and requests the network policy refused (reported separately)
+    // are noise, not causes of failures.
     const favicon = message.location().url.endsWith("/favicon.ico");
-    if (message.type() === "error" && !favicon) keep(message.text());
+    const blocked = message.text().includes("ERR_BLOCKED_BY_CLIENT");
+    if (message.type() === "error" && !favicon && !blocked) keep(message.text());
     if (verbose) io.err(`[page] ${message.type()}: ${message.text()}`);
   });
   return { recent: () => [...lines] };

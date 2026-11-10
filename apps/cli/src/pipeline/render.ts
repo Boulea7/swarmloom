@@ -1,8 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Blueprint } from "@swarmloom/core";
 import type { Browser, Page } from "playwright-core";
 import { type ContextOptions, launchBrowser, newContext, watchPage } from "../browser/launch";
+import { applyNetworkPolicy } from "../browser/network";
 import { snapshotPage } from "../browser/snapshot";
 import type { FfmpegCaps } from "../discovery/ffmpeg";
 import { RenderError, throwIfAborted } from "../errors";
@@ -14,7 +16,7 @@ import { trackTempDir } from "../util/owned";
 import { RenderPageDriver } from "./driver";
 import { formatHasAudio, frameImageType, type OutputFormat } from "./encode";
 import { runFrameLoop } from "./frames";
-import { type RenderSource, servedInput, toRenderInput } from "./input";
+import { inputBase, type RenderSource, servedInput, toRenderInput } from "./input";
 import { type FrameWriter, ffmpegWriter, pngSequenceWriter } from "./output";
 import { formatClock, Progress } from "./progress";
 import type { RenderInit, StepResult } from "./protocol";
@@ -35,6 +37,8 @@ export interface RenderJob {
   fps: number;
   settings: PlayerSettings;
   maxDurationMs: number;
+  /** Let the render page load https: images and fonts the input references (decision C03). */
+  remoteAssets: boolean;
   quiet: boolean;
   verbose: boolean;
 }
@@ -60,6 +64,8 @@ export interface RenderSummary {
   finished: boolean;
   audio: boolean;
   last: StepResult;
+  /** Requests the network policy refused (scripts, style sheets, plain http, other origins). */
+  blockedRequests: number;
 }
 
 /**
@@ -81,8 +87,10 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     const tmp = await mkdtemp(path.join(tmpRoot, ".swarmloom-render-"));
     cleanup.defer(trackTempDir(tmp));
 
-    const server = await startStaticServer({ root: deps.renderDir, files: servedInput(job.source) });
+    const base = inputBase(randomBytes(12).toString("base64url"));
+    const server = await startStaticServer({ root: deps.renderDir, ...servedInput(job.source, base) });
     cleanup.defer(() => server.close());
+    const origin = new URL(server.url).origin;
     const browser = await launchBrowser(deps.browserPath);
     cleanup.defer(() => browser.close());
     const viewport: ContextOptions = {
@@ -94,7 +102,13 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     };
 
     const blueprint = await captureLivePage(browser, viewport, job, deps);
-    const driver = await RenderPageDriver.open(await newContext(browser, viewport), {
+    const context = await newContext(browser, viewport);
+    let blockedRequests = 0;
+    await applyNetworkPolicy(context, { localOrigin: origin, remoteAssets: job.remoteAssets }, (url, type) => {
+      blockedRequests += 1;
+      if (job.verbose) io.err(`[network] blocked ${type} ${url}`);
+    });
+    const driver = await RenderPageDriver.open(context, {
       url: `${server.url}index.html`,
       width: job.width,
       height: job.height,
@@ -106,7 +120,7 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     });
     const estimate =
       (await driver.init({
-        input: toRenderInput(job.source, new URL(server.url).origin),
+        input: toRenderInput(job.source, origin + base),
         width: job.width,
         height: job.height,
         fps: job.fps,
@@ -133,7 +147,8 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     progress.phase("encoding");
     let output = await writer.finish();
     let audio = false;
-    if (job.settings.sound && formatHasAudio(job.format)) {
+    // A single frame never advanced the clock, so there is no soundtrack to render.
+    if (job.settings.sound && formatHasAudio(job.format) && result.elapsedMs > 0) {
       progress.phase("rendering sound");
       const wav = await driver.audioWav();
       if (wav) {
@@ -151,6 +166,7 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       finished: result.finished,
       audio,
       last: result.last,
+      blockedRequests,
     };
   } finally {
     progress.clear();

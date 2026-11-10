@@ -49,6 +49,8 @@ Swarm:
       --tail <ms>         Hold after the build finishes, ms (0-60000). Default: 2500
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
+      --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
+                          and plain-http files from other sites are never loaded
 
 Programs:
       --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then
@@ -84,6 +86,7 @@ const OPTIONS = {
   tail: { type: "string" },
   locale: { type: "string" },
   "no-sound": { type: "boolean" },
+  "no-remote": { type: "boolean" },
   chrome: { type: "string" },
   ffmpeg: { type: "string" },
   quiet: { type: "boolean", short: "q" },
@@ -109,6 +112,8 @@ export interface RenderOptions {
   maxDurationMs: number;
   settings: PlayerSettings;
   noSound: boolean;
+  /** Load https: images and fonts (default on; --no-remote turns it off). */
+  remoteAssets: boolean;
   chrome?: string;
   ffmpeg?: string;
   quiet: boolean;
@@ -159,6 +164,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     height,
     scale,
     noSound: values["no-sound"] ?? false,
+    remoteAssets: !values["no-remote"],
     fps: readInt("fps", values.fps, 30, 1, 120),
     maxDurationMs: readNumber("max-duration", values["max-duration"], 120, { min: 1, max: 3600 }) * 1000,
     settings,
@@ -297,6 +303,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       fps: opts.fps,
       settings: opts.settings,
       maxDurationMs: opts.maxDurationMs,
+      remoteAssets: opts.remoteAssets,
       quiet: opts.quiet,
       verbose: opts.verbose,
     },
@@ -314,6 +321,9 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   if (!summary.finished) {
     const layers = summary.last.total > 0 ? ` (${summary.last.built} of ${summary.last.total} layers built)` : "";
     warn(io, `stopped at --max-duration ${formatClock(opts.maxDurationMs / 1000)} before the build finished${layers}`);
+  }
+  if (summary.blockedRequests > 0 && !opts.verbose) {
+    warn(io, `blocked ${summary.blockedRequests} request(s) the input made to other sites (see --verbose)`);
   }
   const sound = summary.audio ? "with sound" : "no sound";
   const took = formatClock((performance.now() - started) / 1000);
