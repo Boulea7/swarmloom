@@ -10,7 +10,8 @@
       "@swarmloom/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./render/*": "./dist/render/*"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -23,10 +24,11 @@
     "directory": "packages/export"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts --format esm --dts --clean && vite build -c vite.render.config.ts",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@swarmloom/core": "workspace:*"
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/formats": "workspace:*"
   }
 }

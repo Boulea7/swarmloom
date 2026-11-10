@@ -1,0 +1,168 @@
+import type { LabelMode } from "@swarmloom/core";
+
+/** Input of a render: what `SourceInput` carries, serialisable across the driver boundary. */
+export interface RenderInput {
+  /** File name; its extension drives detection when the content is ambiguous. */
+  name: string;
+  /**
+   * MIME type (contains "/"), or a format override: an adapter id ("markdown") or extension ("md").
+   */
+  type?: string;
+  /** File content, base64. */
+  base64?: string;
+  text?: string;
+  /** URL fetched by the page (http(s) or data:). */
+  url?: string;
+}
+
+/** Options of `window.__swarmloom.init()`. Mirrors the CLI flags. */
+export interface RenderInit {
+  input: RenderInput;
+  /** Viewport CSS px; deviceScaleFactor is set by the driver. */
+  width: number;
+  height: number;
+  /** Used only to report; the driver calls `step(1000 / fps)`. */
+  fps: number;
+  agents?: number | "auto";
+  speed?: number;
+  /** Default 1, so two renders of the same input are identical. */
+  seed?: number;
+  theme?: "auto" | "light" | "dark";
+  labels?: LabelMode;
+  /** Default true. `false` renders a silent soundtrack. */
+  sound?: boolean;
+  finale?: "flock" | "halo" | "none";
+  locale?: string;
+  /** Hold time after the build completes (finale), ms. Default 2500. */
+  tail?: number;
+  /** Scroll mode during export: "tour" (default; follows the build) or "none". */
+  follow?: "tour" | "none";
+  /** Quick cross-fade build without flocking. Default false: exports never inherit the host preference. */
+  reducedMotion?: boolean;
+  /** Musical grid tempo of placement notes (beat-synced builds). Default: the sound pack's tempo. */
+  bpm?: number;
+  /** Sound pack id ("studio", "soft", "8bit", "silent-keys"). Default "studio". */
+  pack?: string;
+}
+
+/** Result of one `step()` call. */
+export interface RenderStep {
+  /** Player state ("intro", "building", "finale", "done", ...). */
+  state: string;
+  built: number;
+  total: number;
+  /** True once the build finished AND `tail` ms elapsed. */
+  done: boolean;
+}
+
+/** The protocol the CLI drives through Playwright on `dist/render/index.html`. */
+export interface RenderApi {
+  /** Loads the input with a VirtualClock and controls off; the first frame (t = 0) is ready when it resolves. */
+  init(o: RenderInit): Promise<{ estimatedMs: number }>;
+  /** Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame. */
+  step(ms: number): Promise<RenderStep>;
+  /** Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for the elapsed duration. */
+  audioWav(): Promise<string>;
+  /** Destroys the player and releases the loaded source; `init()` may be called again afterwards. */
+  dispose(): void;
+}
+
+declare global {
+  interface Window {
+    __swarmloom: RenderApi;
+  }
+}
+
+const LABELS = ["names", "agents", "roles", "none"] as const;
+const THEMES = ["auto", "light", "dark"] as const;
+const FINALES = ["flock", "halo", "none"] as const;
+const FOLLOWS = ["tour", "none"] as const;
+
+function fail(message: string): never {
+  throw new TypeError(`init(): ${message}`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function number(
+  o: Record<string, unknown>,
+  key: string,
+  min: number,
+  max: number,
+  integer = false,
+): number | undefined {
+  const value = o[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
+    fail(`${key} must be a number within ${min}..${max}, got ${JSON.stringify(value)}`);
+  }
+  if (integer && !Number.isInteger(value)) fail(`${key} must be an integer, got ${value}`);
+  return value;
+}
+
+function oneOf<T extends string>(o: Record<string, unknown>, key: string, allowed: readonly T[]): T | undefined {
+  const value = o[key];
+  if (value === undefined) return undefined;
+  if (!allowed.includes(value as T)) fail(`${key} must be one of ${allowed.join(", ")}, got ${JSON.stringify(value)}`);
+  return value as T;
+}
+
+function optionalString(o: Record<string, unknown>, key: string): string | undefined {
+  const value = o[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") fail(`${key} must be a string`);
+  return value;
+}
+
+/** Init options after validation, with defaults filled in. */
+export type ParsedInit = RenderInit &
+  Required<Pick<RenderInit, "seed" | "tail" | "sound" | "follow" | "reducedMotion" | "theme">>;
+
+/**
+ * Validates untrusted init options (they cross a process boundary) and fills defaults.
+ *
+ * @throws TypeError naming the offending field.
+ */
+export function parseInit(raw: unknown): ParsedInit {
+  if (!isRecord(raw)) fail("options must be an object");
+  const input = raw.input;
+  if (!isRecord(input)) fail("input must be an object");
+  const name = optionalString(input, "name");
+  if (!name) fail("input.name must be a non-empty string");
+  const source: RenderInput = {
+    name,
+    type: optionalString(input, "type"),
+    base64: optionalString(input, "base64"),
+    text: optionalString(input, "text"),
+    url: optionalString(input, "url"),
+  };
+  if (source.base64 === undefined && source.text === undefined && !source.url) {
+    fail("input needs base64, text or url");
+  }
+  const agents = raw.agents === "auto" ? "auto" : number(raw, "agents", 1, 256, true);
+  const sound = raw.sound;
+  if (sound !== undefined && typeof sound !== "boolean") fail("sound must be a boolean");
+  const reducedMotion = raw.reducedMotion;
+  if (reducedMotion !== undefined && typeof reducedMotion !== "boolean") fail("reducedMotion must be a boolean");
+  return {
+    input: source,
+    width: number(raw, "width", 16, 8192, true) ?? fail("width is required"),
+    height: number(raw, "height", 16, 8192, true) ?? fail("height is required"),
+    fps: number(raw, "fps", 1, 240) ?? fail("fps is required"),
+    agents,
+    speed: number(raw, "speed", 0.05, 16),
+    seed: number(raw, "seed", -(2 ** 31), 2 ** 32, true) ?? 1,
+    theme: oneOf(raw, "theme", THEMES) ?? "auto",
+    labels: oneOf(raw, "labels", LABELS),
+    sound: sound ?? true,
+    finale: oneOf(raw, "finale", FINALES),
+    locale: optionalString(raw, "locale"),
+    tail: number(raw, "tail", 0, 600_000) ?? 2500,
+    follow: oneOf(raw, "follow", FOLLOWS) ?? "tour",
+    reducedMotion: reducedMotion ?? false,
+    bpm: number(raw, "bpm", 20, 400),
+    pack: optionalString(raw, "pack"),
+  };
+}
