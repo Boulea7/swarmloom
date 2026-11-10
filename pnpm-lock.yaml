@@ -558,12 +558,18 @@ importers:
       '@swarmloom/adapter-code':
         specifier: workspace:*
         version: link:../adapter-code
+      '@swarmloom/adapter-diff':
+        specifier: workspace:*
+        version: link:../adapter-diff
       '@swarmloom/adapter-doc':
         specifier: workspace:*
         version: link:../adapter-doc
       '@swarmloom/adapter-docx':
         specifier: workspace:*
         version: link:../adapter-docx
+      '@swarmloom/adapter-epub':
+        specifier: workspace:*
+        version: link:../adapter-epub
       '@swarmloom/adapter-html':
         specifier: workspace:*
         version: link:../adapter-html
@@ -573,15 +579,33 @@ importers:
       '@swarmloom/adapter-markdown':
         specifier: workspace:*
         version: link:../adapter-markdown
+      '@swarmloom/adapter-mindmap':
+        specifier: workspace:*
+        version: link:../adapter-mindmap
+      '@swarmloom/adapter-notebook':
+        specifier: workspace:*
+        version: link:../adapter-notebook
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/adapter-ofd':
+        specifier: workspace:*
+        version: link:../adapter-ofd
       '@swarmloom/adapter-office':
         specifier: workspace:*
         version: link:../adapter-office
       '@swarmloom/adapter-pdf':
         specifier: workspace:*
         version: link:../adapter-pdf
+      '@swarmloom/adapter-rtf':
+        specifier: workspace:*
+        version: link:../adapter-rtf
       '@swarmloom/adapter-svg':
         specifier: workspace:*
         version: link:../adapter-svg
+      '@swarmloom/adapter-terminal':
+        specifier: workspace:*
+        version: link:../adapter-terminal
       '@swarmloom/adapter-three':
         specifier: workspace:*
         version: link:../adapter-three

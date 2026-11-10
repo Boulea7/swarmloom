@@ -1,7 +1,18 @@
 /** Content heuristics for text inputs that carry no reliable name or MIME type (pasted text, extensionless URLs). */
 
 /** Adapter ids the text heuristics can return. */
-export type TextFormat = "svg" | "html" | "markdown" | "code" | "sheet" | "three";
+export type TextFormat =
+  | "svg"
+  | "html"
+  | "markdown"
+  | "code"
+  | "sheet"
+  | "three"
+  | "rtf"
+  | "notebook"
+  | "terminal"
+  | "diff"
+  | "mindmap";
 
 /** Only the head is inspected; classification must stay cheap for 50 MB inputs. */
 const SAMPLE_CHARS = 16384;
@@ -15,6 +26,27 @@ const GLTF_RE = /^\{[\s\S]{0,4000}"asset"\s*:\s*\{[^}]{0,400}"version"\s*:\s*"[1
 const JSON_RE = /^[[{]\s*(?:["{[\]}\d-]|true|false|null)/;
 const STL_RE = /^solid\b[^\n]*\n\s*facet\s+normal\b/;
 const OBJ_LINE_RE = /^(?:v|vt|vn|vp|f|l|o|g|s|usemtl|mtllib)\s/;
+
+// Signatures of the second-wave text formats; they mirror the adapters' own sniff() checks.
+const NOTEBOOK_RE = /^\{\s*"(?:cells|metadata|nbformat|nbformat_minor)"\s*:/;
+const NOTEBOOK_KEY_RE = /"(?:cell_type|nbformat)"\s*:/;
+const PATCH_HEADER_RE = /^(?:diff --git |From [0-9a-f]{7,64} |commit [0-9a-f]{7,64}\b)/m;
+const PATCH_BODY_RE = /^(?:diff --git |--- |@@ )/m;
+const UNIFIED_DIFF_RE = /^--- [^\n]*\n\+\+\+ [^\n]*\n@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/m;
+const FREEMIND_RE = /^(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<map[\s>]/;
+
+/** Notebooks, asciicasts, patches, FreeMind maps and RTF text, or null. */
+function secondWave(head: string): TextFormat | null {
+  if (head.startsWith("{\\rtf")) return "rtf";
+  if (NOTEBOOK_RE.test(head) && NOTEBOOK_KEY_RE.test(head)) return "notebook";
+  const firstLine = head.split("\n", 1)[0] as string;
+  const cast = (version: number, key: string): boolean =>
+    new RegExp(`"version"\\s*:\\s*${version}\\b`).test(firstLine) && firstLine.includes(`"${key}"`);
+  if (firstLine.startsWith("{") && (cast(2, "width") || cast(3, "term"))) return "terminal";
+  if ((PATCH_HEADER_RE.test(head) && PATCH_BODY_RE.test(head)) || UNIFIED_DIFF_RE.test(head)) return "diff";
+  if (FREEMIND_RE.test(head) && /<node[\s>]/.test(head)) return "mindmap";
+  return null;
+}
 
 const MD_RULES: [RegExp, number][] = [
   [/^#{1,6}\s+\S/, 2], // ATX heading
@@ -78,7 +110,8 @@ function isProse(line: string): boolean {
 /**
  * Guesses the adapter id of a text document from its content.
  *
- * Strong signatures first (SVG/HTML prologs, glTF JSON, OBJ/STL geometry, shebang), then a
+ * Strong signatures first (SVG/HTML prologs, RTF, notebooks, asciicasts, patches, FreeMind maps,
+ * glTF JSON, OBJ/STL geometry, shebang), then a
  * weighted vote between Markdown and code syntax, with delimiter consistency for CSV/TSV.
  * Text without clear signals is treated as prose (Markdown) when most lines read like
  * sentences and as plain text (code adapter) otherwise, so any readable text can be played.
@@ -91,6 +124,8 @@ export function classifyText(text: string): TextFormat | null {
   if (!head) return null;
   if (SVG_RE.test(head)) return "svg";
   if (HTML_DOC_RE.test(head)) return "html";
+  const special = secondWave(head);
+  if (special) return special;
   if (GLTF_RE.test(head) || STL_RE.test(head) || /^ply\r?\n/.test(head)) return "three";
   if (head.startsWith("#!") || head.startsWith("<?xml") || JSON_RE.test(head)) return "code";
 
