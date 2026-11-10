@@ -289,6 +289,12 @@ importers:
         specifier: ^11.12.0
         version: 11.12.0
 
+  packages/adapter-diff:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/adapter-doc:
     dependencies:
       '@swarmloom/adapter-docx':
@@ -397,6 +403,43 @@ importers:
         specifier: ^31.0.0
         version: 31.0.0(@napi-rs/canvas@1.1.0)
 
+  packages/adapter-mindmap:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
+  packages/adapter-notebook:
+    dependencies:
+      '@swarmloom/adapter-terminal':
+        specifier: workspace:*
+        version: link:../adapter-terminal
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      dompurify:
+        specifier: ^3.4.17
+        version: 3.4.17
+      highlight.js:
+        specifier: ^11.12.0
+        version: 11.12.0
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1(supports-color@7.2.0)
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0(supports-color@7.2.0)
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
+    devDependencies:
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
+
   packages/adapter-odf:
     dependencies:
       '@swarmloom/core':
@@ -450,6 +493,12 @@ importers:
         version: link:../core
 
   packages/adapter-svg:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/adapter-terminal:
     dependencies:
       '@swarmloom/core':
         specifier: workspace:*
