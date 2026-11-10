@@ -1,6 +1,6 @@
 # @swarmloom/export
 
-Deterministic video and audio export for SwarmLoom.
+Deterministic video and audio export for SwarmLoom, plus a quick in-browser recorder.
 
 ## Render page (used by the CLI)
 
@@ -21,5 +21,13 @@ Invalid `init` options reject with a `TypeError` that names the field. Only one 
 - `renderAudioWav(soundLog, durationMs, options?)` renders sound events to WAV bytes with `OfflineAudioContext`.
 - `RenderSession` is the clock-and-player stepping used by both of the above.
 - `createRenderApi(deps)` builds the `window.__swarmloom` object with your own loader and player factory.
+
+## Quick recording
+
+`recordElement(element, { mimeType?, fps?, videoBitsPerSecond?, audio?, signal? })` records an element live. It must be called from a click handler. It asks the user to share the current tab, crops the capture to the element (Element Capture, else Region Capture), mixes in audio and encodes with `MediaRecorder` (WebM, or MP4 where WebM is unavailable).
+
+The `audio` option takes `"tab"` (default), an `AudioNode`, a `MediaStream` or `false`. Call `stop()` to finish, or read `result`, which also settles when the user stops sharing.
+
+This is a real-time recording, not a deterministic export. `canRecordElement()` reports support. Failures throw a `RecordingError` with code `unsupported` (the message points to `npx swarmloom render`), `denied`, `wrong-surface` or `failed`.
 
 License: MIT.
