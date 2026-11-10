@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/snapshot-dom": "workspace:*"
+    "@swarmloom/snapshot-dom": "workspace:*",
+    "highlight.js": "^11.12.0"
   }
 }

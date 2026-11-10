@@ -23,11 +23,22 @@
     "directory": "packages/adapter-markdown"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@swarmloom/adapter-code": "workspace:*",
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/snapshot-dom": "workspace:*"
+    "@swarmloom/snapshot-dom": "workspace:*",
+    "dompurify": "^3.4.17",
+    "katex": "^0.19.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4",
+    "jsdom": "^31.0.0"
   }
 }
