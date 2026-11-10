@@ -24,6 +24,7 @@ Thumbs.db
 # Vitest browser mode artifacts
 __screenshots__/
 .vitest-attachments/
+.vitest/
 
 # Media renders (allowed only under docs/assets)
 *.mp4
