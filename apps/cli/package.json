@@ -31,7 +31,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsup src/cli.ts --format esm --platform node --target node20 --clean",
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "node scripts/build.mjs --check",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
