@@ -1,20 +1,10 @@
-import type { Adapter, AdapterContext, LoadedSource, SourceInput } from "@swarmloom/core";
-
 /**
- * SVG -> path strokes and fills, typed text.
- *
- * Stub: `load()` rejects until the implementation lands.
+ * @swarmloom/adapter-svg: SVG documents rebuilt as pen-drawn paths, traced and filled shapes,
+ * typed text and painted images.
  */
-export const svgAdapter: Adapter = {
-  id: "svg",
-  label: "SVG",
-  extensions: ["svg"],
-  mime: ["image/svg+xml"],
-  async load(input: SourceInput, ctx: AdapterContext): Promise<LoadedSource> {
-    void input;
-    void ctx;
-    throw new Error("not implemented yet");
-  },
-};
-
-export default svgAdapter;
+export { createSvgAdapter, type SvgAdapterOptions, svgAdapter, svgAdapter as default } from "./adapter";
+export type { PenAnchor } from "./path/anchors";
+export { extractAnchors } from "./path/anchors";
+export { type ParsedPath, type PathSegment, parsePathData } from "./path/parse";
+export { DEFS_TASK, SVG_PLUGIN, type SvgDefsData, svgPlugin } from "./plugin";
+export { type SanitizeReport, sanitizeSvgTree } from "./sanitize";
