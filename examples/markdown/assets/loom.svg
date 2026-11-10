@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 280" width="640" height="280" role="img" aria-labelledby="t">
+  <title id="t">Three cursors weaving a coloured thread through a warp of lines</title>
+  <defs>
+    <linearGradient id="weft" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#5B5BF7"/>
+      <stop offset="0.55" stop-color="#D946EF"/>
+      <stop offset="1" stop-color="#FF6B5B"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="280" rx="28" fill="#F3F4FA"/>
+  <g stroke="#5B5BF7" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round">
+    <path d="M96 52V228M144 52V228M192 52V228M240 52V228M288 52V228M336 52V228M384 52V228M432 52V228M480 52V228M528 52V228"/>
+  </g>
+  <path d="M64 160C96 160 112 120 144 120S192 160 240 160 288 120 336 120 384 160 432 160 480 120 528 120 560 140 576 140"
+        fill="none" stroke="url(#weft)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M64 196C112 196 128 176 176 176S240 196 288 196 352 176 400 176 448 196 496 196" fill="none"
+        stroke="#14B8A6" stroke-opacity="0.55" stroke-width="6" stroke-linecap="round"/>
+  <g stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round">
+    <path d="M168 70l0 34 9-8 7 15 7-3-7-15 12-1z" fill="#5B5BF7"/>
+    <path d="M356 84l0 34 9-8 7 15 7-3-7-15 12-1z" fill="#FF6B5B"/>
+    <path d="M548 104l0 34 9-8 7 15 7-3-7-15 12-1z" fill="#F5A524"/>
+  </g>
+  <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="600" fill="#FFFFFF">
+    <rect x="184" y="112" width="38" height="20" rx="6" fill="#5B5BF7"/>
+    <text x="203" y="126" text-anchor="middle">Ada</text>
+    <rect x="372" y="126" width="34" height="20" rx="6" fill="#FF6B5B"/>
+    <text x="389" y="140" text-anchor="middle">Lin</text>
+    <rect x="564" y="146" width="30" height="20" rx="6" fill="#F5A524"/>
+    <text x="579" y="160" text-anchor="middle">Mo</text>
+  </g>
+</svg>
