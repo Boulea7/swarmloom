@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+  <title>Threads woven per week</title>
+  <defs>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4c8bd9"/>
+      <stop offset="1" stop-color="#2a5ea8"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="#ffffff"/>
+  <text x="60" y="38" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#1d2330">Threads woven per week</text>
+  <g stroke="#dde2ec" stroke-width="1" stroke-dasharray="4 4">
+    <line x1="60" y1="260" x2="610" y2="260"/>
+    <line x1="60" y1="200" x2="610" y2="200"/>
+    <line x1="60" y1="140" x2="610" y2="140"/>
+    <line x1="60" y1="80" x2="610" y2="80"/>
+  </g>
+  <path d="M60 64V320H610" fill="none" stroke="#39404f" stroke-width="1.5"/>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#5b6475" text-anchor="end">
+    <text x="52" y="324">0</text>
+    <text x="52" y="264">25</text>
+    <text x="52" y="204">50</text>
+    <text x="52" y="144">75</text>
+    <text x="52" y="84">100</text>
+  </g>
+  <g fill="url(#bar)">
+    <rect x="82" y="219.2" width="38" height="100.8" rx="3"/>
+    <rect x="148" y="180.8" width="38" height="139.2" rx="3"/>
+    <rect x="214" y="197.6" width="38" height="122.4" rx="3"/>
+    <rect x="280" y="144.8" width="38" height="175.2" rx="3"/>
+    <rect x="346" y="161.6" width="38" height="158.4" rx="3"/>
+    <rect x="412" y="108.8" width="38" height="211.2" rx="3"/>
+    <rect x="478" y="130.4" width="38" height="189.6" rx="3"/>
+    <rect x="544" y="92" width="38" height="228" rx="3"/>
+  </g>
+  <polyline points="101,224 167,200 233,190.4 299,173.6 365,168.8 431,137.6 497,132.8 563,111.2" fill="none" stroke="#e0475b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <g fill="#ffffff" stroke="#e0475b" stroke-width="2">
+    <circle cx="101" cy="224" r="4"/>
+    <circle cx="167" cy="200" r="4"/>
+    <circle cx="233" cy="190.4" r="4"/>
+    <circle cx="299" cy="173.6" r="4"/>
+    <circle cx="365" cy="168.8" r="4"/>
+    <circle cx="431" cy="137.6" r="4"/>
+    <circle cx="497" cy="132.8" r="4"/>
+    <circle cx="563" cy="111.2" r="4"/>
+  </g>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#5b6475" text-anchor="middle">
+    <text x="101" y="340">W1</text>
+    <text x="167" y="340">W2</text>
+    <text x="233" y="340">W3</text>
+    <text x="299" y="340">W4</text>
+    <text x="365" y="340">W5</text>
+    <text x="431" y="340">W6</text>
+    <text x="497" y="340">W7</text>
+    <text x="563" y="340">W8</text>
+  </g>
+  <g transform="translate(430 372)" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#39404f">
+    <rect x="0" y="-10" width="14" height="12" rx="2" fill="url(#bar)"/>
+    <text x="20" y="0">Woven</text>
+    <line x1="82" y1="-4" x2="104" y2="-4" stroke="#e0475b" stroke-width="3" stroke-linecap="round"/>
+    <text x="110" y="0">Trend</text>
+  </g>
+</svg>

@@ -27,7 +27,6 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@swarmloom/core": "workspace:*",
-    "@swarmloom/snapshot-dom": "workspace:*"
+    "@swarmloom/core": "workspace:*"
   }
 }

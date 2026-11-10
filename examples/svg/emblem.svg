@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">
+  <title>SwarmLoom emblem</title>
+  <defs>
+    <linearGradient id="warp" gradientUnits="userSpaceOnUse" x1="0" y1="60" x2="0" y2="380">
+      <stop offset="0" stop-color="#1f6f8b"/>
+      <stop offset="1" stop-color="#6c4ab6"/>
+    </linearGradient>
+    <linearGradient id="weft" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f29e4c"/>
+      <stop offset="1" stop-color="#e0475b"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#fffaf0"/>
+      <stop offset="1" stop-color="#efdfc4"/>
+    </radialGradient>
+    <clipPath id="frame">
+      <circle cx="240" cy="220" r="150"/>
+    </clipPath>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#2b2340" flood-opacity="0.3"/>
+    </filter>
+    <symbol id="shuttle" viewBox="0 0 60 20">
+      <path d="M2 10C12 0 48 0 58 10C48 20 12 20 2 10Z" fill="#8a5a2b" stroke="#4a2f17" stroke-width="1.5"/>
+      <ellipse cx="30" cy="10" rx="9" ry="3" fill="#f6d8a8"/>
+    </symbol>
+  </defs>
+  <rect width="480" height="480" fill="#faf6ee"/>
+  <circle cx="240" cy="220" r="170" fill="url(#glow)" stroke="#2b2340" stroke-width="4"/>
+  <circle cx="240" cy="220" r="159" fill="none" stroke="#2b2340" stroke-width="1.5" stroke-dasharray="6 5" stroke-linecap="round"/>
+  <g clip-path="url(#frame)">
+    <g stroke="url(#warp)" stroke-width="10" stroke-linecap="round">
+      <line x1="120" y1="60" x2="120" y2="380"/>
+      <line x1="150" y1="60" x2="150" y2="380"/>
+      <line x1="180" y1="60" x2="180" y2="380"/>
+      <line x1="210" y1="60" x2="210" y2="380"/>
+      <line x1="240" y1="60" x2="240" y2="380"/>
+      <line x1="270" y1="60" x2="270" y2="380"/>
+      <line x1="300" y1="60" x2="300" y2="380"/>
+      <line x1="330" y1="60" x2="330" y2="380"/>
+      <line x1="360" y1="60" x2="360" y2="380"/>
+    </g>
+    <g fill="none" stroke="url(#weft)" stroke-width="12" stroke-linecap="round">
+      <path d="M75 100 Q90 94 105 100 T135 100 T165 100 T195 100 T225 100 T255 100 T285 100 T315 100 T345 100 T375 100 T405 100"/>
+      <path d="M75 140 Q90 146 105 140 T135 140 T165 140 T195 140 T225 140 T255 140 T285 140 T315 140 T345 140 T375 140 T405 140"/>
+      <path d="M75 180 Q90 174 105 180 T135 180 T165 180 T195 180 T225 180 T255 180 T285 180 T315 180 T345 180 T375 180 T405 180"/>
+      <path d="M75 220 Q90 226 105 220 T135 220 T165 220 T195 220 T225 220 T255 220 T285 220 T315 220 T345 220 T375 220 T405 220"/>
+      <path d="M75 260 Q90 254 105 260 T135 260 T165 260 T195 260 T225 260 T255 260 T285 260 T315 260 T345 260 T375 260 T405 260"/>
+      <path d="M75 300 Q90 306 105 300 T135 300 T165 300 T195 300 T225 300 T255 300 T285 300 T315 300 T345 300 T375 300 T405 300"/>
+      <path d="M75 340 Q90 334 105 340 T135 340 T165 340 T195 340 T225 340 T255 340 T285 340 T315 340 T345 340 T375 340 T405 340"/>
+    </g>
+    <path d="M120 91v18M180 91v18M240 91v18M300 91v18M360 91v18M150 131v18M210 131v18M270 131v18M330 131v18M120 171v18M180 171v18M240 171v18M300 171v18M360 171v18M150 211v18M210 211v18M270 211v18M330 211v18M120 251v18M180 251v18M240 251v18M300 251v18M360 251v18M150 291v18M210 291v18M270 291v18M330 291v18M120 331v18M180 331v18M240 331v18M300 331v18M360 331v18" fill="none" stroke="url(#warp)" stroke-width="10" stroke-linecap="round"/>
+  </g>
+  <polygon points="40,220 56,204 72,220 56,236" fill="#e0475b"/>
+  <polygon points="408,220 424,204 440,220 424,236" fill="#1f6f8b"/>
+  <polyline points="72,220 90,214 110,226 130,220" fill="none" stroke="#e0475b" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
+  <g filter="url(#lift)">
+    <use href="#shuttle" x="146" y="378" width="90" height="30" transform="rotate(-8 191 393)"/>
+    <use href="#shuttle" x="244" y="378" width="90" height="30" transform="rotate(8 289 393)"/>
+  </g>
+  <text x="240" y="448" text-anchor="middle" font-family="Georgia, serif" font-size="34" font-weight="700" fill="#2b2340" letter-spacing="4">SWARMLOOM</text>
+  <text x="240" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#6b5f7a">woven by <tspan font-style="italic" fill="#e0475b">many</tspan> hands</text>
+</svg>
