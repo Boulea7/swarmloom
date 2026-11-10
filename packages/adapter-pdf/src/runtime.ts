@@ -1,3 +1,7 @@
+// Pulls the entry-file shims into every program that compiles this file from source (packages that
+// resolve @swarmloom/adapter-pdf through the "@swarmloom/source" condition do not include them).
+/// <reference path="./pdfjs-modules.d.ts" />
+
 /**
  * Lazy pdf.js runtime: picks the modern or legacy build, starts one shared parser
  * worker per configuration and falls back to parsing on the main thread when no
