@@ -1,0 +1,267 @@
+/*
+ * Watch face. Square by default with a small margin; `?round=1` clips to a circle and keeps every
+ * control inside the inscribed square (inset (1 - 1/sqrt(2)) / 2 = 14.6 %). `@media (shape: round)`
+ * is not used: no browser ships it.
+ */
+:root[data-view="watch"],
+:root[data-view="watch"] body {
+  background: oklch(8% 0.008 277);
+}
+
+.view-watch {
+  --safe: 7%;
+  /* The watch face is always dark (OLED friendly), whatever the theme: tinted, never pure black. */
+  --watch-bg: oklch(8% 0.008 277);
+  --watch-face: oklch(15% 0.012 277);
+  --watch-ink: oklch(97% 0.006 277);
+  --watch-scrim: oklch(12% 0.02 277 / 0.74);
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--watch-bg);
+  color: var(--watch-ink);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.view-watch[data-round="true"] {
+  --safe: 14.6%;
+}
+
+.watch-face {
+  position: relative;
+  width: min(100vw, 100dvh);
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--watch-face);
+  container-type: size;
+}
+
+.view-watch[data-round="true"] .watch-face {
+  border-radius: 50%;
+}
+
+.watch-stage,
+.watch-poster {
+  position: absolute;
+  inset: 0;
+}
+
+.watch-stage {
+  overflow: hidden;
+}
+
+.watch-poster .thumb {
+  inset: 0;
+}
+
+/* The poster stays recognisable but recedes behind the controls; it clears while playing. */
+.watch-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--watch-scrim);
+  transition: opacity var(--slow) var(--ease);
+}
+
+.view-watch[data-controls="hidden"] .watch-poster::after {
+  opacity: 0;
+}
+
+.watch-ring {
+  position: absolute;
+  inset: 0;
+  display: none;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.view-watch[data-round="true"] .watch-ring {
+  display: block;
+}
+
+.watch-ring-track {
+  fill: none;
+  stroke: oklch(97% 0.006 277 / 0.14);
+  stroke-width: 2;
+}
+
+.watch-ring-fill {
+  fill: none;
+  stroke: oklch(74% 0.14 277);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 300ms linear;
+}
+
+.watch-bar {
+  position: absolute;
+  right: var(--safe);
+  bottom: calc(var(--safe) * 0.6);
+  left: var(--safe);
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: oklch(97% 0.006 277 / 0.16);
+}
+
+.view-watch[data-round="true"] .watch-bar {
+  display: none;
+}
+
+.watch-bar-fill {
+  position: absolute;
+  inset: 0;
+  background: oklch(74% 0.14 277);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 300ms linear;
+}
+
+.watch-safe {
+  position: absolute;
+  inset: var(--safe);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5cqmin;
+  text-align: center;
+}
+
+.watch-safe > * {
+  transition: opacity var(--slow) var(--ease);
+}
+
+.view-watch[data-controls="hidden"] .watch-safe > * {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.view-watch[data-playing="true"] .watch-title {
+  display: -webkit-box;
+  flex-shrink: 0;
+  width: 100%;
+  overflow: hidden;
+  font-size: clamp(11px, 5.8cqmin, 16px);
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 4px oklch(8% 0.008 277 / 0.6);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.watch-play {
+  width: clamp(56px, 30cqmin, 112px);
+  height: clamp(56px, 30cqmin, 112px);
+}
+
+.watch-play {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: clamp(56px, 34cqmin, 120px);
+  height: clamp(56px, 34cqmin, 120px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--indigo);
+  color: var(--watch-ink);
+  box-shadow: 0 8px 24px -6px oklch(8% 0.008 277 / 0.6);
+  cursor: pointer;
+}
+
+.view-watch[data-playing="true"] .watch-play {
+  background: oklch(97% 0.006 277 / 0.18);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* The inscribed square of a round face is short: one title line, smaller controls. */
+.view-watch[data-round="true"] .watch-safe {
+  gap: 4cqmin;
+}
+
+.view-watch[data-round="true"] .watch-title {
+  font-size: clamp(11px, 5.2cqmin, 15px);
+  -webkit-line-clamp: 1;
+}
+
+.view-watch[data-round="true"] .watch-play-icon {
+  display: grid;
+  place-items: center;
+}
+
+.watch-play-icon svg {
+  width: 42%;
+  height: auto;
+  min-width: 24px;
+}
+
+.view-watch[data-phase="opening"] .watch-play,
+.view-watch[data-phase="loading"] .watch-play {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.watch-actions {
+  display: flex;
+  gap: 5cqmin;
+}
+
+.watch-icon-btn {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: clamp(36px, 17cqmin, 48px);
+  height: clamp(36px, 17cqmin, 48px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: oklch(97% 0.006 277 / 0.16);
+  color: var(--watch-ink);
+  cursor: pointer;
+}
+
+.watch-qr {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4cqmin;
+  padding: var(--safe);
+  background: var(--watch-face);
+}
+
+.watch-qr-code {
+  width: 54cqmin;
+  padding: 2cqmin;
+  border-radius: 8px;
+  /* QR codes need a light quiet zone to scan. */
+  background: oklch(98% 0.004 277);
+}
+
+.view-watch[data-round="true"] .watch-qr-code {
+  width: 46cqmin;
+}
+
+.watch-qr-code .qr {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.watch-qr-caption {
+  max-width: 80%;
+  font-size: clamp(10px, 5cqmin, 13px);
+  line-height: 1.3;
+  opacity: 0.85;
+}

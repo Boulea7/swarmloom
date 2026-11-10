@@ -1,0 +1,90 @@
+/*
+ * Design tokens. Neutrals are OKLCH, tinted a touch toward Loom Indigo (hue 277) so greys never
+ * look dead next to the brand colour. Brand colours stay exact hex (contracts/brand.md).
+ */
+
+:root {
+  --indigo: #5b5bf7;
+  --indigo-strong: #4747e0;
+  --accent: #ff4f7b;
+  --on-indigo: oklch(99% 0.004 277);
+
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "PingFang SC", "Hiragino Sans",
+    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --space-page: clamp(16px, 4vw, 40px);
+  --bar-height: 60px;
+  --drawer-width: 368px;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --fast: 150ms;
+  --base: 200ms;
+  --slow: 250ms;
+
+  color-scheme: light;
+  --paper: oklch(98.6% 0.003 277);
+  --surface: oklch(99.6% 0.002 277);
+  --surface-2: oklch(96.6% 0.006 277);
+  --surface-3: oklch(93.6% 0.009 277);
+  --ink: oklch(17% 0.02 277);
+  --ink-2: oklch(42% 0.022 277);
+  --ink-3: oklch(54% 0.018 277);
+  --line: oklch(91.5% 0.008 277);
+  --line-strong: oklch(85% 0.012 277);
+  --indigo-text: #4b4be8;
+  --indigo-soft: oklch(95% 0.03 277);
+  --accent-soft: oklch(95.5% 0.025 10);
+  --accent-text: oklch(52% 0.19 10);
+  --danger: oklch(53% 0.2 22);
+  --focus: color-mix(in oklch, var(--indigo) 60%, transparent);
+  --scrim: oklch(17% 0.02 277 / 0.38);
+  --code-bg: oklch(19% 0.02 277);
+  --code-ink: oklch(93% 0.008 277);
+  --shadow-sm: 0 1px 2px oklch(17% 0.02 277 / 0.06);
+  --shadow-md: 0 1px 2px oklch(17% 0.02 277 / 0.05), 0 6px 20px -6px oklch(17% 0.02 277 / 0.12);
+  --shadow-lg: 0 2px 6px oklch(17% 0.02 277 / 0.06), 0 24px 56px -12px oklch(17% 0.02 277 / 0.24);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: oklch(15% 0.012 277);
+  --surface: oklch(19% 0.014 277);
+  --surface-2: oklch(22.5% 0.016 277);
+  --surface-3: oklch(26.5% 0.018 277);
+  --ink: oklch(95.5% 0.006 277);
+  --ink-2: oklch(77% 0.014 277);
+  --ink-3: oklch(64% 0.014 277);
+  --line: oklch(27% 0.016 277);
+  --line-strong: oklch(35% 0.02 277);
+  --indigo-text: oklch(75% 0.13 277);
+  --indigo-soft: oklch(27% 0.06 277);
+  --accent-soft: oklch(28% 0.07 10);
+  --accent-text: oklch(78% 0.13 10);
+  --danger: oklch(72% 0.16 22);
+  --scrim: oklch(5% 0.01 277 / 0.6);
+  --code-bg: oklch(12% 0.012 277);
+  --shadow-sm: 0 1px 2px oklch(6% 0.01 277 / 0.3);
+  --shadow-md: 0 1px 2px oklch(6% 0.01 277 / 0.3), 0 8px 24px -8px oklch(6% 0.01 277 / 0.5);
+  --shadow-lg: 0 2px 8px oklch(6% 0.01 277 / 0.35), 0 28px 64px -16px oklch(6% 0.01 277 / 0.7);
+}
+
+@media (max-width: 719px) {
+  :root {
+    --bar-height: 56px;
+  }
+}

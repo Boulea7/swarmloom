@@ -1,8 +1,365 @@
-/** Renders the Studio shell into `root`. Placeholder until the sample wall and player land. */
-export function mountStudio(root: HTMLElement): void {
-  const title = root.ownerDocument.createElement("h1");
-  title.textContent = "SwarmLoom Studio";
-  const note = root.ownerDocument.createElement("p");
-  note.textContent = "Placeholder: open a file or URL and watch the swarm build it.";
-  root.replaceChildren(title, note);
+import type { AppContext, NavigateOptions, View } from "./context";
+import { FORMAT_META } from "./formats-meta";
+import { createStudioI18n, loadCatalog, negotiateLocale, type StudioI18n } from "./i18n";
+import { watchViewport } from "./layout/viewport";
+import { parseRoute, type Route, routeToUrl } from "./route";
+import type { StudioServices } from "./services";
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  type StudioLocale,
+  type StudioSettings,
+  sanitizeSettings,
+  saveSettings,
+} from "./settings";
+import { type LocalInput, readLocalFile } from "./source";
+import { createPanel, type Panel } from "./ui/dialog";
+import { h, isTyping } from "./ui/dom";
+import { createToaster, type Toaster } from "./ui/toast";
+import { syncThemeButton } from "./views/chrome";
+import { createHome, formatLabel } from "./views/home";
+import { createPlayerView } from "./views/player";
+import { settingsForm } from "./views/settings";
+import { createShortcuts } from "./views/shortcuts";
+import { createWatch } from "./views/watch";
+
+/** Handle returned by {@link mountStudio}. */
+export interface StudioApp {
+  readonly context: AppContext;
+  readonly toast: Toaster;
+  /** Current view root (home, player or watch). */
+  readonly view: HTMLElement | null;
+  destroy(): void;
+}
+
+/** How long a `?launch=1` page waits for the OS to hand over the files before showing home. */
+const LAUNCH_WAIT_MS = 3000;
+
+const THEME_COLOR = { light: "#fafafc", dark: "#0b0b12" } as const;
+
+/** Studio locale for a setting: the explicit choice, or the browser's languages. */
+function resolveLocale(setting: StudioSettings["locale"], win: Window): StudioLocale {
+  return setting === "auto" ? negotiateLocale(win.navigator.languages ?? [win.navigator.language]) : setting;
+}
+
+async function loadI18n(services: StudioServices, locale: StudioLocale): Promise<StudioI18n> {
+  const catalog = await loadCatalog(locale);
+  let core = null;
+  try {
+    core = services.coreI18n?.(locale) ?? null;
+  } catch (error) {
+    console.warn("[studio] core i18n unavailable", error);
+  }
+  return createStudioI18n(locale, catalog, core);
+}
+
+/** The page URL without query or hash: the base every Studio link is built on. */
+function appUrlOf(href: string): string {
+  const url = new URL(href);
+  url.search = "";
+  url.hash = "";
+  return url.href;
+}
+
+/**
+ * Mounts Studio into `root`: routing (query and hash, history), settings, i18n, theme, the shared
+ * panels (settings drawer, shortcuts) and the current view. All outside effects go through
+ * `services`, so tests mount the real UI with fakes.
+ */
+export async function mountStudio(
+  root: HTMLElement,
+  services: StudioServices,
+  win: Window = window,
+): Promise<StudioApp> {
+  const doc = root.ownerDocument;
+  const html = doc.documentElement;
+  const routeOptions = { allowFileUrls: services.target === "extension" };
+  const appUrl = appUrlOf(win.location.href);
+
+  let route: Route = parseRoute(win.location.href, routeOptions);
+  let stored = loadSettings(services.storage);
+  let settings: StudioSettings = { ...stored, ...route.overrides };
+  let i18n = await loadI18n(services, resolveLocale(settings.locale, win));
+  let local: LocalInput | null = null;
+  let view: View | null = null;
+  let navigated = false;
+
+  const systemDark = typeof win.matchMedia === "function" ? win.matchMedia("(prefers-color-scheme: dark)") : null;
+  const schemeOf = (s: StudioSettings): "light" | "dark" =>
+    s.theme === "auto" ? (systemDark?.matches ? "dark" : "light") : s.theme;
+  let scheme = schemeOf(settings);
+
+  const viewport = watchViewport(win, html);
+  const toast = createToaster();
+  const slot = h("div", { class: "view-slot" });
+  const skip = h("a", { class: "skip-link", attrs: { href: "#main" } });
+  let settingsPanel: Panel | null = null;
+  let shortcutsPanel: Panel | null = null;
+  const panels = (): { settings: Panel; shortcuts: Panel } => {
+    if (!settingsPanel || !shortcutsPanel) throw new Error("Studio panels are not built yet");
+    return { settings: settingsPanel, shortcuts: shortcutsPanel };
+  };
+
+  const applyDocument = () => {
+    html.lang = i18n.locale;
+    html.dataset.theme = scheme;
+    html.style.colorScheme = scheme;
+    let meta = doc.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      meta = h("meta", { attrs: { name: "theme-color" } });
+      doc.head.append(meta);
+    }
+    meta.content = THEME_COLOR[scheme];
+    skip.textContent = i18n.t("app.skip");
+  };
+
+  const renderSettingsForm = () => {
+    panels().settings.body.replaceChildren(
+      settingsForm({
+        i18n,
+        settings,
+        compact: html.dataset.view === "watch",
+        onChange: (patch) => updateSettings(patch),
+        onReset: () => {
+          updateSettings({ ...DEFAULT_SETTINGS });
+          renderSettingsForm();
+        },
+      }),
+    );
+  };
+
+  const buildPanels = () => {
+    settingsPanel?.destroy();
+    shortcutsPanel?.destroy();
+    settingsPanel = createPanel({
+      title: i18n.t("settings.title"),
+      closeLabel: i18n.t("settings.close"),
+      class: "panel-settings",
+      onClose: () => {
+        html.dataset.drawer = "closed";
+      },
+    });
+    shortcutsPanel = createShortcuts(i18n);
+    html.dataset.drawer = "closed";
+  };
+
+  const isWatch = () => route.watch || viewport.state.watch;
+
+  const renderView = () => {
+    view?.destroy();
+    const watch = isWatch();
+    const name = watch ? "watch" : route.source ? "player" : "home";
+    html.dataset.view = name;
+    if (name !== "player") doc.title = i18n.t("app.name");
+    const { settings: drawer } = panels();
+    if (drawer.isOpen && name === "watch") drawer.close();
+    view = name === "watch" ? createWatch(ctx) : route.source ? createPlayerView(ctx, route.source) : createHome(ctx);
+    slot.replaceChildren(view.root);
+    // Foldables: with a second segment to spare, the settings sit docked next to the stage.
+    if (name === "player" && viewport.state.dual !== "none" && !drawer.isOpen) toggleSettings();
+    if (navigated) {
+      const target = view.root.id === "main" ? view.root : view.root.querySelector<HTMLElement>("#main");
+      target?.focus({ preventScroll: true });
+      win.scrollTo({ top: 0 });
+    }
+  };
+
+  const renderAll = () => {
+    applyDocument();
+    buildPanels();
+    const { settings: drawer, shortcuts } = panels();
+    root.replaceChildren(skip, slot, drawer.root, shortcuts.root, toast.root);
+    renderView();
+  };
+
+  function navigate(patch: Partial<Route>, opts: NavigateOptions = {}): void {
+    const next: Route = {
+      source: null,
+      autoplay: false,
+      watch: route.watch,
+      round: route.round,
+      import: false,
+      overrides: route.overrides,
+      ...patch,
+    };
+    if (opts.local) local = opts.local;
+    const url = routeToUrl(next, appUrl);
+    try {
+      if (opts.replace) win.history.replaceState(null, "", url);
+      else win.history.pushState(null, "", url);
+    } catch (error) {
+      // Sandboxed or opaque origins can refuse history changes; the view still switches.
+      console.warn("[studio] history update failed", error);
+    }
+    route = next;
+    navigated = true;
+    renderView();
+  }
+
+  function updateSettings(patch: Partial<StudioSettings>): void {
+    const clean = sanitizeSettings(patch);
+    const keys = Object.keys(clean) as (keyof StudioSettings)[];
+    if (keys.every((key) => settings[key] === clean[key])) return;
+    const prev = settings;
+    stored = { ...stored, ...clean };
+    saveSettings(services.storage, stored);
+    // A setting the user changes stops being a per-visit URL override.
+    const overrides = { ...route.overrides };
+    for (const key of keys) delete overrides[key];
+    route = { ...route, overrides };
+    settings = { ...prev, ...clean };
+    if (resolveLocale(prev.locale, win) !== resolveLocale(settings.locale, win)) {
+      void loadI18n(services, resolveLocale(settings.locale, win)).then((next) => {
+        i18n = next;
+        const reopen = panels().settings.isOpen;
+        renderAll();
+        if (reopen) toggleSettings();
+      });
+      return;
+    }
+    const nextScheme = schemeOf(settings);
+    const schemeChanged = nextScheme !== scheme;
+    scheme = nextScheme;
+    if (schemeChanged) applyDocument();
+    for (const el of doc.querySelectorAll<HTMLButtonElement>(".theme-button")) syncThemeButton(ctx, el);
+    view?.settingsChanged?.(prev, settings);
+  }
+
+  function toggleSettings(): void {
+    const { settings: drawer } = panels();
+    if (drawer.isOpen) {
+      drawer.close();
+      return;
+    }
+    renderSettingsForm();
+    const state = viewport.state;
+    // Phones get a modal bottom sheet; wide screens and foldables a drawer beside the content.
+    const modal = state.dual === "none" && (state.compact || isWatch());
+    html.dataset.drawer = modal ? "sheet" : "open";
+    drawer.open(modal);
+  }
+
+  const listFormat = (items: string[]): string => {
+    try {
+      return new Intl.ListFormat(i18n.locale, { type: "conjunction" }).format(items);
+    } catch {
+      return items.join(", ");
+    }
+  };
+
+  const ctx: AppContext = {
+    services,
+    get i18n() {
+      return i18n;
+    },
+    toast,
+    viewport,
+    get route() {
+      return route;
+    },
+    get settings() {
+      return settings;
+    },
+    get scheme() {
+      return scheme;
+    },
+    get local() {
+      return local;
+    },
+    appUrl,
+    updateSettings,
+    navigate,
+    toggleSettings,
+    settingsOpen: () => panels().settings.isOpen,
+    openShortcuts: () => panels().shortcuts.open(true),
+    formatList: () => listFormat([...new Set(FORMAT_META.map((m) => formatLabel(ctx, m.id)))]),
+  };
+
+  // Global listeners
+  const onKey = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.isComposing) return;
+    const { settings: drawer, shortcuts } = panels();
+    if (event.key === "Escape" && drawer.isOpen && !drawer.isModal) {
+      event.preventDefault();
+      drawer.close();
+      return;
+    }
+    if (shortcuts.isOpen || drawer.isModal) return;
+    if (view?.onKey?.(event)) {
+      event.preventDefault();
+      return;
+    }
+    if (isTyping(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key === "?") {
+      event.preventDefault();
+      shortcuts.open(true);
+    } else if ((event.key === "s" || event.key === "S") && !isWatch()) {
+      event.preventDefault();
+      toggleSettings();
+    }
+  };
+  const onPop = () => {
+    route = parseRoute(win.location.href, routeOptions);
+    navigated = true;
+    renderView();
+  };
+  const onSystemScheme = () => {
+    if (settings.theme !== "auto") return;
+    scheme = schemeOf(settings);
+    applyDocument();
+    view?.schemeChanged?.(scheme);
+  };
+  const offViewport = viewport.onChange(() => {
+    if ((html.dataset.view === "watch") !== isWatch()) renderView();
+    // A sheet left open while the screen grows (or unfolds) becomes a drawer, and back.
+    const { settings: drawer } = panels();
+    if (drawer.isOpen) {
+      drawer.close();
+      queueMicrotask(toggleSettings);
+    }
+  });
+  win.addEventListener("keydown", onKey);
+  win.addEventListener("popstate", onPop);
+  systemDark?.addEventListener("change", onSystemScheme);
+
+  // Files opened through the OS (`file_handlers`) arrive via the Launch Queue after load.
+  let launchTimer = 0;
+  if (route.source?.kind === "launch") {
+    route = { ...route, source: null };
+    launchTimer = win.setTimeout(() => navigate({ source: null }, { replace: true }), LAUNCH_WAIT_MS);
+  }
+  services.onLaunch?.((files) => {
+    const file = files[0];
+    if (!file) return;
+    win.clearTimeout(launchTimer);
+    void readLocalFile(file).then(
+      (input) =>
+        navigate({ source: { kind: "file", name: input.name }, autoplay: true }, { local: input, replace: true }),
+      (error: unknown) => console.warn("[studio] launch file unreadable", error),
+    );
+  });
+
+  renderAll();
+
+  return {
+    context: ctx,
+    toast,
+    get view() {
+      return view?.root ?? null;
+    },
+    destroy() {
+      win.clearTimeout(launchTimer);
+      win.removeEventListener("keydown", onKey);
+      win.removeEventListener("popstate", onPop);
+      systemDark?.removeEventListener("change", onSystemScheme);
+      offViewport();
+      view?.destroy();
+      view = null;
+      settingsPanel?.destroy();
+      shortcutsPanel?.destroy();
+      toast.destroy();
+      viewport.destroy();
+      root.replaceChildren();
+    },
+  };
 }
