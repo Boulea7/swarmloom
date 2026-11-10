@@ -4,16 +4,21 @@
   "description": "<swarm-loom> Web Component for embedding SwarmLoom playback in any page.",
   "license": "MIT",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/swarm-loom.global.js"
+  ],
   "exports": {
     ".": {
       "@swarmloom/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./global": "./dist/swarm-loom.global.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "unpkg": "./dist/swarm-loom.global.js",
+  "jsdelivr": "./dist/swarm-loom.global.js",
   "files": [
     "dist"
   ],
@@ -23,7 +28,7 @@
     "directory": "packages/element"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts --format esm --dts --clean && vite build --mode adapters && vite build --mode global",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
