@@ -1,6 +1,7 @@
+import type { Blueprint } from "@swarmloom/core";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
-import { ContentBudget, FontReport, fontStack, parseXml, resolvePath, ZipArchive } from "../src/kit/index";
+import { ContentBudget, FontReport, fontStack, markSheets, parseXml, resolvePath, ZipArchive } from "../src/kit/index";
 
 describe("ZipArchive limits", () => {
   it("reads entries and rejects unsafe names", () => {
@@ -80,5 +81,27 @@ describe("ContentBudget", () => {
     expect([budget.take(10), budget.take(95), budget.take(1), budget.take(1)]).toEqual([true, true, false, false]);
     budget.skip(5);
     expect(budget.dropped).toBe(7);
+  });
+});
+
+describe("markSheets", () => {
+  it("marks sheet-sized boxes, replacing the section role inferred from <section>", () => {
+    const box = (id: string, w: number, h: number, role?: "section" | "paragraph") => ({
+      id,
+      kind: "box" as const,
+      box: { x: 0, y: 0, w, h },
+      ...(role ? { role } : {}),
+    });
+    const bp = {
+      layers: [
+        box("desk", 858, 2341),
+        box("a", 793.7, 1122.5, "section"),
+        box("b", 793.7, 1122.5),
+        box("c", 793.7, 1122.5, "paragraph"),
+        box("d", 600, 1122.5),
+      ],
+    } as unknown as Blueprint;
+    markSheets(bp, [{ w: 793.7, h: 1122.5, fixed: true }], "page");
+    expect(bp.layers.map((l) => l.role)).toEqual([undefined, "page", "page", "paragraph", undefined]);
   });
 });

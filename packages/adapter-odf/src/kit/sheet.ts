@@ -149,14 +149,16 @@ function mergeTruncated(
 
 /**
  * Gives the sheet boxes their role. The snapshotter knows nothing about sheets, so they are found
- * by geometry: role-less boxes whose width matches a sheet and whose height reaches its minimum.
+ * by geometry: boxes whose width matches a sheet and whose height reaches its minimum. Sheets are
+ * `<section>` elements, so the generic `section` role inferred from the tag is replaced; boxes with
+ * any other role are left alone.
  */
 export function markSheets(blueprint: Blueprint, sheets: readonly SheetSpec[], role: LayerRole): void {
   const tol = 1.5;
   const fits = (box: { w: number; h: number }, s: SheetSpec) =>
     Math.abs(box.w - s.w) <= tol && box.h >= s.h - tol && (!s.fixed || Math.abs(box.h - s.h) <= tol);
   for (const layer of blueprint.layers) {
-    if (layer.kind !== "box" || layer.role) continue;
+    if (layer.kind !== "box" || (layer.role !== undefined && layer.role !== "section")) continue;
     if (sheets.some((s) => fits(layer.box, s))) layer.role = role;
   }
 }

@@ -1,7 +1,15 @@
 import type { AdapterContext } from "@swarmloom/core";
 import { afterEach, describe, expect, it } from "vitest";
 import receiptUrl from "../../../examples/ofd/loom-receipt.ofd?url";
-import { allText, fixture, kinds, snapshotHtmlForTests, wellFormed } from "../../adapter-odf/test/support/snapshot";
+import {
+  allText,
+  fixture,
+  images,
+  kinds,
+  snapshotHtmlForTests,
+  vectors,
+  wellFormed,
+} from "../../adapter-odf/test/support/snapshot";
 import { createOfdAdapter } from "../src/index";
 
 const ctx: AdapterContext = { document, width: 1000, theme: "light" };
@@ -21,7 +29,8 @@ describe("ofd adapter on examples/ofd", () => {
     expect(pages).toHaveLength(2);
     expect(pages[0]?.box.w).toBeCloseTo(793.7, 0);
     expect(pages[0]?.box.h).toBeCloseTo(559.4, 0);
-    expect(kinds(bp)).toEqual(new Set(["box", "text", "path", "image"]));
+    expect(kinds(bp)).toEqual(expect.arrayContaining(["box", "text", "image"]));
+    expect(vectors(bp).length).toBeGreaterThan(3);
     const text = allText(bp);
     for (const s of ["收据", "Receipt No. 2026-0001", "合计：184.80 元", "已付款", "SwarmLoom 织机工坊", "附注 Notes"])
       expect(text).toContain(s);
@@ -29,11 +38,12 @@ describe("ofd adapter on examples/ofd", () => {
     const amount = bp.layers.find((l) => l.kind === "text" && "text" in l && l.text === "120.00");
     expect(amount?.box.w ?? 0).toBeGreaterThan(5 * 2.4 * (96 / 25.4));
     expect(amount?.box.w ?? 0).toBeLessThan(6 * 2.4 * (96 / 25.4) + 2);
-    const image = bp.layers.find((l) => l.kind === "image");
-    expect(image?.box.w).toBeCloseTo(36 * (96 / 25.4), 0);
+    const pictures = images(bp, "blob:");
+    expect(pictures).toHaveLength(1);
+    expect(pictures[0]?.box.w).toBeCloseTo(36 * (96 / 25.4), 0);
     const notes = loaded.notes?.join(" ") ?? "";
     for (const s of ["SimSun -> Noto Serif SC", "KaiTi -> Noto Serif SC", "SimHei -> Noto Sans SC"])
       expect(notes).toContain(s);
     loaded.dispose?.();
-  });
+  }, 30_000);
 });

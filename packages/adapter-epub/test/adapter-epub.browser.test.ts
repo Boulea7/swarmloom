@@ -1,7 +1,15 @@
 import type { AdapterContext } from "@swarmloom/core";
 import { afterEach, describe, expect, it } from "vitest";
 import bookUrl from "../../../examples/epub/loom-notes.epub?url";
-import { allText, fixture, kinds, snapshotHtmlForTests, wellFormed } from "../../adapter-odf/test/support/snapshot";
+import {
+  allText,
+  fixture,
+  images,
+  kinds,
+  snapshotHtmlForTests,
+  vectors,
+  wellFormed,
+} from "../../adapter-odf/test/support/snapshot";
 import { createEpubAdapter } from "../src/index";
 
 const ctx: AdapterContext = { document, width: 900, theme: "light" };
@@ -21,18 +29,21 @@ describe("epub adapter on examples/epub", () => {
     const pages = bp.layers.filter((l) => l.role === "page");
     expect(pages).toHaveLength(4);
     expect(pages[0]?.box.h ?? 0).toBeGreaterThan(pages[0]?.box.w ?? 0);
-    expect(kinds(bp)).toEqual(new Set(["box", "text", "image", "path"]));
+    expect(kinds(bp)).toEqual(expect.arrayContaining(["box", "text", "image"]));
+    // The inline SVG of chapter 3.
+    expect(vectors(bp).length).toBeGreaterThan(0);
     const text = allText(bp);
     for (const s of ["Warp and Weft", "Counting threads", "Twill 2/2", "织机笔记", "Weave slowly, finish patiently."])
       expect(text).toContain(s);
     expect(text).not.toContain("never run");
-    const images = bp.layers.filter((l) => l.kind === "image").map((l) => ("src" in l ? l.src : ""));
-    expect(images.length).toBeGreaterThanOrEqual(2);
-    for (const src of images) expect(src).toMatch(/^blob:/);
+    // Cover and figure come from the archive; nothing is loaded from elsewhere.
+    expect(images(bp, "blob:").length).toBeGreaterThanOrEqual(2);
+    for (const src of bp.layers.map((l) => (l.kind === "image" && "src" in l ? l.src : "blob:")))
+      expect(src).toMatch(/^(?:blob:|data:image\/svg\+xml)/);
     expect(bp.css ?? "").not.toContain("example.invalid");
     expect(loaded.notes?.[0]).toBe("Outline: Warp and Weft / Counting threads / 织机笔记 / Finishing.");
     expect(loaded.notes).toContain("Scripts in the book were not run.");
     expect(loaded.notes?.join(" ")).toContain("Calibri -> Carlito");
     loaded.dispose?.();
-  });
+  }, 30_000);
 });

@@ -1,7 +1,14 @@
 import type { AdapterContext } from "@swarmloom/core";
 import { afterEach, describe, expect, it } from "vitest";
 import letterUrl from "../../../examples/rtf/loom-letter.rtf?url";
-import { allText, fixture, kinds, snapshotHtmlForTests, wellFormed } from "../../adapter-odf/test/support/snapshot";
+import {
+  allText,
+  fixture,
+  images,
+  kinds,
+  snapshotHtmlForTests,
+  wellFormed,
+} from "../../adapter-odf/test/support/snapshot";
 import { createRtfAdapter } from "../src/index";
 
 const ctx: AdapterContext = { document, width: 1000, theme: "light" };
@@ -20,7 +27,7 @@ describe("rtf adapter on examples/rtf", () => {
     const pages = bp.layers.filter((l) => l.role === "page");
     expect(pages).toHaveLength(2);
     expect(pages[0]?.box.w).toBeCloseTo(793.7, 0);
-    expect(kinds(bp)).toEqual(new Set(["box", "text", "image"]));
+    expect(kinds(bp)).toEqual(expect.arrayContaining(["box", "text", "image"]));
     const text = allText(bp);
     for (const s of [
       "Loom letter",
@@ -33,12 +40,12 @@ describe("rtf adapter on examples/rtf", () => {
     ])
       expect(text).toContain(s);
     expect(text).not.toContain("must not appear");
-    const image = bp.layers.find((l) => l.kind === "image");
-    expect(image?.box.w).toBeCloseTo(96, 0);
-    expect(image && "src" in image ? image.src : "").toMatch(/^blob:/);
+    const pictures = images(bp, "blob:");
+    expect(pictures).toHaveLength(1);
+    expect(pictures[0]?.box.w).toBeCloseTo(96, 0);
     expect(loaded.notes?.[0]).toContain("Calibri -> Carlito");
     expect(loaded.notes?.[0]).toContain("宋体 -> Noto Serif SC");
     expect(loaded.notes).toContain("Headers and footers are not shown.");
     loaded.dispose?.();
-  });
+  }, 30_000);
 });

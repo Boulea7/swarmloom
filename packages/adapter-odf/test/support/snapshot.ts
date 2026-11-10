@@ -4,13 +4,12 @@
  * `snapshotHtmlForTests` uses @swarmloom/snapshot-dom when it implements `snapshotHtml`, and
  * otherwise a small stand-in that follows the same contract (contracts/snapshot.ts): it lays the
  * HTML out in a hidden shadow root at the requested width (real Chromium layout) and emits box,
- * text, image and path layers in element coordinates. The stand-in is deliberately simple; it only
- * exists so adapter tests can run before the real snapshotter is merged.
+ * text and image layers in element coordinates. Like snapshot-dom, it captures an inline `<svg>` as
+ * one image and gives `<section>` boxes the `section` role. The stand-in is deliberately simple; it
+ * only exists so adapter tests can run where the real snapshotter is not available.
  */
 import type { Blueprint, Layer } from "@swarmloom/core";
 import type { SnapshotHtml, SnapshotHtmlOptions } from "../../src/kit/snapshot";
-
-const SHAPES = new Set(["path", "rect", "ellipse", "circle", "line", "polygon", "polyline"]);
 
 function visibleBox(cs: CSSStyleDeclaration): boolean {
   const bg = cs.backgroundColor;
@@ -71,11 +70,14 @@ export const standInSnapshotHtml: SnapshotHtml = async (
       const id = `l${layers.length}`;
       const base = { id, box, ...(parent ? { parent } : {}) };
       let mine = parent;
-      if (el instanceof SVGElement) {
-        if (SHAPES.has(el.localName) && box.w + box.h > 0) {
-          layers.push({ ...base, kind: "path", d: `M${box.x} ${box.y}h${box.w}v${box.h}h${-box.w}z` });
-        }
-        for (const c of Array.from(el.children)) walk(c, mine);
+      if (el instanceof SVGSVGElement) {
+        const markup = new XMLSerializer().serializeToString(el);
+        if (box.w > 0 && box.h > 0)
+          layers.push({
+            ...base,
+            kind: "image",
+            src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`,
+          });
         return;
       }
       if (!(el instanceof HTMLElement)) return;
@@ -89,7 +91,8 @@ export const standInSnapshotHtml: SnapshotHtml = async (
         return;
       }
       if (visibleBox(cs)) {
-        layers.push({ ...base, kind: "box", style: { "background-color": cs.backgroundColor } });
+        const role = el.localName === "section" ? { role: "section" as const } : {};
+        layers.push({ ...base, ...role, kind: "box", style: { "background-color": cs.backgroundColor } });
         ids.set(el, id);
         mine = id;
       }
@@ -168,9 +171,21 @@ export function wellFormed(bp: Blueprint): string[] {
   return problems;
 }
 
-/** Layer kinds present in a blueprint. */
-export function kinds(bp: Blueprint): Set<string> {
-  return new Set(bp.layers.map((l) => l.kind));
+/** Layer kinds present in a blueprint, without the guides snapshot-dom adds on its own. */
+export function kinds(bp: Blueprint): string[] {
+  return [...new Set(bp.layers.map((l) => l.kind))].filter((k) => k !== "guide");
+}
+
+/** Image layers whose `src` starts with `prefix` (`blob:` for archive pictures). */
+export function images(bp: Blueprint, prefix: string): Layer[] {
+  return bp.layers.filter((l) => l.kind === "image" && "src" in l && l.src.startsWith(prefix));
+}
+
+/** Vector drawing: path layers, or inline SVG that the snapshotter captured as an image. */
+export function vectors(bp: Blueprint): Layer[] {
+  return bp.layers.filter(
+    (l) => l.kind === "path" || (l.kind === "image" && "src" in l && l.src.startsWith("data:image/svg+xml")),
+  );
 }
 
 /** Plain text of all text layers, joined. */
