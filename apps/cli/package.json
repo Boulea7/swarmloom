@@ -1,10 +1,26 @@
 {
   "name": "swarmloom",
   "version": "0.1.0",
-  "private": true,
-  "description": "SwarmLoom command line: render files and URLs to video, snapshot pages, serve Studio locally.",
+  "description": "SwarmLoom command line: render files and URLs to video with a swarm of cursors, snapshot pages, serve Studio locally.",
   "license": "MIT",
   "type": "module",
+  "keywords": [
+    "swarmloom",
+    "cursor",
+    "animation",
+    "video",
+    "render",
+    "markdown",
+    "pdf",
+    "cli"
+  ],
+  "homepage": "https://github.com/Boulea7/swarmloom/tree/main/apps/cli#readme",
+  "bugs": "https://github.com/Boulea7/swarmloom/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "apps/cli"
+  },
   "bin": {
     "swarmloom": "dist/cli.js"
   },
@@ -15,7 +31,18 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsup src/cli.ts --format esm --platform node --target node20 --clean",
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "node scripts/build.mjs --check",
     "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "playwright-core": "1.65.0"
+  },
+  "devDependencies": {
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/export": "workspace:*",
+    "@swarmloom/formats": "workspace:*",
+    "@swarmloom/snapshot-dom": "workspace:*",
+    "@swarmloom/studio": "workspace:*"
   }
 }
