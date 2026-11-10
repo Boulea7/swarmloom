@@ -1,0 +1,37 @@
+{
+  "name": "@swarmloom/adapter-epub",
+  "version": "0.1.0",
+  "description": "EPUB adapter for SwarmLoom: the cover and first chapters of an EPUB 2/3 book rendered as sanitized page sheets, then snapshotted.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-epub"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/adapter-odf": "workspace:*",
+    "@swarmloom/core": "workspace:*",
+    "dompurify": "^3.4.17"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3"
+  }
+}
