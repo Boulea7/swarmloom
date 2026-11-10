@@ -20,7 +20,7 @@ The authoritative policy is [PRIVACY.md](https://github.com/Boulea7/swarmloom/bl
 | Sound effects | Synthesised with Web Audio or offline audio, without uploading recordings |
 | Usage metrics | No advertising, analytics SDKs, usage tracking or telemetry |
 
-Opening a local file does not require content-related network requests. Initial application loading, an uncached adapter, or an explicitly selected external resource can still make ordinary resource requests.
+Opening a local file does not require content-related network requests. Initial application loading, an uncached adapter, or an explicitly selected external resource can still make ordinary resource requests. `https:` images and fonts referenced by HTML content load by default, without a referrer; a Studio setting turns this off.
 
 ## Extension permissions
 

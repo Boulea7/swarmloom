@@ -6,7 +6,9 @@
 
 SwarmLoom 扩展和 Studio 在用户的浏览器中完成文件解析、DOM 快照、动画播放和导出。用户打开的文件、页面内容、设置和导出结果不会上传到 SwarmLoom 服务器。
 
-SwarmLoom 不包含广告、分析 SDK、使用统计或遥测，也不建立用户画像。除获取用户明确选择打开的远程文件或 URL 外，SwarmLoom 不发起内容相关的网络请求。打开本地文件时不会因解析或播放而联网。
+SwarmLoom 不包含广告、分析 SDK、使用统计或遥测，也不建立用户画像。除获取用户明确选择打开的远程文件或 URL，以及下文所述 HTML 内容引用的图片和字体外，SwarmLoom 不发起内容相关的网络请求。打开本地文件时不会因解析或播放而联网。
+
+Studio 和 CLI 显示 HTML 内容时，默认加载其中引用的 `https:` 图片和字体，不发送 Referer，不运行脚本，其他请求一律禁止；可以在 Studio 设置中关闭。
 
 设置仅保存在当前浏览器的本地存储中。用户可以通过扩展设置、浏览器站点数据管理或卸载扩展清除本地状态；已导出的文件需由用户自行删除。
 
@@ -34,7 +36,9 @@ SwarmLoom 不包含广告、分析 SDK、使用统计或遥测，也不建立用
 
 The SwarmLoom extension and Studio parse files, snapshot the DOM, play animations, and create exports in the user's browser. Opened files, page content, settings, and export results are not uploaded to a SwarmLoom server.
 
-SwarmLoom contains no advertising, analytics SDKs, usage tracking, or telemetry, and does not build user profiles. It makes no content-related network requests except to retrieve a remote file or URL that the user explicitly chooses to open. Parsing or playing a local file does not require network access.
+SwarmLoom contains no advertising, analytics SDKs, usage tracking, or telemetry, and does not build user profiles. It makes no content-related network requests except to retrieve a remote file or URL that the user explicitly chooses to open, and the images and fonts of HTML content described below. Parsing or playing a local file does not require network access.
+
+When Studio and the CLI show HTML content, they load the `https:` images and fonts it references by default, without a referrer and without running scripts; every other request is blocked. A Studio setting turns this off.
 
 Settings are stored only in the current browser's local storage. Users can clear local state through the extension settings, the browser's site-data controls, or by uninstalling the extension. Exported files must be deleted by the user.
 
