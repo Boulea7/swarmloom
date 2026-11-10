@@ -225,7 +225,9 @@ jobs:
           pnpm build:extension
           pnpm --filter "swarmloom..." build
       - name: Lint the Firefox package (desktop and Android)
-        run: pnpm dlx web-ext@10.8.0 lint --source-dir apps/extension/dist/firefox
+        run: pnpm -F @swarmloom/extension lint:firefox
+      - name: Audit the store packages
+        run: pnpm -F @swarmloom/extension check:package
       - name: Pack release assets
         env:
           VERSION: ${{ steps.tag.outputs.version }}
@@ -238,12 +240,9 @@ jobs:
             echo "::error::$source_zip is larger than the 200 MB AMO accepts"; exit 1
           fi
           pnpm --filter swarmloom pack --out "$GITHUB_WORKSPACE/dist/release/swarmloom-cli-%v.tgz"
-          if [ -f apps/bookmarklet/package.json ]; then
-            pnpm --filter @swarmloom/bookmarklet build
-            node scripts/release/pack-folder.mjs apps/bookmarklet/dist "dist/release/swarmloom-bookmarklet-$VERSION.zip"
-          else
-            echo "::warning::apps/bookmarklet not found; the bookmarklet install page is not attached"
-          fi
+          # The install page with the bookmarklet baked in (the same build Pages publishes at /swarmloom/bm/).
+          pnpm --filter @swarmloom/bookmarklet build
+          node scripts/release/pack-folder.mjs apps/bookmarklet/dist "dist/release/swarmloom-bookmarklet-$VERSION.zip"
           node scripts/release/checksums.mjs dist/release
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
