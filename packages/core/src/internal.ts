@@ -251,6 +251,23 @@ export interface ControlsOptions {
   onUnlockSound: () => void;
   /** Optional halo toggle and record button are shown only when provided. */
   onRecord?: () => void;
+  /**
+   * Optional (ui seam): current playback settings, so the toolbar mirrors PlayerOptions.speed/sound/follow
+   * and changes made through the Player API. Without it the toolbar assumes 1x, sound on, follow "scroll"
+   * and tracks only its own changes.
+   */
+  settings?: () => { speed: number; sound: boolean; follow: "scroll" | "tour" | "none" };
+  /**
+   * Optional (ui seam): Esc / close button handler, e.g. destroy the player and call PlayerOptions.onClose.
+   * Default: player.destroy().
+   */
+  onClose?: () => void;
+  /**
+   * Optional (ui seam): CLIENT-space point where the build currently happens (swarm centroid or build
+   * frontier). On dual-segment (foldable) screens the toolbar moves to the segment without it. Polled
+   * about once a second, only while viewport segments exist.
+   */
+  focus?: () => Point | null;
 }
 
 /**
