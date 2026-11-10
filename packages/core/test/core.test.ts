@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { Blueprint } from "../src/index";
-import { createI18n, createPlayer, definePlugin, encodeWav, LOCALES, quantize, renderOffline } from "../src/index";
+import {
+  createI18n,
+  createPlayer,
+  definePlugin,
+  encodeWav,
+  LOCALES,
+  quantize,
+  renderOffline,
+  VirtualClock,
+} from "../src/index";
 
 const blueprint: Blueprint = {
   version: 1,
@@ -22,7 +31,29 @@ describe("@swarmloom/core public index", () => {
     expect(() => encodeWav({} as AudioBuffer)).toThrow(TypeError);
   });
 
-  it("still rejects createPlayer until the engine lands", () => {
-    expect(() => createPlayer({ blueprint })).toThrow("not implemented yet");
+  it("createPlayer rejects a malformed blueprint without mounting anything", () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    expect(() => createPlayer({ blueprint: { ...blueprint, version: 2 } as never, host })).toThrow(TypeError);
+    expect(host.childNodes).toHaveLength(0);
+    host.remove();
+  });
+
+  it("createPlayer plays a tiny blueprint to done under a VirtualClock", () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    const clock = new VirtualClock();
+    const tiny: Blueprint = {
+      ...blueprint,
+      layers: [
+        { id: "card", kind: "box", box: { x: 10, y: 10, w: 80, h: 40 }, style: { background: "#5b5bf7" } },
+        { id: "label", kind: "text", box: { x: 14, y: 60, w: 70, h: 20 }, html: "Hi", text: "Hi", style: {} },
+      ],
+    };
+    const player = createPlayer({ blueprint: tiny, host, clock, seed: 3, sound: false, controls: false });
+    void player.play();
+    for (let i = 0; i < 6000 && player.state !== "done"; i++) clock.advance(1000 / 60);
+    expect(player.state).toBe("done");
+    player.destroy();
+    expect(player.state).toBe("destroyed");
+    host.remove();
   });
 });

@@ -51,4 +51,4 @@ SWARMLOOM_CHROME=$HOME/bin/chromium pnpm exec vitest run --project browser apps/
 SWARMLOOM_CHROME=$HOME/bin/chromium pnpm -F @swarmloom/studio screens
 ```
 
-The browser tests and the screenshot page (`test/screens/`) mount the real UI with a fake player from `test/fakes.ts`, because the core player is not implemented yet. The `screens` script saves home, player, foldable and watch captures to `test/__screens__/`, which is not committed.
+The browser tests and the screenshot page (`test/screens/`) mount the real UI with a fake player from `test/fakes.ts`, so they stay fast and deterministic. The `screens` script saves home, player, foldable and watch captures to `test/__screens__/`, which is not committed.

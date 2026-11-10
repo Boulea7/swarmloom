@@ -1,27 +1,11 @@
+import { builtinPlugin, choreoHelpers } from "./choreo/index";
 import { assemblePlayer, type PlayerZones } from "./engine/assemble";
 import { createI18n } from "./i18n/index";
-import type { BuiltinPlugin, ChoreoHelpers, CreateStageFn, ResolveThemeFn } from "./internal";
 import { createSound } from "./sound/index";
+import { createStage } from "./stage/index";
+import { resolveTheme } from "./theme";
 import type { Player, PlayerOptions } from "./types";
 import { createControls } from "./ui/index";
-
-/*
- * Stand-ins for the zones that have not landed on this branch yet, so the package compiles and
- * createPlayer fails clearly instead of at import time. Integration replaces each with its import:
- *   import { resolveTheme } from "./theme";                         (stage zone)
- *   import { createStage } from "./stage/index";                    (stage zone)
- *   import { builtinPlugin, choreoHelpers } from "./choreo/index";  (choreo zone)
- */
-const PENDING_ZONES = "src/theme.ts, src/stage/index.ts and src/choreo/index.ts";
-
-function pendingZone(): never {
-  throw new Error(`not implemented yet: createPlayer needs ${PENDING_ZONES}`);
-}
-
-const resolveTheme: ResolveThemeFn = pendingZone;
-const createStage: CreateStageFn = pendingZone;
-const builtinPlugin: BuiltinPlugin = { name: "swarmloom:builtin" };
-const choreoHelpers: ChoreoHelpers = { estimate: pendingZone };
 
 const zones: PlayerZones = {
   resolveTheme,
@@ -48,9 +32,7 @@ const zones: PlayerZones = {
  * @returns A {@link Player} controlling playback (it also implements the optional
  *   `finish`, `seek` and `setFinale` members).
  * @throws TypeError for a malformed blueprint, host, clock or plugin list; RangeError for
- *   out-of-range options. Valid options throw Error "not implemented yet" until the theme,
- *   stage and choreo zones are wired in (see the stand-ins above). Nothing stays mounted
- *   when it throws.
+ *   out-of-range options. Nothing stays mounted when it throws.
  */
 export function createPlayer(options: PlayerOptions): Player {
   return assemblePlayer(options, zones);

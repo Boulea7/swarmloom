@@ -1,8 +1,7 @@
 /**
  * Engine zone: planner, scheduler, agents, swarm behaviours and the Player implementation.
  * `createPlayer` (../player.ts) binds {@link assemblePlayer} to the theme, stage, sound, toolbar,
- * i18n and choreography zones (stand-ins until the stage and choreo zones land); tests and tools
- * can pass fakes to `assemblePlayer` or construct {@link Engine} directly.
+ * i18n and choreography zones; tests and tools can pass fakes to `assemblePlayer` or construct {@link Engine} directly.
  */
 
 export type { PlayerZones } from "./assemble";

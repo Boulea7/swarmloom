@@ -4,7 +4,7 @@ Owner: engine team. Also owns `src/player.ts`, `src/clock.ts`, `src/rng.ts`, `sr
 
 `createPlayer` (`../player.ts`) binds `assemblePlayer` (`assemble.ts`) to the other zones, which wires resolveTheme -> createStage -> createSound -> createControls -> `Engine`. The engine implements `Player` and drives everything from one clock.
 
-Until the stage zone (`src/theme.ts`, `src/stage/index.ts`) and the choreo zone (`src/choreo/index.ts`) land, `player.ts` binds marked stand-ins for them: option validation still runs, and valid options throw "not implemented yet" before anything mounts. Integration swaps each stand-in for its import. The engine itself is tested against fakes through `assemblePlayer`.
+`player.ts` imports the real zones (`src/theme.ts`, `src/stage/index.ts`, `src/choreo/index.ts`, sound, ui, i18n). The engine itself is tested against fakes through `assemblePlayer`; `test/core.test.ts` plays a tiny blueprint through the real `createPlayer`.
 
 | Module | Role |
 |---|---|
