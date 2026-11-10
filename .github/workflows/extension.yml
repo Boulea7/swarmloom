@@ -53,8 +53,12 @@ jobs:
         run: pnpm test:release
       # Studio in extension mode first, then every extension target (scripts/release/build-extension.mjs).
       - run: pnpm build:extension
+      # web-ext comes from the lockfile (apps/extension devDependencies), not a fresh download.
       - name: Lint the Firefox package (desktop and Android)
-        run: pnpm dlx web-ext@10.8.0 lint --source-dir apps/extension/dist/firefox
+        run: pnpm -F @swarmloom/extension lint:firefox
+      # Permissions, CSP, remote code, the e2e hook and the content script budget of every package.
+      - name: Audit the store packages
+        run: pnpm -F @swarmloom/extension check:package
       - name: Pack
         run: node scripts/release/pack-extension.mjs --browser all --out dist/extension
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
