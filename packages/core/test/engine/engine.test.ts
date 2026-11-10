@@ -1,0 +1,273 @@
+import { describe, expect, it } from "vitest";
+import { FINALE_SETTLE_MS } from "../../src/engine/constants";
+import type { EngineSettings } from "../../src/engine/engine";
+import { autoAgentCount } from "../../src/engine/options";
+import type { AgentApi, Layer, PlayerState, Plugin, StageApi, TaskGen } from "../../src/types";
+import { blueprintOf, box, harness, samplePage, testPlugin, text } from "./fakes";
+
+/** Plays to the finale and returns the frame trace hash and a copy of the sound log. */
+function trace(settings: Partial<EngineSettings>) {
+  const h = harness(samplePage(), settings);
+  void h.engine.play();
+  h.until(() => h.engine.state === "finale");
+  h.run(30);
+  return { hash: h.stage.hash.value, log: h.engine.soundLog.map((e) => ({ ...e })), h };
+}
+
+function states(h: ReturnType<typeof harness>): PlayerState[] {
+  const seen: PlayerState[] = [];
+  h.engine.on("state", (e) => seen.push(e.state));
+  return seen;
+}
+
+describe("Engine", () => {
+  it("is deterministic: same seed gives the same frames and sound log, another seed differs", () => {
+    const a = trace({ seed: 7 });
+    const b = trace({ seed: 7 });
+    const c = trace({ seed: 8 });
+    expect(a.log.length).toBeGreaterThan(20);
+    expect(b.hash).toBe(a.hash);
+    expect(b.log).toEqual(a.log);
+    expect(c.hash).not.toBe(a.hash);
+    // Every layer was built, its overlays removed, and the sound engine got what was logged.
+    expect(a.h.stage.finished).toHaveLength(7);
+    expect(a.h.stage.live("ghost-rect")).toHaveLength(0);
+    expect(a.h.sound.played).toEqual(a.h.engine.soundLog);
+    expect(a.log.map((e) => e.name)).toEqual(expect.arrayContaining(["swell", "fanout", "key", "note", "chord"]));
+  });
+
+  it("replay resets the stage and reproduces the run exactly", () => {
+    const first = trace({ seed: 3 });
+    const { h } = first;
+    h.engine.replay();
+    expect(h.stage.calls.reset).toBe(1);
+    expect(h.engine.state).toBe("intro");
+    expect(h.engine.progress.built).toBe(0);
+    h.until(() => h.engine.state === "finale");
+    h.run(30);
+    expect(h.engine.soundLog).toEqual(first.log);
+    expect(h.stage.hash.value).toBe(first.hash);
+  });
+
+  it("pause freezes time, resume continues and speed shortens the build", async () => {
+    const timeToFinale = (speed: number): number => {
+      const h = harness(samplePage(), { speed, intro: false });
+      void h.engine.play();
+      return h.until(() => h.engine.state === "finale");
+    };
+    const t1 = timeToFinale(1);
+    const t2 = timeToFinale(2);
+    expect(t2 / t1).toBeGreaterThan(0.4);
+    expect(t2 / t1).toBeLessThan(0.65);
+
+    const h = harness(samplePage(), { intro: false });
+    const done = h.engine.play();
+    h.run(40);
+    h.engine.pause();
+    expect(h.engine.state).toBe("paused");
+    const logged = h.engine.soundLog.length;
+    const hash = h.stage.hash.value;
+    const built = h.engine.progress.built;
+    h.run(600);
+    expect(h.engine.soundLog.length).toBe(logged);
+    expect(h.engine.progress.built).toBe(built);
+    // Frames are still drawn while paused, but nothing moves.
+    expect(h.stage.hash.value).not.toBe(hash);
+    h.engine.resume();
+    expect(h.engine.state).toBe("building");
+    h.until(() => h.engine.state === "finale");
+    await expect(done).resolves.toBeUndefined();
+    expect(() => h.engine.setSpeed(0)).toThrow(RangeError);
+  });
+
+  it("runs the finale, switches between flock, halo and none, then settles to done", () => {
+    const h = harness(samplePage(), { intro: false, agents: 10 });
+    const seen = states(h);
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    h.run(30);
+    expect(h.stage.drawn.at(-1)).toBe(7); // finale crew = 70% of 10
+    h.engine.setFinale("halo");
+    expect(h.stage.live("halo")).toHaveLength(1);
+    h.run(240);
+    const halo = h.stage.live("halo")[0]?.props as { x: number; y: number; r: number };
+    expect(halo.r).toBeGreaterThan(100);
+    h.engine.setFinale("none");
+    expect(h.stage.live("halo")).toHaveLength(0);
+    h.run(90);
+    expect(h.stage.drawn.at(-1)).toBe(0);
+    h.engine.setFinale("flock");
+    h.run(120);
+    expect(h.stage.drawn.at(-1)).toBe(7);
+    h.run(Math.ceil(FINALE_SETTLE_MS / 16));
+    expect(seen).toEqual(["building", "finale", "done"]);
+    expect(() => h.engine.setFinale("spin" as "flock")).toThrow(RangeError);
+  });
+
+  it("flocks around the pointer without entering its keep-out circle", () => {
+    const h = harness(samplePage(), { intro: false, agents: 12 });
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    h.stage.pointerAt = { x: 400, y: 300 };
+    const views: { x: number; y: number }[] = [];
+    const render = h.stage.render.bind(h.stage);
+    h.stage.render = (now, agents) => {
+      views.length = 0;
+      for (const a of agents) views.push({ x: a.x, y: a.y });
+      render(now, agents);
+    };
+    h.run(300);
+    const dists = views.map((v) => Math.hypot(v.x - 400, v.y - 300));
+    expect(Math.min(...dists)).toBeGreaterThanOrEqual(47.9);
+    expect(Math.max(...dists)).toBeLessThan(260);
+  });
+
+  it("tour scrolls at build pace without passing unfinished work; fast user scrolls call more agents", () => {
+    const tall = (): ReturnType<typeof blueprintOf> =>
+      blueprintOf(
+        Array.from({ length: 48 }, (_, i) => box(`r${i}`, (i % 2) * 400, Math.floor(i / 2) * 150, 300, 100)),
+        { w: 800, h: 3600 },
+      );
+    const h = harness(tall(), { intro: false, follow: "tour", agents: 8 });
+    const tops = new Map(h.stage.blueprint.layers.map((l) => [l.id, l.box.y]));
+    let maxScroll = 0;
+    let violations = 0;
+    void h.engine.play();
+    h.until(() => {
+      const done = new Set(h.stage.finished);
+      let frontier = Number.POSITIVE_INFINITY;
+      for (const [id, y] of tops) if (!done.has(id)) frontier = Math.min(frontier, y);
+      if (Number.isFinite(frontier) && h.stage.scrollY > Math.max(0, frontier - 0.3 * 600) + 1) violations++;
+      maxScroll = Math.max(maxScroll, h.stage.scrollY);
+      return h.engine.state === "finale";
+    });
+    expect(h.engine.state).toBe("finale");
+    expect(violations).toBe(0);
+    expect(maxScroll).toBeGreaterThan(2500);
+
+    const crew = (scroll: boolean): number => {
+      const s = harness(tall(), { intro: false, agents: 24 });
+      void s.engine.play();
+      s.run(90); // the base crew (half the pool) walks in first
+      for (let f = 0; f < 60; f++) {
+        if (scroll) s.stage.userScroll((f + 1) * 40);
+        s.run(1);
+      }
+      return Math.max(...s.stage.drawn);
+    };
+    expect(crew(true)).toBeGreaterThan(crew(false));
+  });
+
+  it("reduced motion cross-fades layers in plan order without cursors", () => {
+    const h = harness(samplePage(), { reducedMotion: true });
+    void h.engine.play();
+    const ms = h.until(() => h.engine.state === "finale");
+    expect(ms).toBeLessThan(3500);
+    expect(Math.max(...h.stage.drawn)).toBe(0);
+    const order = h.stage.finished;
+    expect(order.indexOf("hero")).toBeLessThan(order.indexOf("card1"));
+    expect(order.indexOf("card1")).toBeLessThan(order.indexOf("card2"));
+    expect(order.indexOf("g1")).toBeLessThan(order.indexOf("title"));
+  });
+
+  it("degrades a failing layer, reports it and still completes the build", () => {
+    function* broken(): TaskGen {
+      yield 10;
+      throw new Error("boom");
+    }
+    function* weird(agent: AgentApi, layer: Layer, stage: StageApi): TaskGen {
+      yield "soon" as unknown as number;
+      yield* testPlugin.tasks?.text?.(agent, layer, stage) as TaskGen;
+    }
+    const plugin: Plugin = { name: "faulty", tasks: { box: broken, text: weird } };
+    const bp = blueprintOf([box("a", 0, 0), text("b", 0, 100, "hi")]);
+    const h = harness(bp, { intro: false }, { plugins: [testPlugin, plugin] });
+    const errors: string[] = [];
+    h.engine.on("error", (e) => errors.push(e.error.message));
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale", 10_000);
+    expect(h.engine.state).toBe("finale");
+    expect(h.stage.finished).toEqual(expect.arrayContaining(["a", "b"]));
+    expect(errors).toEqual(['layer "a": boom', 'layer "b": task yielded an unsupported value of type string']);
+  });
+
+  it("ready() waits for the stage and for promises tasks wait on; eta() counts down", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    function* waits(agent: AgentApi, layer: Layer, stage: StageApi): TaskGen {
+      yield gate;
+      yield* testPlugin.tasks?.box?.(agent, layer, stage) as TaskGen;
+    }
+    const h = harness(
+      blueprintOf([box("a", 0, 0), box("b", 300, 0)]),
+      { intro: false },
+      {
+        plugins: [testPlugin, { name: "wait", tasks: { box: waits } }],
+      },
+    );
+    const eta0 = h.engine.eta();
+    expect(eta0).toBeGreaterThan(0);
+    void h.engine.play();
+    h.run(30);
+    let ready = false;
+    void h.engine.ready().then(() => {
+      ready = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ready).toBe(false);
+    release();
+    await h.engine.ready();
+    expect(ready).toBe(true);
+    h.run(30);
+    expect(h.engine.eta()).toBeLessThan(eta0);
+    h.until(() => h.engine.state === "finale");
+    expect(h.engine.eta()).toBe(0);
+  });
+
+  it("finish() completes the rest quickly and goLive() hands back to the page", async () => {
+    const page = blueprintOf(Array.from({ length: 40 }, (_, i) => box(`b${i}`, (i % 5) * 150, Math.floor(i / 5) * 90)));
+    const h = harness(page, { intro: false });
+    const seen = states(h);
+    void h.engine.play();
+    h.run(20);
+    h.engine.finish();
+    const ms = h.until(() => h.engine.state === "finale");
+    expect(ms).toBeLessThan(1500);
+    expect(h.engine.progress).toEqual({ built: 40, total: 40 });
+    h.engine.goLive();
+    h.run(60);
+    await Promise.resolve();
+    expect(h.stage.calls.goLive).toBe(1);
+    expect(h.engine.soundLog.at(-1)?.name).toBe("sweep");
+    expect(seen.at(-1)).toBe("live");
+    h.engine.destroy();
+    expect(h.engine.state).toBe("destroyed");
+    expect(h.stage.calls.destroy).toBe(1);
+    expect(h.sound.destroyed).toBe(true);
+  });
+
+  it("sizes the crew automatically and labels agents per mode", () => {
+    expect(autoAgentCount(0, 390 * 844)).toBe(8);
+    expect(autoAgentCount(260, 1280 * 800)).toBeGreaterThan(30);
+    expect(autoAgentCount(100_000, 2560 * 1440)).toBe(64);
+    const labels = (mode: EngineSettings["labels"]): string[] => {
+      const h = harness(samplePage(), { labels: mode, intro: false, agents: 3 });
+      const seen = new Set<string>();
+      const render = h.stage.render.bind(h.stage);
+      h.stage.render = (now, agents) => {
+        for (const a of agents) seen.add(a.label);
+        render(now, agents);
+      };
+      void h.engine.play();
+      h.run(90);
+      return [...seen].sort();
+    };
+    expect(labels("agents")).toEqual(["Agent 01", "Agent 02", "Agent 03"]);
+    expect(labels("roles")).toEqual(expect.arrayContaining(["", "role.layout"]));
+    expect(labels("none")).toEqual([""]);
+    expect(labels(["Ann", "Bo"])).toEqual(["Ann", "Bo"]);
+  });
+});

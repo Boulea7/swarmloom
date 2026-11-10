@@ -347,6 +347,12 @@ export interface AgentApi {
   /** Short status bubble next to the cursor, e.g. "typing". Empty string hides it. */
   say(text: string): void;
   sound(name: SoundName, opts?: { pitch?: number; vel?: number }): void;
+  /**
+   * Optional. Current task time in engine ms: the timeline that yielded waits are measured in
+   * (speed applied, same clock as SoundEvent.t). Lets choreographies keep tweens and typing bursts
+   * exact when frames are coarser than the waits they asked for; without it they count steps.
+   */
+  now?(): number;
 }
 
 /** Transient overlay drawn above content (badges, ghosts, guides, measurements). */
@@ -506,4 +512,16 @@ export interface Player {
    * (images, fonts). Exporters await it before capturing a frame.
    */
   ready(): Promise<void>;
+  /**
+   * Optional. Completes the build quickly: running tasks stop and the remaining layers fade in
+   * within about a second, then the finale starts (toolbar "finish", key F).
+   */
+  finish?(): void;
+  /**
+   * Optional. Jumps to `t` ms of player time since play() by replaying from the start in 60 Hz
+   * steps (Studio scrubber). Nothing is drawn or played while seeking; soundLog is kept complete.
+   */
+  seek?(t: number): void;
+  /** Optional. Changes the end-of-build behaviour; applies immediately while the finale runs. */
+  setFinale?(mode: "flock" | "halo" | "none"): void;
 }
