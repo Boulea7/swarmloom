@@ -13,12 +13,13 @@ description: SwarmLoom 的快捷键、设置、巡航、声音、上线、分享
 
 | 按键 | 作用 |
 | --- | --- |
-| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | 在支持的页面启动或关闭扩展重建 |
+| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> | 在支持的页面启动或关闭扩展重建 |
 | <kbd>Space</kbd> | 暂停或继续 |
 | <kbd>M</kbd> | 开关声音 |
 | <kbd>T</kbd> | 开关自动巡航 |
 | <kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> | 切换到 1×、2×、3× 速度 |
 | <kbd>R</kbd> | 从头重播 |
+| <kbd>F</kbd> | 立即完成：剩余图层快速收尾（播放器支持时） |
 | <kbd>L</kbd> | 上线：返回原页面或最终静态内容 |
 | <kbd>Esc</kbd> | 关闭播放器 |
 
@@ -55,7 +56,7 @@ JavaScript API 还支持自定义标签数组、调色板、语言、种子和�
 
 | 音效包 | 特点 |
 | --- | --- |
-| `studio` | 默认；清晰的键盘、鼠标与玻璃质感音符 |
+| `studio` | 默认；清脆的键盘与鼠标声，配有音高的完成音 |
 | `soft` | 更轻、更柔和 |
 | `8bit` | 复古数字音色 |
 | `silent-keys` | 保留界面与完成提示，键盘声静音 |

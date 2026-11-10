@@ -27,9 +27,9 @@ This is a visual snapshot at one point in time, not a clone of application state
 
 **Extensions:** `.html`, `.htm`, `.xhtml`
 
-HTML strings and URLs are planned to load in an isolated sandbox with scripts disabled by default, then use the DOM snapshot pipeline. Relative resources need a correct base URL. Remote resources remain subject to CORS, permissions and site access controls.
+HTML strings and URLs are planned to load in an isolated sandbox, then use the DOM snapshot pipeline. HTML input never runs scripts, and there is no option to enable them. The network is limited to `https:` images and fonts (sent without a referrer); every other request is blocked, and a Studio setting turns that loading off. Relative resources need a correct base URL. Remote resources remain subject to CORS, permissions and site access controls.
 
-CSS animation is frozen at a deterministic pose for the initial rebuild. Joining the original CSS timeline afterwards is a planned enhancement. Script-driven and event-driven animation is not guaranteed to round-trip.
+CSS animation is frozen for the rebuild: finite animations at their end state, infinite ones at a fixed phase. Go live resumes the original animations. Script-driven and event-driven animation is not guaranteed to round-trip.
 
 ## Markdown
 
@@ -73,7 +73,7 @@ Scanned pages and outlined text have no text items, so they reveal by region or 
 
 A pen cursor places anchors, pulls curves and traces strokes, followed by fills, gradients and text. `<use>` instances can appear as duplicates. Groups and paint order are preserved in the Blueprint.
 
-SMIL or CSS-animated SVG is rebuilt at a selected pose by default. Seeking the original timeline after the build is planned. Scripted animation, external resources and interaction handlers are not executed unconditionally.
+SMIL or CSS-animated SVG is first rebuilt as a static drawing; once the weave is done, the original animation plays from 0 s (planned). `href` may only point to `#fragment` targets inside the document. Scripts, external resources and interaction handlers are never executed.
 
 ## Slides
 

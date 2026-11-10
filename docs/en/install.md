@@ -15,8 +15,7 @@ Store listings and signed packages have not been published, and extension featur
 | --- | --- | --- |
 | Chrome / Edge desktop | Manifest V3 extension | In-place page and selection rebuilding, plus Studio file import |
 | Brave / Opera / Vivaldi desktop | Chromium package | Reuses the Chrome package, with per-browser compatibility checks |
-| Firefox desktop | Firefox MV3 extension | Regular installation requires Mozilla signing |
-| Firefox Android | Separate Android package | Touch UI and an Android-compatible manifest/API subset |
+| Firefox desktop and Android | One Firefox package (MV2 event page) | Desktop and Android share one AMO listing; regular installation requires Mozilla signing |
 | Safari macOS / iOS / iPadOS / visionOS | Safari Web Extension inside a container app | Convert, sign and run with Xcode |
 | Desktop / Android / iOS | Studio PWA | Files, text, URLs and examples; cannot inject into other tabs |
 | Foldables | Extension or Studio | Dual-screen layouts enhance a working responsive fallback |
@@ -35,7 +34,7 @@ pnpm build
 pnpm --filter @swarmloom/extension build
 ```
 
-Artifacts are written to `apps/extension/dist/`: `chrome/`, `edge/`, `firefox/` and `safari/`. A separate Firefox Android artifact is planned; do not reuse the desktop manifest for it.
+Artifacts are written to `apps/extension/dist/`: `chrome/`, `edge/`, `firefox/` and `safari/`. `firefox/` serves both desktop and Android; there is no separate Android package.
 
 ## Chrome <Badge type="warning" text="Development package" />
 
@@ -72,7 +71,7 @@ A shared Chromium base does not guarantee identical behaviour. Permission prompt
 
 ## Firefox desktop <Badge type="warning" text="Temporary debugging" />
 
-The planned package uses MV3 with a stable Gecko ID and AMO signing. Release and Beta Firefox cannot permanently install an unsigned XPI.
+The planned package is an MV2 event page with a stable Gecko ID; `browser_specific_settings` declares both `gecko` and `gecko_android`, and it is signed through AMO. Release and Beta Firefox cannot permanently install an unsigned XPI.
 
 To load the development directory temporarily:
 
@@ -84,7 +83,7 @@ Temporary add-ons are removed when Firefox restarts. Changing signing preference
 
 ## Firefox Android <Badge type="warning" text="Planned" />
 
-The Android build is planned with its own Android-compatible package and non-persistent background page, rather than a copied desktop MV3 manifest. Desktop shortcuts, context menus and window management are unavailable; actions move into the add-on menu and touch controls.
+Android uses the same Firefox package and the same AMO listing as desktop. Desktop shortcuts, context menus and window management are unavailable; actions move into the add-on menu and touch controls.
 
 Regular installation still requires AMO signing. Development verification uses Mozilla's `web-ext`, ADB and a debug-enabled device. Use Studio PWA until real-device verification is complete.
 
