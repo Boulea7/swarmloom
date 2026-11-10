@@ -8,6 +8,8 @@ describe("SSR", () => {
   it("evaluates without a DOM and only fails when asked to register", async () => {
     expect(typeof globalThis.document).toBe("undefined");
     // Bundle from source (workspace packages through their source condition) and evaluate the result in plain Node.
+    // Adapters load through the formats registry's lazy import() only, so they stay external here, as
+    // they become separate chunks in a real build; the test proves none of them is needed to evaluate.
     const result = await build({
       entryPoints: [fileURLToPath(new URL("../src/index.ts", import.meta.url))],
       bundle: true,
@@ -15,6 +17,7 @@ describe("SSR", () => {
       format: "esm",
       platform: "neutral",
       conditions: ["@swarmloom/source"],
+      external: ["@swarmloom/adapter-*", "@swarmloom/snapshot-dom"],
       logLevel: "silent",
     });
     const code = result.outputFiles[0]?.text ?? "";
