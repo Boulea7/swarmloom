@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paper Comet Lamps · SwarmLoom demo</title>
+  <link rel="icon" href="icons/icon-32.png">
+  <link rel="stylesheet" href="demo.css">
+  <script type="module" src="pages/demo.js"></script>
+</head>
+<body>
+  <aside class="demo-banner" aria-labelledby="demo-banner-text">
+    <p id="demo-banner-text"><strong data-i18n="demoBanner">This is a SwarmLoom demo page.</strong> <span id="demo-hint"></span></p>
+    <button type="button" id="demo-start" data-i18n="demoStart">Rebuild this page</button>
+  </aside>
+
+  <header class="site-header">
+    <a class="logo" href="#top" aria-label="Paper Comet home">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><circle cx="20" cy="12" r="8" fill="#F2A541"/><path d="M4 28 L16 16" stroke="#2E2A4F" stroke-width="3" stroke-linecap="round"/></svg>
+      Paper Comet
+    </a>
+    <nav aria-label="Main">
+      <a href="#lamps">Lamps</a>
+      <a href="#workshop">Workshop</a>
+      <a href="#visit">Visit</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Folded by hand in small batches</p>
+        <h1>Light that folds out of a single sheet</h1>
+        <p>Paper Comet makes pleated lamps from recycled cotton paper. Each shade starts flat, gets scored along
+          two hundred creases and opens into a soft, warm glow.</p>
+        <div class="cta">
+          <a class="btn primary" href="#lamps">See the lamps</a>
+          <a class="btn ghost" href="#workshop">Book a workshop</a>
+        </div>
+      </div>
+      <figure class="hero-art" aria-label="Three pleated paper lamps">
+        <svg viewBox="0 0 240 200" width="240" height="200" aria-hidden="true">
+          <rect x="0" y="0" width="240" height="200" rx="24" fill="#2E2A4F"/>
+          <path d="M40 60 L80 60 L92 150 L28 150 Z" fill="#F2A541"/>
+          <path d="M104 40 L140 40 L156 160 L88 160 Z" fill="#F7D08A"/>
+          <path d="M168 70 L200 70 L214 140 L154 140 Z" fill="#E86A4F"/>
+          <circle cx="60" cy="170" r="6" fill="#FAF3E8"/><circle cx="122" cy="176" r="6" fill="#FAF3E8"/><circle cx="184" cy="160" r="6" fill="#FAF3E8"/>
+        </svg>
+      </figure>
+    </section>
+
+    <section id="lamps" class="cards" aria-labelledby="lamps-title">
+      <h2 id="lamps-title">This season's lamps</h2>
+      <ul>
+        <li class="card">
+          <span class="swatch amber" aria-hidden="true"></span>
+          <h3>Comet</h3>
+          <p>A tall cone with spiral pleats. Hangs above a table or a reading chair.</p>
+          <p class="price">89 EUR</p>
+        </li>
+        <li class="card">
+          <span class="swatch sand" aria-hidden="true"></span>
+          <h3>Lantern</h3>
+          <p>Round, wide and calm. Folds flat for travel and opens in seconds.</p>
+          <p class="price">64 EUR</p>
+        </li>
+        <li class="card">
+          <span class="swatch coral" aria-hidden="true"></span>
+          <h3>Ember</h3>
+          <p>A small desk shade in dyed coral paper with a dimmable warm bulb.</p>
+          <p class="price">42 EUR</p>
+        </li>
+      </ul>
+    </section>
+
+    <section id="workshop" class="split">
+      <div>
+        <h2>Fold your own</h2>
+        <p>Saturday mornings, six people around one long table. You leave with a finished lamp and the crease
+          pattern to make another.</p>
+        <ol class="steps">
+          <li>Pick a paper and a pattern.</li>
+          <li>Score the creases with a bone folder.</li>
+          <li>Collapse the pleats and fit the frame.</li>
+        </ol>
+      </div>
+      <blockquote>
+        <p>"I came for the coffee and left with a lamp. My living room has never looked this cosy."</p>
+        <footer>Mira, workshop guest</footer>
+      </blockquote>
+    </section>
+
+    <section id="visit" class="visit">
+      <h2>Visit the studio</h2>
+      <form class="newsletter">
+        <label for="email">Get the next workshop dates</label>
+        <div class="inline">
+          <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+          <button type="submit" class="btn primary">Notify me</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Paper Comet is a fictional shop made up for this demo.</p>
+  </footer>
+</body>
+</html>
