@@ -45,6 +45,12 @@
   max-width: 1440px;
 }
 
+/* Wrap the hero headline at CJK punctuation and balance the lines so no lone "来。" is left over. */
+.VPHero .text {
+  word-break: keep-all;
+  text-wrap: balance;
+}
+
 .VPButton.brand {
   border-color: var(--vp-c-brand-2);
   background: var(--vp-c-brand-2);
