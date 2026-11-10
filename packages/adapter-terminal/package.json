@@ -1,0 +1,37 @@
+{
+  "name": "@swarmloom/adapter-terminal",
+  "version": "0.1.0",
+  "description": "asciinema terminal recordings for SwarmLoom: a terminal window replayed at the recorded pace.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./ansi": {
+      "@swarmloom/source": "./src/ansi.ts",
+      "types": "./dist/ansi.d.ts",
+      "import": "./dist/ansi.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-terminal"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/ansi.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*"
+  }
+}
