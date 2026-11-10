@@ -1,7 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "allowJs": true
+    "allowJs": true,
+    // Tests import the Node build scripts and node:fs; the extension code itself uses DOM types only.
+    "types": ["node"]
   },
   "include": ["src", "test"]
 }
