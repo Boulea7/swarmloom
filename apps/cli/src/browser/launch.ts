@@ -20,16 +20,6 @@ export const CHROME_ARGS = [
 
 const LAUNCH_TIMEOUT_MS = 60_000;
 
-/** Path of Playwright's downloaded Chromium, if playwright-core knows one (it may not be installed). */
-export async function playwrightChromiumPath(): Promise<string | undefined> {
-  try {
-    const { chromium } = await import("playwright-core");
-    return chromium.executablePath() || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Launches the browser headless. Playwright's own signal handlers are disabled: the CLI handles
  * Ctrl+C itself so it can remove temporary files before exiting.

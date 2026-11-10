@@ -4,10 +4,11 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "playwright-core";
 import { expectPositionals, parseCommand, readInt } from "../args";
 import { locateAssets, requireSnapshotBundle } from "../assets";
-import { launchBrowser, newContext, playwrightChromiumPath, watchPage } from "../browser/launch";
+import { launchBrowser, newContext, watchPage } from "../browser/launch";
 import { snapshotPage } from "../browser/snapshot";
 import { findBrowser } from "../discovery/browser";
 import { systemHost } from "../discovery/host";
+import { installedPlaywright } from "../discovery/playwright";
 import { UsageError } from "../errors";
 import { warn } from "../io";
 import { isWebUrl } from "../pipeline/input";
@@ -106,8 +107,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   const assets = ctx.assets ?? locateAssets(ctx.env);
   const bundle = await readFile(requireSnapshotBundle(assets), "utf8");
   const host = ctx.host ?? systemHost(ctx.env);
-  const playwrightPath = await playwrightChromiumPath();
-  const browserPath = findBrowser(host, { flag: opts.chrome, playwrightPath: () => playwrightPath }).path;
+  const browserPath = findBrowser(host, { flag: opts.chrome, playwright: installedPlaywright() }).path;
 
   const cleanup = new Cleanup((message) => warn(io, `cleanup: ${message}`));
   try {

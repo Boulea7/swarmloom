@@ -1,9 +1,10 @@
 import { expectPositionals, parseCommand } from "../args";
 import { locateAssets } from "../assets";
-import { launchBrowser, playwrightChromiumPath } from "../browser/launch";
-import { findBrowser } from "../discovery/browser";
+import { launchBrowser } from "../browser/launch";
+import { findBrowser, headlessShellInstallCommand, isHeadlessShell, isSnapPath } from "../discovery/browser";
 import { type FfmpegCaps, findFfmpeg, formatFfmpegVersion, probeFfmpeg, systemFfmpegDeps } from "../discovery/ffmpeg";
 import { type HostEnv, systemHost } from "../discovery/host";
+import { cachedRevision, installedPlaywright } from "../discovery/playwright";
 import { CliError, ExitCode, errorMessage } from "../errors";
 import { type CliIo, paint } from "../io";
 import { type OutputFormat, planMux, planVideo } from "../pipeline/encode";
@@ -40,10 +41,10 @@ function report(io: CliIo, status: Status, label: string, detail: string, fix?: 
 }
 
 async function checkBrowser(io: CliIo, host: HostEnv, flag: string | undefined): Promise<boolean> {
+  const playwright = installedPlaywright();
   let found: ReturnType<typeof findBrowser>;
   try {
-    const playwrightPath = await playwrightChromiumPath();
-    found = findBrowser(host, { flag, playwrightPath: () => playwrightPath });
+    found = findBrowser(host, { flag, playwright });
   } catch (error) {
     report(io, "fail", "Browser", errorMessage(error), error instanceof CliError ? error.hint : undefined);
     return false;
@@ -53,6 +54,22 @@ async function checkBrowser(io: CliIo, host: HostEnv, flag: string | undefined):
     const version = browser.version();
     await browser.close();
     report(io, "ok", "Browser", `${version} at ${found.path} (from ${found.source})`);
+    const install = headlessShellInstallCommand(playwright.version);
+    const pinned = playwright.revisions["chromium-headless-shell"];
+    const revision = cachedRevision(found.path);
+    if (isSnapPath(found.path)) {
+      report(io, "warn", "  snap", "Snap browsers run confined and often fail under automation", `Use: ${install}`);
+    } else if (isHeadlessShell(found.path) && pinned && revision && revision !== pinned) {
+      report(io, "warn", "  pinned build", `Revision ${revision}, not the pinned ${pinned}`, `Install it: ${install}`);
+    } else if (!isHeadlessShell(found.path)) {
+      report(
+        io,
+        "warn",
+        "  pinned build",
+        "Frames may differ slightly between browser versions",
+        `For identical frames on every machine: ${install}`,
+      );
+    }
     return true;
   } catch (error) {
     report(io, "fail", "Browser", errorMessage(error), error instanceof CliError ? error.hint : undefined);

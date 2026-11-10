@@ -48,14 +48,16 @@ export interface FfmpegDiscoveryDeps {
   host: HostEnv;
   /** Runs `<path> -version`; resolves with its stdout, or null when the program cannot run. */
   readVersion(path: string): Promise<string | null>;
-  /** Path exported by the optional `ffmpeg-static` package, when it is installed. */
+  /** Path exported by an `ffmpeg-static` package the user installed themselves (never a dependency). */
   ffmpegStatic(): string | undefined;
 }
 
 /**
  * Finds an ffmpeg >= 4.
  *
- * Order: --ffmpeg, SWARMLOOM_FFMPEG, `ffmpeg` on PATH, then the optional `ffmpeg-static` package.
+ * Order: --ffmpeg, SWARMLOOM_FFMPEG, `ffmpeg` on PATH, then an `ffmpeg-static` package if the user
+ * installed one next to swarmloom. SwarmLoom neither bundles nor recommends ffmpeg binaries (the
+ * static builds are GPL); it uses whatever the machine has.
  * Explicit paths must work; a too-old ffmpeg on PATH is skipped and mentioned in the error.
  *
  * @throws MissingDependencyError with install hints.
@@ -123,8 +125,7 @@ export function ffmpegInstallHint(host: HostEnv): string {
         : "sudo apt install ffmpeg (or your distribution's package)";
   return [
     `Install ffmpeg ${MIN_FFMPEG_MAJOR} or newer: ${install}`,
-    "or set SWARMLOOM_FFMPEG (or pass --ffmpeg) to an ffmpeg executable,",
-    "or install the optional package next to swarmloom: npm install ffmpeg-static",
+    "or set SWARMLOOM_FFMPEG (or pass --ffmpeg) to an ffmpeg executable.",
   ].join("\n");
 }
 
@@ -134,7 +135,7 @@ export function systemFfmpegDeps(host: HostEnv): FfmpegDiscoveryDeps {
     host,
     readVersion: (file) => runCapture(file, ["-version"]).catch(() => null),
     ffmpegStatic() {
-      // Optional, never bundled: resolved from wherever swarmloom itself is installed.
+      // Never a dependency: only found when the user installed it where swarmloom resolves modules.
       const value: unknown = createRequire(import.meta.url)("ffmpeg-static");
       return typeof value === "string" ? value : undefined;
     },

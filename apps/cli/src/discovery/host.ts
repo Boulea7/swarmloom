@@ -1,4 +1,4 @@
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -9,6 +9,8 @@ export interface HostEnv {
   homedir: string;
   /** True when `file` is an existing regular file the current user may execute. */
   isExecutable(file: string): boolean;
+  /** Entry names of a directory; empty when it does not exist or cannot be read. */
+  listDir(dir: string): string[];
 }
 
 /** A program found on this machine and where the path came from (for messages and `doctor`). */
@@ -32,6 +34,13 @@ export function systemHost(env: Readonly<Record<string, string | undefined>> = p
         return true;
       } catch {
         return false;
+      }
+    },
+    listDir(dir) {
+      try {
+        return readdirSync(dir);
+      } catch {
+        return [];
       }
     },
   };

@@ -206,7 +206,7 @@ importers:
   apps/cli:
     dependencies:
       playwright-core:
-        specifier: ^1.65.0
+        specifier: 1.65.0
         version: 1.65.0
     devDependencies:
       '@swarmloom/core':

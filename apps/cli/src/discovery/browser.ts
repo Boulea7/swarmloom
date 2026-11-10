@@ -1,5 +1,6 @@
 import { MissingDependencyError } from "../errors";
 import { envValue, type FoundProgram, type HostEnv, pathFor, which } from "./host";
+import { findPlaywrightBuild, type PlaywrightInfo } from "./playwright";
 
 /** Chromium-family commands looked up on PATH (Linux and other Unix systems). */
 const UNIX_COMMANDS = [
@@ -62,16 +63,44 @@ function resolveAppBundle(host: HostEnv, file: string): string {
 export interface FindBrowserOptions {
   /** Value of --chrome. */
   flag?: string;
-  /** Path of Playwright's own Chromium build when playwright-core knows one (may not be installed). */
-  playwrightPath?: () => string | undefined;
+  /** Revisions pinned by the installed playwright-core and its location. Default: newest cached build. */
+  playwright?: PlaywrightInfo;
+}
+
+/** Snap packages run confined (private /tmp, limited file access), which breaks automation; try them last. */
+export function isSnapPath(file: string): boolean {
+  return file.startsWith("/snap/");
+}
+
+/** True for Chrome Headless Shell builds (the binary Playwright installs as chromium-headless-shell). */
+export function isHeadlessShell(file: string): boolean {
+  return /headless[_-]shell(\.exe)?$/i.test(file);
+}
+
+/** Installed Chrome, Chromium, Edge or Brave: CHROME_PATH, PATH commands (Unix), default locations. */
+function systemBrowser(host: HostEnv): FoundProgram | undefined {
+  const candidates: FoundProgram[] = [];
+  const chromePath = envValue(host, "CHROME_PATH");
+  if (chromePath) candidates.push({ path: resolveAppBundle(host, chromePath), source: "CHROME_PATH" });
+  if (host.platform !== "win32" && host.platform !== "darwin") {
+    for (const name of UNIX_COMMANDS) {
+      const file = which(host, [name]);
+      if (file) candidates.push({ path: file, source: "PATH" });
+    }
+  }
+  for (const file of systemBrowserPaths(host)) candidates.push({ path: file, source: "default location" });
+  const usable = candidates.filter((c) => host.isExecutable(c.path));
+  return usable.find((c) => !isSnapPath(c.path)) ?? usable[0];
 }
 
 /**
  * Finds a Chromium-family browser to drive.
  *
- * Order: --chrome, SWARMLOOM_CHROME, CHROME_PATH, Chromium-family commands on PATH (Unix),
- * default install locations per OS, then Playwright's downloaded Chromium.
- * An explicit path (flag or env) that does not exist is an error, never silently skipped.
+ * Order: --chrome, SWARMLOOM_CHROME, Playwright's chromium-headless-shell from its browser cache
+ * (pinned build, the most repeatable frames), installed Chrome/Chromium/Edge/Brave (CHROME_PATH,
+ * PATH commands on Unix, default install locations per OS; snap packages last), then Playwright's
+ * full Chromium build. An explicit path (flag or SWARMLOOM_CHROME) that does not exist is an error,
+ * never silently skipped.
  *
  * @throws MissingDependencyError with install hints when nothing usable is found.
  */
@@ -79,7 +108,6 @@ export function findBrowser(host: HostEnv, opts: FindBrowserOptions = {}): Found
   const explicit: Array<[string | undefined, string]> = [
     [opts.flag, "--chrome"],
     [envValue(host, "SWARMLOOM_CHROME"), "SWARMLOOM_CHROME"],
-    [envValue(host, "CHROME_PATH"), "CHROME_PATH"],
   ];
   for (const [value, source] of explicit) {
     if (!value) continue;
@@ -87,31 +115,42 @@ export function findBrowser(host: HostEnv, opts: FindBrowserOptions = {}): Found
     if (host.isExecutable(file)) return { path: file, source };
     throw new MissingDependencyError(
       `Browser not found at ${value} (from ${source})`,
-      "Point it at a Chrome, Chromium, Edge or Brave executable.",
+      "Point it at a Chrome, Chromium, Edge or Brave executable, or at Chrome Headless Shell.",
     );
   }
-  if (host.platform !== "win32" && host.platform !== "darwin") {
-    const onPath = which(host, UNIX_COMMANDS);
-    if (onPath) return { path: onPath, source: "PATH" };
-  }
-  const installed = systemBrowserPaths(host).find((file) => host.isExecutable(file));
-  if (installed) return { path: installed, source: "default location" };
-  const bundled = opts.playwrightPath?.();
-  if (bundled && host.isExecutable(bundled)) return { path: bundled, source: "Playwright" };
-  throw new MissingDependencyError("No Chrome, Chromium, Edge or Brave browser found", browserInstallHint(host));
+  const info = opts.playwright ?? { revisions: {} };
+  const shell = findPlaywrightBuild(host, "chromium-headless-shell", info);
+  if (shell) return { path: shell, source: "Playwright headless shell" };
+  const installed = systemBrowser(host);
+  if (installed) return installed;
+  const chromium = findPlaywrightBuild(host, "chromium", info);
+  if (chromium) return { path: chromium, source: "Playwright Chromium" };
+  throw new MissingDependencyError(
+    "No Chrome, Chromium, Edge or Brave browser found",
+    browserInstallHint(host, info.version),
+  );
+}
+
+/**
+ * Command that downloads Chrome Headless Shell into Playwright's cache. With the installed
+ * playwright-core version it fetches exactly the revision that version pins.
+ */
+export function headlessShellInstallCommand(playwrightVersion?: string): string {
+  const pkg = playwrightVersion ? `playwright@${playwrightVersion}` : "playwright";
+  return `npx ${pkg} install chromium-headless-shell`;
 }
 
 /** Platform-specific instructions for getting a usable browser. */
-export function browserInstallHint(host: HostEnv): string {
+export function browserInstallHint(host: HostEnv, playwrightVersion?: string): string {
   const install =
     host.platform === "darwin"
-      ? "Install Google Chrome (https://www.google.com/chrome/) or run: brew install --cask chromium"
+      ? "or install Google Chrome (https://www.google.com/chrome/), or run: brew install --cask chromium"
       : host.platform === "win32"
-        ? "Install Google Chrome (https://www.google.com/chrome/); Microsoft Edge also works"
-        : "Install Chromium or Google Chrome with your package manager (for example: sudo apt install chromium)";
+        ? "or install Google Chrome (https://www.google.com/chrome/); Microsoft Edge also works"
+        : "or install Chromium or Google Chrome with your package manager (for example: sudo apt install chromium)";
   return [
+    `Recommended (repeatable frames): ${headlessShellInstallCommand(playwrightVersion)}`,
     install,
-    "or set SWARMLOOM_CHROME (or pass --chrome) to a Chromium-based browser executable,",
-    "or download Playwright's build: npx playwright install chromium",
+    "or set SWARMLOOM_CHROME (or pass --chrome) to a Chromium-based browser executable.",
   ].join("\n");
 }

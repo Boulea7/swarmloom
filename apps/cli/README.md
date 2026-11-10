@@ -12,8 +12,8 @@ npx swarmloom doctor
 ## Requirements
 
 - Node.js 20 or newer.
-- A Chromium-based browser: Chrome, Chromium, Edge or Brave. The CLI does not download one. It looks in this order: `--chrome`, `SWARMLOOM_CHROME`, `CHROME_PATH`, Chromium commands on `PATH` (Linux), the default install locations on Windows, macOS and Linux, then a browser installed by `npx playwright install chromium`.
-- ffmpeg 4 or newer for MP4, WebM, GIF and WebP. It looks in this order: `--ffmpeg`, `SWARMLOOM_FFMPEG`, `ffmpeg` on `PATH` (older builds are skipped), then the optional `ffmpeg-static` package if you installed it next to `swarmloom` (it is not a dependency; its binaries are GPL). Without ffmpeg, `--format png-seq` still works and writes PNG frames plus `audio.wav`; a plain `swarmloom render <file>` with no `-o` or `--format` falls back to it with a warning.
+- A Chromium-based browser. The CLI never downloads one by itself. The recommended one is Chrome Headless Shell at the revision the installed `playwright-core` pins, so every machine renders the same frames: `npx playwright@<playwright-core version> install chromium-headless-shell` (`swarmloom doctor` prints the exact command). The CLI looks in this order: `--chrome`, `SWARMLOOM_CHROME`, Chrome Headless Shell in Playwright's browser cache (`PLAYWRIGHT_BROWSERS_PATH` is honoured), an installed Chrome, Chromium, Edge or Brave (`CHROME_PATH`, Chromium commands on `PATH` on Linux, the default install locations on Windows, macOS and Linux; snap packages last), then Playwright's full Chromium build.
+- ffmpeg 4 or newer for MP4, WebM, GIF and WebP. SwarmLoom does not ship ffmpeg; it uses the one on the machine, in this order: `--ffmpeg`, `SWARMLOOM_FFMPEG`, `ffmpeg` on `PATH` (older builds are skipped), then an `ffmpeg-static` package only if you installed one yourself. Without ffmpeg, `--format png-seq` still works and writes PNG frames plus `audio.wav`; a plain `swarmloom render <file>` with no `-o` or `--format` falls back to it with a warning.
 
 `swarmloom doctor` shows what was found, which output formats the ffmpeg build can encode, and how to fix anything missing.
 

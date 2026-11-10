@@ -3,10 +3,10 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { expectPositionals, parseCommand, readEnum, readInt, readNumber } from "../args";
 import { locateAssets, requireRenderDir } from "../assets";
-import { playwrightChromiumPath } from "../browser/launch";
 import { findBrowser } from "../discovery/browser";
 import { type FfmpegCaps, findFfmpeg, probeFfmpeg, systemFfmpegDeps } from "../discovery/ffmpeg";
 import { type HostEnv, systemHost } from "../discovery/host";
+import { installedPlaywright } from "../discovery/playwright";
 import { MissingDependencyError, UsageError } from "../errors";
 import { warn } from "../io";
 import {
@@ -51,8 +51,9 @@ Swarm:
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
 
 Programs:
-      --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then auto-detect
-      --ffmpeg <path>     ffmpeg 4+ executable. Default: SWARMLOOM_FFMPEG, then PATH, then ffmpeg-static
+      --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then
+                          Playwright's chromium-headless-shell, then an installed browser
+      --ffmpeg <path>     ffmpeg 4+ executable. Default: SWARMLOOM_FFMPEG, then PATH
 
   -q, --quiet             Errors only: no progress, warnings or summary
       --verbose           Echo the render page's console to stderr
@@ -262,8 +263,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   // Input problems are the user's to fix first; they are reported before missing programs.
   const source = await resolveSource(opts.input, { cwd: ctx.cwd, signal: ctx.signal });
   const host = ctx.host ?? systemHost(ctx.env);
-  const playwrightPath = await playwrightChromiumPath();
-  const browser = findBrowser(host, { flag: opts.chrome, playwrightPath: () => playwrightPath });
+  const browser = findBrowser(host, { flag: opts.chrome, playwright: installedPlaywright() });
   let ffmpeg: { path: string; caps: FfmpegCaps } | undefined;
   if (opts.format !== "png-seq") {
     try {
