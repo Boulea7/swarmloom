@@ -1,7 +1,7 @@
 {
   "name": "@swarmloom/adapter-doc",
   "version": "0.1.0",
-  "description": "Legacy DOC adapter for SwarmLoom: Word 97-2003 binary files parsed to styled paragraphs, then snapshotted.",
+  "description": "Legacy DOC adapter for SwarmLoom: Word 97-2003 binary files parsed in pure JavaScript into page sheets (text mode by default), then snapshotted.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -27,7 +27,9 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@swarmloom/adapter-docx": "workspace:*",
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/snapshot-dom": "workspace:*"
+    "@swarmloom/snapshot-dom": "workspace:*",
+    "cfb": "1.2.2"
   }
 }
