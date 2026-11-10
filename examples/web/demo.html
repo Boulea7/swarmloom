@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loomworks · SwarmLoom snapshot test page</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235B5BF7'/%3E%3Cpath d='M8 22 16 10l8 12' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='22' r='2.5' fill='%23FF4F7B'/%3E%3C/svg%3E">
+<!--
+  SwarmLoom snapshot-dom edge-case page. Self-contained: no external fonts, images or scripts.
+  It exercises an app shell with an inner scroller, a sticky header, floats, grid and flex cards,
+  form controls, a 2D canvas, inline SVG icons, a custom element with an open shadow root,
+  pseudo-element badges, long article text and repeated card and row lists.
+-->
+<style>
+  :root {
+    --ink: #0b0b12;
+    --ink-2: #43435a;
+    --ink-3: #6e6e86;
+    --paper: #fafafc;
+    --card: #ffffff;
+    --line: rgba(11, 11, 18, 0.12);
+    --indigo: #5b5bf7;
+    --rose: #ff4f7b;
+    --teal: #14b8a6;
+    --amber: #f5a524;
+    --orchid: #d946ef;
+    --sky: #3ba7f5;
+    --radius: 14px;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden;
+  }
+  a { color: var(--indigo); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font: 0.9em/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #eef0ff; color: #3a3ad0; padding: 1px 5px; border-radius: 5px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* App shell: fixed sidebar, inner scroller for the content. */
+  .shell { display: grid; grid-template-columns: 240px 1fr; height: 100vh; }
+  .sidebar {
+    background: linear-gradient(180deg, #14142b 0%, #1d1d3f 100%);
+    color: #e6e6f5;
+    padding: 22px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: 0.2px; }
+  .brand svg { width: 30px; height: 30px; }
+  .nav { display: flex; flex-direction: column; gap: 4px; }
+  .nav-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    color: #c9c9e6;
+    font-weight: 500;
+  }
+  .nav-link svg { width: 18px; height: 18px; flex: none; }
+  .nav-link.active { background: rgba(91, 91, 247, 0.22); color: #fff; }
+  .nav-link[data-badge]::after {
+    content: attr(data-badge);
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--rose);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+  }
+  .sidebar-card {
+    margin-top: auto;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-size: 13px;
+    color: #b9b9d8;
+  }
+  .sidebar-card strong { display: block; color: #fff; font-size: 14px; margin-bottom: 4px; }
+
+  .scroller { overflow-y: auto; height: 100vh; position: relative; }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 32px;
+    background: rgba(250, 250, 252, 0.86);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .search { display: block; flex: 1; max-width: 420px; position: relative; }
+  .search form { margin: 0; }
+  .search input {
+    width: 100%;
+    padding: 9px 12px 9px 36px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    font: inherit;
+    color: var(--ink);
+  }
+  .search svg { position: absolute; left: 11px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--ink-3); }
+  .topbar .spacer { flex: 1; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+  .btn.primary { background: var(--indigo); border-color: var(--indigo); color: #fff; box-shadow: 0 6px 16px rgba(91, 91, 247, 0.35); }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--amber), var(--rose)); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); }
+
+  .content { max-width: 980px; margin: 0 auto; padding: 28px 32px 48px; }
+  section { margin: 0 0 40px; }
+  h1 { font-size: 40px; line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.6px; }
+  h2 { font-size: 22px; line-height: 1.3; margin: 0 0 14px; letter-spacing: -0.2px; }
+  h3 { font-size: 16px; line-height: 1.35; margin: 0 0 4px; }
+  .eyebrow { text-transform: uppercase; font-size: 12px; font-weight: 700; letter-spacing: 1.2px; color: var(--indigo); margin: 0 0 6px; }
+  .muted { color: var(--ink-3); }
+
+  .hero {
+    position: relative;
+    padding: 36px;
+    border-radius: 20px;
+    color: #fff;
+    background: radial-gradient(circle at 85% 15%, rgba(255, 79, 123, 0.55), transparent 45%),
+      linear-gradient(135deg, #3b3bd6 0%, #5b5bf7 55%, #8b5cf6 100%);
+    box-shadow: 0 18px 40px rgba(59, 59, 214, 0.28);
+    overflow: hidden;
+  }
+  .hero .eyebrow { color: rgba(255, 255, 255, 0.8); }
+  .hero p.lede { max-width: 560px; font-size: 17px; color: rgba(255, 255, 255, 0.9); margin: 0 0 22px; }
+  .hero .actions { display: flex; gap: 12px; }
+  .hero .btn { border-color: rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.14); color: #fff; }
+  .hero .btn.solid { background: #fff; color: #3b3bd6; border-color: #fff; }
+  .hero .thread { position: absolute; right: -40px; bottom: -60px; width: 260px; height: 260px; border-radius: 50%; border: 18px solid rgba(255, 255, 255, 0.12); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .stat { padding: 18px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); }
+  .stat .value { font-size: 28px; font-weight: 700; letter-spacing: -0.4px; }
+  .stat .label { font-size: 13px; color: var(--ink-3); }
+  .stat .trend::before { content: "\25B2  "; color: var(--teal); font-size: 10px; }
+  .stat .trend { font-size: 12px; color: var(--teal); font-weight: 600; }
+
+  .features { display: flex; gap: 16px; }
+  .feature { flex: 1; padding: 20px; border-radius: var(--radius); background: var(--card); box-shadow: 0 1px 2px rgba(11, 11, 18, 0.06), 0 8px 24px rgba(11, 11, 18, 0.06); }
+  .feature .icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 12px; }
+  .feature .icon svg { width: 22px; height: 22px; }
+  .feature.teal .icon { background: rgba(20, 184, 166, 0.14); color: var(--teal); }
+  .feature.amber .icon { background: rgba(245, 165, 36, 0.16); color: #c27c00; }
+  .feature.orchid .icon { background: rgba(217, 70, 239, 0.14); color: var(--orchid); }
+  .feature ul { margin: 8px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 14px; }
+
+  .article { border-top: 3px solid var(--indigo); padding-top: 22px; }
+  .article p { margin: 0 0 14px; color: var(--ink-2); max-width: 680px; }
+  .article .pull {
+    float: right;
+    width: 240px;
+    margin: 4px 0 16px 28px;
+    padding: 16px 18px;
+    border-left: 4px solid var(--rose);
+    background: #fff4f7;
+    border-radius: 0 12px 12px 0;
+    font-size: 17px;
+    font-style: italic;
+    color: #9c1f45;
+  }
+  .article blockquote { margin: 18px 0; padding: 4px 0 4px 16px; border-left: 3px solid var(--line); color: var(--ink-3); }
+  .clear { clear: both; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+
+  .patterns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .pattern-card { border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); overflow: hidden; }
+  .pattern-card .swatch { height: 92px; }
+  .pattern-card .body { padding: 12px 14px 14px; }
+  .pattern-card .meta { font-size: 12px; color: var(--ink-3); margin: 0; }
+  .chip { display: inline-block; padding: 0 8px; border-radius: 999px; background: #eef0ff; color: #3a3ad0; font-size: 11px; font-weight: 600; line-height: 20px; }
+  .chip::before { content: "#"; opacity: 0.6; }
+
+  .form-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; padding: 24px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field input[type=text], .field input[type=email], .field input[type=password], .field select, .field textarea {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #d3d3e0;
+    border-radius: 10px;
+    background: #fff;
+    font: inherit;
+    color: var(--ink);
+  }
+  .field textarea { min-height: 84px; resize: vertical; }
+  .field.wide { grid-column: 1 / -1; }
+  .checks { display: flex; gap: 18px; align-items: center; font-size: 14px; }
+  .form-actions { grid-column: 1 / -1; display: flex; gap: 12px; justify-content: flex-end; }
+
+  .studio { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+  .canvas-card { padding: 16px; border-radius: var(--radius); background: #14142b; color: #e6e6f5; }
+  .canvas-card canvas { display: block; width: 268px; height: 150px; border-radius: 10px; }
+  .canvas-card p { margin: 10px 0 0; font-size: 13px; color: #b9b9d8; }
+
+  .log { list-style: none; margin: 0; padding: 0; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); }
+  .log li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .log li:last-child { border-bottom: 0; }
+  .log .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .log .who { font-weight: 600; width: 120px; }
+  .log .what { flex: 1; color: var(--ink-2); }
+  .log .when { color: var(--ink-3); font-size: 13px; }
+
+  .footer { padding: 28px 0 8px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 13px; display: flex; justify-content: space-between; }
+  .fab { position: fixed; right: 24px; bottom: 24px; width: 44px; height: 44px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 700; box-shadow: 0 8px 20px rgba(11, 11, 18, 0.3); }
+  .hidden-probe { display: none; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#5B5BF7"/><path d="M8 22 16 10l8 12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="22" r="2.5" fill="#FF4F7B"/></svg>
+      Loomworks
+    </div>
+    <nav class="nav" aria-label="Main">
+      <a class="nav-link active" href="#overview"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg>Overview</a>
+      <a class="nav-link" href="#patterns"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5z"/><path d="m3 13 9 5 9-5"/></svg>Patterns</a>
+      <a class="nav-link" href="#article"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>Journal</a>
+      <a class="nav-link" href="#studio" data-badge="New"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 6 16 2-7 7-2z"/></svg>Studio</a>
+      <a class="nav-link" href="#activity"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Activity</a>
+      <a class="nav-link" href="#settings"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>Settings</a>
+    </nav>
+    <div class="sidebar-card"><strong>Weekly loom</strong>Six new patterns were woven this week. Keep the shuttle moving.</div>
+  </aside>
+
+  <main class="scroller" id="main">
+    <header class="topbar">
+      <search class="search"><form onsubmit="return false">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <label class="sr-only" for="q">Search patterns</label>
+        <input id="q" type="text" placeholder="Search patterns, threads, people">
+      </form></search>
+      <span class="spacer"></span>
+      <button class="btn" type="button">Share</button>
+      <button class="btn primary" type="button">New pattern</button>
+      <span class="avatar" role="img" aria-label="Your profile"></span>
+    </header>
+
+    <div class="content">
+      <section class="hero" id="overview">
+        <p class="eyebrow">Studio overview</p>
+        <h1>Every pattern starts<br>with a single thread.</h1>
+        <p class="lede">Loomworks keeps your drafts, palettes and finished cloth in one place. Pick up a pattern where you left it, or start a fresh warp in seconds.</p>
+        <div class="actions"><a class="btn solid" href="#patterns">Browse patterns</a><a class="btn" href="#article">Read the journal</a></div>
+        <span class="thread"></span>
+      </section>
+
+      <section class="stats" aria-label="Statistics">
+        <div class="stat"><div class="label">Active looms</div><div class="value">128</div><div class="trend">12% this week</div></div>
+        <div class="stat"><div class="label">Threads spun</div><div class="value">48.2k</div><div class="trend">8% this week</div></div>
+        <div class="stat"><div class="label">Patterns shared</div><div class="value">1,904</div><div class="trend">21% this week</div></div>
+        <div class="stat"><div class="label">Weavers online</div><div class="value">342</div><div class="trend">3% this week</div></div>
+      </section>
+
+      <section class="features">
+        <div class="feature teal">
+          <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/><path d="M8 3v18M16 3v18"/></svg></div>
+          <h3>Warp planner</h3>
+          <p class="muted">Lay out the warp before the first pick and see the drawdown update live.</p>
+        </div>
+        <div class="feature amber">
+          <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16" fill="currentColor"/></svg></div>
+          <h3>Palette mixer</h3>
+          <ul><li>Dye lots with exact recipes</li><li>Contrast checks for every pair</li></ul>
+        </div>
+        <div class="feature orchid">
+          <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg></div>
+          <h3>Share a draft</h3>
+          <p class="muted">Send a read-only link. Friends can fork it into their own studio.</p>
+        </div>
+      </section>
+
+      <section class="article" id="article">
+        <p class="eyebrow">From the journal</p>
+        <h2>Why we still count picks by hand</h2>
+        <aside class="pull">The loom is patient. It only asks that you know where the next thread goes.</aside>
+        <p>Every cloth is a record of decisions. Each pass of the shuttle, or <em>pick</em>, lays one weft thread across the warp, and the pattern is nothing more than the order in which warp threads are lifted. Software can draw a drawdown in milliseconds, but counting picks by hand keeps the rhythm of the work in your fingers.</p>
+        <p>We built Loomworks around that rhythm. The planner shows the lift plan as a grid you can edit with the keyboard: arrows move, <code>space</code> toggles a cell, and <code>shift</code> extends a selection across a repeat. Nothing is hidden behind a modal, and every change can be undone.</p>
+        <p>Colour is the second half of the story. A palette is only useful if the threads actually exist, so each swatch links to a dye recipe with weights, temperatures and the lot number of the yarn. When two colours sit side by side in the weave, the mixer warns you if their contrast falls below what most eyes can tell apart.</p>
+        <blockquote>A good draft reads like sheet music: you can hear the pattern before you weave it.</blockquote>
+        <p>Finally, sharing should feel like handing a friend a folded sample. Links open a read-only view with the drawdown, the threading and the treadling side by side. If they like it, they can <a href="#patterns">fork the pattern</a> and start their own variation without touching yours.</p>
+        <p>This page is a test bed as well as a showcase. It mixes floats, grids, flex rows, sticky headers and an app-shell scroller so that every snapshot rule has something to bite on, from pseudo-element badges to the shadow root of a custom element further down.</p>
+        <div class="clear"></div>
+      </section>
+
+      <hr>
+
+      <section id="patterns">
+        <h2>Recent patterns</h2>
+        <div class="patterns">
+          <article class="pattern-card"><div class="swatch" style="background: repeating-linear-gradient(45deg, #5b5bf7 0 10px, #8b8bfa 10px 20px)"></div><div class="body"><h3>Indigo twill</h3><p class="meta">8 shafts · 2/2 twill <span class="chip">wool</span></p></div></article>
+          <article class="pattern-card"><div class="swatch" style="background: repeating-linear-gradient(90deg, #ff6b5b 0 8px, #ffd0c9 8px 16px)"></div><div class="body"><h3>Coral stripes</h3><p class="meta">4 shafts · plain weave <span class="chip">cotton</span></p></div></article>
+          <article class="pattern-card"><div class="swatch" style="background: repeating-linear-gradient(0deg, #14b8a6 0 6px, #9ae6dc 6px 12px)"></div><div class="body"><h3>Teal basket</h3><p class="meta">4 shafts · basket weave <span class="chip">linen</span></p></div></article>
+          <article class="pattern-card"><div class="swatch" style="background: repeating-linear-gradient(-45deg, #f5a524 0 12px, #fde3b0 12px 24px)"></div><div class="body"><h3>Amber herringbone</h3><p class="meta">8 shafts · broken twill <span class="chip">silk</span></p></div></article>
+          <article class="pattern-card"><div class="swatch" style="background: repeating-linear-gradient(60deg, #d946ef 0 9px, #f3c4fa 9px 18px)"></div><div class="body"><h3>Orchid diamonds</h3><p class="meta">12 shafts · point twill <span class="chip">wool</span></p></div></article>
+          <article class="pattern-card"><div class="swatch" style="background: repeating-linear-gradient(120deg, #3ba7f5 0 7px, #c4e5fd 7px 14px)"></div><div class="body"><h3>Sky waffle</h3><p class="meta">8 shafts · waffle weave <span class="chip">cotton</span></p></div></article>
+          <article class="pattern-card"><div class="swatch" style="background: repeating-linear-gradient(30deg, #84cc16 0 10px, #dcf5b4 10px 20px)"></div><div class="body"><h3>Lime huck</h3><p class="meta">6 shafts · huck lace <span class="chip">linen</span></p></div></article>
+          <article class="pattern-card"><div class="swatch" style="background: repeating-linear-gradient(150deg, #9b5cf6 0 11px, #ddc9fd 11px 22px)"></div><div class="body"><h3>Violet overshot</h3><p class="meta">4 shafts · overshot <span class="chip">wool</span></p></div></article>
+        </div>
+      </section>
+
+      <section id="settings">
+        <h2>Pattern details</h2>
+        <form class="form-panel" onsubmit="return false">
+          <div class="field"><label for="f-name">Pattern name</label><input id="f-name" type="text" value="Indigo twill, second draft"></div>
+          <div class="field"><label for="f-mail">Contact e-mail</label><input id="f-mail" type="email" placeholder="weaver@example.org"></div>
+          <div class="field"><label for="f-loom">Loom</label><select id="f-loom"><option>Table loom, 8 shafts</option><option>Floor loom, 12 shafts</option></select></div>
+          <div class="field"><label for="f-key">Studio key</label><input id="f-key" type="password" value="warp-and-weft"></div>
+          <div class="field wide"><label for="f-notes">Notes</label><textarea id="f-notes">Sett at 24 ends per inch. Beat gently on the twill lines.</textarea></div>
+          <div class="field wide checks">
+            <label><input type="checkbox" checked> Public pattern</label>
+            <label><input type="radio" name="unit" checked> Inches</label>
+            <label><input type="radio" name="unit"> Centimetres</label>
+            <input type="range" min="0" max="100" value="60" aria-label="Beat strength">
+          </div>
+          <div class="form-actions"><button class="btn" type="reset">Discard</button><button class="btn primary" type="submit">Save pattern</button></div>
+        </form>
+      </section>
+
+      <section class="studio" id="studio">
+        <div class="canvas-card">
+          <canvas id="weave" width="536" height="300" aria-label="Drawdown preview"></canvas>
+          <p>Drawdown preview, drawn on a 2D canvas.</p>
+        </div>
+        <loom-meter value="72"><span>Weaving progress</span></loom-meter>
+      </section>
+
+      <section id="activity">
+        <h2>Activity</h2>
+        <ul class="log">
+          <li><span class="dot" style="background: #5b5bf7"></span><span class="who">Mira</span><span class="what">forked Indigo twill into a new draft</span><span class="when">2 min ago</span></li>
+          <li><span class="dot" style="background: #ff6b5b"></span><span class="who">Tomas</span><span class="what">added a dye recipe to Coral stripes</span><span class="when">14 min ago</span></li>
+          <li><span class="dot" style="background: #14b8a6"></span><span class="who">Aiko</span><span class="what">commented on the Teal basket threading</span><span class="when">1 h ago</span></li>
+          <li><span class="dot" style="background: #f5a524"></span><span class="who">Lena</span><span class="what">finished weaving Amber herringbone</span><span class="when">3 h ago</span></li>
+          <li><span class="dot" style="background: #d946ef"></span><span class="who">Noor</span><span class="what">shared Orchid diamonds with the guild</span><span class="when">yesterday</span></li>
+          <li><span class="dot" style="background: #3ba7f5"></span><span class="who">Kofi</span><span class="what">started a sampler for Sky waffle</span><span class="when">2 days ago</span></li>
+        </ul>
+      </section>
+
+      <p class="hidden-probe">Hidden probe text that must never be captured.</p>
+      <footer class="footer"><span>Loomworks · a SwarmLoom demo page</span><span>End of the inner scroller</span></footer>
+    </div>
+  </main>
+</div>
+<a class="fab" href="#overview" aria-label="Help">?</a>
+
+<script>
+  // Custom element with an open shadow root and a slot for its light-DOM label.
+  class LoomMeter extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML =
+        "<style>" +
+        ":host{display:block;padding:20px;border-radius:14px;background:#fff;border:1px solid rgba(11,11,18,.12)}" +
+        ".label{font-weight:700;font-size:16px;margin-bottom:12px}" +
+        ".track{height:12px;border-radius:999px;background:#eef0ff;overflow:hidden}" +
+        ".fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#5b5bf7,#ff4f7b)}" +
+        ".note{margin:12px 0 0;color:#6e6e86;font-size:14px}" +
+        "</style>" +
+        '<div class="label"><slot></slot></div>' +
+        '<div class="track"><div class="fill"></div></div>' +
+        '<p class="note">Shadow root says: <b>0%</b> of the bolt is woven.</p>';
+    }
+    connectedCallback() {
+      const value = Math.max(0, Math.min(100, Number(this.getAttribute("value")) || 0));
+      this.shadowRoot.querySelector(".fill").style.width = `${value}%`;
+      this.shadowRoot.querySelector("b").textContent = `${value}%`;
+    }
+  }
+  customElements.define("loom-meter", LoomMeter);
+
+  // Deterministic drawdown: a 2/2 twill on an 8-thread repeat.
+  const canvas = document.getElementById("weave");
+  const ctx = canvas.getContext("2d");
+  const cell = 12;
+  ctx.fillStyle = "#f4f4ff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (let row = 0; row * cell < canvas.height; row++) {
+    for (let col = 0; col * cell < canvas.width; col++) {
+      const up = (col + row) % 4 < 2;
+      ctx.fillStyle = up ? "#5b5bf7" : (row % 8 < 4 ? "#ff4f7b" : "#f5a524");
+      ctx.fillRect(col * cell + 1, row * cell + 1, cell - 2, cell - 2);
+    }
+  }
+</script>
+</body>
+</html>
