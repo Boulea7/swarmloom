@@ -1,20 +1,17 @@
-import type { Adapter, AdapterContext, LoadedSource, SourceInput } from "@swarmloom/core";
-
 /**
- * glTF/GLB/OBJ/STL/PLY -> vertices, edges, patches and materials on the plugin's own WebGL stage.
+ * @swarmloom/adapter-three: 3D models (GLB, glTF, OBJ, STL, PLY) rebuilt vertex by vertex,
+ * edge by edge and patch by patch on the plugin's own WebGL stage.
  *
- * Stub: `load()` rejects until the implementation lands.
+ * Load it through `@swarmloom/formats` so three.js is only fetched when a model is opened.
  */
-export const threeAdapter: Adapter = {
-  id: "three",
-  label: "3D model",
-  extensions: ["glb", "gltf", "obj", "stl", "ply"],
-  mime: ["model/gltf-binary", "model/gltf+json", "model/obj", "model/stl", "model/x-ply"],
-  async load(input: SourceInput, ctx: AdapterContext): Promise<LoadedSource> {
-    void input;
-    void ctx;
-    throw new Error("not implemented yet");
-  },
-};
+
+export { createThreeAdapter, threeAdapter } from "./adapter";
+export { detectFormat, sniffFormat } from "./detect";
+export { ThreeAdapterError, type ThreeErrorCode } from "./errors";
+export type { ThreeAdapterOptions, ThreeFormat, UpAxis } from "./options";
+export { TASK as THREE_TASKS } from "./plan/layers";
+export { PLUGIN_NAME as THREE_PLUGIN_NAME } from "./runtime/plugin";
+
+import { threeAdapter } from "./adapter";
 
 export default threeAdapter;
