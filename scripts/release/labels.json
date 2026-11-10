@@ -1,0 +1,92 @@
+[
+  {
+    "name": "feature",
+    "color": "5b5bf7",
+    "description": "New user-facing capability. Release notes: Features"
+  },
+  {
+    "name": "enhancement",
+    "color": "8b8bf9",
+    "description": "Improvement to an existing capability. Release notes: Features"
+  },
+  {
+    "name": "bug",
+    "color": "d73a4a",
+    "description": "Something does not work as documented. Release notes: Fixes"
+  },
+  {
+    "name": "fix",
+    "color": "e4606d",
+    "description": "Pull request that fixes a bug. Release notes: Fixes"
+  },
+  {
+    "name": "format",
+    "color": "14b8a6",
+    "description": "Document, media or 3D format adapter. Release notes: Formats"
+  },
+  {
+    "name": "format-request",
+    "color": "5eead4",
+    "description": "Request support for a new input format"
+  },
+  {
+    "name": "platform",
+    "color": "3ba7f5",
+    "description": "Browser, operating system, device or shell specific. Release notes: Platforms"
+  },
+  {
+    "name": "performance",
+    "color": "f5a524",
+    "description": "Speed, memory, bundle size or frame time. Release notes: Performance"
+  },
+  {
+    "name": "documentation",
+    "color": "0ea5e9",
+    "description": "Docs, README, translations, examples. Release notes: Documentation"
+  },
+  {
+    "name": "dependencies",
+    "color": "84cc16",
+    "description": "Dependency updates. Release notes: Dependencies"
+  },
+  {
+    "name": "javascript",
+    "color": "bef264",
+    "description": "npm dependency updates (added by Dependabot)"
+  },
+  {
+    "name": "github_actions",
+    "color": "bef264",
+    "description": "GitHub Actions updates (added by Dependabot)"
+  },
+  {
+    "name": "breaking-change",
+    "color": "b60205",
+    "description": "Needs a major version bump or migration notes"
+  },
+  {
+    "name": "security",
+    "color": "9f1239",
+    "description": "Security hardening or fix"
+  },
+  {
+    "name": "needs-triage",
+    "color": "fbca04",
+    "description": "Not yet reviewed by a maintainer"
+  },
+  {
+    "name": "good first issue",
+    "color": "7057ff",
+    "description": "Small, well-scoped task for a first contribution"
+  },
+  {
+    "name": "help wanted",
+    "color": "008672",
+    "description": "Maintainers would welcome a pull request"
+  },
+  {
+    "name": "ignore-for-release",
+    "color": "ededed",
+    "description": "Left out of generated release notes (Version Packages PR, chores)"
+  }
+]

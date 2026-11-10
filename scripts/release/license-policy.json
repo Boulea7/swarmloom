@@ -1,0 +1,32 @@
+{
+  "$comment": "Dependency licence gate (contracts/decisions-v1.md L04). Every installed package must be under an allowed SPDX licence; MPL-2.0 and OFL-1.1 are accepted only for the packages listed here, unmodified. Checked by scripts/release/check-licenses.mjs.",
+  "allowed": [
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "Apache-2.0",
+    "Zlib",
+    "CC0-1.0",
+    "Unlicense",
+    "BlueOak-1.0.0"
+  ],
+  "exceptions": [
+    {
+      "package": "lightningcss",
+      "license": "MPL-2.0",
+      "reason": "CSS minifier pulled in by Vite at build time; used unmodified and not bundled into any SwarmLoom package"
+    },
+    {
+      "package": "lightningcss-*",
+      "license": "MPL-2.0",
+      "reason": "Platform binaries of lightningcss (same terms as lightningcss)"
+    },
+    {
+      "package": "mediabunny",
+      "license": "MPL-2.0",
+      "reason": "In-browser video export (product-spec A.4); shipped unmodified, source location in THIRD_PARTY_NOTICES.md"
+    }
+  ]
+}
