@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fake Studio</title>
+</head>
+<body>
+  <script>
+    // Fake Studio receiver for bookmarklet.browser.test.ts. It asks its opener for the page like the
+    // real Studio and relays what it gets to the test over a BroadcastChannel, then closes.
+    const channel = new BroadcastChannel("swarmloom-bm-test");
+    channel.postMessage({ kind: "open", search: location.search, hasOpener: Boolean(window.opener) });
+    addEventListener("message", (event) => {
+      if (event.source !== window.opener) return;
+      channel.postMessage({ kind: "page", origin: event.origin, data: event.data });
+      window.close();
+    });
+    window.opener?.postMessage("swarmloom:page", "*");
+  </script>
+</body>
+</html>
