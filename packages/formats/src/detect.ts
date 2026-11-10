@@ -1,34 +1,40 @@
 import type { SourceInput } from "@swarmloom/core";
+import { findAscii, hasAscii, hasBytes, u32 } from "./bytes";
+import { readCfb } from "./cfb";
 import { type FormatEntry, formats } from "./registry";
+import { classifyText } from "./text";
+import { readZip, type ZipInfo } from "./zip";
 
-const SNIFF_HEAD = 4096;
-const ZIP_SCAN = 1 << 20;
-
-function startsWith(bytes: Uint8Array, sig: readonly number[], offset = 0): boolean {
-  if (bytes.length < offset + sig.length) return false;
-  return sig.every((b, i) => bytes[offset + i] === b);
+/** Result of inspecting an input: the adapter id (if any) and whether the document is locked. */
+export interface Inspection {
+  id: string | null;
+  /** Password-protected container (encrypted OOXML/ZIP, encrypted Word 97-2003 or PowerPoint). */
+  encrypted: boolean;
 }
 
-function ascii(s: string): number[] {
-  return Array.from(s, (c) => c.charCodeAt(0));
-}
+/** Bytes handed to custom `sniff` hooks and decoded for text heuristics. */
+const SNIFF_HEAD = 16384;
 
-function utf16le(s: string): number[] {
-  return Array.from(s).flatMap((c) => [c.charCodeAt(0), 0]);
-}
-
-function indexOf(bytes: Uint8Array, sig: readonly number[], limit = bytes.length): number {
-  const end = Math.min(bytes.length, limit) - sig.length;
-  outer: for (let i = 0; i <= end; i++) {
-    for (let j = 0; j < sig.length; j++) if (bytes[i + j] !== sig[j]) continue outer;
-    return i;
-  }
-  return -1;
-}
+const ZIP_PARTS: readonly [string, string][] = [
+  ["word/document.xml", "docx"],
+  ["ppt/presentation.xml", "slides"],
+  ["xl/workbook.xml", "sheet"],
+];
+const ZIP_FOLDERS: readonly [string, string][] = [
+  ["word/", "docx"],
+  ["ppt/", "slides"],
+  ["xl/", "sheet"],
+];
+const ODF_TYPES: readonly [string, string][] = [
+  ["application/vnd.oasis.opendocument.presentation", "slides"],
+  ["application/vnd.oasis.opendocument.spreadsheet", "sheet"],
+];
+/** MIME types that say nothing about the content; detection ignores them. */
+const WEAK_MIME = new Set(["", "text/plain", "application/octet-stream", "binary/octet-stream", "application/unknown"]);
 
 function extensionOf(input: SourceInput): string | null {
   let name = input.name;
-  if (!name && input.url) {
+  if (!name && input.url && !/^(?:data|blob):/i.test(input.url)) {
     try {
       name = decodeURIComponent(new URL(input.url, "http://x.invalid/").pathname);
     } catch {
@@ -41,82 +47,118 @@ function extensionOf(input: SourceInput): string | null {
 }
 
 function byExtension(ext: string | null, registry: readonly FormatEntry[]): string | null {
-  if (!ext) return null;
-  return registry.find((f) => f.extensions.includes(ext))?.id ?? null;
+  return ext ? (registry.find((f) => f.extensions.includes(ext))?.id ?? null) : null;
 }
 
-function byMime(type: string | undefined, registry: readonly FormatEntry[]): string | null {
-  const mime = type?.split(";")[0]?.trim().toLowerCase();
-  if (!mime) return null;
-  return registry.find((f) => f.mime.includes(mime))?.id ?? null;
+function mimeOf(type: string | undefined): string {
+  return type?.split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
-/** OOXML/ODF containers: decide by extension first, then by well-known part names. */
-function zipFormat(bytes: Uint8Array, ext: string | null, registry: readonly FormatEntry[]): string | null {
-  const known = byExtension(ext, registry);
-  if (known) return known;
-  if (indexOf(bytes, ascii("word/"), ZIP_SCAN) >= 0) return "docx";
-  if (indexOf(bytes, ascii("ppt/"), ZIP_SCAN) >= 0) return "slides";
-  if (indexOf(bytes, ascii("xl/"), ZIP_SCAN) >= 0) return "sheet";
-  if (indexOf(bytes, ascii("application/vnd.oasis.opendocument.presentation"), 256) >= 0) return "slides";
-  if (indexOf(bytes, ascii("application/vnd.oasis.opendocument.spreadsheet"), 256) >= 0) return "sheet";
+function byMime(mime: string, registry: readonly FormatEntry[]): string | null {
+  return WEAK_MIME.has(mime) ? null : (registry.find((f) => f.mime.includes(mime))?.id ?? null);
+}
+
+function zipFormat(zip: ZipInfo): string | null {
+  for (const [part, id] of ZIP_PARTS) if (zip.names.includes(part)) return id;
+  for (const [folder, id] of ZIP_FOLDERS) if (zip.names.some((n) => n.startsWith(folder))) return id;
+  const mimetype = zip.mimetype;
+  return (mimetype && ODF_TYPES.find(([type]) => mimetype.startsWith(type))?.[1]) || null;
+}
+
+function cfbFormat(names: readonly string[]): string | null {
+  // Encrypted OOXML keeps the real package inside EncryptedPackage: only the file name can tell its type.
+  if (names.includes("EncryptedPackage")) return null;
+  if (names.includes("WordDocument")) return "doc";
+  if (names.includes("Workbook") || names.includes("Book")) return "sheet";
+  if (names.includes("PowerPoint Document")) return "slides";
   return null;
 }
 
-/** Compound File Binary (legacy Office): decide by extension, then by stream names in the directory. */
-function cfbFormat(bytes: Uint8Array, ext: string | null, registry: readonly FormatEntry[]): string | null {
-  const known = byExtension(ext, registry);
-  if (known) return known;
-  if (indexOf(bytes, utf16le("WordDocument")) >= 0) return "doc";
-  if (indexOf(bytes, utf16le("Workbook")) >= 0) return "sheet";
-  if (indexOf(bytes, utf16le("PowerPoint Document")) >= 0) return "slides";
+/** Signatures that identify a format on their own (no container parsing). */
+function magicFormat(b: Uint8Array): string | null {
+  if (findAscii(b, "%PDF-", 0, 1024) >= 0) return "pdf";
+  if (hasAscii(b, "glTF") || hasAscii(b, "ply\n") || hasAscii(b, "ply\r\n")) return "three";
+  // Binary STL: 80-byte header, triangle count, 50 bytes per triangle. The exact length is the signature.
+  if (b.length > 84 && b.length === 84 + u32(b, 80) * 50) return "three";
+  if (hasBytes(b, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image";
+  if (hasBytes(b, [0xff, 0xd8, 0xff])) return "image";
+  if (hasAscii(b, "GIF87a") || hasAscii(b, "GIF89a")) return "image";
+  if (hasAscii(b, "RIFF") && hasAscii(b, "WEBP", 8)) return "image";
+  if (hasAscii(b, "ftyp", 4) && (hasAscii(b, "avif", 8) || hasAscii(b, "avis", 8))) return "image";
+  if (hasAscii(b, "BM") && u32(b, 2) === b.length) return "image";
   return null;
 }
 
-function magicFormat(bytes: Uint8Array, ext: string | null, registry: readonly FormatEntry[]): string | null {
-  if (indexOf(bytes, ascii("%PDF-"), 1024) >= 0) return "pdf";
-  if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) return zipFormat(bytes, ext, registry);
-  if (startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return cfbFormat(bytes, ext, registry);
-  if (startsWith(bytes, ascii("glTF"))) return "three";
-  if (startsWith(bytes, ascii("ply\n")) || startsWith(bytes, ascii("ply\r\n"))) return "three";
-  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image";
-  if (startsWith(bytes, [0xff, 0xd8, 0xff])) return "image";
-  if (startsWith(bytes, ascii("GIF87a")) || startsWith(bytes, ascii("GIF89a"))) return "image";
-  if (startsWith(bytes, ascii("RIFF")) && startsWith(bytes, ascii("WEBP"), 8)) return "image";
-  if (startsWith(bytes, ascii("ftypavif"), 4)) return "image";
-  return null;
+/** Decodes the head of `bytes` as text, or returns undefined when it looks binary. */
+function decodeText(bytes: Uint8Array): string | undefined {
+  const head = bytes.subarray(0, SNIFF_HEAD);
+  if (hasBytes(head, [0xff, 0xfe])) return new TextDecoder("utf-16le").decode(head);
+  if (hasBytes(head, [0xfe, 0xff])) return new TextDecoder("utf-16be").decode(head);
+  let control = 0;
+  for (const byte of head) {
+    if (byte === 0) return undefined;
+    if (byte < 9 || (byte > 13 && byte < 32)) control++;
+  }
+  return control * 10 > head.length ? undefined : new TextDecoder().decode(head);
 }
 
-const SVG_RE = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!doctype svg[^>]*>\s*)?<svg[\s>]/i;
-const HTML_RE = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype html|<html[\s>])/i;
-
-function textFormat(text: string): string | null {
-  const head = text.slice(0, SNIFF_HEAD).replace(/^\uFEFF/, "");
-  if (SVG_RE.test(head)) return "svg";
-  if (HTML_RE.test(head)) return "html";
-  return null;
+function inspectBytes(
+  bytes: Uint8Array,
+  name: string | undefined,
+  ext: string | null,
+  registry: readonly FormatEntry[],
+): Inspection | null {
+  if (hasBytes(bytes, [0x50, 0x4b, 0x03, 0x04]) || hasBytes(bytes, [0x50, 0x4b, 0x05, 0x06])) {
+    const zip = readZip(bytes);
+    return { id: (zip && zipFormat(zip)) ?? byExtension(ext, registry), encrypted: zip?.encrypted ?? false };
+  }
+  const cfb = readCfb(bytes);
+  if (cfb) return { id: cfbFormat(cfb.names) ?? byExtension(ext, registry), encrypted: cfb.encrypted };
+  const magic = magicFormat(bytes);
+  if (magic) return { id: magic, encrypted: false };
+  const head = bytes.subarray(0, SNIFF_HEAD);
+  const sniffed = registry.find((f) => f.sniff?.(head, name));
+  return sniffed ? { id: sniffed.id, encrypted: false } : null;
 }
 
 /**
- * Detects the adapter id for an input, or null when nothing matches.
+ * Inspects an input: adapter id plus the encryption flag of document containers.
  *
- * Order: live element (`dom`) -> magic bytes (PDF, ZIP-based Office, CFB legacy Office, GLB, PLY,
- * PNG/JPEG/GIF/WEBP/AVIF) -> custom `sniff` hooks -> file extension (name or URL path) -> MIME type
- * -> text sniffing (`<svg`, HTML doctype). Binary signatures win over names because they cannot lie;
- * names win over text sniffing because text formats are ambiguous.
+ * Order, from most to least trustworthy:
+ *  1. live element -> `dom`;
+ *  2. containers: ZIP sub-type from entry names (word/, ppt/, xl/, ODF mimetype) and CFB stream
+ *     names (WordDocument, Workbook, PowerPoint Document), falling back to the extension for
+ *     unknown or encrypted packages;
+ *  3. magic bytes (PDF, glTF/GLB, PLY, binary STL, PNG, JPEG, GIF, WebP, AVIF, BMP), then custom
+ *     `sniff` hooks of the registry;
+ *  4. file extension (name, else URL path), then MIME type (generic types such as text/plain and
+ *     application/octet-stream are ignored);
+ *  5. text heuristics on the decoded head (SVG/HTML prologs, glTF JSON, OBJ/STL, Markdown vs code
+ *     vs CSV). Binary content never reaches this step.
+ *
+ * The result is restricted to ids present in `registry`.
+ */
+export function inspect(input: SourceInput, registry: readonly FormatEntry[] = formats): Inspection {
+  const known = (id: string | null): string | null => (id && registry.some((f) => f.id === id) ? id : null);
+  if (input.element) return { id: known("dom"), encrypted: false };
+  const ext = extensionOf(input);
+  const bytes = input.bytes && input.bytes.length > 0 ? input.bytes : undefined;
+  const binary = bytes ? inspectBytes(bytes, input.name, ext, registry) : null;
+  if (binary) return { id: known(binary.id), encrypted: binary.encrypted };
+  const named = byExtension(ext, registry) ?? byMime(mimeOf(input.type), registry);
+  if (named) return { id: named, encrypted: false };
+  const text = input.text ?? (bytes ? decodeText(bytes) : undefined);
+  return { id: known(text === undefined ? null : classifyText(text)), encrypted: false };
+}
+
+/**
+ * Detects the adapter id for an input, or `null` when nothing matches. See {@link inspect} for the
+ * order of checks: binary signatures win over names because they cannot lie; names win over text
+ * heuristics because text formats are ambiguous.
+ *
+ * @param input File bytes, text, URL, MIME type and/or live element.
+ * @param registry Format list to resolve against. Default {@link formats}.
  */
 export async function detect(input: SourceInput, registry: readonly FormatEntry[] = formats): Promise<string | null> {
-  if (input.element) return "dom";
-  const ext = extensionOf(input);
-  if (input.bytes) {
-    const magic = magicFormat(input.bytes, ext, registry);
-    if (magic) return magic;
-    const head = input.bytes.subarray(0, SNIFF_HEAD);
-    const sniffed = registry.find((f) => f.sniff?.(head, input.name));
-    if (sniffed) return sniffed.id;
-  }
-  const named = byExtension(ext, registry) ?? byMime(input.type, registry);
-  if (named) return named;
-  const text = input.text ?? (input.bytes ? new TextDecoder().decode(input.bytes.subarray(0, SNIFF_HEAD)) : undefined);
-  return text ? textFormat(text) : null;
+  return inspect(input, registry).id;
 }
