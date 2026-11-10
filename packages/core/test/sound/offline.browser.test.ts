@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMasterBus } from "../../src/sound/bus";
+import { createMasterBus, LIMIT_CEILING } from "../../src/sound/bus";
 import { MAX_RENDER_MS, renderOffline } from "../../src/sound/offline";
 import { PACK_IDS } from "../../src/sound/packs";
 import { DEFAULT_BPM, quantize } from "../../src/sound/quantize";
@@ -105,6 +105,22 @@ describe("renderOffline", () => {
     await expect(renderOffline([], 100, { sampleRate: 1000 })).rejects.toThrow(RangeError);
     await expect(renderOffline([], 100, { channels: 3 })).rejects.toThrow(RangeError);
     await expect(renderOffline("events" as never, 100)).rejects.toThrow(TypeError);
+  });
+});
+
+describe("master bus limiter", () => {
+  it("keeps a far too loud input below -1 dBFS at full volume", async () => {
+    const ctx = new OfflineAudioContext(1, RATE / 2, RATE);
+    const bus = createMasterBus(ctx, { volume: 1, muted: false });
+    const osc = ctx.createOscillator();
+    osc.frequency.value = 440;
+    const level = ctx.createGain();
+    level.gain.value = 8;
+    osc.connect(level).connect(bus.input);
+    osc.start(0);
+    const out = await ctx.startRendering();
+    expect(peak(out, 0, 500)).toBeGreaterThan(0.5);
+    expect(peak(out, 0, 500)).toBeLessThan(LIMIT_CEILING);
   });
 });
 

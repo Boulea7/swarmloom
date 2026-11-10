@@ -11,7 +11,7 @@ Owner: sound zone. WebAudio synthesis for SwarmLoom: no audio files, every sound
 | `quantize.ts` | Pure eighth-note grid from t = 0 (default 112 BPM). |
 | `policy.ts` | Which events sound and when (shared by live and offline): grid snapping, one `note` per eighth slot (extras dropped, never queued), rate limits for typing and clicks, one-shot de-duplication. |
 | `synth.ts`, `voice.ts` | Voice graphs, voice cap (24, priority-based stealing) and the fixed mixer. |
-| `bus.ts` | Master bus: generated short stereo room (convolver), gentle compressor, volume and mute with `setTargetAtTime` ramps. |
+| `bus.ts` | Master bus: generated short stereo room (convolver), gentle compressor, volume, a soft limiter that keeps samples below -1 dBFS, and mute with `setTargetAtTime` ramps. |
 | `levels.ts`, `microphone.ts` | Smoothed loudness + 16 log-spaced bands for the halo finale; optional microphone input (analysed only, never played back). |
 | `scale.ts`, `packs/` | A major pentatonic material and the packs `studio` (default), `soft`, `8bit`, `silent-keys`. |
 

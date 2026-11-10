@@ -18,6 +18,11 @@ const WET_GAIN = 0.55;
 const ROOM_SEED = 0x51a7;
 const ROOM_SECONDS = 1.3;
 const ROOM_PREDELAY_SECONDS = 0.006;
+/** Output ceiling of the limiter: -1 dBFS, the EBU R128 peak limit. */
+export const LIMIT_CEILING = 10 ** (-1 / 20);
+/** Below this level (-3.1 dBFS) the limiter passes samples unchanged. */
+export const LIMIT_KNEE = 0.7;
+const LIMIT_CURVE_POINTS = 4097;
 
 export interface MasterBusOptions {
   /** 0..1, mapped to gain with a square-law curve (perceptually even steps). */
@@ -32,8 +37,12 @@ export interface MasterBusOptions {
  * Shared output stage of every voice:
  *
  *   input ─────────────────────┐
- *   send ─> room convolver ─> wet ─┴─> compressor ─> volume ─> mute ─> destination
+ *   send ─> room convolver ─> wet ─┴─> compressor ─> volume ─> limiter ─> mute ─> destination
  *                                          └─> tap (analysis, independent of volume and mute)
+ *
+ * The limiter is a soft ceiling after the master volume: transparent up to {@link LIMIT_KNEE},
+ * then a smooth (tanh) knee that keeps every sample below {@link LIMIT_CEILING} (-1 dBFS) even
+ * when many loud voices coincide at full volume.
  */
 export interface MasterBus {
   /** Dry input; voices connect their panned output here. */
@@ -87,6 +96,23 @@ export function createRoomImpulse(ctx: BaseAudioContext): AudioBuffer {
   return impulse;
 }
 
+/**
+ * Transfer curve of the limiter over inputs -1..1 (a WaveShaperNode clamps louder inputs to the
+ * end points): identity up to {@link LIMIT_KNEE}, then a tanh knee with slope 1 at the knee that
+ * approaches {@link LIMIT_CEILING} without reaching it. Odd-symmetric and monotone.
+ */
+export function createLimiterCurve(points = LIMIT_CURVE_POINTS): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(points);
+  const room = LIMIT_CEILING - LIMIT_KNEE;
+  for (let i = 0; i < points; i++) {
+    const x = (i / (points - 1)) * 2 - 1;
+    const level = Math.abs(x);
+    const y = level <= LIMIT_KNEE ? level : LIMIT_KNEE + room * Math.tanh((level - LIMIT_KNEE) / room);
+    curve[i] = Math.sign(x) * y;
+  }
+  return curve;
+}
+
 /** Builds the master bus on `ctx` (realtime or offline). */
 export function createMasterBus(ctx: BaseAudioContext, options: MasterBusOptions): MasterBus {
   const input = ctx.createGain();
@@ -106,6 +132,8 @@ export function createMasterBus(ctx: BaseAudioContext, options: MasterBusOptions
 
   const volume = ctx.createGain();
   volume.gain.value = volumeGain(options.volume);
+  const limiter = ctx.createWaveShaper();
+  limiter.curve = createLimiterCurve();
   const mute = ctx.createGain();
   mute.gain.value = options.muted ? 0 : 1;
 
@@ -113,6 +141,7 @@ export function createMasterBus(ctx: BaseAudioContext, options: MasterBusOptions
   send.connect(room).connect(wet).connect(compressor);
   compressor
     .connect(volume)
+    .connect(limiter)
     .connect(mute)
     .connect(options.destination ?? ctx.destination);
 
