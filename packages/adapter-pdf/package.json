@@ -1,7 +1,7 @@
 {
   "name": "@swarmloom/adapter-pdf",
   "version": "0.1.0",
-  "description": "PDF adapter for SwarmLoom: page bitmaps plus text, image and path items revealed region by region.",
+  "description": "PDF adapter for SwarmLoom: pdf.js page bitmaps revealed region by region (typed text lines, swept figures, drawn rules).",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -24,10 +24,11 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "sample": "node ../../examples/pdf/generate.mjs"
   },
   "dependencies": {
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/snapshot-dom": "workspace:*"
+    "pdfjs-dist": "6.5.438"
   }
 }
