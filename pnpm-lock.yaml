@@ -203,6 +203,15 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@22.20.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(vite@8.3.6(@types/node@22.20.5)(esbuild@0.28.2))
 
+  apps/bookmarklet:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@swarmloom/snapshot-dom':
+        specifier: workspace:*
+        version: link:../../packages/snapshot-dom
+
   apps/cli: {}
 
   apps/extension:

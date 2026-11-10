@@ -1,0 +1,19 @@
+{
+  "name": "@swarmloom/bookmarklet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SwarmLoom bookmarklet: rebuild the current page with a swarm of cursors in browsers without extensions.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./protocol": "./src/protocol.ts"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/snapshot-dom": "workspace:*"
+  }
+}
