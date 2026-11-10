@@ -1,20 +1,17 @@
-import type { Adapter, AdapterContext, LoadedSource, SourceInput } from "@swarmloom/core";
-
 /**
- * PDF (pdf.js) -> page bitmaps plus text/image/path items -> region-by-region reveal.
+ * @swarmloom/adapter-pdf: PDF -> blueprint of page sheets whose text lines, figures and
+ * rules are revealed from one pdf.js bitmap per page (pixel-exact final frame).
  *
- * Stub: `load()` rejects until the implementation lands.
+ * pdfjs-dist is imported on the first load only, together with its worker.
  */
-export const pdfAdapter: Adapter = {
-  id: "pdf",
-  label: "PDF",
-  extensions: ["pdf"],
-  mime: ["application/pdf"],
-  async load(input: SourceInput, ctx: AdapterContext): Promise<LoadedSource> {
-    void input;
-    void ctx;
-    throw new Error("not implemented yet");
-  },
-};
+
+import { createPdfAdapter } from "./adapter";
+
+export { configurePdfAdapter, createPdfAdapter, PDF_ICON } from "./adapter";
+export { PdfAdapterError, type PdfErrorCode } from "./errors";
+export type { PdfAdapterOptions } from "./options";
+
+/** The shared PDF adapter with default options (configure it with {@link configurePdfAdapter}). */
+export const pdfAdapter = createPdfAdapter();
 
 export default pdfAdapter;
