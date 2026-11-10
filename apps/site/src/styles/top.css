@@ -1,0 +1,469 @@
+/* Navigation and hero. */
+.nav {
+  position: sticky;
+  z-index: 50;
+  top: 0;
+  height: var(--nav-h);
+  background: color-mix(in oklab, var(--paper) 84%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(16px);
+  backdrop-filter: saturate(1.6) blur(16px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.3s;
+}
+
+.nav.scrolled {
+  border-bottom-color: var(--line);
+}
+
+.nav-sentinel {
+  position: absolute;
+  top: 0;
+  height: 8px;
+  width: 1px;
+}
+
+.nav-in {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  height: 100%;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+  font-family: var(--font-display);
+  font-size: 1.1875rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.brand .logo-mark {
+  width: 28px;
+  height: 28px;
+}
+
+/* The brand-file variant of the mark. */
+picture.logo-mark {
+  display: block;
+  flex: none;
+}
+
+picture.logo-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.brand-zh {
+  padding-left: 10px;
+  border-left: 1px solid var(--line-2);
+  color: var(--ink-2);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.nav-links ul {
+  display: flex;
+  gap: 4px;
+}
+
+.nav-links a,
+.lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    color 0.2s,
+    background-color 0.2s;
+}
+
+.nav-links a:hover,
+.lang:hover {
+  color: var(--ink);
+  background: var(--paper-2);
+}
+
+.lang {
+  margin-right: -8px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-weight: 600;
+}
+
+/* Hero */
+.hero {
+  position: relative;
+  isolation: isolate;
+  padding-block: clamp(56px, 11vh, 132px) clamp(64px, 12vh, 140px);
+}
+
+/* Warp threads: the loom the swarm weaves on. Purely decorative. */
+.hero::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: clamp(56px, 7vw, 96px) 100%;
+  background-position: center top;
+  -webkit-mask-image: radial-gradient(120% 90% at 70% 40%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(120% 90% at 70% 40%, #000 0%, transparent 72%);
+  opacity: 0.7;
+}
+
+.hero-in {
+  position: relative;
+}
+
+.hero-live {
+  display: block;
+}
+
+.hero-copy {
+  position: relative;
+  /* Room for the parked cursors, inside the box the live element snapshots and clips. */
+  padding: 28px 56px 40px 0;
+}
+
+.hero-title {
+  font-size: clamp(2.6rem, 0.9rem + 5.6vw, 6.4rem);
+  line-height: 1;
+}
+
+.lang-zh .hero-title {
+  font-size: clamp(3rem, 1rem + 7.4vw, 8rem);
+  line-height: 1.06;
+}
+
+.hero-title .line {
+  display: block;
+}
+
+.sel {
+  position: relative;
+  display: inline-block;
+  color: var(--indigo);
+}
+
+.sel-box {
+  position: absolute;
+  inset: 0.04em -0.08em -0.02em;
+  border: 1.5px solid var(--indigo);
+  border-radius: 4px;
+  background: rgb(91 91 247 / 0.08);
+  pointer-events: none;
+}
+
+.sel-box i {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--indigo);
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+.sel-box i:nth-child(1) {
+  top: -5px;
+  left: -5px;
+}
+
+.sel-box i:nth-child(2) {
+  top: -5px;
+  right: -5px;
+}
+
+.sel-box i:nth-child(3) {
+  bottom: -5px;
+  left: -5px;
+}
+
+.sel-box i:nth-child(4) {
+  bottom: -5px;
+  right: -5px;
+}
+
+.caret-anchor {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0.86em;
+  vertical-align: -0.06em;
+}
+
+.caret {
+  position: absolute;
+  left: 0.06em;
+  top: 0;
+  width: max(3px, 0.06em);
+  height: 100%;
+  border-radius: 2px;
+  background: var(--c1);
+}
+
+/* Parked cursors with name tags (tag text from data-name). */
+.deco {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  width: 26px;
+  height: 26px;
+  pointer-events: none;
+}
+
+.deco .cur {
+  width: 26px;
+  height: 26px;
+  overflow: visible;
+}
+
+.deco::after {
+  content: attr(data-name);
+  position: absolute;
+  top: 19px;
+  left: 17px;
+  padding: 3px 7px 3px;
+  border-radius: 6px;
+  background: var(--c);
+  color: var(--ct);
+  font: 600 11px / 1.2 var(--font-body);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgb(11 11 18 / 0.18);
+}
+
+.deco-mira {
+  right: -30px;
+  bottom: -24px;
+}
+
+.deco-kai {
+  left: 0.14em;
+  top: 0.58em;
+}
+
+.deco-lin {
+  position: relative;
+  align-self: flex-end;
+  margin: 0 0 -20px -8px;
+}
+
+.cur-shadow {
+  fill: rgb(11 11 18 / 0.24);
+}
+
+.cur-edge {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2px;
+  stroke-linejoin: round;
+}
+
+.hero-sub {
+  max-width: 30em;
+  margin-top: clamp(22px, 3vw, 36px);
+  color: var(--ink-2);
+  font-size: clamp(1.125rem, 1rem + 0.55vw, 1.4375rem);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.lang-zh .hero-sub {
+  max-width: 26em;
+}
+
+.hero-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 14px;
+  margin-top: clamp(28px, 4vw, 44px);
+}
+
+.cta-label {
+  display: none;
+}
+
+html[data-browser="generic"] .cta-label[data-b="generic"],
+html[data-browser="chrome"] .cta-label[data-b="chrome"],
+html[data-browser="edge"] .cta-label[data-b="edge"],
+html[data-browser="brave"] .cta-label[data-b="brave"],
+html[data-browser="opera"] .cta-label[data-b="opera"],
+html[data-browser="firefox"] .cta-label[data-b="firefox"],
+html[data-browser="safari"] .cta-label[data-b="safari"],
+html[data-browser="studio"] .cta-label[data-b="studio"] {
+  display: inline;
+}
+
+.replay {
+  position: absolute;
+  right: var(--gutter);
+  bottom: -8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition:
+    color 0.2s,
+    box-shadow 0.2s;
+}
+
+.replay:hover {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+
+.replay[hidden] {
+  display: none;
+}
+
+/* While the swarm rebuilds the hero, the parked decorations step aside. */
+.hero[data-live="pending"] [data-deco],
+.hero[data-live="building"] [data-deco] {
+  visibility: hidden;
+}
+
+@media (max-width: 860px) {
+  .nav-anchor {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  :root {
+    --nav-h: 56px;
+  }
+
+  .nav-in {
+    gap: 8px;
+  }
+
+  .nav-links a {
+    padding: 0 10px;
+  }
+
+  /* The label already names the language; the glyph is the first thing to give up width. */
+  .lang .icon {
+    display: none;
+  }
+
+  .brand-zh {
+    display: none;
+  }
+
+  .hero-copy {
+    padding-right: 24px;
+  }
+
+  .hero-ctas .btn {
+    flex: 1 1 auto;
+  }
+
+  /* On phones the headline fills the width; parked cursors would sit on the glyphs. */
+  .deco-lin,
+  .deco-kai {
+    display: none;
+  }
+
+  .replay {
+    position: static;
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 380px) {
+  .nav-links li:not(:last-child) {
+    display: none;
+  }
+}
+
+/* Watch-size viewports: one column, essentials only. */
+@media (max-width: 300px) {
+  :root {
+    --gutter: 14px;
+    --nav-h: 44px;
+  }
+
+  body {
+    font-size: 0.9375rem;
+  }
+
+  .wordmark,
+  .nav-links {
+    display: none;
+  }
+
+  .brand .logo-mark {
+    width: 24px;
+    height: 24px;
+  }
+
+  .lang {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 0.8125rem;
+  }
+
+  .hero {
+    padding-block: 20px 36px;
+  }
+
+  .hero::before {
+    display: none;
+  }
+
+  .hero-copy {
+    padding: 6px 14px 18px 0;
+  }
+
+  .hero-title {
+    font-size: 1.6rem;
+    line-height: 1.04;
+  }
+
+  .lang-zh .hero-title {
+    font-size: 1.85rem;
+  }
+
+  .hero-sub {
+    margin-top: 12px;
+    font-size: 0.9375rem;
+  }
+
+  .hero-ctas {
+    margin-top: 16px;
+    gap: 8px;
+  }
+
+  .btn {
+    --btn-h: 42px;
+    width: 100%;
+    padding: 0 14px;
+    font-size: 0.9375rem;
+  }
+
+  .deco,
+  .sel-box i {
+    display: none;
+  }
+}

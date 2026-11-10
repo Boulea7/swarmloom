@@ -1,0 +1,569 @@
+/*
+ * SVG build scenes (src/render/art/scene.ts). The markup is the finished drawing; these rules only
+ * add motion while a scene is in view. Timing contract with scene.ts:
+ *   --scene-cycle = SCENE_CYCLE (10s)
+ *   slot k gesture = SLOT_START[k] .. SLOT_START[k] + SLOT_LENGTH (6/14.5/23/31.5% + 4.5%)
+ *   piece reveal starts at --d and must finish before the cycle wraps (collapse after 89%)
+ *   sl-win<k> opens at SLOT_START[k] so pieces never flash before their delay.
+ */
+:root {
+  --scene-cycle: 10s;
+}
+
+/* The film placeholder and the device screens enter mid-build. */
+.scene-film,
+.device-art {
+  --scene-offset: 2.6s;
+}
+
+.scene {
+  overflow: hidden;
+}
+
+.scene .sc-cur {
+  transform: translate(var(--px), var(--py));
+}
+
+.cur-tag text {
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Tones */
+.tf-sheet {
+  fill: var(--sc-sheet);
+}
+.tf-well {
+  fill: var(--sc-well);
+}
+.tf-ink1 {
+  fill: var(--sc-ink1);
+}
+.tf-ink2 {
+  fill: var(--sc-ink2);
+}
+.tf-ink3 {
+  fill: var(--sc-ink3);
+}
+.tf-line {
+  fill: var(--sc-line);
+}
+.tf-acc {
+  fill: var(--sc-acc);
+}
+.tf-ide {
+  fill: var(--sc-ide);
+}
+.tf-ide2 {
+  fill: var(--sc-ide2);
+}
+.tf-idefg {
+  fill: var(--sc-idefg);
+}
+.ts-sheet,
+.ts-well,
+.ts-ink1,
+.ts-ink2,
+.ts-ink3,
+.ts-line,
+.ts-acc,
+.ts-ide,
+.ts-ide2,
+.ts-idefg {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ts-sheet {
+  stroke: var(--sc-sheet);
+}
+.ts-well {
+  stroke: var(--sc-well);
+}
+.ts-ink1 {
+  stroke: var(--sc-ink1);
+}
+.ts-ink2 {
+  stroke: var(--sc-ink2);
+}
+.ts-ink3 {
+  stroke: var(--sc-ink3);
+}
+.ts-line {
+  stroke: var(--sc-line);
+}
+.ts-acc {
+  stroke: var(--sc-acc);
+}
+.ts-idefg {
+  stroke: var(--sc-idefg);
+}
+.tf-c0 {
+  fill: var(--c0);
+}
+.ts-c0 {
+  fill: none;
+  stroke: var(--c0);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c1 {
+  fill: var(--c1);
+}
+.ts-c1 {
+  fill: none;
+  stroke: var(--c1);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c2 {
+  fill: var(--c2);
+}
+.ts-c2 {
+  fill: none;
+  stroke: var(--c2);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c3 {
+  fill: var(--c3);
+}
+.ts-c3 {
+  fill: none;
+  stroke: var(--c3);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c4 {
+  fill: var(--c4);
+}
+.ts-c4 {
+  fill: none;
+  stroke: var(--c4);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c5 {
+  fill: var(--c5);
+}
+.ts-c5 {
+  fill: none;
+  stroke: var(--c5);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c6 {
+  fill: var(--c6);
+}
+.ts-c6 {
+  fill: none;
+  stroke: var(--c6);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c7 {
+  fill: var(--c7);
+}
+.ts-c7 {
+  fill: none;
+  stroke: var(--c7);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c8 {
+  fill: var(--c8);
+}
+.ts-c8 {
+  fill: none;
+  stroke: var(--c8);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c9 {
+  fill: var(--c9);
+}
+.ts-c9 {
+  fill: none;
+  stroke: var(--c9);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c10 {
+  fill: var(--c10);
+}
+.ts-c10 {
+  fill: none;
+  stroke: var(--c10);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-c11 {
+  fill: var(--c11);
+}
+.ts-c11 {
+  fill: none;
+  stroke: var(--c11);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Device drawings */
+.dv-shell {
+  fill: var(--dv-shell);
+}
+.dv-screen {
+  fill: var(--sc-sheet);
+}
+.dv-base {
+  fill: var(--dv-base);
+}
+.dv-edge {
+  fill: var(--dv-edge);
+}
+.dv-band {
+  fill: var(--dv-edge);
+}
+.dv-island {
+  fill: #05050a;
+}
+.dv-crease {
+  stroke: rgb(127 127 150 / 0.35);
+  stroke-width: 1.5;
+}
+
+/* How-it-works drawings */
+.hw-sheet {
+  fill: var(--sc-sheet);
+  stroke: var(--sc-line);
+  stroke-width: 1.5;
+}
+.hw-glass {
+  fill: rgb(91 91 247 / 0.07);
+  stroke: rgb(91 91 247 / 0.55);
+  stroke-width: 1.5;
+}
+.hw-ink3 {
+  fill: var(--sc-ink3);
+}
+.hw-acc-f {
+  fill: var(--c1);
+}
+.hw-ink1-s {
+  stroke: var(--sc-ink1);
+  fill: none;
+}
+.hw-track {
+  stroke: var(--sc-line);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 2 5;
+}
+.hw-playhead line {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.hw-playhead circle {
+  fill: var(--ink);
+}
+.hw-film {
+  fill: #1a1a26;
+}
+.hw-holes rect {
+  fill: #0b0b12;
+}
+.hw-frame {
+  fill: #2a2a3c;
+}
+.hw-play {
+  fill: #fff;
+}
+.hw-bar {
+  fill: var(--c2);
+}
+.how-export .hw-film {
+  fill: #1d1d2a;
+}
+
+/* Motion. Only when a scene is visible, scripts run and the visitor has not asked for less. */
+@keyframes sl-root {
+  0%,
+  90% {
+    opacity: 1;
+  }
+  95%,
+  99% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes sl-cur {
+  0% {
+    transform: translate(var(--x0), var(--y0));
+  }
+  6% {
+    transform: translate(var(--sx0), var(--sy0));
+  }
+  10.5% {
+    transform: translate(var(--ex0), var(--ey0));
+  }
+  14.5% {
+    transform: translate(var(--sx1), var(--sy1));
+  }
+  19% {
+    transform: translate(var(--ex1), var(--ey1));
+  }
+  23% {
+    transform: translate(var(--sx2), var(--sy2));
+  }
+  27.5% {
+    transform: translate(var(--ex2), var(--ey2));
+  }
+  31.5% {
+    transform: translate(var(--sx3), var(--sy3));
+  }
+  36% {
+    transform: translate(var(--ex3), var(--ey3));
+  }
+  42%,
+  89% {
+    transform: translate(var(--px), var(--py));
+  }
+  97%,
+  100% {
+    transform: translate(var(--x0), var(--y0));
+  }
+}
+
+@keyframes sl-win0 {
+  0%,
+  5.99% {
+    visibility: hidden;
+  }
+  6%,
+  96% {
+    visibility: visible;
+  }
+  96.01%,
+  100% {
+    visibility: hidden;
+  }
+}
+
+@keyframes sl-win1 {
+  0%,
+  14.49% {
+    visibility: hidden;
+  }
+  14.5%,
+  96% {
+    visibility: visible;
+  }
+  96.01%,
+  100% {
+    visibility: hidden;
+  }
+}
+
+@keyframes sl-win2 {
+  0%,
+  22.99% {
+    visibility: hidden;
+  }
+  23%,
+  96% {
+    visibility: visible;
+  }
+  96.01%,
+  100% {
+    visibility: hidden;
+  }
+}
+
+@keyframes sl-win3 {
+  0%,
+  31.49% {
+    visibility: hidden;
+  }
+  31.5%,
+  96% {
+    visibility: visible;
+  }
+  96.01%,
+  100% {
+    visibility: hidden;
+  }
+}
+
+@keyframes pc-gx {
+  0% {
+    transform: scaleX(0);
+  }
+  4.5%,
+  89% {
+    transform: none;
+  }
+  89.01%,
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes pc-type {
+  0% {
+    transform: scaleX(0);
+    animation-timing-function: steps(7, end);
+  }
+  4.5%,
+  89% {
+    transform: none;
+  }
+  89.01%,
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes pc-gy {
+  0% {
+    transform: scaleY(0);
+  }
+  4.5%,
+  89% {
+    transform: none;
+  }
+  89.01%,
+  100% {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes pc-pop {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  3% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  4.5%,
+  89% {
+    transform: none;
+    opacity: 1;
+  }
+  89.01%,
+  100% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+}
+
+@keyframes pc-fade {
+  0% {
+    opacity: 0;
+  }
+  4.5%,
+  89% {
+    opacity: 1;
+  }
+  89.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes pc-draw {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  4.5%,
+  89% {
+    stroke-dashoffset: 0;
+  }
+  89.01%,
+  100% {
+    stroke-dashoffset: 1;
+  }
+}
+
+.pc {
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+.pc-gy {
+  transform-origin: center top;
+  --rv: pc-gy;
+}
+.pc-rise {
+  transform-origin: center bottom;
+  --rv: pc-gy;
+}
+.pc-pop {
+  transform-origin: center;
+  --rv: pc-pop;
+}
+.pc-gx {
+  --rv: pc-gx;
+}
+.pc-type {
+  --rv: pc-type;
+}
+.pc-fade {
+  --rv: pc-fade;
+}
+.pc-draw {
+  --rv: none;
+}
+.s0 {
+  --win: sl-win0;
+}
+.s1 {
+  --win: sl-win1;
+}
+.s2 {
+  --win: sl-win2;
+}
+.s3 {
+  --win: sl-win3;
+}
+
+/*
+ * --scene-offset starts a scene part-way through its cycle, so a large scene enters already
+ * half-built instead of blank. Every delay of the scene is shifted by the same amount.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-scene].in-view .sc-root {
+    animation: sl-root var(--scene-cycle) linear calc(0s - var(--scene-offset, 0s)) infinite;
+  }
+
+  .js [data-scene].in-view .sc-cur {
+    animation: sl-cur var(--scene-cycle) cubic-bezier(0.45, 0.05, 0.3, 1) calc(var(--cd, 0s) - var(--scene-offset, 0s))
+      infinite both;
+  }
+
+  .js [data-scene].in-view .pc {
+    animation-name: var(--rv), var(--win);
+    animation-duration: var(--scene-cycle), var(--scene-cycle);
+    animation-delay: calc(var(--d, 0s) - var(--scene-offset, 0s)), calc(0s - var(--scene-offset, 0s));
+    animation-timing-function: cubic-bezier(0.3, 0.7, 0.3, 1), linear;
+    animation-iteration-count: infinite;
+    animation-fill-mode: both;
+  }
+
+  .js [data-scene].in-view .pc-draw > * {
+    stroke-dasharray: 1 1;
+    animation: pc-draw var(--scene-cycle) cubic-bezier(0.4, 0.2, 0.3, 1) calc(var(--d, 0s) - var(--scene-offset, 0s))
+      infinite both;
+  }
+
+  .js [data-scene].paused .sc-root,
+  .js [data-scene].paused .sc-cur,
+  .js [data-scene].paused .pc,
+  .js [data-scene].paused .pc-draw > * {
+    animation-play-state: paused;
+  }
+}
