@@ -4,6 +4,7 @@ import { mountStudio, type StudioApp } from "../src/app";
 import {
   type ExampleEntry,
   type ExampleManifest,
+  entriesForLocale,
   isHousekeeping,
   planExamples,
   sortEntries,
@@ -65,7 +66,8 @@ describe("Studio in a browser", () => {
 
     expect(MANIFEST.entries.length).toBeGreaterThanOrEqual(4);
     const ids = [...root.querySelectorAll<HTMLAnchorElement>(".card")].map((card) => card.dataset.example);
-    expect(ids).toEqual(MANIFEST.entries.map((e) => e.id));
+    // One card per example group: language and file-type variants share a card.
+    expect(ids).toEqual(entriesForLocale(MANIFEST, "en").map((e) => e.id));
   });
 
   it("opens an example into the inline stage", async () => {

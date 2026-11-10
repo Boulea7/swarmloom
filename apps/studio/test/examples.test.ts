@@ -11,7 +11,9 @@ describe("examples manifest", () => {
       expect.arrayContaining(["image/scene.webp", "pdf/brochure.pdf", "svg/chart.svg", "svg/emblem.svg"]),
     );
     expect(new Set(manifest.entries.map((e) => e.id)).size).toBe(paths.length);
-    expect(files.filter((f) => /\.(mjs|md)$/.test(f))).toEqual([]);
+    // Generators (.mjs) and folder notes (README.md, SOURCES.md) stay out; Markdown samples ship.
+    expect(files.filter((f) => /\.mjs$|(^|\/)(readme|sources)\.md$/i.test(f))).toEqual([]);
+    expect(files).toContain("markdown/welcome.en.md");
   });
 
   it.each([
