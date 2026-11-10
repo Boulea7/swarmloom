@@ -1,33 +1,19 @@
-import type { SourceInput } from "@swarmloom/core";
+/**
+ * @swarmloom/element: the `<swarm-loom>` Web Component.
+ *
+ * Importing this module has no side effects and touches no DOM (safe in SSR); call {@link define}
+ * in the browser to register the tag. The CDN build `dist/swarm-loom.global.js` registers it itself.
+ */
+
+import { SwarmLoomElement } from "./element";
+
+export type { ElementConfig } from "./attributes";
+export { readConfig } from "./attributes";
+export { SwarmLoomElement, type SwarmLoomEventDetails } from "./element";
+export { configure, type ElementRuntime, runtime } from "./runtime";
 
 /** Default tag name registered by {@link define}. */
 export const TAG_NAME = "swarm-loom";
-
-// Keep the module importable where HTMLElement does not exist (SSR, Node without a DOM).
-const BaseElement: typeof HTMLElement =
-  typeof HTMLElement === "undefined" ? (class {} as unknown as typeof HTMLElement) : HTMLElement;
-
-/**
- * `<swarm-loom>`: plays a SwarmLoom build of a file or URL inside the page.
- *
- * Planned attributes: `src`, `type`, `agents`, `speed`, `seed`, `autoplay`, `loop`, `controls`,
- * `theme`, `labels`. Stub: no rendering yet.
- */
-export class SwarmLoomElement extends BaseElement {
-  static get observedAttributes(): string[] {
-    return ["src", "type", "agents", "speed", "seed", "autoplay", "loop", "controls", "theme", "labels"];
-  }
-
-  /**
-   * Loads a source (detected through `@swarmloom/formats`) and starts playback when `autoplay` is set.
-   *
-   * @throws Error "not implemented yet" until the element lands.
-   */
-  async load(input: SourceInput): Promise<void> {
-    void input;
-    throw new Error("not implemented yet");
-  }
-}
 
 /**
  * Registers {@link SwarmLoomElement} as `<swarm-loom>`. Safe to call more than once.
