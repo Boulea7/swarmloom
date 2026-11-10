@@ -6,8 +6,8 @@ Owner: ui zone. The built-in toolbar (`createControls`, see `../internal.ts` "ui
 | --- | --- |
 | `index.ts` | `createControls`: mounts the toolbar into `Stage.uiLayer`, wires player events, pointer, resize and keyboard |
 | `view-model.ts` | Pure state: which controls exist per player phase, labels, progress text and ETA |
-| `actions.ts` | Runs toolbar commands against the `Player` (buttons and shortcuts share it) |
-| `keyboard.ts` | Shortcut map (Esc, Space, M, T, 1/2/3, R, L) with modifier, IME, repeat and text-field guards |
+| `actions.ts` | Runs toolbar commands against the `Player` (buttons and shortcuts share it); finish now calls the optional `Player.finish()` |
+| `keyboard.ts` | Shortcut map (Esc, Space, M, T, 1/2/3, R, L, F) with modifier, IME, repeat and text-field guards |
 | `toolbar.ts` | DOM built once inside its own shadow root, updated by compare-before-write |
 | `styles.ts`, `icons.ts` | Glassy pill styles (light/dark, compact, reduced motion, forced colours) and original 1.5 px line icons |
 | `autohide.ts` | Hide after ~2.5 s without pointer activity while building; tap on the stage toggles on touch |

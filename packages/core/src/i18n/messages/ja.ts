@@ -18,6 +18,7 @@ export const ja: Catalog = {
   "toolbar.goLiveHint": "最終結果を表示",
   "toolbar.close": "閉じる",
   "toolbar.record": "録画",
+  "toolbar.finish": "すぐに完成",
   "toolbar.shortcut": "{label}（{key}）",
   "key.space": "スペース",
   "key.esc": "Esc",

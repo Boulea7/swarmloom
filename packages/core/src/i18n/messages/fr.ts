@@ -18,6 +18,7 @@ export const fr: Catalog = {
   "toolbar.goLiveHint": "Afficher le résultat final",
   "toolbar.close": "Fermer",
   "toolbar.record": "Enregistrer",
+  "toolbar.finish": "Terminer maintenant",
   "toolbar.shortcut": "{label} ({key})",
   "key.space": "Espace",
   "key.esc": "Échap",

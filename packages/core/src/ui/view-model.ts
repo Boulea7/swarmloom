@@ -56,6 +56,7 @@ export type Command =
   | { kind: "speed"; speed: number }
   | { kind: "replay" }
   | { kind: "goLive" }
+  | { kind: "finish" }
   | { kind: "record" };
 
 export type CommandKind = Command["kind"];
@@ -68,6 +69,7 @@ const AVAILABLE: Readonly<Record<CommandKind, ReadonlySet<Phase>>> = {
   speed: new Set(["idle", "running", "paused"]),
   replay: new Set(["running", "paused", "done", "live"]),
   goLive: new Set(["running", "paused", "done"]),
+  finish: new Set(["running", "paused"]),
   record: new Set(["idle", "running", "paused", "done"]),
 };
 
@@ -86,6 +88,8 @@ export interface ViewInput {
   soundLocked: boolean;
   compact: boolean;
   canRecord: boolean;
+  /** The player offers finish() (complete the build now). */
+  canFinish: boolean;
 }
 
 export interface ToolbarView {
@@ -102,6 +106,7 @@ export interface ToolbarView {
   tour: { visible: boolean; on: boolean };
   replay: boolean;
   goLive: { visible: boolean; primary: boolean };
+  finish: boolean;
   record: boolean;
   close: boolean;
   /** Phases in which the toolbar never auto-hides. */
@@ -156,6 +161,7 @@ export function buildView(input: ViewInput, t: Translate): ToolbarView {
     // While building, replay and go live are secondary: keyboard-only on narrow screens.
     replay: isAvailable("replay", phase) && !(active && input.compact),
     goLive: { visible: isAvailable("goLive", phase) && !(active && input.compact), primary: phase === "done" },
+    finish: input.canFinish && isAvailable("finish", phase) && !input.compact,
     record: input.canRecord && isAvailable("record", phase),
     close: isAvailable("close", phase),
     pinned: phase !== "running" || soundHint,

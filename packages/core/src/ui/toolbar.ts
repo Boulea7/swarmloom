@@ -31,6 +31,7 @@ export interface ToolbarText {
   replay: string;
   goLive: string;
   goLiveHint: string;
+  finish: string;
   close: string;
   record: string;
   keySpace: string;
@@ -63,6 +64,7 @@ export interface ToolbarDom {
   tour: LabelledButton;
   replay: LabelledButton;
   goLive: LabelledButton;
+  finish: Button;
   record: Button;
   close: Button;
   separator: HTMLElement;
@@ -148,6 +150,7 @@ export function buildToolbar(doc: Document, chrome: "light" | "dark"): ToolbarDo
   const tour = labelled(doc, "toggleTour", "T", createIcon(doc, "tour"));
   const replay = labelled(doc, "replay", "R", createIcon(doc, "replay"));
   const goLive = labelled(doc, "goLive", "L", createIcon(doc, "goLive"));
+  const finish = button(doc, "finish", "F", [createIcon(doc, "finish")]);
   const record = button(doc, "record", "", [createIcon(doc, "record")]);
   const close = button(doc, "close", "Escape", [createIcon(doc, "close")]);
   const separator = h(doc, "span", { class: "sep", "aria-hidden": "true" });
@@ -159,6 +162,7 @@ export function buildToolbar(doc: Document, chrome: "light" | "dark"): ToolbarDo
     speedCycle.el,
     sound.el,
     tour.el,
+    finish.el,
     replay.el,
     goLive.el,
     record.el,
@@ -184,6 +188,7 @@ export function buildToolbar(doc: Document, chrome: "light" | "dark"): ToolbarDo
     tour,
     replay,
     goLive,
+    finish,
     record,
     close,
     separator,
@@ -262,6 +267,9 @@ export function renderToolbar(dom: ToolbarDom, view: ToolbarView, text: ToolbarT
   // While building, go live is a quiet icon; once done it becomes the labelled primary action.
   setHidden(dom.goLive.label, !view.goLive.primary);
 
+  setHidden(dom.finish.el, !view.finish);
+  name(dom.finish, text.finish, text.shortcut(text.finish, "F"));
+
   setHidden(dom.record.el, !view.record);
   name(dom.record, text.record, text.record);
 
@@ -278,6 +286,15 @@ export function formatSpeed(speed: number): string {
 export function focusableItems(dom: ToolbarDom): HTMLElement[] {
   const items: HTMLElement[] = [dom.ring.el, dom.play.el];
   if (!dom.speedGroup.hidden) items.push(...dom.speedRadios);
-  items.push(dom.speedCycle.el, dom.sound.el, dom.tour.el, dom.replay.el, dom.goLive.el, dom.record.el, dom.close.el);
+  items.push(
+    dom.speedCycle.el,
+    dom.sound.el,
+    dom.tour.el,
+    dom.finish.el,
+    dom.replay.el,
+    dom.goLive.el,
+    dom.record.el,
+    dom.close.el,
+  );
   return items.filter((el) => !el.hidden);
 }

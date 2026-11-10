@@ -18,6 +18,7 @@ export const ko: Catalog = {
   "toolbar.goLiveHint": "최종 결과 보기",
   "toolbar.close": "닫기",
   "toolbar.record": "녹화",
+  "toolbar.finish": "바로 완성",
   "toolbar.shortcut": "{label} ({key})",
   "key.space": "스페이스",
   "key.esc": "Esc",

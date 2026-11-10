@@ -14,6 +14,7 @@ describe("commandForKey", () => {
     [{ key: "2" }, { kind: "speed", speed: 2 }],
     [{ key: "r" }, { kind: "replay" }],
     [{ key: "l" }, { kind: "goLive" }],
+    [{ key: "f" }, { kind: "finish" }],
     // Non-Latin layouts fall back to the physical key.
     [{ key: "ь", code: "KeyM" }, { kind: "toggleSound" }],
     [
@@ -88,8 +89,22 @@ describe("createControls", () => {
     expect(player.replay).toHaveBeenCalledTimes(1);
     press("l");
     expect(player.goLive).toHaveBeenCalledTimes(1);
+    // Without Player.finish() the F key is not consumed.
+    expect(press("f").defaultPrevented).toBe(false);
     press("Escape");
     expect(player.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers finish now while building when the player supports it", () => {
+    const fake = createFakePlayer("building");
+    const finish = vi.fn();
+    const { shadow } = mount({ player: Object.assign(fake.player, { finish }) });
+    const button = shadow.querySelector<HTMLButtonElement>('[data-cmd="finish"]');
+    expect(button?.hidden).toBe(false);
+    expect(button?.getAttribute("aria-label")).toBe("Finish now");
+    expect(press("f").defaultPrevented).toBe(true);
+    button?.click();
+    expect(finish).toHaveBeenCalledTimes(2);
   });
 
   it("ignores shortcuts in text fields, with modifiers, and when the phase does not offer them", () => {

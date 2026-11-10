@@ -18,6 +18,7 @@ export const zhCN: Catalog = {
   "toolbar.goLiveHint": "显示最终结果",
   "toolbar.close": "关闭",
   "toolbar.record": "录制",
+  "toolbar.finish": "立即完成",
   "toolbar.shortcut": "{label}（{key}）",
   "key.space": "空格",
   "key.esc": "Esc",

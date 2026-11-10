@@ -18,6 +18,7 @@ export const zhTW: Catalog = {
   "toolbar.goLiveHint": "顯示最終結果",
   "toolbar.close": "關閉",
   "toolbar.record": "錄製",
+  "toolbar.finish": "立即完成",
   "toolbar.shortcut": "{label}（{key}）",
   "key.space": "空白鍵",
   "key.esc": "Esc",

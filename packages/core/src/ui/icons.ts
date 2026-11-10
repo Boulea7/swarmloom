@@ -39,6 +39,11 @@ export const ICONS = {
     ["circle", { cx: 12, cy: 12, r: 7.25 }],
     ["circle", { cx: 12, cy: 12, r: 3.25, fill: "currentColor", stroke: "none" }],
   ],
+  finish: [
+    ["path", { d: "M5.5 7.5l4.5 4.5-4.5 4.5" }],
+    ["path", { d: "M11 7.5l4.5 4.5-4.5 4.5" }],
+    ["path", { d: "M18.5 6.75v10.5" }],
+  ],
   close: [["path", { d: "M7.25 7.25l9.5 9.5M16.75 7.25l-9.5 9.5" }]],
   check: [["path", { d: "M7.5 12.5l3 3 6-7" }]],
 } as const satisfies Record<string, readonly IconNode[]>;

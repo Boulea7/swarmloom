@@ -5,8 +5,11 @@
 import type { Player } from "../types";
 import { type Command, DEFAULT_SETTINGS, type FollowMode, isAvailable, phaseOf, type Settings } from "./view-model";
 
+/** Player.finish() is optional: engines that cannot complete a build early leave it out. */
+type FinishablePlayer = Player & { finish?: () => void };
+
 export interface ActionDeps {
-  player: Player;
+  player: FinishablePlayer;
   /** Settings source of truth when the engine provides one. */
   settings?: () => Settings;
   soundLocked(): boolean;
@@ -85,6 +88,10 @@ export function createActions(deps: ActionDeps): Actions {
         return true;
       case "goLive":
         player.goLive();
+        return true;
+      case "finish":
+        if (typeof player.finish !== "function") return false;
+        player.finish();
         return true;
       case "record":
         if (!deps.onRecord) return false;

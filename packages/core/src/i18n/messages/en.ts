@@ -23,6 +23,7 @@ export const en = {
   "toolbar.goLiveHint": "Show the final result",
   "toolbar.close": "Close",
   "toolbar.record": "Record",
+  "toolbar.finish": "Finish now",
   "toolbar.shortcut": "{label} ({key})",
   "key.space": "Space",
   "key.esc": "Esc",

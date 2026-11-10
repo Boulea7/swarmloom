@@ -1,5 +1,6 @@
 /**
- * Keyboard shortcuts: Esc close, Space pause/resume, M sound, T tour, 1/2/3 speed, R replay, L go live.
+ * Keyboard shortcuts: Esc close, Space pause/resume, M sound, T tour, 1/2/3 speed, R replay, L go live,
+ * F finish now.
  *
  * Shortcuts are skipped when Ctrl/Alt/Meta/Shift is held, during IME composition, on auto-repeat,
  * while a text field has focus, and (for Space) while a button or link has focus so its own
@@ -27,6 +28,7 @@ const LETTERS: Readonly<Record<string, Command>> = {
   t: { kind: "toggleTour" },
   r: { kind: "replay" },
   l: { kind: "goLive" },
+  f: { kind: "finish" },
 };
 
 /** Physical keys, used when the layout produces a non-Latin character (Cyrillic, Greek...). */
@@ -35,6 +37,7 @@ const CODES: Readonly<Record<string, Command>> = {
   KeyT: LETTERS.t as Command,
   KeyR: LETTERS.r as Command,
   KeyL: LETTERS.l as Command,
+  KeyF: LETTERS.f as Command,
   Digit1: { kind: "speed", speed: 1 },
   Digit2: { kind: "speed", speed: 2 },
   Digit3: { kind: "speed", speed: 3 },

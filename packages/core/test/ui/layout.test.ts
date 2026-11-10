@@ -93,6 +93,7 @@ describe("buildView", () => {
     soundLocked: false,
     compact: false,
     canRecord: false,
+    canFinish: true,
   };
 
   it("shows build controls while running and go live as the primary action when done", () => {
@@ -102,10 +103,14 @@ describe("buildView", () => {
     expect(running).toMatchObject({ play: { visible: true, icon: "pause" }, speed: { visible: true }, pinned: false });
     expect(running.goLive).toEqual({ visible: true, primary: false });
     expect(buildView({ ...base, compact: true }, t)).toMatchObject({ replay: false, goLive: { visible: false } });
+    // Finish now only exists while building, and only when the player offers it.
+    expect(running.finish).toBe(true);
+    expect(buildView({ ...base, canFinish: false }, t).finish).toBe(false);
 
     const done = buildView({ ...base, state: "done", built: 12 }, t);
     expect(done).toMatchObject({ percent: 100, pinned: true, play: { visible: false }, speed: { visible: false } });
     expect(done.goLive).toEqual({ visible: true, primary: true });
+    expect(done.finish).toBe(false);
     expect(done.progressText).toBe("12 layers built");
   });
 

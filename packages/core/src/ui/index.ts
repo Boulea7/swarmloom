@@ -1,7 +1,8 @@
 /**
  * Built-in toolbar: a floating pill at the bottom centre of the stage with progress ring (ETA
  * tooltip), play/pause, speed 1x/2x/3x, sound (with a "Tap for sound" hint while the browser
- * blocks audio), tour, replay, go live (primary once done), optional record, and close.
+ * blocks audio), tour, finish now (when the player offers finish()), replay, go live (primary
+ * once done), optional record, and close.
  *
  * Behaviour: keyboard shortcuts (see ./keyboard), arrow-key navigation inside the toolbar,
  * auto-hide after ~2.5 s without pointer activity while building, tap on the empty stage toggles
@@ -122,6 +123,7 @@ export function createControls(opts: ToolbarOptions): Controls {
         soundLocked: safe(() => opts.soundLocked(), false),
         compact: compactLayout,
         canRecord: typeof opts.onRecord === "function",
+        canFinish: typeof (player as Player & { finish?: unknown }).finish === "function",
       },
       t,
     );
@@ -276,6 +278,7 @@ export function createControls(opts: ToolbarOptions): Controls {
     dom.speedCycle.el,
     dom.sound.el,
     dom.tour.el,
+    dom.finish.el,
     dom.replay.el,
     dom.goLive.el,
     dom.record.el,
@@ -464,6 +467,7 @@ const COMMAND_KINDS: ReadonlySet<string> = new Set<SimpleCommand["kind"]>([
   "toggleTour",
   "replay",
   "goLive",
+  "finish",
   "record",
 ]);
 
@@ -489,6 +493,7 @@ function toolbarText(i18n: I18n): ToolbarText {
     replay: t("toolbar.replay"),
     goLive: t("toolbar.goLive"),
     goLiveHint: t("toolbar.goLiveHint"),
+    finish: t("toolbar.finish"),
     close: t("toolbar.close"),
     record: t("toolbar.record"),
     keySpace: t("key.space"),
