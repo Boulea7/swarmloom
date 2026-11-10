@@ -247,6 +247,22 @@ importers:
         specifier: workspace:*
         version: link:../snapshot-dom
 
+  packages/adapter-epub:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      dompurify:
+        specifier: ^3.4.17
+        version: 3.4.17
+    devDependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
   packages/adapter-html:
     dependencies:
       '@swarmloom/core':
@@ -271,6 +287,31 @@ importers:
         specifier: workspace:*
         version: link:../snapshot-dom
 
+  packages/adapter-odf:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      '@swarmloom/snapshot-dom':
+        specifier: workspace:*
+        version: link:../snapshot-dom
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
+  packages/adapter-ofd:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
   packages/adapter-office:
     dependencies:
       '@swarmloom/core':
@@ -288,6 +329,15 @@ importers:
       pdfjs-dist:
         specifier: 6.5.438
         version: 6.5.438
+
+  packages/adapter-rtf:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/adapter-svg:
     dependencies:
@@ -1246,6 +1296,9 @@ packages:
   '@types/node@22.20.5':
     resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
 
+  '@types/trusted-types@2.0.7':
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
 
@@ -1474,6 +1527,9 @@ packages:
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
+
+  dompurify@3.4.17:
+    resolution: {integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==}
 
   emoji-regex-xs@1.0.0:
     resolution: {integrity: sha512-LRlerrMYoIDrT6jgpeZ2YYl/L8EulRTt5hQcYjy5AInh7HWXKimpqx68aknBFpGL2+/IcogTcaydJEgaTmOpDg==}
@@ -2693,6 +2749,9 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/trusted-types@2.0.7':
+    optional: true
+
   '@types/unist@3.0.3': {}
 
   '@types/web-bluetooth@0.0.21': {}
@@ -2940,6 +2999,10 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
+
+  dompurify@3.4.17:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
 
   emoji-regex-xs@1.0.0: {}
 
