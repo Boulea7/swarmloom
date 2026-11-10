@@ -1,0 +1,200 @@
+import type { SiteCopy } from "./types";
+
+/** English copy, served at `/en/`. */
+export const en: SiteCopy = {
+  locale: "en",
+  meta: {
+    title: "SwarmLoom · Watch a swarm of cursors weave it into being",
+    description:
+      "SwarmLoom is an open-source tool: a swarm of cursors rebuilds web pages, documents, PDFs, slides, sheets, code, images and 3D models in front of you, then exports a video with sound. MIT licensed.",
+    ogImageAlt: "SwarmLoom: a swarm of colourful cursors building a page",
+    siteName: "SwarmLoom",
+  },
+  skipLink: "Skip to content",
+  nav: {
+    label: "Main",
+    home: "SwarmLoom home",
+    film: "Film",
+    formats: "Formats",
+    platforms: "Platforms",
+    docs: "Docs",
+    github: "GitHub",
+    otherLocale: "简体中文",
+    otherLocaleShort: "中文",
+  },
+  hero: {
+    lines: [[{ text: "Watch a swarm of cursors" }], [{ text: "weave", selected: true }, { text: " it into being." }]],
+    sub: "Pages, documents, code and 3D models, rebuilt stroke by stroke as you watch, then exported as a video with sound.",
+    cta: {
+      generic: "Add to your browser",
+      chrome: "Add to Chrome",
+      edge: "Add to Edge",
+      brave: "Add to Brave",
+      opera: "Add to Opera",
+      firefox: "Add to Firefox",
+      safari: "Add to Safari",
+      studio: "Install the app",
+    },
+    tryOnline: "Try it online",
+    replay: "Replay",
+    replayReduced: "Watch it build",
+  },
+  film: {
+    title: "Watch the swarm at work.",
+    play: "Play film",
+    playAria: "Play the film (with sound and captions)",
+    soon: "The film is in the edit. Coming soon.",
+    error: "The film can't play right now. Please try again later.",
+    frameLabel: "SwarmLoom film",
+    captions: { zh: "Chinese", en: "English" },
+    credits:
+      "The voice-over is AI-generated. Clawd is a fan rendition of the Claude Code mascot and is not affiliated with Anthropic.",
+  },
+  formats: {
+    title: "Bring any file.",
+    sub: "Pages, documents, sheets and models. Drop one into Studio and the swarm gets to work.",
+    regionLabel: "Supported formats",
+    prev: "Previous",
+    next: "Next",
+    open: "Open the example in Studio",
+    items: {
+      web: { name: "Web page", caption: "Live rebuild" },
+      html: { name: "HTML & CSS", caption: "Styles intact" },
+      svg: { name: "SVG", caption: "Pen strokes" },
+      markdown: { name: "Markdown", caption: "Typed out" },
+      word: { name: "Word", caption: "DOCX & DOC" },
+      pdf: { name: "PDF", caption: "Page by page" },
+      slides: { name: "Slides", caption: "Deck assembled" },
+      sheets: { name: "Sheets", caption: "Cell by cell" },
+      code: { name: "Code", caption: "Typed live" },
+      image: { name: "Image", caption: "Sketch, then paint" },
+      model: { name: "3D model", caption: "Vertex to surface" },
+    },
+  },
+  how: {
+    title: "Snapshot to film, in three steps.",
+    steps: [
+      { name: "Snapshot", line: "Break a page or file into layers the swarm can build." },
+      { name: "Choreograph", line: "Give every cursor a job: structure first, then content." },
+      { name: "Build", line: "The cursors work side by side while you watch it take shape." },
+    ],
+    export: { name: "Export to video", line: "Rendered frame by frame with synced sound. Same seed, same film." },
+  },
+  platforms: {
+    title: "Plays everywhere.",
+    sub: "In your browser, on your home screen, or as a finished clip on your wrist.",
+    lineupLabel: "SwarmLoom on a laptop, a tablet, a phone, a foldable and a watch",
+    devices: { laptop: "Laptop", tablet: "Tablet", phone: "Phone", foldable: "Foldable", watch: "Watch" },
+    groups: [
+      {
+        name: "Browser extension",
+        items: [
+          { name: "Chrome" },
+          { name: "Edge" },
+          { name: "Firefox" },
+          { name: "Firefox Android" },
+          { name: "Brave", status: "testing" },
+          { name: "Opera", status: "testing" },
+        ],
+      },
+      {
+        name: "Safari extension",
+        items: [{ name: "macOS" }, { name: "iOS" }, { name: "iPadOS" }, { name: "visionOS" }],
+        note: "Build from source",
+      },
+      {
+        name: "Studio app",
+        items: [{ name: "Any modern browser" }, { name: "Android" }, { name: "Foldables" }],
+        note: "PWA",
+      },
+      {
+        name: "Watch",
+        items: [
+          { name: "watchOS", status: "planned" },
+          { name: "Wear OS", status: "planned" },
+        ],
+        note: "Watch finished clips",
+      },
+      { name: "Command line", items: [{ name: "macOS" }, { name: "Windows" }, { name: "Linux" }] },
+    ],
+    status: { planned: "Planned", testing: "Testing" },
+  },
+  makers: {
+    title: "For makers.",
+    extension: {
+      title: "Browser extension",
+      note: "Until the store listings go live, build it from source and load dist/chrome in developer mode.",
+      code: "git clone https://github.com/Boulea7/swarmloom.git\ncd swarmloom && pnpm install\npnpm -F @swarmloom/extension build",
+      lang: "shell",
+    },
+    element: {
+      title: "The <swarm-loom> element",
+      note: "One tag turns any file into an opening sequence on your page.",
+      code: '<script type="module">\n  import { define } from "https://esm.sh/@swarmloom/element";\n  define();\n</script>\n\n<swarm-loom src="slides.pdf" autoplay inview></swarm-loom>',
+      lang: "html",
+    },
+    cli: {
+      title: "Command line",
+      note: "Render a file to video, frame-exact and with synced sound.",
+      code: "npx swarmloom render deck.pdf -o deck.mp4",
+      lang: "shell",
+    },
+    copy: "Copy",
+    copied: "Copied",
+    copyFailed: "Copy it by hand",
+  },
+  install: {
+    title: "Get SwarmLoom.",
+    current: "Your browser",
+    rows: [
+      {
+        channel: "chromium",
+        name: "Chrome, Edge, Brave, Opera",
+        note: "Until the store listing goes live, download the extension from GitHub Releases.",
+        actions: [
+          { label: "Download", target: "releases" },
+          { label: "Install guide", target: "guide" },
+        ],
+      },
+      {
+        channel: "firefox",
+        name: "Firefox",
+        note: "One package for desktop and Android. Until it is listed on AMO, load it on desktop as a temporary add-on.",
+        actions: [
+          { label: "Download", target: "releases" },
+          { label: "Install guide", target: "guide" },
+        ],
+      },
+      {
+        channel: "safari",
+        name: "Safari",
+        note: "macOS, iOS, iPadOS and visionOS. Build it from source with Xcode.",
+        actions: [{ label: "Build guide", target: "safari-guide" }],
+      },
+      {
+        channel: "studio",
+        name: "Studio",
+        note: "Opens in any modern browser and installs to your desktop or home screen.",
+        actions: [{ label: "Try it online", target: "studio" }],
+      },
+      {
+        channel: "cli",
+        name: "Command line",
+        note: "Needs Node 22 or later, a local Chrome and ffmpeg.",
+        actions: [],
+        code: "npm i -g swarmloom",
+      },
+    ],
+  },
+  footer: {
+    contactTitle: "Ideas? Write to us.",
+    credit: "Inspired by Joel Califa's Swarm and Swarm Rebuild. The code is an independent implementation.",
+    license: "MIT License",
+    github: "GitHub",
+  },
+  notFound: {
+    title: "This page hasn't been woven yet.",
+    body: "The link may be mistyped, or the page has moved.",
+    home: "Back to the homepage",
+  },
+};
