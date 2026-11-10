@@ -1,0 +1,42 @@
+* text=auto eol=lf
+
+# Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.bmp binary
+
+# Fonts
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+
+# Documents and archives
+*.pdf binary
+*.doc binary
+*.docx binary
+*.xls binary
+*.xlsx binary
+*.ppt binary
+*.pptx binary
+*.odt binary
+*.ods binary
+*.odp binary
+*.zip binary
+
+# 3D models
+*.glb binary
+*.stl binary
+
+# Media
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.mp4 binary
+*.webm binary

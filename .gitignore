@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+out/
+.cache/
+*.tsbuildinfo
+
+# Docs build output
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# Safari converter output
+/build/
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# Environment
+.env*
+
+# Vitest browser mode artifacts
+__screenshots__/
+.vitest-attachments/
+
+# Media renders (allowed only under docs/assets)
+*.mp4
+*.webm
+!docs/assets/**/*.mp4
+!docs/assets/**/*.webm
