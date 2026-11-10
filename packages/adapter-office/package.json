@@ -28,6 +28,6 @@
   },
   "dependencies": {
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/snapshot-dom": "workspace:*"
+    "fflate": "^0.8.3"
   }
 }
