@@ -1,0 +1,21 @@
+{
+  "name": "swarmloom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SwarmLoom command line: render files and URLs to video, snapshot pages, serve Studio locally.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "swarmloom": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup src/cli.ts --format esm --platform node --target node20 --clean",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

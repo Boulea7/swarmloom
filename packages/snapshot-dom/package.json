@@ -1,0 +1,32 @@
+{
+  "name": "@swarmloom/snapshot-dom",
+  "version": "0.1.0",
+  "description": "Turns a live DOM tree (a page or any element subtree) into a SwarmLoom Blueprint.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/snapshot-dom"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*"
+  }
+}

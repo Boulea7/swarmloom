@@ -1,0 +1,33 @@
+{
+  "name": "@swarmloom/adapter-three",
+  "version": "0.1.0",
+  "description": "3D model adapter for SwarmLoom: glTF/GLB/OBJ/STL/PLY built vertex by vertex on a WebGL stage.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-three"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/snapshot-dom": "workspace:*"
+  }
+}

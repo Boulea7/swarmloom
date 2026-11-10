@@ -1,0 +1,18 @@
+{
+  "name": "@swarmloom/studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SwarmLoom Studio: a PWA to open any file or URL and watch the swarm build it, then export a video.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/formats": "workspace:*"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@swarmloom/adapter-svg",
+  "version": "0.1.0",
+  "description": "SVG adapter for SwarmLoom: paths stroked and filled, text typed.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-svg"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/snapshot-dom": "workspace:*"
+  }
+}

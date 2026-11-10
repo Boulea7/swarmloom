@@ -1,0 +1,33 @@
+{
+  "name": "@swarmloom/element",
+  "version": "0.1.0",
+  "description": "<swarm-loom> Web Component for embedding SwarmLoom playback in any page.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/element"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*",
+    "@swarmloom/formats": "workspace:*"
+  }
+}

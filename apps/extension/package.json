@@ -1,0 +1,15 @@
+{
+  "name": "@swarmloom/extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SwarmLoom browser extension for Chrome, Edge, Firefox and Safari.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs --browser all",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/core": "workspace:*"
+  }
+}
