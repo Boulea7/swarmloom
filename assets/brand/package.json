@@ -1,0 +1,17 @@
+{
+  "name": "@swarmloom/brand",
+  "version": "0.0.0",
+  "private": true,
+  "description": "SwarmLoom identity: mark, wordmark, icons, social images, README hero and feature cards, generated from code.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "generate": "node scripts/generate.ts",
+    "rasterize": "node scripts/rasterize.ts",
+    "build": "node scripts/generate.ts && node scripts/rasterize.ts",
+    "check": "node scripts/generate.ts --check",
+    "preview": "node scripts/preview.ts",
+    "typecheck": "../../node_modules/.bin/tsc --noEmit -p .",
+    "test": "../../node_modules/.bin/vitest run --config vitest.config.ts"
+  }
+}
