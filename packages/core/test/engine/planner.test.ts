@@ -1,0 +1,116 @@
+import { describe, expect, it } from "vitest";
+import { buildPlan, type Plan } from "../../src/engine/planner";
+import { AVAILABLE, LOCKED, Schedule } from "../../src/engine/schedule";
+import type { Layer } from "../../src/types";
+import { blueprintOf, box, guide, samplePage, text } from "./fakes";
+
+const plan = (layers: Layer[]): Plan => buildPlan(blueprintOf(layers), { estimate: () => 100 });
+const ids = (p: Plan, tasks: ArrayLike<number>): string[] => Array.from(tasks, (i) => (p.layers[i] as Layer).id);
+const full = { x: 0, y: 0, w: 800, h: 600 };
+
+/** Completes tasks in schedule order (always the best pick for an agent at the origin). */
+function drain(s: Schedule): string[] {
+  s.setBoundary(Number.POSITIVE_INFINITY);
+  const out: string[] = [];
+  for (let i = s.pick(0, 0, full); i >= 0; i = s.pick(0, 0, full)) {
+    s.start(i);
+    s.complete(i);
+    out.push((s.plan.layers[i] as Layer).id);
+  }
+  return out;
+}
+
+describe("planner", () => {
+  it("orders parents before children, masters (with subtree) before copies, guides before snapping text", () => {
+    const p = buildPlan(samplePage(), { estimate: () => 100 });
+    const order = ids(p, p.order);
+    const before = (a: string, b: string): boolean => order.indexOf(a) < order.indexOf(b);
+    expect(before("hero", "card1")).toBe(true);
+    expect(before("hero", "title")).toBe(true);
+    expect(before("g1", "title")).toBe(true);
+    expect(before("card1", "card2")).toBe(true);
+    expect(before("footer", "note")).toBe(true);
+    expect(p.keys[p.layers.findIndex((l) => l.id === "card2")]).toBe("duplicate");
+    // The schedule never releases a task before its dependencies are done.
+    const built = drain(new Schedule(p));
+    expect(built).toHaveLength(p.taskCount);
+    expect(built.indexOf("card1")).toBeLessThan(built.indexOf("card2"));
+    expect(built.indexOf("g1")).toBeLessThan(built.indexOf("title"));
+  });
+
+  it("waits for the whole master subtree before a duplicate", () => {
+    const p = plan([
+      box("m", 0, 0, 300, 100),
+      text("m-label", 10, 10, "master", { parent: "m" }),
+      box("copy", 0, 200, 300, 100, { master: "m" }),
+    ]);
+    const s = new Schedule(p);
+    s.setBoundary(Number.POSITIVE_INFINITY);
+    const at = (id: string): number => p.layers.findIndex((l) => l.id === id);
+    s.start(at("m"));
+    s.complete(at("m"));
+    expect(s.status[at("copy")]).not.toBe(AVAILABLE);
+    s.start(at("m-label"));
+    s.complete(at("m-label"));
+    expect(s.status[at("copy")]).toBe(AVAILABLE);
+  });
+
+  it("follows reading order (rows, then left to right) and lets priority override it", () => {
+    const layers = [box("c", 400, 300), box("b", 400, 20), box("a", 20, 24), box("d", 20, 300)];
+    expect(ids(plan(layers), plan(layers).order)).toEqual(["a", "b", "d", "c"]);
+    const first = { ...layers[0], priority: -1 } as Layer;
+    const p = plan([first, ...layers.slice(1)]);
+    expect(ids(p, p.order)[0]).toBe("c");
+  });
+
+  it("unlocks viewport work first and ancestors as early as their first descendant", () => {
+    const p = plan([
+      box("top", 0, 0),
+      box("tall", 0, 1500, 800, 2000),
+      box("inner", 0, 1600, 100, 40, { parent: "tall" }),
+      box("deep", 0, 3000),
+    ]);
+    const at = (id: string): number => p.layers.findIndex((l) => l.id === id);
+    const s = new Schedule(p);
+    s.setBoundary(900);
+    expect(s.status[at("top")]).toBe(AVAILABLE);
+    expect(s.status[at("tall")]).toBe(LOCKED);
+    expect(s.nextLockedY()).toBe(1500);
+    s.setBoundary(1550);
+    expect(s.status[at("tall")]).toBe(AVAILABLE);
+    expect(s.status[at("deep")]).toBe(LOCKED);
+    // The boundary only moves down.
+    s.setBoundary(100);
+    expect(s.boundary).toBe(1550);
+  });
+
+  it("picks work in view (guides first) before work above, and above before below", () => {
+    const p = plan([box("above", 0, 0), box("in", 600, 700), guide("g", 700), box("below", 0, 1600)]);
+    const s = new Schedule(p);
+    s.setBoundary(Number.POSITIVE_INFINITY);
+    const vp = { x: 0, y: 600, w: 800, h: 600 };
+    const take = (): string => {
+      const i = s.pick(0, 600, vp);
+      s.start(i);
+      s.complete(i);
+      return (p.layers[i] as Layer).id;
+    };
+    expect([take(), take(), take(), take()]).toEqual(["g", "in", "above", "below"]);
+  });
+
+  it("reports dangling references, duplicate ids and cycles instead of throwing", () => {
+    const p = plan([
+      box("a", 0, 0, 100, 100, { parent: "b" }),
+      box("b", 0, 200, 100, 100, { parent: "a" }),
+      box("c", 0, 400, 100, 100, { parent: "ghost" }),
+      box("c", 0, 500),
+      { id: 3 } as unknown as Layer,
+    ]);
+    expect(p.taskCount).toBe(3);
+    expect(p.diagnostics.join("\n")).toMatch(/cycle broken/);
+    expect(p.diagnostics.join("\n")).toMatch(/missing layers/);
+    expect(p.diagnostics.join("\n")).toMatch(/already used id/);
+    expect(p.diagnostics.join("\n")).toMatch(/malformed/);
+    expect(drain(new Schedule(p))).toHaveLength(3);
+  });
+});
