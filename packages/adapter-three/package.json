@@ -28,6 +28,9 @@
   },
   "dependencies": {
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/snapshot-dom": "workspace:*"
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.187.0"
   }
 }
