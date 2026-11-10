@@ -1,0 +1,84 @@
+# 商店文案（简体中文）。按字段粘贴到各商店后台，步骤见 store/CHECKLIST.md。
+# 长度限制由 `node scripts/release/check-store.mjs` 校验；与 store/listing/en.yaml 保持同步。
+# 草稿：依据产品方案、contracts/decisions-v1.md 和 PRIVACY.md 编写。每次提交前，按本次上传的构建逐条核对，删去该构建做不到的内容。
+locale: zh-CN
+
+# Chrome、Edge 和 Firefox 从 manifest 读取名称（extName 消息）。App Store 名称为 2–30 个字符。
+name: SwarmLoom 群织
+
+# 必须与扩展实际发布的 manifest 描述（extDescription 消息，不超过 132 个字符）一致：
+# Chrome 和 Edge 把它显示为简介，后台不能修改。check-store 会比对两者。
+short: 一群光标当着你的面，把网页、文档和模型一笔一画重新织出来。
+
+# Firefox AMO 摘要：不超过 250 个字符，不能含网址。
+summary: >-
+  点一下工具栏按钮，一群光标就在你眼前把当前网页一块一块重新搭出来。全部在浏览器本地完成：不用注册，不做跟踪，不上传任何内容。
+
+# 仅 App Store。
+subtitle: 光标群当面重建网页
+promotional_text: >-
+  看一群光标一步步重建网页，结束后页面原样恢复。全部本地运行，不用注册，不做跟踪。
+keywords: 光标动画,网页动画,网页重建,页面回放,演示动画,可视化,开源软件,swarm,cursor
+
+# 仅 Edge（不对用户显示）：最多 7 个词条，每条不超过 30 个字符，总计不超过 21 个词。
+search_terms:
+  - 光标动画
+  - 网页重建
+  - 网页回放
+  - 演示
+  - 可视化
+  - 开源
+  - swarm
+
+# Chrome、Edge（250–10000 个字符）、Firefox 和 App Store（不超过 4000 个字符）。纯文本，可以包含网址。
+description: |-
+  SwarmLoom（群织）把你正在看的网页变成一段短小的表演。点击工具栏按钮、按 Alt+Shift+W 或使用右键菜单，一群光标就会当着你的面重建页面：排出版块，敲入文字，显出图片。关掉之后，页面原样恢复。
+
+  可以做什么
+  - 重建当前网页，或只重建其中一个元素：在该元素上点右键，选择“重建此元素”。
+  - 在配套的网页应用 SwarmLoom Studio 中打开链接指向的 PDF、文档或图片，或当前文档。Studio 还能处理 Markdown、SVG、幻灯片、表格、代码和 3D 模型。
+  - 调整速度、光标数量、名牌、主题、音效包、音量、减弱动态效果和语言。
+
+  隐私
+  - 网页和文件都在你的浏览器本地处理，不会上传到 SwarmLoom 服务器（我们没有服务器）。
+  - 不需要账号，没有广告、统计分析或遥测。
+  - 只有你在某个标签页上启动后，扩展才会访问该页。只有当你选择打开其他网站上的文件时，才会申请访问该网站，并且可以随时撤销。
+  - 设置保存在浏览器的扩展存储中。如果开启了浏览器同步，浏览器可能会通过你的浏览器账号把设置同步到你的其他设备。
+
+  开源
+  SwarmLoom 是 MIT 许可的自由软件。源代码与文档：https://github.com/Boulea7/swarmloom
+  问题反馈：https://github.com/Boulea7/swarmloom/issues
+
+  各格式和平台的状态（稳定、预览或计划中）见文档：https://boulea7.github.io/swarmloom/
+
+# Chrome 应用商店和 Edge 的“隐私权规范”页面。勾选项答案见 store/stores.yaml。
+privacy:
+  single_purpose: >-
+    SwarmLoom 把当前标签页中的网页以动画形式重放：一群光标把页面重新搭建出来，让用户看到页面是如何组成的。只有用户在某个标签页上启动时才会运行。
+  # 每个 manifest 权限一条说明（可选站点权限算一条）。构建声明了但缺少说明时 check-store 报错，构建未声明的条目会给出警告。
+  permissions:
+    activeTab: >-
+      仅在用户点击工具栏按钮、按快捷键或选择右键菜单项之后，临时访问当前标签页，用来重建该页面。不会访问其他标签页。
+    scripting: >-
+      把随扩展打包的重建播放器注入用户激活的标签页，用户关闭播放后移除。不加载任何远程代码。
+    contextMenus: >-
+      添加右键菜单：重建此页、重建此元素，以及在 SwarmLoom Studio 中打开链接、图片或当前文档。
+    storage: >-
+      在扩展存储中保存用户设置（速度、光标、主题、声音、语言）。如果用户开启了浏览器自带的同步，浏览器可能会在用户的设备之间同步这些设置。不发送到任何 SwarmLoom 服务器。
+    optional_host_permissions: >-
+      仅当用户选择打开托管在其他网站上的链接文件（例如 PDF、文档或图片）时才在运行时申请，用于下载该文件。用户可以拒绝，也可以随时撤销。
+  remote_code: >-
+    否，没有使用远程代码。所有 JavaScript 都打包在扩展内，运行时不获取也不执行任何外部脚本。
+  data_usage: >-
+    用户激活的页面只在浏览器内读取，用于重放，从不传输、出售或共享。设置保存在浏览器中。没有账号、统计分析、广告或遥测。
+
+# Edge“认证备注”、AMO“审核者备注”和 App Review 备注。
+reviewer_notes: |-
+  不需要账号或测试凭据。
+  1. 打开任意普通网页，例如 https://example.com/。
+  2. 点击 SwarmLoom 工具栏按钮（或按 Alt+Shift+W），一群光标会重建该页面。
+  3. 关闭播放后，原页面恢复。
+  在网页上点右键可以看到“重建此页”和“重建此元素”；在链接或图片上点右键可以选择在 SwarmLoom Studio 中打开。
+  除了下载用户明确选择打开的文件，扩展不发起任何网络请求。
+  源代码（MIT）：https://github.com/Boulea7/swarmloom
+  仅 AMO：源代码压缩包根目录的 README-AMO.md 写明了构建步骤。

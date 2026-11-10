@@ -1,0 +1,120 @@
+# Per-store metadata for manual submissions: dashboards, categories, URLs, privacy answers and image specs.
+# Listing text lives in store/listing/<locale>.yaml. Validate with `node scripts/release/check-store.mjs`.
+# Requirements were read from each store's official documentation on 2026-11-10; stores change their forms,
+# so compare with the live dashboard before submitting and update this file when they differ.
+
+locales: [en, zh-CN]
+
+urls:
+  homepage: https://boulea7.github.io/swarmloom/
+  support: https://github.com/Boulea7/swarmloom/issues
+  privacy_policy: https://github.com/Boulea7/swarmloom/blob/main/PRIVACY.md
+  source: https://github.com/Boulea7/swarmloom
+
+stores:
+  chrome:
+    title: Chrome Web Store
+    dashboard: https://chrome.google.com/webstore/devconsole
+    docs: https://developer.chrome.com/docs/webstore/publish
+    package: swarmloom-chrome-{version}.zip
+    # Recommended; the dashboard list also has "Art & Design" and "Tools".
+    category: Just for Fun
+    # Privacy practices tab: single purpose, permission justifications, remote code and data usage text come
+    # from listing.privacy in store/listing/<locale>.yaml; the privacy policy URL is urls.privacy_policy.
+    privacy:
+      remote_code: "No, I am not using remote code"
+      # Chrome counts reading content from a page the user visits as handling user data, even when it stays
+      # on the device, so the conservative answer ticks "Website content" and explains local-only use.
+      data_types: [Website content]
+      certifications:
+        - I do not sell or transfer user data to third parties, outside of the approved use cases
+        - I do not use or transfer user data for purposes that are unrelated to my item's single purpose
+        - I do not use or transfer user data to determine creditworthiness or for lending purposes
+    images: [screenshots, promo-small, promo-marquee]
+
+  edge:
+    title: Microsoft Edge Add-ons
+    dashboard: https://partner.microsoft.com/dashboard/microsoftedge/overview
+    docs: https://learn.microsoft.com/microsoft-edge/extensions/publish/publish-extension
+    package: swarmloom-edge-{version}.zip
+    # Recommended; confirm against the Partner Center list.
+    category: Entertainment
+    # Privacy page: same text as Chrome (listing.privacy) and urls.privacy_policy.
+    privacy:
+      remote_code: "No"
+      data_types: [Website content]
+    images: [edge-logo, screenshots, promo-small, promo-marquee]
+
+  firefox:
+    title: Firefox Add-ons (AMO)
+    dashboard: https://addons.mozilla.org/developers/
+    docs: https://extensionworkshop.com/documentation/publish/submitting-an-add-on/
+    # One package for Firefox desktop and Firefox for Android (gecko + gecko_android), one listing.
+    package: swarmloom-firefox-{version}.zip
+    # Bundled code (esbuild, Vite) needs the matching source archive; build steps are in its README-AMO.md.
+    source_package: swarmloom-firefox-source-{version}.zip
+    # AMO slug games-entertainment; pick one category unless a second clearly fits.
+    category: Games & Entertainment
+    # The submission form asks for up to 2 Firefox for Android categories as well; pick the closest match there.
+    license: MIT
+    privacy:
+      # The manifest declares browser_specific_settings.gecko.data_collection_permissions.required = ["none"].
+      data_collection: none
+      source_code_required: true
+    images: [screenshots]
+
+  safari:
+    title: Mac App Store and iOS App Store (Safari Web Extension)
+    dashboard: https://appstoreconnect.apple.com/
+    docs: https://developer.apple.com/documentation/safariservices/distributing-your-safari-web-extension
+    # Web resources for safari-web-extension-packager or the App Store Connect web packager. The unsigned
+    # Xcode project is the safari-xcode-project artifact of .github/workflows/extension.yml.
+    package: swarmloom-safari-{version}.zip
+    bundle_id: io.github.boulea7.swarmloom
+    # Primary and secondary App Store categories; confirm in App Store Connect.
+    category: Entertainment
+    secondary_category: Graphics & Design
+    copyright: 2026 Boulea7 and SwarmLoom contributors
+    privacy:
+      # Apple: data processed only on the device is not "collected".
+      app_privacy: Data Not Collected
+    images: [screenshots, iphone, ipad]
+
+# Images the media wave produces (store/images/README.md). Put them under store/images/ with the path shown
+# (without extension): .png or .jpg. {locale} is one of `locales`, {n} runs from 1 to the maximum count.
+# Sizes are in pixels; any listed size is accepted.
+images:
+  screenshots:
+    path: "{locale}/screenshot-{n}"
+    sizes: [[1280, 800]]
+    count: [1, 5]
+    # Same files for Chrome (1-5), Edge (up to 6), AMO (one set, 1280x800 is the largest it shows) and the
+    # Mac App Store (16:10; 1280x800 is an accepted size). App Store files must not have an alpha channel.
+    alpha: false
+  promo-small:
+    path: promo-small
+    sizes: [[440, 280]]
+    count: [1, 1]
+    # Chrome: required, not localizable; avoid text. Edge: optional small promotional tile.
+  promo-marquee:
+    path: promo-marquee
+    sizes: [[1400, 560]]
+    count: [0, 1]
+    # Chrome: optional marquee tile (needed to be featured in the marquee). Edge: optional large tile.
+  edge-logo:
+    path: edge-logo
+    sizes: [[300, 300]]
+    count: [1, 1]
+    # Edge store logo: 1:1, 300x300 recommended, at least 128x128.
+  iphone:
+    path: "{locale}/iphone-{n}"
+    # iPhone with Dynamic Island (medium display), portrait; required for the iOS app.
+    sizes: [[1206, 2622], [1179, 2556]]
+    count: [1, 10]
+    alpha: false
+  ipad:
+    path: "{locale}/ipad-{n}"
+    # iPad 13-inch display, portrait; required when the iOS app runs on iPad.
+    sizes: [[2064, 2752], [2048, 2732]]
+    count: [1, 10]
+    alpha: false
