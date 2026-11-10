@@ -1,18 +1,27 @@
 name: Extension
 
+# Builds the browser extension for every target on each change: Chrome, Edge and Firefox packages (the one
+# Firefox package covers desktop and Android and is linted with web-ext), plus unsigned Safari builds for macOS
+# and the iOS Simulator. Release packages are attached to GitHub Releases by release.yml; store uploads are
+# manual (store/CHECKLIST.md).
+
 on:
   push:
     branches: [main]
     paths:
       - apps/extension/**
+      - apps/studio/**
       - packages/**
+      - scripts/release/**
       - pnpm-lock.yaml
       - .github/workflows/extension.yml
   pull_request:
     branches: [main]
     paths:
       - apps/extension/**
+      - apps/studio/**
       - packages/**
+      - scripts/release/**
       - pnpm-lock.yaml
       - .github/workflows/extension.yml
   workflow_dispatch:
@@ -26,84 +35,94 @@ concurrency:
 
 jobs:
   build:
+    name: Chrome, Edge and Firefox
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      - run: pnpm --filter @swarmloom/extension build
-      - uses: actions/upload-artifact@v7
+      - name: Release script tests
+        run: pnpm test:release
+      # Studio in extension mode first, then every extension target (scripts/release/build-extension.mjs).
+      - run: pnpm build:extension
+      - name: Lint the Firefox package (desktop and Android)
+        run: pnpm dlx web-ext@10.8.0 lint --source-dir apps/extension/dist/firefox
+      - name: Pack
+        run: node scripts/release/pack-extension.mjs --browser all --out dist/extension
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: extension-chrome
-          path: apps/extension/dist/chrome
-      - uses: actions/upload-artifact@v7
-        with:
-          name: extension-edge
-          path: apps/extension/dist/edge
-      - uses: actions/upload-artifact@v7
-        with:
-          name: extension-firefox
-          path: apps/extension/dist/firefox
-      - uses: actions/upload-artifact@v7
+          name: extension-packages
+          path: dist/extension
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: extension-safari-web
           path: apps/extension/dist/safari
+          if-no-files-found: error
 
   safari:
+    name: Safari (macOS and iOS Simulator, unsigned)
+    needs: build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-        env:
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      - run: pnpm --filter @swarmloom/extension exec node scripts/build.mjs --browser safari
-      - name: Convert to Xcode project (macOS + iOS)
-        run: >
-          xcrun safari-web-extension-converter apps/extension/dist/safari
-          --project-location build/safari
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: extension-safari-web
+          path: apps/extension/dist/safari
+      - name: Tool versions
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --find safari-web-extension-packager || xcrun --find safari-web-extension-converter
+      # The script picks safari-web-extension-packager (newer Xcode) or falls back to the converter, and writes
+      # an Xcode project with macOS and iOS app targets to apps/extension/build/safari.
+      - name: Generate the Xcode project
+        run: >-
+          bash apps/extension/scripts/safari-package.sh
           --app-name SwarmLoom
           --bundle-identifier io.github.boulea7.swarmloom
-          --swift
-          --copy-resources
-          --no-open
-          --no-prompt
-          --force
-      - name: Locate project
+      - name: Find the project and schemes
         id: project
         run: |
-          project="$(find build/safari -maxdepth 3 -name '*.xcodeproj' -print -quit)"
-          test -n "$project" || { echo "no .xcodeproj generated"; exit 1; }
-          echo "path=$project" >> "$GITHUB_OUTPUT"
-          xcodebuild -list -project "$project"
-      - name: Build macOS app
-        run: >
-          xcodebuild build
-          -project "${{ steps.project.outputs.path }}"
-          -scheme "SwarmLoom (macOS)"
-          -configuration Debug
-          -destination "generic/platform=macOS"
+          project="$(find apps/extension/build/safari -maxdepth 3 -name '*.xcodeproj' -print -quit)"
+          test -n "$project" || { echo "::error::no .xcodeproj was generated"; exit 1; }
+          xcodebuild -list -json -project "$project" > "$RUNNER_TEMP/schemes.json"
+          mac="$(jq -r '[.project.schemes[] | select(endswith("(macOS)"))][0] // empty' "$RUNNER_TEMP/schemes.json")"
+          ios="$(jq -r '[.project.schemes[] | select(endswith("(iOS)"))][0] // empty' "$RUNNER_TEMP/schemes.json")"
+          if [ -z "$mac" ] || [ -z "$ios" ]; then
+            cat "$RUNNER_TEMP/schemes.json"; echo "::error::macOS or iOS scheme missing"; exit 1
+          fi
+          { echo "path=$project"; echo "mac=$mac"; echo "ios=$ios"; } >> "$GITHUB_OUTPUT"
+      - name: Build for macOS
+        env:
+          PROJECT: ${{ steps.project.outputs.path }}
+          SCHEME: ${{ steps.project.outputs.mac }}
+        run: >-
+          xcodebuild build -project "$PROJECT" -scheme "$SCHEME" -configuration Debug
+          -destination "generic/platform=macOS" -derivedDataPath "$RUNNER_TEMP/derived"
           CODE_SIGNING_ALLOWED=NO
-      - name: Build iOS app (simulator)
-        run: >
-          xcodebuild build
-          -project "${{ steps.project.outputs.path }}"
-          -scheme "SwarmLoom (iOS)"
-          -configuration Debug
-          -sdk iphonesimulator
-          -destination "generic/platform=iOS Simulator"
+      - name: Build for the iOS Simulator
+        env:
+          PROJECT: ${{ steps.project.outputs.path }}
+          SCHEME: ${{ steps.project.outputs.ios }}
+        run: >-
+          xcodebuild build -project "$PROJECT" -scheme "$SCHEME" -configuration Debug
+          -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath "$RUNNER_TEMP/derived"
           CODE_SIGNING_ALLOWED=NO
-      - uses: actions/upload-artifact@v7
+      # The generated project, to be opened in Xcode for signing and App Store submission (store/CHECKLIST.md).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: safari-xcode-project
-          path: build/safari
+          path: apps/extension/build/safari
+          if-no-files-found: error
