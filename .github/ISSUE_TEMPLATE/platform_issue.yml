@@ -1,0 +1,103 @@
+name: "平台问题 / Platform issue"
+description: "报告特定浏览器、操作系统或设备上的问题 / Report an issue specific to a browser, OS, or device"
+title: "[Platform]: "
+labels: ["platform", "needs-triage"]
+body:
+  - type: dropdown
+    id: product
+    attributes:
+      label: "受影响产品 / Affected product"
+      options:
+        - "浏览器扩展 / Browser extension"
+        - "Studio"
+        - "CLI"
+        - "Web Component"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: "复现步骤 / Steps to reproduce"
+      description: "注明是否也能在其他浏览器、系统或设备上复现。 / Note whether it also reproduces on another browser, OS, or device."
+      placeholder: |
+        1. 在……上安装或打开…… / Install or open ... on ...
+        2. 打开…… / Open ...
+        3. 观察到…… / Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "预期结果 / Expected result"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "实际结果 / Actual result"
+      description: "包括完整错误信息、白屏、布局、触控或导出异常。 / Include the full error or the blank-screen, layout, touch, or export failure."
+    validations:
+      required: true
+  - type: input
+    id: browser_version
+    attributes:
+      label: "浏览器及版本 / Browser and version"
+      placeholder: "例如 / e.g. Chrome 131, Firefox Android 132, Safari iOS 18"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: "操作系统及版本 / OS and version"
+      placeholder: "例如 / e.g. Windows 11, macOS 15, iPadOS 18, Android 15"
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: "设备类型 / Device type"
+      options:
+        - "桌面 / Desktop"
+        - "手机 / Phone"
+        - "平板 / Tablet"
+        - "折叠屏 / Foldable"
+        - "手表 / Watch"
+    validations:
+      required: true
+  - type: input
+    id: device_model
+    attributes:
+      label: "设备型号与显示状态（如适用）/ Device model and display state (if relevant)"
+      description: "折叠屏可注明展开、折叠或双屏状态；手表可注明表盘尺寸。 / For foldables, note folded, unfolded, or dual-screen state; for watches, note the case size."
+  - type: input
+    id: swarmloom_version
+    attributes:
+      label: "SwarmLoom 版本 / SwarmLoom version"
+      description: "填写发布版本、扩展版本或提交 SHA。 / Provide the release, extension version, or commit SHA."
+    validations:
+      required: true
+  - type: dropdown
+    id: input_format
+    attributes:
+      label: "输入格式 / Input format"
+      options:
+        - "网页 DOM / Web page DOM"
+        - "HTML"
+        - "Markdown"
+        - "DOCX"
+        - "DOC"
+        - "PDF"
+        - "PPTX"
+        - "XLSX / CSV / ODS"
+        - "SVG"
+        - "代码 / Source code"
+        - "图片 / Image"
+        - "3D 模型 / 3D model"
+        - "其他 / Other"
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "截图或录屏 / Screenshots or recording"
+      description: "请展示完整窗口或设备画面，并先移除敏感信息。 / Show the full window or device display and remove sensitive information first."

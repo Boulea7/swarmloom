@@ -1,0 +1,92 @@
+name: "缺陷报告 / Bug report"
+description: "报告可复现的错误行为 / Report reproducible incorrect behavior"
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: "复现步骤 / Steps to reproduce"
+      description: "提供从打开内容到出现问题的最短步骤。 / Provide the shortest sequence from opening the content to the problem."
+      placeholder: |
+        1. 打开…… / Open ...
+        2. 点击…… / Click ...
+        3. 观察到…… / Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "预期结果 / Expected result"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "实际结果 / Actual result"
+      description: "包括完整错误信息；不要粘贴凭据或私人内容。 / Include the full error message without credentials or private content."
+    validations:
+      required: true
+  - type: input
+    id: browser_version
+    attributes:
+      label: "浏览器及版本 / Browser and version"
+      placeholder: "例如 / e.g. Chrome 131, Firefox 132, Safari 18"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: "操作系统及版本 / OS and version"
+      placeholder: "例如 / e.g. macOS 15.2, Windows 11, Android 15"
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: "设备类型 / Device type"
+      options:
+        - "桌面 / Desktop"
+        - "手机 / Phone"
+        - "平板 / Tablet"
+        - "折叠屏 / Foldable"
+        - "手表 / Watch"
+    validations:
+      required: true
+  - type: input
+    id: swarmloom_version
+    attributes:
+      label: "SwarmLoom 版本 / SwarmLoom version"
+      description: "填写发布版本、扩展版本或提交 SHA。 / Provide the release, extension version, or commit SHA."
+    validations:
+      required: true
+  - type: dropdown
+    id: input_format
+    attributes:
+      label: "输入格式 / Input format"
+      options:
+        - "网页 DOM / Web page DOM"
+        - "HTML"
+        - "Markdown"
+        - "DOCX"
+        - "DOC"
+        - "PDF"
+        - "PPTX"
+        - "XLSX / CSV / ODS"
+        - "SVG"
+        - "代码 / Source code"
+        - "图片 / Image"
+        - "3D 模型 / 3D model"
+        - "其他 / Other"
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "截图或录屏 / Screenshots or recording"
+      description: "可直接拖拽文件；请先移除敏感信息。 / Drag files here and remove sensitive information first."
+  - type: textarea
+    id: sample
+    attributes:
+      label: "最小复现样例 / Minimal reproduction sample"
+      description: "如适用，附上可自行分发的小型输入文件或链接。 / If relevant, attach a small redistributable input file or link."

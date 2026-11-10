@@ -1,0 +1,82 @@
+name: "功能建议 / Feature request"
+description: "提出明确的功能或交互改进 / Propose a specific feature or interaction improvement"
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: "要解决的问题 / Problem to solve"
+      description: "说明使用场景和当前限制，不只描述解决方案。 / Describe the use case and current limitation, not only a solution."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "预期结果 / Expected result"
+      description: "描述建议的行为及验收标准。 / Describe the proposed behavior and acceptance criteria."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "当前行为 / Current behavior"
+      description: "说明目前如何完成该任务，或为什么无法完成。 / Explain how the task works today or why it is not possible."
+  - type: textarea
+    id: steps
+    attributes:
+      label: "建议的使用步骤 / Proposed steps"
+      description: "按顺序描述用户如何触发和使用该功能。 / Describe how a user would invoke and use the feature."
+      placeholder: |
+        1. 用户…… / The user ...
+        2. SwarmLoom…… / SwarmLoom ...
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "替代方案 / Alternatives considered"
+  - type: dropdown
+    id: input_format
+    attributes:
+      label: "相关输入格式 / Related input format"
+      options:
+        - "全部 / All"
+        - "网页 DOM / Web page DOM"
+        - "HTML"
+        - "Markdown"
+        - "DOCX / DOC"
+        - "PDF"
+        - "PPTX"
+        - "XLSX / CSV / ODS"
+        - "SVG"
+        - "代码 / Source code"
+        - "图片 / Image"
+        - "3D 模型 / 3D model"
+        - "其他 / Other"
+  - type: input
+    id: swarmloom_version
+    attributes:
+      label: "SwarmLoom 版本（如适用）/ SwarmLoom version (if relevant)"
+  - type: input
+    id: browser_version
+    attributes:
+      label: "浏览器及版本（如适用）/ Browser and version (if relevant)"
+  - type: input
+    id: os
+    attributes:
+      label: "操作系统及版本（如适用）/ OS and version (if relevant)"
+  - type: dropdown
+    id: device
+    attributes:
+      label: "设备类型（如适用）/ Device type (if relevant)"
+      options:
+        - "全部 / All"
+        - "桌面 / Desktop"
+        - "手机 / Phone"
+        - "平板 / Tablet"
+        - "折叠屏 / Foldable"
+        - "手表 / Watch"
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "截图、录屏或草图 / Screenshots, recording, or sketches"
+      description: "可选；请先移除敏感信息。 / Optional; remove sensitive information first."

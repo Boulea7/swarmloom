@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "讨论与问答 / Discussions and Q&A"
+    url: "https://github.com/Boulea7/swarmloom/discussions"
+    about: "使用问题、开发讨论与尚未形成任务的想法请在这里发起。 / Ask usage or development questions and discuss early ideas here."

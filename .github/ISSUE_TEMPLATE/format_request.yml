@@ -1,0 +1,86 @@
+name: "新格式申请 / Format request"
+description: "申请支持新的输入文件格式 / Request support for a new input file format"
+title: "[Format]: "
+labels: ["format-request", "needs-triage"]
+body:
+  - type: input
+    id: input_format
+    attributes:
+      label: "格式名称 / Input format name"
+      description: "例如格式全名和常见扩展名。 / Include the full format name and common extensions."
+      placeholder: "例如 / e.g. OpenDocument Presentation (.odp)"
+    validations:
+      required: true
+  - type: input
+    id: mime
+    attributes:
+      label: "MIME 类型 / MIME types"
+      description: "如已知，请列出；多个值用逗号分隔。 / List known values, separated by commas."
+  - type: textarea
+    id: use_case
+    attributes:
+      label: "使用场景 / Use case"
+      description: "说明需要重建的内容和希望保留的结构。 / Describe the content to rebuild and the structure to preserve."
+    validations:
+      required: true
+  - type: textarea
+    id: specification
+    attributes:
+      label: "格式规范与现有支持 / Specification and current support"
+      description: "提供公开规范链接，以及当前能否通过其他适配器打开。 / Link the public specification and explain whether another adapter can open it."
+  - type: textarea
+    id: steps
+    attributes:
+      label: "复现或预期使用步骤 / Reproduction or proposed steps"
+      description: "说明如何提供样例并尝试打开。 / Explain how to supply the sample and attempt to open it."
+      placeholder: |
+        1. 准备…… / Prepare ...
+        2. 在 Studio 中打开…… / Open ... in Studio
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "预期结果 / Expected result"
+      description: "描述关键文字、图像、路径、页面或场景应如何呈现。 / Describe how essential text, images, paths, pages, or scenes should appear."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "当前结果 / Current result"
+      description: "包括无法识别、加载失败或错误输出等实际情况。 / Include the current failure, detection result, or incorrect output."
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: "样例及许可证 / Sample and license"
+      description: "提供最小样例或其链接，并说明来源与再分发许可；不要上传私人文件。 / Provide a minimal sample or link with its origin and redistribution license; do not upload private files."
+  - type: input
+    id: swarmloom_version
+    attributes:
+      label: "SwarmLoom 版本 / SwarmLoom version"
+  - type: input
+    id: browser_version
+    attributes:
+      label: "浏览器及版本 / Browser and version"
+  - type: input
+    id: os
+    attributes:
+      label: "操作系统及版本 / OS and version"
+  - type: dropdown
+    id: device
+    attributes:
+      label: "设备类型 / Device type"
+      options:
+        - "桌面 / Desktop"
+        - "手机 / Phone"
+        - "平板 / Tablet"
+        - "折叠屏 / Foldable"
+        - "手表 / Watch"
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "截图或录屏 / Screenshots or recording"
+      description: "可展示原文件外观或当前错误；请先移除敏感信息。 / Show the original appearance or current error; remove sensitive information first."

@@ -1,0 +1,109 @@
+name: Extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/extension/**
+      - packages/**
+      - pnpm-lock.yaml
+      - .github/workflows/extension.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - apps/extension/**
+      - packages/**
+      - pnpm-lock.yaml
+      - .github/workflows/extension.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: pnpm --filter @swarmloom/extension build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: extension-chrome
+          path: apps/extension/dist/chrome
+      - uses: actions/upload-artifact@v7
+        with:
+          name: extension-edge
+          path: apps/extension/dist/edge
+      - uses: actions/upload-artifact@v7
+        with:
+          name: extension-firefox
+          path: apps/extension/dist/firefox
+      - uses: actions/upload-artifact@v7
+        with:
+          name: extension-safari-web
+          path: apps/extension/dist/safari
+
+  safari:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: pnpm --filter @swarmloom/extension exec node scripts/build.mjs --browser safari
+      - name: Convert to Xcode project (macOS + iOS)
+        run: >
+          xcrun safari-web-extension-converter apps/extension/dist/safari
+          --project-location build/safari
+          --app-name SwarmLoom
+          --bundle-identifier io.github.boulea7.swarmloom
+          --swift
+          --copy-resources
+          --no-open
+          --no-prompt
+          --force
+      - name: Locate project
+        id: project
+        run: |
+          project="$(find build/safari -maxdepth 3 -name '*.xcodeproj' -print -quit)"
+          test -n "$project" || { echo "no .xcodeproj generated"; exit 1; }
+          echo "path=$project" >> "$GITHUB_OUTPUT"
+          xcodebuild -list -project "$project"
+      - name: Build macOS app
+        run: >
+          xcodebuild build
+          -project "${{ steps.project.outputs.path }}"
+          -scheme "SwarmLoom (macOS)"
+          -configuration Debug
+          -destination "generic/platform=macOS"
+          CODE_SIGNING_ALLOWED=NO
+      - name: Build iOS app (simulator)
+        run: >
+          xcodebuild build
+          -project "${{ steps.project.outputs.path }}"
+          -scheme "SwarmLoom (iOS)"
+          -configuration Debug
+          -sdk iphonesimulator
+          -destination "generic/platform=iOS Simulator"
+          CODE_SIGNING_ALLOWED=NO
+      - uses: actions/upload-artifact@v7
+        with:
+          name: safari-xcode-project
+          path: build/safari
