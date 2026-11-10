@@ -7,12 +7,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build --mode extension",
+    "build:web": "vite build",
+    "build:extension": "vite build --mode extension",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p ."
+    "screens": "node scripts/screens.mjs",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.sw.json"
   },
   "dependencies": {
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/formats": "workspace:*"
+    "@swarmloom/export": "workspace:*",
+    "@swarmloom/formats": "workspace:*",
+    "uqr": "^0.1.3"
   }
 }

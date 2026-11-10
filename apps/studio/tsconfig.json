@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "build", "vite.config.ts", "../../packages/*/src/**/*.d.ts"],
+  "exclude": ["src/sw"]
 }
