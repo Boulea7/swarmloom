@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Render page test double</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #fafafc;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <script>
+      "use strict";
+      // Test double of the @swarmloom/export render page: the same window.__swarmloom protocol
+      // (shells.md section 1), a trivial "build" lasting BUILD_MS engine ms and a sine soundtrack.
+      // Input names starting with "fail" make init() reject.
+      const BUILD_MS = 1000;
+      const canvas = document.getElementById("stage");
+      const g = canvas.getContext("2d");
+      let t = 0;
+      let current = null;
+
+      function draw() {
+        const w = Math.round(innerWidth * devicePixelRatio);
+        const h = Math.round(innerHeight * devicePixelRatio);
+        canvas.width = w;
+        canvas.height = h;
+        const p = Math.min(1, t / BUILD_MS);
+        g.fillStyle = "#fafafc";
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = "#5b5bf7";
+        g.fillRect(0, 0, w * p, h / 4);
+        const s = h / 5;
+        g.fillStyle = "#ff6b5b";
+        g.fillRect((w - s) * p, h / 2, s, s);
+      }
+
+      function wavBase64(ms) {
+        const rate = 48000;
+        const n = Math.round((ms / 1000) * rate);
+        const view = new DataView(new ArrayBuffer(44 + n * 2));
+        const ascii = (offset, text) => {
+          for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+        };
+        ascii(0, "RIFF");
+        view.setUint32(4, 36 + n * 2, true);
+        ascii(8, "WAVEfmt ");
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, rate, true);
+        view.setUint32(28, rate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        ascii(36, "data");
+        view.setUint32(40, n * 2, true);
+        for (let i = 0; i < n; i++) {
+          view.setInt16(44 + i * 2, Math.round(Math.sin((i / rate) * 2 * Math.PI * 440) * 6000), true);
+        }
+        const bytes = new Uint8Array(view.buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        return btoa(binary);
+      }
+
+      window.__swarmloom = {
+        async init(o) {
+          if (typeof o?.input?.name !== "string") throw new Error("init: missing input");
+          if (o.input.name.startsWith("fail")) throw new Error(`cannot load ${o.input.name}`);
+          if (o.input.url && o.input.text === undefined) {
+            const response = await fetch(o.input.url);
+            if (!response.ok) throw new Error(`input ${o.input.url}: HTTP ${response.status}`);
+            console.info(`fetched ${(await response.arrayBuffer()).byteLength} bytes`);
+          }
+          current = o;
+          const layers = o.blueprint ? o.blueprint.layers.length : null;
+          console.info(`init ${JSON.stringify({ name: o.input.name, blueprintLayers: layers })}`);
+          t = 0;
+          draw();
+          return { estimatedMs: BUILD_MS + (o.tail ?? 2500) };
+        },
+        async step(ms) {
+          if (!current) throw new Error("step before init");
+          if (!(ms > 0)) throw new Error(`step: bad ms ${ms}`);
+          t += ms;
+          draw();
+          const built = Math.min(10, Math.floor(t / 100));
+          const done = t >= BUILD_MS + (current.tail ?? 2500) - 1e-6;
+          return { state: done ? "done" : t >= BUILD_MS ? "finale" : "building", built, total: 10, done };
+        },
+        async audioWav() {
+          return current?.sound ? wavBase64(t) : "";
+        },
+        dispose() {
+          current = null;
+        },
+      };
+    </script>
+  </body>
+</html>
