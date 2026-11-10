@@ -6,9 +6,12 @@
 
 export type { RealtimeClockOptions } from "./clock";
 export { RealtimeClock, VirtualClock } from "./clock";
+export type { Locale } from "./i18n/index";
+export { createI18n, LOCALES } from "./i18n/index";
+export type { I18n } from "./internal";
 export { createPlayer } from "./player";
 export { definePlugin } from "./plugin";
 export { createRng } from "./rng";
-export type { RenderOfflineOptions } from "./sound/offline";
-export { encodeWav, renderOffline } from "./sound/offline";
+export type { RenderOfflineOptions } from "./sound/index";
+export { encodeWav, quantize, renderOffline } from "./sound/index";
 export type * from "./types";
