@@ -465,6 +465,7 @@ describe("stage: lifecycle", () => {
     const page = document.createElement("div");
     page.style.height = "3000px";
     document.body.append(page);
+    const htmlStyleBefore = document.documentElement.getAttribute("style");
     cleanups.push(() => page.remove());
     const layers: Layer[] = [{ id: "b", kind: "box", box: { x: 0, y: 0, w: 100, h: 100 }, style: {} }];
     const bp = blueprint(layers, { w: window.innerWidth, h: 3000 });
@@ -494,6 +495,7 @@ describe("stage: lifecycle", () => {
     expect(host.isConnected).toBe(false);
     expect(page.inert).toBe(false);
     expect(document.documentElement.style.overflow).toBe("");
+    expect(document.documentElement.getAttribute("style")).toBe(htmlStyleBefore);
     expect(Math.round(window.scrollY)).toBe(700);
     window.scrollTo(0, 0);
   });

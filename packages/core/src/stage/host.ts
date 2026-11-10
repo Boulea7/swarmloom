@@ -168,7 +168,14 @@ function promoteToTopLayer(host: HTMLElement): void {
  * inline values it replaced.
  */
 export class RootScrollLock {
-  #saved: { overflow: string; overflowPri: string; pad: string; padPri: string } | null = null;
+  #saved: {
+    overflow: string;
+    overflowPri: string;
+    htmlStyled: boolean;
+    pad: string;
+    padPri: string;
+    bodyStyled: boolean;
+  } | null = null;
   readonly #doc: Document;
 
   constructor(doc: Document) {
@@ -184,8 +191,10 @@ export class RootScrollLock {
     this.#saved = {
       overflow: html.style.getPropertyValue("overflow"),
       overflowPri: html.style.getPropertyPriority("overflow"),
+      htmlStyled: html.hasAttribute("style"),
       pad: body ? body.style.getPropertyValue("padding-right") : "",
       padPri: body ? body.style.getPropertyPriority("padding-right") : "",
+      bodyStyled: body ? body.hasAttribute("style") : false,
     };
     if (gutter > 0 && body && win) {
       const current = Number.parseFloat(win.getComputedStyle(body).paddingRight) || 0;
@@ -200,12 +209,18 @@ export class RootScrollLock {
     this.#saved = null;
     const html = this.#doc.documentElement;
     const body = this.#doc.body;
-    restore(html.style, "overflow", s.overflow, s.overflowPri);
-    if (body) restore(body.style, "padding-right", s.pad, s.padPri);
+    restore(html, "overflow", s.overflow, s.overflowPri, s.htmlStyled);
+    if (body) restore(body, "padding-right", s.pad, s.padPri, s.bodyStyled);
   }
 }
 
-function restore(style: CSSStyleDeclaration, name: string, value: string, pri: string): void {
-  if (value) style.setProperty(name, value, pri);
-  else style.removeProperty(name);
+/**
+ * Puts one inline property back and drops the `style` attribute again when the element had none.
+ * hasAttribute() comes first on purpose: Chromium writes CSSOM changes to the attribute lazily, and
+ * removeAttribute() on a not-yet-written attribute is a no-op that later surfaces as `style=""`.
+ */
+function restore(el: HTMLElement, name: string, value: string, pri: string, hadStyle: boolean): void {
+  if (value) el.style.setProperty(name, value, pri);
+  else el.style.removeProperty(name);
+  if (!hadStyle && el.style.length === 0 && el.hasAttribute("style")) el.removeAttribute("style");
 }
