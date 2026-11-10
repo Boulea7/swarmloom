@@ -162,8 +162,8 @@ export const FORMAT_META: readonly FormatMeta[] = [
   {
     id: "image",
     label: "Image",
-    extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp"],
-    mime: ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp"],
+    extensions: ["png", "apng", "jpg", "jpeg", "jfif", "gif", "webp", "avif", "bmp"],
+    mime: ["image/png", "image/apng", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp"],
   },
   {
     id: "three",

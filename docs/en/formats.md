@@ -105,7 +105,7 @@ Source code is treated as text and never executed. Plain text has no reliable fo
 
 ## Bitmap images
 
-**Extensions:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`, `.bmp`
+**Extensions:** `.png`, `.apng`, `.jpg`, `.jpeg`, `.jfif`, `.gif`, `.webp`, `.avif`, `.bmp`
 
 The bitmap pipeline is planned to extract an edge sketch, paint spatial tiles, and finish with the complete image. Cursors follow edges or painted regions rather than merely fading in the full bitmap.
 
