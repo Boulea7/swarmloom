@@ -1,20 +1,20 @@
-import type { Adapter, AdapterContext, LoadedSource, SourceInput } from "@swarmloom/core";
-
 /**
- * HTML string or URL -> sandboxed iframe -> snapshot-dom.
+ * @swarmloom/adapter-html: HTML documents and fragments -> Blueprint.
  *
- * Stub: `load()` rejects until the implementation lands.
+ * Full documents are sanitized and laid out in a hidden sandboxed frame without scripts, then
+ * snapshotted; fragments are sanitized and laid out by snapshot-dom's snapshotHtml. By default
+ * only https: images and fonts are fetched (no referrer). Arbitrary cross-origin URLs only work
+ * where the browser lets the page read them (CORS); otherwise the error points to the browser
+ * extension or the CLI.
  */
-export const htmlAdapter: Adapter = {
-  id: "html",
-  label: "HTML",
-  extensions: ["html", "htm", "xhtml"],
-  mime: ["text/html", "application/xhtml+xml"],
-  async load(input: SourceInput, ctx: AdapterContext): Promise<LoadedSource> {
-    void input;
-    void ctx;
-    throw new Error("not implemented yet");
-  },
-};
 
-export default htmlAdapter;
+export type { HtmlAdapterOptions, LiveFrame, LoadedHtml } from "./adapter";
+export { createHtmlAdapter, htmlAdapter } from "./adapter";
+export { decodeHtml, isFullDocument, sniffMetaCharset } from "./detect";
+export type { FrameDocument, FrameOptions, FrozenAnimations } from "./frame";
+export { freezeAnimations, renderInFrame } from "./frame";
+export type { NetworkPolicy } from "./policy";
+export { allowedResource, applyNetworkPolicy, rewriteCssUrls } from "./policy";
+export type { PreparedDocument, PrepareOptions } from "./prepare";
+export { contentSecurityPolicy, prepareDocument } from "./prepare";
+export { sanitizeDocument, sanitizeFragment } from "./sanitize";
