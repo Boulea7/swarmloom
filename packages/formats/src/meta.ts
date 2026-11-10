@@ -169,6 +169,17 @@ export const FORMAT_META: readonly FormatMeta[] = [
     id: "three",
     label: "3D model",
     extensions: ["glb", "gltf", "obj", "stl", "ply"],
-    mime: ["model/gltf-binary", "model/gltf+json", "model/obj", "model/stl", "model/x-ply"],
+    mime: [
+      "model/gltf-binary",
+      "model/gltf+json",
+      "model/obj",
+      "model/stl",
+      "model/x.stl-binary",
+      "model/x.stl-ascii",
+      "application/sla",
+      "application/vnd.ms-pki.stl",
+      "model/x-ply",
+      "application/ply",
+    ],
   },
 ];
