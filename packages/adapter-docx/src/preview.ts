@@ -204,7 +204,7 @@ export function adjustPageBreaks(
   const ends = blocks.filter((b) => b.type === "paragraph" && b.sectionProps);
   const breakAfter = new Set<ModelNode>();
   ends.forEach((p, i) => {
-    const next = i + 1 < ends.length ? ends[i + 1]!.sectionProps : body.props;
+    const next = i + 1 < ends.length ? ends[i + 1].sectionProps : body.props;
     if (!NO_PAGE_SECTIONS.has(next?.type ?? "")) breakAfter.add(p);
   });
   let pageStarts = true;
@@ -261,7 +261,7 @@ const UNIT_PX: Record<string, number> = { px: 1, pt: 96 / 72, pc: 16, in: 96, cm
 export function lengthPx(value: string): number | null {
   const match = /^\s*(-?\d*\.?\d+)(px|pt|pc|in|cm|mm)\s*$/i.exec(value);
   if (!match) return null;
-  return Number(match[1]) * UNIT_PX[match[2]!.toLowerCase()]!;
+  return Number(match[1]) * UNIT_PX[match[2].toLowerCase()];
 }
 
 /** Smallest side margin kept when a sheet is narrowed, px. */

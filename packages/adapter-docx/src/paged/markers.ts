@@ -81,7 +81,7 @@ export function counterPairs(value: string, fallback: number): [string, number][
   if (parts.length === 0 || parts[0] === "" || parts[0] === "none") return [];
   const out: [string, number][] = [];
   for (let i = 0; i < parts.length; i++) {
-    const name = parts[i]!;
+    const name = parts[i];
     const next = parts[i + 1];
     if (next !== undefined && /^[+-]?\d+$/.test(next)) {
       out.push([name, Number(next)]);
@@ -103,7 +103,7 @@ export function parseContent(value: string): Token[] | null {
   const tokens: Token[] = [];
   let i = 0;
   while (i < v.length) {
-    const ch = v[i]!;
+    const ch = v[i];
     if (ch === " ") {
       i++;
     } else if (ch === '"' || ch === "'") {
@@ -133,7 +133,7 @@ function readString(value: string, start: number): [string, number] {
   let out = "";
   let i = start + 1;
   while (i < value.length) {
-    const ch = value[i]!;
+    const ch = value[i];
     if (ch === quote) return [out, i + 1];
     if (ch === "\\") {
       const hex = /^[0-9a-fA-F]{1,6}/.exec(value.slice(i + 1, i + 7));

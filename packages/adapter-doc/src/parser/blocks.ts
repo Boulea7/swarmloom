@@ -56,7 +56,7 @@ export function assembleBlocks(paragraphs: readonly WalkedParagraph[]): DocBlock
 export function trimTrailingEmpty(blocks: DocBlock[]): DocBlock[] {
   let end = blocks.length;
   while (end > 0) {
-    const last = blocks[end - 1]!;
+    const last = blocks[end - 1];
     if (last.kind !== "paragraph" || !isEmptyParagraph(last)) break;
     end--;
   }

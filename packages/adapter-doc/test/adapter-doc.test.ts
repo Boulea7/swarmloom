@@ -68,14 +68,14 @@ describe("adapter metadata", () => {
 
 describe("parser on the headers/footers sample", () => {
   const model: DocModel = parseDoc(new Uint8Array(HEADERS));
-  const section = model.sections[0]!;
+  const section = model.sections[0];
 
   it("recovers every paragraph and the heading", () => {
     expect(model.stats.paragraphs).toBe(12);
     expect(model.sections).toHaveLength(1);
     expect(model.warnings).toEqual([]);
     const body = paragraphs(section.blocks);
-    expect(text(body[0]!)).toMatch(/^This is a fairly simple word document, over two pages/);
+    expect(text(body[0])).toMatch(/^This is a fairly simple word document, over two pages/);
     const heading = body.find((p) => p.heading === 1);
     expect(heading && text(heading).trim()).toBe("Molière");
     expect(body.some((p) => text(p).includes("L'Avare ou l'École du mensonge"))).toBe(true);
@@ -83,14 +83,14 @@ describe("parser on the headers/footers sample", () => {
   });
 
   it("reads the header and footer stories", () => {
-    expect(text(paragraphs(section.header)[0]!)).toBe("This is a simple header, with a € euro symbol in it.");
-    expect(text(paragraphs(section.footer)[0]!)).toBe("The footer, with Molière, has Unicode in it.");
+    expect(text(paragraphs(section.header)[0])).toBe("This is a simple header, with a € euro symbol in it.");
+    expect(text(paragraphs(section.footer)[0])).toBe("The footer, with Molière, has Unicode in it.");
   });
 
   it("pages only at the explicit break", () => {
     const pages = paginate(model.sections);
     expect(pages).toHaveLength(2);
-    expect(text(paragraphs(pages[1]!.blocks)[0]!)).toMatch(/^This is page two\./);
+    expect(text(paragraphs(pages[1].blocks)[0])).toMatch(/^This is page two\./);
   });
 });
 
@@ -98,7 +98,7 @@ describe("parser on the table sample", () => {
   it("recovers the 5 x 6 table", () => {
     const model = parseDoc(new Uint8Array(TABLE));
     expect(model.stats.tables).toBe(1);
-    const table = model.sections[0]!.blocks.find((b) => b.kind === "table");
+    const table = model.sections[0].blocks.find((b) => b.kind === "table");
     expect(table?.kind).toBe("table");
     if (table?.kind !== "table") return;
     expect(table.rows).toHaveLength(5);
@@ -126,15 +126,15 @@ describe("parser on the generated report sample", () => {
     const [portrait, landscape] = model.sections as [DocModel["sections"][0], DocModel["sections"][0]];
     expect(landscape.props.pageWidth).toBeGreaterThan(landscape.props.pageHeight);
     expect(portrait.props.pageWidth).toBeLessThan(portrait.props.pageHeight);
-    expect(text(paragraphs(landscape.header)[0] ?? paragraphs(portrait.header)[0]!)).toContain("SwarmLoom");
+    expect(text(paragraphs(landscape.header)[0] ?? paragraphs(portrait.header)[0])).toContain("SwarmLoom");
     expect(paginate(model.sections)).toHaveLength(3);
   });
 });
 
 describe("rejections", () => {
   it("rejects encrypted and obfuscated files", () => {
-    expect(parseError(patched((b, fib) => (b[fib + 0x0b]! |= 0x01))).code).toBe("encrypted");
-    expect(parseError(patched((b, fib) => (b[fib + 0x0b]! |= 0x80))).code).toBe("encrypted");
+    expect(parseError(patched((b, fib) => (b[fib + 0x0b] |= 0x01))).code).toBe("encrypted");
+    expect(parseError(patched((b, fib) => (b[fib + 0x0b] |= 0x80))).code).toBe("encrypted");
   });
 
   it("rejects Word 6/95 files", () => {
@@ -197,7 +197,7 @@ describe("format routing (decisions-v1 F02)", () => {
   });
 
   it("loadDoc rejects encrypted files", async () => {
-    const bytes = patched((b, fib) => (b[fib + 0x0b]! |= 0x01));
+    const bytes = patched((b, fib) => (b[fib + 0x0b] |= 0x01));
     await expect(loadDoc({ bytes }, ctx)).rejects.toMatchObject({ code: "encrypted" });
     expect(document.querySelector("[data-swarmloom-sandbox]")).toBeNull();
   });
@@ -227,13 +227,13 @@ describe("renderer", () => {
     const root = document.createElement("div");
     const sheets = renderDoc(model, root, 800, "rich");
     expect(sheets).toHaveLength(2);
-    expect(sheets[0]!.classList.contains(TEXT_MODE_CLASS)).toBe(false);
+    expect(sheets[0].classList.contains(TEXT_MODE_CLASS)).toBe(false);
     expect(root.querySelector("h1")?.getAttribute("style")).toMatch(/font-size/);
   });
 
   it("narrows sheets to small widths", () => {
     const root = document.createElement("div");
     const [sheet] = renderDoc(model, root, 360, "text");
-    expect(Number.parseFloat(sheet!.style.width)).toBeLessThanOrEqual(336);
+    expect(Number.parseFloat(sheet.style.width)).toBeLessThanOrEqual(336);
   });
 });

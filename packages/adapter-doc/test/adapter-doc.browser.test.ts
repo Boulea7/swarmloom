@@ -77,7 +77,7 @@ describe("DOC sample in text mode", () => {
 
   it("reports text mode and keeps the HTML free of pictures and inline character styles", () => {
     expect(loaded.notes[0]).toBe(TEXT_MODE_NOTE);
-    const { html, opts } = calls[0]!;
+    const { html, opts } = calls[0];
     expect(html).not.toContain("<img");
     expect(html).not.toMatch(/<script|<iframe/i);
     expect(opts.width).toBe(900);
@@ -93,7 +93,7 @@ describe("other DOC inputs", () => {
       snapshotHtml: fakeSnapshotHtml(calls),
     });
     expect(loaded.pages).toBe(1);
-    expect(calls[0]!.html).toMatch(/<table[^>]*swl-doc-table/);
+    expect(calls[0].html).toMatch(/<table[^>]*swl-doc-table/);
     expect(textsOf(loaded.blueprint).length).toBeGreaterThan(20);
   }, 60_000);
 
@@ -104,7 +104,7 @@ describe("other DOC inputs", () => {
     });
     const pages = pagesOf(loaded.blueprint);
     expect(pages).toHaveLength(3);
-    expect(pages[2]!.box.w).toBeGreaterThan(pages[0]!.box.w);
+    expect(pages[2].box.w).toBeGreaterThan(pages[0].box.w);
     const bp = loaded.blueprint;
     expect(bp.source.title).toBe("群织旧版文档样例 · SwarmLoom Legacy DOC Sample");
     const all = textsOf(bp)
@@ -113,7 +113,7 @@ describe("other DOC inputs", () => {
     expect(all).toContain("MS-DOC");
     // The header of the first section repeats on every sheet, the landscape one included.
     expect(textsOf(bp).filter((t) => t.text.trim() === "群织 SwarmLoom · 旧版 Word 样例").length).toBe(3);
-    expect(calls[0]!.html).toMatch(/<table[^>]*swl-doc-table/);
+    expect(calls[0].html).toMatch(/<table[^>]*swl-doc-table/);
   }, 60_000);
 
   it("renders rich mode with character formatting", async () => {
@@ -125,7 +125,7 @@ describe("other DOC inputs", () => {
     expect(loaded.view).toBe("rich");
     expect(loaded.notes).not.toContain(TEXT_MODE_NOTE);
     expect(pagesOf(loaded.blueprint)).toHaveLength(2);
-    expect(calls[0]!.html).toMatch(/font-weight:\s*700/);
+    expect(calls[0].html).toMatch(/font-weight:\s*700/);
   }, 60_000);
 
   it("opens a Word 2007+ package saved with a .doc name through the DOCX adapter", async () => {

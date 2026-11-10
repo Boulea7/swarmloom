@@ -62,7 +62,7 @@ function readChpxPage(word: ByteReader, page: number, out: FkpRun[]): void {
       if (offset + 1 + cb > PAGE - 1) throw corrupt("CHPX overflows its page");
       grpprl = word.slice(page + offset + 1, cb, "CHPX");
     }
-    out.push({ fcStart: fcs[i]!, fcEnd: fcs[i + 1]!, istd: 0, grpprl });
+    out.push({ fcStart: fcs[i], fcEnd: fcs[i + 1], istd: 0, grpprl });
   }
 }
 
@@ -88,7 +88,7 @@ function readPapxPage(word: ByteReader, page: number, out: FkpRun[]): void {
         grpprl = word.slice(at + 2, size - 2, "PAPX");
       }
     }
-    out.push({ fcStart: fcs[i]!, fcEnd: fcs[i + 1]!, istd, grpprl });
+    out.push({ fcStart: fcs[i], fcEnd: fcs[i + 1], istd, grpprl });
   }
 }
 
@@ -98,7 +98,7 @@ export function runAtOrAfter(runs: readonly FkpRun[], fc: number): number {
   let hi = runs.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (runs[mid]!.fcEnd <= fc) lo = mid + 1;
+    if (runs[mid].fcEnd <= fc) lo = mid + 1;
     else hi = mid;
   }
   return lo;

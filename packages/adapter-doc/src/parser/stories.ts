@@ -49,8 +49,8 @@ export function readHeaders(table: ByteReader, fib: Fib, sectionCount: number): 
   const plc = readPlc(table, fc, lcb, 0, "header table");
   const story = (index: number): CpRange | null => {
     if (index + 1 >= plc.pos.length) return null;
-    const from = plc.pos[index]!;
-    const to = Math.min(plc.pos[index + 1]!, fib.stories.headers);
+    const from = plc.pos[index];
+    const to = Math.min(plc.pos[index + 1], fib.stories.headers);
     return to > from ? { start: start + from, end: start + to } : null;
   };
   let prev: SectionHeaders = { header: null, footer: null, firstHeader: null, firstFooter: null };
@@ -91,10 +91,10 @@ export function readNotes(table: ByteReader, fib: Fib, kind: "footnote" | "endno
   const texts = readPlc(table, txt.fc, txt.lcb, 0, `${kind} texts`);
   const notes: NoteRef[] = [];
   for (let i = 0; i < refs.count && i + 1 < texts.pos.length; i++) {
-    const from = Math.min(texts.pos[i]!, length);
-    const to = Math.min(texts.pos[i + 1]!, length);
+    const from = Math.min(texts.pos[i], length);
+    const to = Math.min(texts.pos[i + 1], length);
     notes.push({
-      refCp: refs.pos[i]!,
+      refCp: refs.pos[i],
       auto: table.i16(refs.dataOffset + i * 2) > 0,
       text: { start: storyStart + from, end: storyStart + to },
     });

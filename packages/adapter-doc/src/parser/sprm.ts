@@ -18,9 +18,9 @@ export function parseGrpprl(grpprl: Uint8Array): Sprm[] {
   const out: Sprm[] = [];
   let at = 0;
   while (at + 2 <= grpprl.length) {
-    const op = grpprl[at]! | (grpprl[at + 1]! << 8);
+    const op = grpprl[at] | (grpprl[at + 1] << 8);
     at += 2;
-    const fixed = FIXED_SIZE[(op >> 13) & 7]!;
+    const fixed = FIXED_SIZE[(op >> 13) & 7];
     let start = at;
     let size: number;
     if (fixed >= 0) {
@@ -28,14 +28,14 @@ export function parseGrpprl(grpprl: Uint8Array): Sprm[] {
     } else if (op === SPRM_T_DEF_TABLE) {
       if (at + 2 > grpprl.length) break;
       // cb counts the rest of the operand plus one.
-      size = (grpprl[at]! | (grpprl[at + 1]! << 8)) - 1;
+      size = (grpprl[at] | (grpprl[at + 1] << 8)) - 1;
       start = at + 2;
     } else if (op === SPRM_P_CHG_TABS && grpprl[at] === 0xff) {
       size = chgTabsSize(grpprl, at + 1);
       start = at + 1;
     } else {
       if (at + 1 > grpprl.length) break;
-      size = grpprl[at]!;
+      size = grpprl[at];
       start = at + 1;
     }
     if (size < 0 || start + size > grpprl.length) break;

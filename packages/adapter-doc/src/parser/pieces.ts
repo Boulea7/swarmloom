@@ -39,7 +39,7 @@ export function pieceAt(pieces: readonly Piece[], cp: number): Piece | null {
   let hi = pieces.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    const p = pieces[mid]!;
+    const p = pieces[mid];
     if (cp < p.cpStart) hi = mid - 1;
     else if (cp >= p.cpEnd) lo = mid + 1;
     else return p;
@@ -81,12 +81,12 @@ function decodePieces(
 ): PieceTable {
   const plc = readPlc(table, offset, size, 8, "piece table");
   if (plc.pos[0] !== 0) throw corrupt("the piece table does not start at CP 0");
-  if (plc.pos[plc.count]! > MAX_CHARS) throw new DocError("too-large", `${plc.pos[plc.count]} characters`);
+  if (plc.pos[plc.count] > MAX_CHARS) throw new DocError("too-large", `${plc.pos[plc.count]} characters`);
   const pieces: Piece[] = [];
   const chunks: string[] = [];
   for (let i = 0; i < plc.count; i++) {
-    const cpStart = plc.pos[i]!;
-    const cpEnd = plc.pos[i + 1]!;
+    const cpStart = plc.pos[i];
+    const cpEnd = plc.pos[i + 1];
     const pcd = plc.dataOffset + i * 8;
     const raw = table.u32(pcd + 2);
     const compressed = (raw & 0x40000000) !== 0;

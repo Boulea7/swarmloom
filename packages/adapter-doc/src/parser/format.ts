@@ -84,7 +84,7 @@ export class Formatter {
     const props: CharProps = { ...style.char };
     const charStyle = direct.find((s) => s.op === SPRM_C_ISTD);
     if (charStyle) {
-      const cs = this.styles.get(charStyle.arg[0]! | (charStyle.arg[1]! << 8));
+      const cs = this.styles.get(charStyle.arg[0] | (charStyle.arg[1] << 8));
       if (cs.kind === "character") {
         for (const g of cs.charChain) for (const s of this.sprms(g)) applyCharSprm(props, s, style.char);
       }

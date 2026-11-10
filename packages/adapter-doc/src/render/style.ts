@@ -19,7 +19,7 @@ export class FontResolver {
       const eastAsia = this.fonts[props.fontEastAsia];
       const families = fontStack(ascii?.name || "Times New Roman", ascii?.generic ?? null).split(", ");
       if (eastAsia?.name && eastAsia.name !== ascii?.name) {
-        families.splice(1, 0, fontStack(eastAsia.name, eastAsia.generic).split(", ")[0]!);
+        families.splice(1, 0, fontStack(eastAsia.name, eastAsia.generic).split(", ")[0]);
       }
       stack = [...new Set(families)].join(", ");
       this.cache.set(key, stack);
@@ -53,7 +53,7 @@ export function charCssDiff(run: CharProps, base: CharProps, fonts: FontResolver
   const a = charCss(run, fonts);
   const b = charCss(base, fonts);
   const out: Record<string, string> = {};
-  for (const key of Object.keys(a)) if (a[key] !== b[key]) out[key] = a[key]!;
+  for (const key of Object.keys(a)) if (a[key] !== b[key]) out[key] = a[key];
   return out;
 }
 

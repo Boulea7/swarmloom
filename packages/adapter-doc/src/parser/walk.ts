@@ -174,7 +174,7 @@ function collectRuns(
           }
           break;
         default:
-          if (c >= 0x20 && c !== 0x1f) appendText(ctx.text[cp]!, props, href);
+          if (c >= 0x20 && c !== 0x1f) appendText(ctx.text[cp], props, href);
       }
     }
   }
@@ -183,12 +183,12 @@ function collectRuns(
 
 /** The field whose code (instruction) part we are inside, if any; code text is never displayed. */
 function innermostCode(fields: Field[]): Field | null {
-  for (let i = fields.length - 1; i >= 0; i--) if (!fields[i]!.inResult) return fields[i]!;
+  for (let i = fields.length - 1; i >= 0; i--) if (!fields[i].inResult) return fields[i];
   return null;
 }
 
 function linkOf(fields: Field[]): string | undefined {
-  for (let i = fields.length - 1; i >= 0; i--) if (fields[i]!.href) return fields[i]!.href;
+  for (let i = fields.length - 1; i >= 0; i--) if (fields[i].href) return fields[i].href;
   return undefined;
 }
 
@@ -198,10 +198,10 @@ const SAFE_URL = /^(?:https?:\/\/|mailto:)/i;
 export function hyperlinkTarget(code: string): string | undefined {
   const match = /^\s*HYPERLINK\s+(.*)$/is.exec(code);
   if (!match) return undefined;
-  const args = match[1]!;
+  const args = match[1];
   if (/^\\l\b/i.test(args.trim())) return undefined;
   const quoted = /"([^"]+)"/.exec(args);
-  const target = (quoted ? quoted[1]! : (args.trim().split(/\s+/)[0] ?? "")).trim();
+  const target = (quoted ? quoted[1] : (args.trim().split(/\s+/)[0] ?? "")).trim();
   return SAFE_URL.test(target) ? target : undefined;
 }
 

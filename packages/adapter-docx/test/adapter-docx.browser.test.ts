@@ -66,7 +66,7 @@ describe.each(["preview", "plain"] as const)("DOCX sample with the %s renderer",
     const texts = textsOf(bp);
     expect(texts.length).toBeGreaterThan(20);
     for (const text of texts) expect(pageOf(bp, text)).toBeDefined();
-    const firstPage = pagesOf(bp)[0]!;
+    const firstPage = pagesOf(bp)[0];
     const onFirst = texts.filter((t) => pageOf(bp, t) === firstPage.id).map((t) => t.text);
     expect(onFirst.join(" ")).toContain("Overview");
   });
@@ -99,7 +99,7 @@ describe.each(["preview", "plain"] as const)("DOCX sample with the %s renderer",
 
   it("hands snapshot-dom safe HTML at the layout width", () => {
     expect(calls).toHaveLength(1);
-    const { html, opts } = calls[0]!;
+    const { html, opts } = calls[0];
     expect(opts.width).toBe(1000);
     expect(html).not.toMatch(/<script|<iframe|\son[a-z]+=/i);
     expect(opts.css ?? "").not.toMatch(/@import|url\(\s*['"]?https?:/i);
@@ -108,7 +108,7 @@ describe.each(["preview", "plain"] as const)("DOCX sample with the %s renderer",
   });
 
   it("turns list numbering into real text", () => {
-    if (renderer === "preview") expect(calls[0]!.html).toContain("swl-marker");
+    if (renderer === "preview") expect(calls[0].html).toContain("swl-marker");
     expect(allText(loaded.blueprint)).toMatch(/(^|\n)(1\.|•)/);
   });
 });

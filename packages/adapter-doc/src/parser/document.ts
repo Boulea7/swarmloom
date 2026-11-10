@@ -89,7 +89,7 @@ export function parseDoc(bytes: Uint8Array, options: ParseDocOptions = {}): DocM
   const docSections = splitSections(main, sections).map((blocks, i): DocSection => {
     const h = headers[i];
     return {
-      props: sections[i]!,
+      props: sections[i],
       blocks,
       header: story(h?.header ?? null),
       footer: story(h?.footer ?? null),
@@ -158,8 +158,8 @@ function splitSections(paragraphs: WalkedParagraph[], sections: SectionProps[]):
   const groups: WalkedParagraph[][] = sections.map(() => []);
   let s = 0;
   for (const p of paragraphs) {
-    while (s < sections.length - 1 && p.cpStart >= sections[s]!.cpEnd) s++;
-    groups[s]!.push(p);
+    while (s < sections.length - 1 && p.cpStart >= sections[s].cpEnd) s++;
+    groups[s].push(p);
   }
   return groups.map(assembleBlocks);
 }

@@ -168,14 +168,14 @@ function renderBlocks(state: RenderState, blocks: readonly DocBlock[]): HTMLElem
     const inList = block.marker !== undefined && block.heading === 0;
     if (!inList) {
       list = null;
-      out.push(renderParagraph(state, block, space[i]!, headingTag(block)));
+      out.push(renderParagraph(state, block, space[i], headingTag(block)));
       continue;
     }
     if (!list) {
       list = el(state.doc, "ul", "swl-doc-list");
       out.push(list);
     }
-    list.append(renderParagraph(state, block, space[i]!, "li"));
+    list.append(renderParagraph(state, block, space[i], "li"));
   }
   return out;
 }
@@ -278,14 +278,14 @@ function renderTable(state: RenderState, table: DocTable): HTMLElement {
   const columns = table.rows.find((r) => r.columns && r.columns.length > 1)?.columns ?? null;
   if (table.rows.some((r) => r.borders !== false)) node.classList.add("swl-doc-grid");
   if (columns) {
-    const total = columns[columns.length - 1]! - columns[0]!;
+    const total = columns[columns.length - 1] - columns[0];
     if (total > 0) {
       node.style.width = px(twipsToPx(total));
       if (columns[0]) node.style.marginLeft = px(twipsToPx(columns[0]));
       const group = el(doc, "colgroup");
       for (let i = 0; i + 1 < columns.length; i++) {
         const col = el(doc, "col");
-        col.style.width = `${Math.round(((columns[i + 1]! - columns[i]!) / total) * 10000) / 100}%`;
+        col.style.width = `${Math.round(((columns[i + 1] - columns[i]) / total) * 10000) / 100}%`;
         group.append(col);
       }
       node.append(group);

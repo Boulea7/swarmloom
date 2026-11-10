@@ -359,14 +359,14 @@ describe("font fallbacks (decisions-v1 F01)", () => {
     const [a, b, c] = Array.from(root.querySelectorAll("section"));
     const extra = document.createElement("span");
     extra.textContent = " live";
-    a!.querySelector("p")!.append(extra);
-    const pages = reparseContent(root, [a!, c!]);
+    a.querySelector("p")?.append(extra);
+    const pages = reparseContent(root, [a, c]);
     expect(pages).toHaveLength(2);
     expect(pages[0]).not.toBe(a);
-    expect(pages[0]!.textContent).toBe("one live");
-    expect(pages[1]!.textContent).toBe("three");
+    expect(pages[0].textContent).toBe("one live");
+    expect(pages[1].textContent).toBe("three");
     expect(root.querySelectorAll("[data-swl-sheet]")).toHaveLength(0);
-    expect(b!.isConnected).toBe(false);
+    expect(b.isConnected).toBe(false);
     expect(root.querySelectorAll("section")).toHaveLength(3);
   });
 

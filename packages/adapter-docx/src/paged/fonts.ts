@@ -136,7 +136,7 @@ function unquote(name: string): string {
 export function withFontFallbacks(list: string): string {
   const families = splitFamilies(list);
   if (families.length === 0) return list;
-  const last = unquote(families[families.length - 1]!).toLowerCase();
+  const last = unquote(families[families.length - 1]).toLowerCase();
   if (GENERICS.has(last) || families.some((f) => f.includes("var("))) return list;
   const first = families.map(unquote).find((f) => f !== "");
   const stack = fontStack(first ?? "Calibri")

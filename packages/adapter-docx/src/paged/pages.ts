@@ -94,7 +94,7 @@ export function markPages(blueprint: Blueprint, sheets: readonly Rect[], style: 
     const index = pages.findIndex((p) => containsPoint(p, cx, cy));
     if (index < 0) continue;
     const parent = layer.parent ? byId.get(layer.parent) : undefined;
-    if (!parent || (!pageSet.has(parent.id) && !containsRect(pages[index]!, parent.box))) {
+    if (!parent || (!pageSet.has(parent.id) && !containsRect(pages[index], parent.box))) {
       layer.parent = pageIds[index];
     }
   }

@@ -53,7 +53,7 @@ const CJK_DIGITS = "〇一二三四五六七八九";
 /** Informal Chinese numerals for 1..99 (一, 十一, 二十); other values fall back to decimal. */
 export function chineseCounting(n: number): string {
   if (n <= 0 || n >= 100) return String(n);
-  if (n < 10) return CJK_DIGITS[n]!;
+  if (n < 10) return CJK_DIGITS[n];
   const tens = Math.floor(n / 10);
   const ones = n % 10;
   return `${tens > 1 ? CJK_DIGITS[tens] : ""}十${ones ? CJK_DIGITS[ones] : ""}`;
@@ -61,7 +61,7 @@ export function chineseCounting(n: number): string {
 
 /** Digit-by-digit CJK numerals (〇一二...). */
 export function cjkDecimal(n: number): string {
-  return String(n).replace(/\d/g, (d) => CJK_DIGITS[Number(d)]!);
+  return String(n).replace(/\d/g, (d) => CJK_DIGITS[Number(d)]);
 }
 
 /** Formats a counter value for a CSS list-style-type name (the subset Office documents use). */

@@ -24,7 +24,7 @@ export function readPlc(table: ByteReader, offset: number, size: number, dataSiz
   const pos: number[] = new Array(count + 1);
   for (let i = 0; i <= count; i++) {
     pos[i] = table.u32(offset + i * 4);
-    if (i > 0 && pos[i]! < pos[i - 1]!) throw corrupt(`${what} positions are not ascending`);
+    if (i > 0 && pos[i] < pos[i - 1]) throw corrupt(`${what} positions are not ascending`);
   }
   return { pos, dataOffset: offset + (count + 1) * 4, dataSize, count };
 }

@@ -51,7 +51,7 @@ export function readSections(word: ByteReader, table: ByteReader, fib: Fib): Sec
   const plc = readPlc(table, fc, lcb, 12, "section table");
   const sections: SectionProps[] = [];
   for (let i = 0; i < plc.count; i++) {
-    const section = defaultSection(plc.pos[i]!, Math.min(plc.pos[i + 1]!, mainEnd));
+    const section = defaultSection(plc.pos[i], Math.min(plc.pos[i + 1], mainEnd));
     const fcSepx = table.u32(plc.dataOffset + i * 12 + 2);
     if (fcSepx !== 0xffffffff && word.has(fcSepx, 2)) {
       const cb = word.u16(fcSepx);
