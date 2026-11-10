@@ -1,0 +1,97 @@
+# Store listing copy, English. Paste field by field into each store dashboard (see store/CHECKLIST.md).
+# Limits are checked by `node scripts/release/check-store.mjs`; keep store/listing/zh-CN.yaml in step.
+# Draft: written from the product spec, contracts/decisions-v1.md and PRIVACY.md. Before each submission,
+# confirm every claim against the build being uploaded and remove anything that build does not do.
+locale: en
+
+# Chrome, Edge and Firefox take the name from the manifest (extName message). App Store name: 2-30 characters.
+name: SwarmLoom
+
+# Must equal the manifest description the extension ships (extDescription message, <= 132 characters):
+# Chrome and Edge show it as the summary and cannot edit it in the dashboard. check-store compares them.
+short: Watch a swarm of cursors rebuild any page, document or model in front of you.
+
+# Firefox AMO summary: <= 250 characters, no URLs.
+summary: >-
+  Click the toolbar button and a swarm of cursors rebuilds the current page in front of you, piece by piece.
+  Everything runs in your browser: no account, no tracking, nothing uploaded.
+
+# App Store only.
+subtitle: Cursors rebuild any page
+promotional_text: >-
+  Watch a swarm of cursors rebuild web pages step by step, then put the page back exactly as it was.
+  Runs locally, with no account and no tracking.
+keywords: cursor,animation,rebuild,web page,swarm,replay,visualization,presentation,demo,open source
+
+# Edge only (not shown to users): at most 7 terms, 30 characters each, 21 words in total.
+search_terms:
+  - cursor animation
+  - rebuild web page
+  - page replay
+  - swarm
+  - visualization
+  - presentation
+  - open source
+
+# Chrome, Edge (250-10,000), Firefox and App Store (<= 4,000). Plain text; URLs are allowed.
+description: |-
+  SwarmLoom turns the page you are looking at into a short performance. Click the toolbar button, press Alt+Shift+W or use the right-click menu, and a swarm of cursors rebuilds the page in front of you: blocks are laid out, text is typed in, images appear. Close it and the page is back exactly as it was.
+
+  What you can do
+  - Rebuild the current page, or only one element of it: right-click the element and choose "Rebuild this element".
+  - Open a linked PDF, document or image, or the current document, in SwarmLoom Studio, the companion web app. Studio also handles Markdown, SVG, slides, sheets, code and 3D models.
+  - Choose the speed, the number of cursors, name tags, theme, sound pack, volume, reduced motion and language.
+
+  Privacy
+  - Pages and files are processed locally in your browser. Nothing is uploaded to a SwarmLoom server; there is none.
+  - No account, no ads, no analytics, no telemetry.
+  - The extension only touches a tab after you start it there. Access to another site is requested only when you choose to open a file from it, and you can revoke it at any time.
+  - Settings are kept in the browser's extension storage. If browser sync is on, your browser may sync them to your other devices through your browser account.
+
+  Open source
+  SwarmLoom is free software under the MIT licence. Source code and documentation: https://github.com/Boulea7/swarmloom
+  Questions and bug reports: https://github.com/Boulea7/swarmloom/issues
+
+  Which formats and platforms are stable, in preview or planned is listed in the documentation at https://boulea7.github.io/swarmloom/
+
+# Chrome Web Store and Edge "Privacy practices". The checkbox answers are in store/stores.yaml.
+privacy:
+  single_purpose: >-
+    SwarmLoom replays the web page in the active tab as an animation in which a swarm of cursors rebuilds it,
+    so the user can watch how the page is put together. It runs only when the user starts it on a tab.
+  # One entry per manifest permission (optional host permissions count as one). check-store fails when a
+  # permission the build declares has no justification, and warns about entries the build does not declare.
+  permissions:
+    activeTab: >-
+      Gives temporary access to the current tab only after the user clicks the toolbar button, presses the
+      keyboard shortcut or picks a context menu item, so that page can be rebuilt. No other tab is accessed.
+    scripting: >-
+      Injects the rebuild player, which is packaged with the extension, into the tab the user activated, and
+      removes it when the user closes the playback. No remote code is loaded.
+    contextMenus: >-
+      Adds right-click actions: rebuild this page, rebuild one element, and open a link, an image or the
+      current document in SwarmLoom Studio.
+    storage: >-
+      Saves the user's settings (speed, cursors, theme, sound, language) in the extension's storage. When the
+      browser's own sync is on, the browser may sync these settings across the user's devices. Nothing is sent to
+      a SwarmLoom server.
+    optional_host_permissions: >-
+      Requested at run time only when the user chooses to open a linked file (for example a PDF, document or
+      image) hosted on another site, to download that file. The user can decline or revoke it at any time.
+  remote_code: >-
+    No, I am not using remote code. All JavaScript is bundled in the package; no script is fetched or
+    evaluated at run time.
+  data_usage: >-
+    The page the user activates is read inside the browser to replay it and is never transmitted, sold or
+    shared. Settings are stored in the browser. There is no account, analytics, advertising or telemetry.
+
+# Edge "Notes for certification", AMO "Notes for Reviewers" and App Review notes.
+reviewer_notes: |-
+  No account or test credentials are needed.
+  1. Open any regular web page, for example https://example.com/.
+  2. Click the SwarmLoom toolbar button (or press Alt+Shift+W). A swarm of cursors rebuilds the page.
+  3. Close the playback; the original page is restored.
+  Right-click a page for "Rebuild this page" and "Rebuild this element", or a link or image for "Open in SwarmLoom Studio".
+  The extension makes no network requests except to download a file the user explicitly chooses to open.
+  Source code (MIT): https://github.com/Boulea7/swarmloom
+  AMO only: the source archive and build steps are in README-AMO.md at the root of the uploaded source zip.

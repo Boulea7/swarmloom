@@ -1,0 +1,308 @@
+name: Release
+
+# 1. After CI passes on main: open or update the "Version Packages" pull request while changesets are pending;
+#    once it is merged, publish the new npm versions with Trusted Publishing (OIDC, no stored npm token).
+# 2. When @swarmloom/core is published, or a v* tag is pushed: build the extension packages (Chrome, Edge,
+#    Firefox, Safari web resources), the AMO source archive, the CLI tarball and the bookmarklet install page,
+#    and attach them to the vX.Y.Z GitHub Release.
+# 3. Store submissions stay manual: the store job waits for approval in the "store" environment and hands over
+#    the files to upload. See scripts/release/README.md and store/CHECKLIST.md.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing product tag to rebuild release assets for, e.g. v0.1.0
+        required: true
+        type: string
+
+# Every job states the permissions it needs.
+permissions: {}
+
+# Never cancel a release half way. A newer pending run for main replaces an older pending one.
+concurrency:
+  group: ${{ github.event_name == 'workflow_run' && 'release-main' || format('release-{0}', inputs.tag || github.ref_name) }}
+  cancel-in-progress: false
+
+jobs:
+  select-mode:
+    name: Select mode
+    # Only a green CI run for a push to main, and only for the newest commit: changesets/action tags and branches
+    # from GITHUB_SHA, which is the tip of main for workflow_run. A newer push gets its own CI and release run.
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_sha == github.sha
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.select.outputs.mode }}
+      publish-plan-artifact-id: ${{ steps.select.outputs.publish-plan-artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # release jobs do not restore caches written by other workflows
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - id: select
+        uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+
+  version:
+    name: Version Packages pull request
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'version'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the version bump to the changeset-release/main branch
+      pull-requests: write # open or update the pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0 # changelog entries link the commit that added each changeset
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # Pull requests opened with GITHUB_TOKEN do not trigger CI. With a GitHub App configured
+      # (vars.RELEASE_APP_CLIENT_ID + secrets.RELEASE_APP_PRIVATE_KEY) the Version Packages PR runs CI normally.
+      - id: app-token
+        if: vars.RELEASE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - id: version
+        uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
+          script: pnpm version-packages
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
+          pr-base-branch: main
+      - name: Keep the Version Packages PR out of the release notes
+        if: steps.version.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.version.outputs.pr-number }}
+        run: >-
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label ignore-for-release
+          || echo "::warning::Could not label PR #$PR_NUMBER; run scripts/release/sync-labels.mjs once to create the labels"
+
+  pack:
+    name: Build and pack npm packages
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - name: Check package metadata
+        run: node scripts/release/check-packages.mjs
+      - name: Check dependency licences
+        run: node scripts/release/check-licenses.mjs
+      - run: pnpm build
+      - id: pack
+        uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
+
+  publish:
+    name: Publish to npm
+    needs: [select-mode, pack]
+    runs-on: ubuntu-latest
+    # Optional protection rules live in this environment; npm's trusted publisher can be bound to it.
+    environment: npm
+    permissions:
+      contents: write # push the per-package git tags
+      id-token: write # npm Trusted Publishing; granted to this job only
+    outputs:
+      tag: ${{ steps.product.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - id: publish
+        uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
+          # One product release (vX.Y.Z) instead of a GitHub Release per package; see the assets job.
+          create-github-releases: false
+          push-git-tags: true
+      - id: product
+        name: Product release tag
+        if: steps.publish.outputs.published == 'true'
+        env:
+          PUBLISHED: ${{ steps.publish.outputs.published-packages }}
+        run: node scripts/release/product-tag.mjs --published "$PUBLISHED"
+
+  assets:
+    name: Release assets
+    needs: publish
+    # Runs after a publish that released @swarmloom/core, for a pushed v* tag, or on manual dispatch.
+    if: >-
+      !cancelled() && (
+        (github.event_name == 'workflow_run' && needs.publish.result == 'success' && needs.publish.outputs.tag != '') ||
+        github.event_name == 'push' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release and upload assets
+    env:
+      RELEASE_TAG: ${{ needs.publish.outputs.tag || (github.event_name == 'push' && github.ref_name) || inputs.tag }}
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      artifact: release-assets-${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # After a publish the tag does not exist yet; it is created with the release from this commit.
+          ref: ${{ github.event.workflow_run.head_sha || format('refs/tags/{0}', env.RELEASE_TAG) }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - id: tag
+        name: Check the tag against the product version
+        run: node scripts/release/product-tag.mjs --tag "$RELEASE_TAG"
+      - name: Check dependency licences
+        run: node scripts/release/check-licenses.mjs
+      # The extension bundles the Studio built in extension mode (scripts/release/build-extension.mjs).
+      - name: Build the extension and the CLI
+        run: |
+          pnpm build:extension
+          pnpm --filter "swarmloom..." build
+      - name: Lint the Firefox package (desktop and Android)
+        run: pnpm dlx web-ext@10.8.0 lint --source-dir apps/extension/dist/firefox
+      - name: Pack release assets
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          node scripts/release/pack-extension.mjs --browser all --out dist/release
+          # AMO reviews bundled code against its source: the tree at this commit plus the build steps.
+          source_zip="dist/release/swarmloom-firefox-source-$VERSION.zip"
+          git archive --format=zip --prefix="swarmloom-$VERSION/" --add-file=store/README-AMO.md -o "$source_zip" HEAD
+          if [ "$(stat -c %s "$source_zip")" -gt 200000000 ]; then
+            echo "::error::$source_zip is larger than the 200 MB AMO accepts"; exit 1
+          fi
+          pnpm --filter swarmloom pack --out "$GITHUB_WORKSPACE/dist/release/swarmloom-cli-%v.tgz"
+          if [ -f apps/bookmarklet/package.json ]; then
+            pnpm --filter @swarmloom/bookmarklet build
+            node scripts/release/pack-folder.mjs apps/bookmarklet/dist "dist/release/swarmloom-bookmarklet-$VERSION.zip"
+          else
+            echo "::warning::apps/bookmarklet not found; the bookmarklet install page is not attached"
+          fi
+          node scripts/release/checksums.mjs dist/release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets-${{ steps.tag.outputs.version }}
+          path: dist/release
+          if-no-files-found: error
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Draft first so the release never appears without its assets. Notes follow .github/release.yml.
+            flags=(--draft --target "$(git rev-parse HEAD)" --title "SwarmLoom $VERSION" --generate-notes)
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
+          fi
+          gh release upload "$RELEASE_TAG" dist/release/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+  store:
+    name: Store submission (manual upload)
+    needs: assets
+    if: ${{ !cancelled() && needs.assets.result == 'success' }}
+    runs-on: ubuntu-latest
+    # Configure required reviewers on this environment. Nothing is uploaded to any store from CI.
+    environment: store
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.assets.outputs.tag }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.assets.outputs.artifact }}
+          path: dist/release
+      - name: Check the store listing against the shipped package
+        run: |
+          unzip -q dist/release/swarmloom-chrome-*.zip -d "$RUNNER_TEMP/chrome"
+          node scripts/release/check-store.mjs --extension "$RUNNER_TEMP/chrome" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Assemble the submission bundle
+        run: |
+          mkdir -p dist/store
+          cp dist/release/swarmloom-chrome-*.zip dist/release/swarmloom-edge-*.zip dist/release/swarmloom-firefox-*.zip \
+            dist/release/swarmloom-safari-*.zip dist/release/SHA256SUMS.txt dist/store/
+          cp -R store dist/store/listing
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-submission-${{ needs.assets.outputs.version }}
+          path: dist/store
+          if-no-files-found: error
