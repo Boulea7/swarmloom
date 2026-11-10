@@ -24,7 +24,8 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "samples": "node scripts/gen-loom-bot.mjs && node scripts/gen-shuttle.mjs"
   },
   "dependencies": {
     "@swarmloom/core": "workspace:*",
