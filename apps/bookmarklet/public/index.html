@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="把 SwarmLoom 存成书签，在不能安装扩展的浏览器里，也能让一群光标重建当前网页。">
+  <title>SwarmLoom 书签版</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <!-- Blocking on purpose: it sets the language before first paint. It is small and wires the rest on DOMContentLoaded. -->
+  <script src="install.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main"><span data-l="zh">跳到正文</span><span data-l="en">Skip to content</span></a>
+  <header class="top">
+    <a class="brand" href="../">SwarmLoom<span class="brand-zh" data-l="zh">群织</span></a>
+    <button class="lang" id="lang-toggle" type="button">
+      <span data-l="zh" lang="en">English</span><span data-l="en" lang="zh-CN">中文</span>
+    </button>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <p class="eyebrow"><span data-l="zh">书签版</span><span data-l="en">Bookmarklet</span></p>
+      <h1>
+        <span data-l="zh">不装扩展，也能召唤光标群</span>
+        <span data-l="en">No extension? Bring the swarm anyway.</span>
+      </h1>
+      <p class="lede">
+        <span data-l="zh">把 SwarmLoom 存成书签。在任意网页上点一下，一群光标就会当着你的面把这一页重新织出来。适用于 Chrome Android、iPhone 和 iPad 上的 Safari，以及不能安装扩展的电脑。</span>
+        <span data-l="en">Save SwarmLoom as a bookmark. Tap it on any page and a swarm of cursors rebuilds that page in front of you. Works in Chrome on Android, Safari on iPhone and iPad, and on computers where you can't install extensions.</span>
+      </p>
+    </section>
+
+    <div class="sections">
+      <section class="panel" id="desktop" aria-labelledby="desktop-title">
+        <h2 id="desktop-title"><span data-l="zh">在电脑上</span><span data-l="en">On a computer</span></h2>
+        <ol class="steps">
+          <li>
+            <span data-l="zh">显示书签栏：Windows 和 Linux 按 <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>B</kbd>，Mac 按 <kbd>⌘</kbd> <kbd>Shift</kbd> <kbd>B</kbd>。</span>
+            <span data-l="en">Show the bookmarks bar: <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>B</kbd> on Windows and Linux, <kbd>⌘</kbd> <kbd>Shift</kbd> <kbd>B</kbd> on a Mac.</span>
+          </li>
+          <li>
+            <span data-l="zh">把下面的按钮拖到书签栏上。</span>
+            <span data-l="en">Drag the button below onto the bookmarks bar.</span>
+          </li>
+          <li>
+            <span data-l="zh">打开任意网页，点一下书签栏里的 SwarmLoom。重建过程中再点一次会停下。</span>
+            <span data-l="en">Open any page and click SwarmLoom on the bookmarks bar. Click it again to stop a rebuild.</span>
+          </li>
+        </ol>
+        <div class="drag-zone">
+          <a class="bm-link" id="bm-link" href="__SWARMLOOM_BOOKMARKLET__" draggable="true">
+            <svg class="cursor" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+              <path d="M5.2 3.6c-.5-.3-1.1.1-1 .7l2.2 15.3c.1.6.9.8 1.2.3l2.9-4.5c.2-.3.5-.4.8-.4l5.4.1c.6 0 .9-.7.5-1.1L5.2 3.6z" />
+            </svg>
+            SwarmLoom
+          </a>
+          <p class="hint">
+            <span data-l="zh">拖到书签栏。也可以直接点一下，在本页试试。</span>
+            <span data-l="en">Drag it to the bookmarks bar, or click it to try it on this page.</span>
+          </p>
+        </div>
+      </section>
+
+      <section class="panel" id="mobile" aria-labelledby="mobile-title">
+        <h2 id="mobile-title"><span data-l="zh">在手机和平板上</span><span data-l="en">On a phone or tablet</span></h2>
+        <p>
+          <span data-l="zh">移动浏览器不能拖拽书签：先给任意页面加个书签，再把它的网址换成书签代码。只需要做一次。</span>
+          <span data-l="en">Mobile browsers can't drag bookmarks. Bookmark any page, then replace its address with the bookmarklet code. You only do this once.</span>
+        </p>
+        <div class="copy-row">
+          <button class="primary" id="copy" type="button">
+            <span data-l="zh">复制书签代码</span><span data-l="en">Copy bookmarklet code</span>
+          </button>
+          <span class="status" id="copy-status" role="status" aria-live="polite"></span>
+        </div>
+        <details class="code" id="code-details">
+          <summary>
+            <span data-l="zh">查看代码</span><span data-l="en">Show the code</span>
+            (<span id="bm-size">__SWARMLOOM_BOOKMARKLET_KB__</span> KB)
+          </summary>
+          <label class="visually-hidden" for="bm-code">
+            <span data-l="zh">书签代码</span><span data-l="en">Bookmarklet code</span>
+          </label>
+          <textarea id="bm-code" rows="6" readonly spellcheck="false" autocomplete="off">__SWARMLOOM_BOOKMARKLET__</textarea>
+        </details>
+
+        <div class="browsers">
+          <details name="browser" id="browser-chrome">
+            <summary>Chrome Android</summary>
+            <ol class="steps">
+              <li><span data-l="zh">点上面的“复制书签代码”。</span><span data-l="en">Tap “Copy bookmarklet code” above.</span></li>
+              <li><span data-l="zh">点右上角的 ⋮，再点 ☆，给这一页加书签。</span><span data-l="en">Tap ⋮ at the top right, then ☆ to bookmark this page.</span></li>
+              <li><span data-l="zh">点 ⋮ → 书签，找到刚加的书签（通常在“移动设备上的书签”里），点它右边的 ⋮ → 修改。</span><span data-l="en">Tap ⋮ → Bookmarks, find the new bookmark (usually under “Mobile bookmarks”), then tap its ⋮ → Edit.</span></li>
+              <li><span data-l="zh">名称改成 SwarmLoom，清空网址后粘贴代码，返回保存。</span><span data-l="en">Rename it to SwarmLoom, clear the URL, paste the code and go back to save.</span></li>
+              <li><span data-l="zh">以后在任意网页点地址栏，输入 swarmloom，在建议列表里点带星标的那一项（不要点搜索）。</span><span data-l="en">On any page, tap the address bar, type swarmloom and tap the suggestion with the star (not the search).</span></li>
+            </ol>
+          </details>
+          <details name="browser" id="browser-ios">
+            <summary><span data-l="zh">iPhone 和 iPad 上的 Safari</span><span data-l="en">Safari on iPhone and iPad</span></summary>
+            <ol class="steps">
+              <li><span data-l="zh">点上面的“复制书签代码”。</span><span data-l="en">Tap “Copy bookmarklet code” above.</span></li>
+              <li><span data-l="zh">点分享按钮，选“添加书签”，存储。</span><span data-l="en">Tap Share, choose “Add Bookmark” and save.</span></li>
+              <li><span data-l="zh">打开书签（书本图标），点“编辑”，再点刚加的书签。</span><span data-l="en">Open Bookmarks (the book icon), tap Edit, then tap the new bookmark.</span></li>
+              <li><span data-l="zh">名称改成 SwarmLoom，清空地址后粘贴代码，点“完成”。</span><span data-l="en">Rename it to SwarmLoom, clear the address, paste the code and tap Done.</span></li>
+              <li><span data-l="zh">以后在任意网页打开书签，点 SwarmLoom。</span><span data-l="en">On any page, open Bookmarks and tap SwarmLoom.</span></li>
+            </ol>
+            <p class="note"><span data-l="zh">装了 SwarmLoom 的 Safari 扩展的话，直接用扩展更方便。</span><span data-l="en">If you installed the SwarmLoom Safari extension, use that instead.</span></p>
+          </details>
+          <details name="browser" id="browser-firefox">
+            <summary>Firefox Android</summary>
+            <p class="note"><span data-l="zh">Firefox Android 支持安装扩展。SwarmLoom 扩展发布后，优先用扩展更省事。部分版本不会从书签运行代码，那时请改用扩展或 Studio。</span><span data-l="en">Firefox for Android supports add-ons; once the SwarmLoom add-on is published, it is the easier choice. Some versions don't run code from bookmarks; use the add-on or the Studio there.</span></p>
+            <ol class="steps">
+              <li><span data-l="zh">点上面的“复制书签代码”。</span><span data-l="en">Tap “Copy bookmarklet code” above.</span></li>
+              <li><span data-l="zh">点 ⋮，再点 ☆，给这一页加书签。</span><span data-l="en">Tap ⋮, then ☆ to bookmark this page.</span></li>
+              <li><span data-l="zh">点 ⋮ → 书签，点刚加的书签右边的 ⋮ → 编辑。</span><span data-l="en">Tap ⋮ → Bookmarks, then the new bookmark's ⋮ → Edit.</span></li>
+              <li><span data-l="zh">名称改成 SwarmLoom，网址换成刚复制的代码，保存。</span><span data-l="en">Rename it to SwarmLoom, replace the URL with the code and save.</span></li>
+              <li><span data-l="zh">以后在任意网页点地址栏，输入 swarmloom，点建议里的书签。</span><span data-l="en">On any page, tap the address bar, type swarmloom and tap the bookmark suggestion.</span></li>
+            </ol>
+          </details>
+          <details name="browser" id="browser-samsung">
+            <summary><span data-l="zh">三星浏览器</span><span data-l="en">Samsung Internet</span></summary>
+            <ol class="steps">
+              <li><span data-l="zh">点上面的“复制书签代码”。</span><span data-l="en">Tap “Copy bookmarklet code” above.</span></li>
+              <li><span data-l="zh">点工具栏上的 ☆，给这一页加书签。</span><span data-l="en">Tap ☆ on the toolbar to bookmark this page.</span></li>
+              <li><span data-l="zh">打开书签，长按刚加的书签，选“编辑”。</span><span data-l="en">Open Bookmarks, long-press the new bookmark and choose Edit.</span></li>
+              <li><span data-l="zh">名称改成 SwarmLoom，网址换成刚复制的代码，保存。</span><span data-l="en">Rename it to SwarmLoom, replace the URL with the code and save.</span></li>
+              <li><span data-l="zh">以后在任意网页打开书签，点 SwarmLoom。</span><span data-l="en">On any page, open Bookmarks and tap SwarmLoom.</span></li>
+            </ol>
+          </details>
+        </div>
+        <p class="note"><span data-l="zh">菜单名称可能因浏览器版本略有不同。</span><span data-l="en">Menu names can differ slightly between browser versions.</span></p>
+      </section>
+
+      <section class="panel" id="options" aria-labelledby="options-title">
+        <details>
+          <summary id="options-title"><span data-l="zh">自定义（可选）</span><span data-l="en">Customize (optional)</span></summary>
+          <form class="options" id="options-form">
+            <fieldset>
+              <legend><span data-l="zh">速度</span><span data-l="en">Speed</span></legend>
+              <label><input type="radio" name="speed" value="" checked> 1×</label>
+              <label><input type="radio" name="speed" value="2"> 2×</label>
+              <label><input type="radio" name="speed" value="3"> 3×</label>
+            </fieldset>
+            <fieldset>
+              <legend><span data-l="zh">声音</span><span data-l="en">Sound</span></legend>
+              <label><input type="radio" name="sound" value="" checked> <span data-l="zh">开</span><span data-l="en">On</span></label>
+              <label><input type="radio" name="sound" value="0"> <span data-l="zh">关</span><span data-l="en">Off</span></label>
+            </fieldset>
+          </form>
+          <p class="note"><span data-l="zh">改完后重新拖拽或复制一次。重建时也可以在工具栏里随时调整。</span><span data-l="en">Drag or copy the bookmarklet again after changing these. You can also adjust them from the toolbar during a rebuild.</span></p>
+        </details>
+      </section>
+
+      <section class="panel faq" aria-labelledby="faq-title">
+        <h2 id="faq-title"><span data-l="zh">常见问题</span><span data-l="en">Questions</span></h2>
+        <h3><span data-l="zh">有的网站会打开一个新标签页？</span><span data-l="en">Why do some sites open a new tab?</span></h3>
+        <p>
+          <span data-l="zh">有些网站禁止加载外部脚本。这时书签会把当前页面的副本交给 SwarmLoom Studio，在新标签页里重建。如果浏览器拦截了新标签页，页面顶部会出现 “Open in SwarmLoom Studio” 按钮，点它即可。</span>
+          <span data-l="en">Some sites block outside scripts. The bookmarklet then hands a copy of the page to SwarmLoom Studio, which rebuilds it in a new tab. If the browser blocks the tab, an “Open in SwarmLoom Studio” button appears at the top of the page; tap it.</span>
+        </p>
+        <h3><span data-l="zh">页面内容会被上传吗？</span><span data-l="en">Is the page uploaded anywhere?</span></h3>
+        <p>
+          <span data-l="zh">不会。书签只从 GitHub Pages 加载 SwarmLoom 自己的代码。交给 Studio 的副本直接在你的浏览器里传递，密码框里的内容不会进入副本。</span>
+          <span data-l="en">No. The bookmarklet only loads SwarmLoom's own code from GitHub Pages. The copy for the Studio goes straight from tab to tab inside your browser, and password fields are left out.</span>
+        </p>
+        <h3><span data-l="zh">哪些页面用不了？</span><span data-l="en">Where doesn't it work?</span></h3>
+        <p>
+          <span data-l="zh">浏览器自带的页面（设置、扩展商店、新标签页）和 PDF 阅读器不运行书签。PDF 和文档可以直接拖进 <a href="__SWARMLOOM_STUDIO_HREF__">Studio</a>。</span>
+          <span data-l="en">Built-in browser pages (settings, extension stores, the new tab page) and PDF viewers don't run bookmarklets. Drop PDFs and documents into the <a href="__SWARMLOOM_STUDIO_HREF__">Studio</a> instead.</span>
+        </p>
+        <h3><span data-l="zh">电脑上能装扩展的话？</span><span data-l="en">Can I use the extension instead?</span></h3>
+        <p>
+          <span data-l="zh">可以。Chrome、Edge、Firefox 和 Safari 上推荐用扩展：它不受网站的脚本限制，几乎所有网页都能直接重建，不用跳转到 Studio。</span>
+          <span data-l="en">Yes. On Chrome, Edge, Firefox and Safari the extension is the better choice: site script restrictions don't apply to it, so almost every page rebuilds in place without a trip to the Studio.</span>
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <a href="__SWARMLOOM_STUDIO_HREF__">Studio</a>
+    <span aria-hidden="true">·</span>
+    <a href="https://github.com/Boulea7/swarmloom">GitHub</a>
+    <span aria-hidden="true">·</span>
+    <span>MIT</span>
+  </footer>
+</body>
+</html>

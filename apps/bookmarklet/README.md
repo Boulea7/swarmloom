@@ -1,0 +1,7 @@
+# @swarmloom/bookmarklet
+
+The SwarmLoom bookmarklet, for browsers without extensions (Chrome Android, Safari on iPhone and iPad without the Safari extension, locked-down desktops). The `javascript:` URL is a loader of about 1.5 KB that injects the hosted bundle `bm/swarm.js` (snapshot-dom + core, no format adapters), which rebuilds the current page in an overlay with the toolbar; clicking it again stops the rebuild. When the page's Content Security Policy blocks the bundle, the loader hands a serialized copy of the page to the Studio in a new tab instead. [PROTOCOL.md](PROTOCOL.md) documents that handoff (and the loader/bundle contract); the Studio implements the receiver.
+
+`pnpm -F @swarmloom/bookmarklet build` writes `dist/` for the Pages assembly to publish at `/swarmloom/bm/`: `swarm.js` (+ source map), the bilingual install page `index.html` with `install.js` and `style.css`, and `bookmarklet.txt` with the default URL. `node scripts/build.mjs --base <url> --studio <url>` (or `SWARMLOOM_PAGES_BASE`) points it at another Pages base; the build fails if the default bookmarklet would exceed 1535 characters.
+
+The bookmarklet only promises "rebuild here, or open in the Studio". Browser pages and built-in PDF viewers do not run bookmarklets, pages with `Cross-Origin-Opener-Policy: same-origin` cannot use the Studio fallback, and coverage of real sites and mobile browsers still needs testing on devices.
