@@ -261,9 +261,6 @@ importers:
       '@swarmloom/core':
         specifier: workspace:*
         version: link:../core
-      '@swarmloom/snapshot-dom':
-        specifier: workspace:*
-        version: link:../snapshot-dom
 
   packages/adapter-markdown:
     dependencies:
@@ -297,9 +294,6 @@ importers:
       '@swarmloom/core':
         specifier: workspace:*
         version: link:../core
-      '@swarmloom/snapshot-dom':
-        specifier: workspace:*
-        version: link:../snapshot-dom
 
   packages/adapter-three:
     dependencies:
