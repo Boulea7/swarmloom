@@ -1,0 +1,190 @@
+import {
+  type Blueprint,
+  type CustomLayer,
+  createPlayer,
+  type Layer,
+  type Plugin,
+  type StageApi,
+  VirtualClock,
+} from "@swarmloom/core";
+import { afterEach, describe, expect, it } from "vitest";
+import shuttleJson from "../../../examples/lottie/shuttle-loop.json?raw";
+import shuttleUrl from "../../../examples/lottie/shuttle-loop.lottie?url";
+import {
+  type AnimTimelineData,
+  animTargetOf,
+  collectKeyframes,
+  type LottieLoadedSource,
+  type LottiePlayerData,
+  lottieAdapter,
+  PLAYER_TASK,
+  TIMELINE_TASK,
+} from "../src/index";
+
+const ctx = { document, width: 640, theme: "light" as const };
+const PLAYER_ID = "lottie-player";
+
+function byKind<K extends Layer["kind"]>(layers: readonly Layer[], kind: K): Extract<Layer, { kind: K }>[] {
+  return layers.filter((l): l is Extract<Layer, { kind: K }> => l.kind === kind);
+}
+
+function custom(blueprint: Blueprint, task: string): CustomLayer {
+  const layer = byKind(blueprint.layers, "custom").find((l) => l.task === task);
+  if (!layer) throw new Error(`no ${task} layer`);
+  return layer;
+}
+
+async function loadExample(): Promise<LottieLoadedSource> {
+  return (await lottieAdapter.load({ text: shuttleJson, name: "shuttle-loop.json" }, ctx)) as LottieLoadedSource;
+}
+
+/** Plays a loaded source to "done" with the real player on a virtual clock; returns its stage. */
+async function playToDone(loaded: LottieLoadedSource, reducedMotion: boolean) {
+  let stage: StageApi | null = null;
+  const probe: Plugin = {
+    name: "probe",
+    setup(s) {
+      stage = s;
+    },
+  };
+  const host = document.body.appendChild(document.createElement("div"));
+  host.style.cssText = "position:relative;width:640px;height:520px";
+  const clock = new VirtualClock();
+  const player = createPlayer({
+    blueprint: loaded.blueprint,
+    plugins: [...(loaded.plugins ?? []), probe],
+    host,
+    clock,
+    seed: 3,
+    sound: false,
+    controls: false,
+    reducedMotion,
+  });
+  const errors: string[] = [];
+  player.on("error", (e) => errors.push(e.error.message));
+  void player.play();
+  for (let i = 0; i < 60 * 90 && player.state !== "done"; i++) {
+    clock.advance(1000 / 60);
+    // Tasks may wait for lottie-web to load: let promises settle as an exporter does.
+    if (i % 20 === 0) await player.ready();
+  }
+  expect(player.state).toBe("done");
+  expect(errors).toEqual([]);
+  if (!stage) throw new Error("plugin setup was not called");
+  const advance = async (ms: number): Promise<void> => {
+    for (let i = Math.round((ms * 60) / 1000); i > 0; i--) clock.advance(1000 / 60);
+    await player.ready();
+  };
+  const close = (): void => {
+    player.destroy();
+    host.remove();
+    loaded.dispose?.();
+  };
+  return { stage: stage as StageApi, advance, close };
+}
+
+afterEach(() => {
+  // The adapter must not leave its sandbox behind.
+  expect(document.querySelector("[data-swarmloom-sandbox]")).toBeNull();
+});
+
+describe("lottieAdapter on the example", () => {
+  it("weaves the fullest frame as vector layers, then adds the player and the timeline", async () => {
+    const loaded = await loadExample();
+    const { blueprint } = loaded;
+    expect(blueprint.source).toMatchObject({ type: "lottie", title: "SwarmLoom shuttle loop" });
+    // 480 x 300 scaled to 640 px wide, plus the timeline strip; the paper solid became the background.
+    expect(blueprint.size).toEqual({ w: 640, h: 456 });
+    expect(blueprint.background).toBe("rgb(250, 250, 252)");
+    expect(blueprint.plugins).toEqual(["lottie", "anim:timeline"]);
+    expect(loaded.notes).toEqual([]);
+
+    // Loom frame, five warp threads, the weft, the shuttle hull and bobbin; the caption as one line.
+    const paths = byKind(blueprint.layers, "path");
+    expect(paths).toHaveLength(9);
+    expect(byKind(blueprint.layers, "text").map((t) => t.text)).toEqual(["woven by many hands"]);
+    expect(paths.filter((p) => p.stroke === "rgb(19, 184, 166)")).toHaveLength(5);
+    // Frame 60: the trim path has drawn the whole weft.
+    expect(paths.find((p) => p.stroke === "rgb(255, 107, 91)")?.box.w).toBeGreaterThan(400);
+    expect(blueprint.layers).toHaveLength(12);
+
+    const player = custom(blueprint, PLAYER_TASK);
+    expect(player.data as LottiePlayerData).toMatchObject({ rest: 60, loop: true, speed: 1 });
+    expect(player.box).toEqual({ x: 0, y: 0, w: 640, h: 400 });
+    const timeline = custom(blueprint, TIMELINE_TASK);
+    expect(timeline.data as AnimTimelineData).toMatchObject({
+      target: PLAYER_ID,
+      duration: 4000,
+      keyframes: [0, 800, 2000, 2800, 3200, 3733.333, 4000],
+      rest: 2000,
+    });
+    // The player is built first, the timeline after the woven layers.
+    const priorities = blueprint.layers.map((l) => l.priority ?? 0);
+    expect(player.priority).toBe(Math.min(...priorities));
+    expect(timeline.priority).toBe(Math.max(...priorities));
+    expect(timeline.parent).toBeDefined();
+    loaded.dispose?.();
+  });
+
+  it("reads the same animation from the .lottie archive", async () => {
+    const bytes = new Uint8Array(await (await fetch(shuttleUrl)).arrayBuffer());
+    const fromArchive = await lottieAdapter.load({ bytes, name: "shuttle-loop.lottie" }, ctx);
+    const fromJson = await loadExample();
+    const shapes = (b: Blueprint) => byKind(b.layers, "path").map((p) => p.d);
+    expect(shapes(fromArchive.blueprint)).toEqual(shapes(fromJson.blueprint));
+    expect(fromArchive.blueprint.layers).toHaveLength(12);
+  });
+});
+
+describe("lottie playback with the real player", () => {
+  it("plays to done, then the animation follows the engine clock only", async () => {
+    const { stage, advance, close } = await playToDone(await loadExample(), false);
+    const el = stage.el(PLAYER_ID);
+    const target = animTargetOf(el);
+    expect(el?.querySelector("svg")).not.toBeNull();
+    expect((el as HTMLElement).style.visibility).toBe("");
+    const t0 = target?.time() ?? Number.NaN;
+    expect(Number.isFinite(t0)).toBe(true);
+
+    // One second of engine time is 30 frames later in the 4 s loop.
+    await advance(1000);
+    const t1 = target?.time() ?? Number.NaN;
+    expect((t1 - t0 + 4000) % 4000).toBeCloseTo(1000, 6);
+    // Real time without engine time moves nothing: lottie-web runs no clock of its own.
+    await new Promise((r) => setTimeout(r, 120));
+    expect(target?.time()).toBe(t1);
+    close();
+  });
+
+  it("keeps the woven pose with reduced motion", async () => {
+    const { stage, advance, close } = await playToDone(await loadExample(), true);
+    const el = stage.el(PLAYER_ID) as HTMLElement;
+    await advance(500);
+    expect(animTargetOf(el)?.time()).toBeNull();
+    expect(el.style.visibility).toBe("hidden");
+    close();
+  });
+});
+
+describe("collectKeyframes", () => {
+  it("reads Web Animations and SMIL timing, skipping event-based begins", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const anim = box.animate([{ opacity: 0 }, { opacity: 0.5, offset: 0.25 }, { opacity: 1 }], {
+      duration: 2000,
+      delay: 500,
+    });
+    anim.pause();
+    expect(collectKeyframes(box)).toEqual({ duration: 2500, keyframes: [500, 1000, 2500] });
+    anim.cancel();
+
+    const holder = document.body.appendChild(document.createElement("div"));
+    holder.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="5" height="5">
+      <animate attributeName="x" begin="1s" dur="3s" keyTimes="0;0.5;1" values="0;5;0"/>
+      <animate attributeName="y" begin="click" dur="9s" values="0;5"/></rect></svg>`;
+    const svg = holder.querySelector("svg") as SVGSVGElement;
+    expect(collectKeyframes(svg)).toEqual({ duration: 4000, keyframes: [1000, 2500, 4000] });
+    expect(collectKeyframes(svg, { subtree: false })).toBeNull();
+    box.remove();
+    holder.remove();
+  });
+});

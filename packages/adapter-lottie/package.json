@@ -1,0 +1,35 @@
+{
+  "name": "@swarmloom/adapter-lottie",
+  "version": "0.1.0",
+  "description": "Lottie adapter for SwarmLoom: a representative pose woven as vector layers, then the real animation played from the engine clock.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@swarmloom/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boulea7/swarmloom.git",
+    "directory": "packages/adapter-lottie"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@swarmloom/adapter-svg": "workspace:*",
+    "@swarmloom/core": "workspace:*",
+    "fflate": "0.8.3",
+    "lottie-web": "5.13.0"
+  }
+}
