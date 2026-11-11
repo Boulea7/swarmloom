@@ -178,10 +178,15 @@ export function sanitizeCss(css: string): string {
 /** Animation values may only reference local fragments and never carry script or data URLs. */
 const UNSAFE_ANIMATION_VALUE = /url\(\s*["']?(?!#)|(?:javascript|vbscript|data):/i;
 
-/** True for an animation that could navigate, run handlers or load resources once it plays. */
+/**
+ * True for an animation that could navigate, run handlers or load resources once it plays.
+ * SMIL resolves the `attributeName` prefix through the namespaces in scope, so any prefix can name
+ * xlink: the checks look at the local part after the colon, never at the literal `xlink:` prefix.
+ */
 function unsafeAnimation(el: Element): boolean {
   const target = (el.getAttribute("attributeName") ?? "").trim().toLowerCase();
-  if (target === "href" || target === "xlink:href" || target.startsWith("on") || target === "style") return true;
+  const local = target.slice(target.lastIndexOf(":") + 1);
+  if (local === "href" || local.startsWith("on") || local === "style") return true;
   for (const name of ["values", "from", "to", "by"]) {
     const v = el.getAttribute(name);
     if (v && UNSAFE_ANIMATION_VALUE.test(decodeCssEscapes(v))) return true;

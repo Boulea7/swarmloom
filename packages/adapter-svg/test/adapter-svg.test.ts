@@ -4,7 +4,7 @@ import { extractAnchors } from "../src/path/anchors";
 import { pathBounds, serializePath, transformSegments } from "../src/path/geometry";
 import { parsePathData } from "../src/path/parse";
 import { parsePoints, rectSegments } from "../src/path/shapes";
-import { sanitizeCss } from "../src/sanitize";
+import { sanitizeCss, sanitizeSvgTree } from "../src/sanitize";
 import { looksLikeSvg } from "../src/source";
 import { stageSize } from "../src/units";
 
@@ -111,6 +111,21 @@ describe("sanitizing helpers", () => {
     expect(css).toContain("c{x:none}");
     expect(css).toContain("url(#g)");
     expect(css).toContain('url("data:image/png;base64,AA")');
+  });
+
+  it("drops href animations whatever prefix binds the xlink namespace", () => {
+    const svg = new DOMParser().parseFromString(
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:l="http://www.w3.org/1999/xlink">
+        <image><animate attributeName="l:href" values="https://evil.test/p.png" dur="1s"/></image>
+        <a><set attributeName=" L:HREF " to="https://evil.test/phish"/></a>
+        <rect><animate attributeName="opacity" values="0;1" dur="1s"/></rect></svg>`,
+      "image/svg+xml",
+    ).documentElement;
+    sanitizeSvgTree(svg);
+    expect(Array.from(svg.querySelectorAll("animate, set"), (a) => a.getAttribute("attributeName"))).toEqual([
+      "opacity",
+    ]);
+    expect(svg.outerHTML).not.toContain("evil.test");
   });
 
   it("sniffs SVG through prologs, comments and doctypes", () => {
