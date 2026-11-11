@@ -196,6 +196,31 @@ describe("builtin choreographies", () => {
     expect(play(text("lost", "Lost", { snaps: ["nope"] })).timeline.sounds("snap")).toHaveLength(0);
   });
 
+  it("types snapping text beside its guide without covering neighbouring content", () => {
+    // A feature card: icon on top, then a heading on a shared baseline guide, then a paragraph.
+    const card: Layer = { id: "card", kind: "box", box: { x: 940, y: 640, w: 290, h: 215 }, style: {} };
+    const icon: Layer = { id: "icon", kind: "box", box: { x: 960, y: 660, w: 40, h: 40 }, style: {}, parent: "card" };
+    const baseline: Layer = { id: "base", kind: "guide", box: { x: 320, y: 729, w: 880, h: 1 }, axis: "y", pos: 729 };
+    const heading = text("share", "Share a draft", {
+      parent: "card",
+      snaps: ["base"],
+      box: { x: 960, y: 713, w: 255, h: 22 },
+      style: { "font-size": "16px", "line-height": "21.6px", "font-weight": "700" },
+    });
+    const body = text("body", "Send a read-only link.", { parent: "card", box: { x: 960, y: 750, w: 255, h: 48 } });
+    for (let seed = 1; seed <= 12; seed++) {
+      const timeline = new Timeline();
+      const stage = fakeStage(timeline, [card, icon, baseline, heading, body]);
+      run(taskFor(heading), fakeAgent(timeline, { seed }), heading, stage, timeline);
+      const typedAt = timeline.of("style").find((e) => e.css?.translate)?.css?.translate ?? "";
+      const dy = Number.parseFloat(typedAt.split(" ")[1] ?? "");
+      // Off the baseline (still a visible snap), but clear of the icon above and the paragraph below.
+      expect(Math.abs(dy), `seed ${seed}`).toBeGreaterThan(8);
+      expect(713 + dy, `seed ${seed}`).toBeGreaterThanOrEqual(700);
+      expect(713 + 22 + dy, `seed ${seed}`).toBeLessThanOrEqual(750);
+    }
+  });
+
   it("duplicates: selects the master before the drop, then retypes differing text", () => {
     const layer = cases.find(([name]) => name === "duplicate text")?.[1] as TextLayer;
     const { timeline } = play(layer);
