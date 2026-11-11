@@ -5,3 +5,13 @@ packages:
 # Dependencies allowed to run install scripts (pnpm blocks all others).
 allowBuilds:
   esbuild: true
+
+# Licence gate (scripts/release/license-policy.json, decisions L04): only MPL-2.0 and OFL-1.1 may be
+# listed as per-package exceptions, so two transitive dev-only packages of web-ext are replaced or dropped.
+overrides:
+  # fx-runner pins winreg 0.0.12, which declares the non-SPDX "BSD" and ships no licence text. 1.2.5 (same
+  # author) is BSD-2-Clause, text in its README, with the same API fx-runner uses on Windows to find Firefox
+  # (new Registry({ hive, key }).get(name, cb), Registry.HKCU / HKLM).
+  fx-runner>winreg: 1.2.5
+  # js-yaml uses argparse (Python-2.0) only in its own CLI, which nothing here runs; the library does not.
+  js-yaml>argparse: "-"
