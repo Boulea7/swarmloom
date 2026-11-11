@@ -5,7 +5,7 @@
  */
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -152,6 +152,42 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
       expect(info.streams.map((s) => s.codec_type)).toEqual(["video", "audio"]);
       expect(info.streams[0]).toMatchObject({ width: 400, height: 240 });
       expect(await leftovers()).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "writes the same frames, events and manifest for the same arguments (capture evidence)",
+    async () => {
+      const take = async (dir: string) => {
+        const args = ["render", path.join(FIXTURES, "page/index.html"), "-o", `${dir}/take.mp4`, "--duration", "1.5"];
+        const extra = ["--fps", "10", "--bpm", "120", "--cue", "2b:pause", "--width", "160", "--height", "90"];
+        const outs = [
+          "--audio-out",
+          `${dir}/take.wav`,
+          "--events-out",
+          `${dir}/ev.json`,
+          "--manifest-out",
+          `${dir}/m.json`,
+        ];
+        const run = startCli([...args, ...extra, ...outs, "--quiet"], fakePage);
+        const { code, stderr } = await run.done;
+        expect(code, stderr).toBe(0);
+        return JSON.parse(await readFile(path.join(work, dir, "m.json"), "utf8"));
+      };
+      const [a, b] = [await take("a"), await take("b")];
+      // Fixed length: 15 frames although the double's build and tail end at 3.5 s.
+      expect(a.frames).toMatchObject({ count: 15, imageType: "png", builtAtMs: 1000 });
+      expect(a.frames.sha256).toHaveLength(15);
+      expect(a.cues).toEqual([{ spec: "2b:pause", atMs: 1000, frame: 10, action: "pause" }]);
+      expect(a.player).toMatchObject({ bpm: 120, controls: false });
+      expect(a.programs.browser.version).toBeTruthy();
+      expect(a.frames.aggregateSha256).toBe(b.frames.aggregateSha256);
+      expect(a.sound.soundLogSha256).toBe(b.sound.soundLogSha256);
+      const events = JSON.parse(await readFile(path.join(work, "a/ev.json"), "utf8"));
+      expect(events.events.map((e: { frame: number }) => e.frame)).toEqual([0, 10]);
+      expect(a.outputs.events.sha256).toBe(b.outputs.events.sha256);
+      expect(Number((await probe(path.join(work, "a/take.mp4"))).format.duration)).toBeCloseTo(1.5, 1);
     },
     TIMEOUT,
   );

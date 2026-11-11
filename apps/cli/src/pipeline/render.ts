@@ -1,7 +1,7 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import path from "node:path";
-import type { Blueprint } from "@swarmloom/core";
+import type { Blueprint, SoundEvent } from "@swarmloom/core";
 import type { Browser, Page } from "playwright-core";
 import { type ContextOptions, launchBrowser, newContext, watchPage } from "../browser/launch";
 import { applyNetworkPolicy } from "../browser/network";
@@ -13,18 +13,28 @@ import { startStaticServer } from "../server/static";
 import { Cleanup } from "../util/async";
 import { moveIntoPlace } from "../util/fs";
 import { trackTempDir } from "../util/owned";
-import { RenderPageDriver } from "./driver";
-import { formatHasAudio, frameImageType, type OutputFormat } from "./encode";
+import { type PlatformFont, RenderPageDriver } from "./driver";
+import { type FrameImageType, formatHasAudio, frameImageType, type OutputFormat } from "./encode";
 import { runFrameLoop } from "./frames";
 import { inputBase, type RenderSource, servedInput, toRenderInput } from "./input";
 import { type FrameWriter, ffmpegWriter, pngSequenceWriter } from "./output";
 import { formatClock, Progress } from "./progress";
-import type { RenderInit, StepResult } from "./protocol";
+import type { RenderCue, RenderInfo, RenderInit, StepResult } from "./protocol";
 
 const SNAPSHOT_TIMEOUT_MS = 60_000;
 
 /** Player settings forwarded verbatim to the render page. */
-export type PlayerSettings = Omit<RenderInit, "input" | "width" | "height" | "fps" | "blueprint">;
+export type PlayerSettings = Omit<RenderInit, "input" | "width" | "height" | "fps" | "blueprint" | "cues">;
+
+/** What a capture keeps besides the video, for --audio-out, --events-out and --manifest-out. */
+export interface EvidenceRequest {
+  /** Keep the soundtrack WAV bytes. */
+  audio: boolean;
+  /** Read the sound events from the page. */
+  events: boolean;
+  /** Capture lossless PNG frames, hash each one, and record browser and font details. */
+  manifest: boolean;
+}
 
 export interface RenderJob {
   source: RenderSource;
@@ -37,6 +47,11 @@ export interface RenderJob {
   fps: number;
   settings: PlayerSettings;
   maxDurationMs: number;
+  /** Capture exactly `maxDurationMs` of video even after the build is done (--duration). */
+  fixedLength?: boolean;
+  /** Player actions at fixed video times. */
+  cues?: RenderCue[];
+  evidence?: EvidenceRequest;
   /** Let the render page load https: images and fonts the input references (decision C03). */
   remoteAssets: boolean;
   quiet: boolean;
@@ -62,10 +77,25 @@ export interface RenderSummary {
   durationMs: number;
   /** False when --max-duration cut the build short. */
   finished: boolean;
+  /** Video time of the first frame that showed the build complete, or null. */
+  builtAtMs: number | null;
   audio: boolean;
   last: StepResult;
   /** Requests the network policy refused (scripts, style sheets, plain http, other origins). */
   blockedRequests: number;
+  /** What the page reported about the loaded input. */
+  info: RenderInfo;
+  /** Browser product version, e.g. "Chrome/150.0.7871.46" style strings from Playwright. */
+  browserVersion: string;
+  /** Present when evidence was requested. */
+  evidence?: {
+    imageType: FrameImageType;
+    /** SHA-256 (hex) of every captured frame as the browser encoded it, in order (manifest only). */
+    frameSha256: string[];
+    wav?: Uint8Array;
+    events?: SoundEvent[];
+    fonts?: PlatformFont[] | null;
+  };
 }
 
 /**
@@ -93,6 +123,8 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     const origin = new URL(server.url).origin;
     const browser = await launchBrowser(deps.browserPath);
     cleanup.defer(() => browser.close());
+    const evidence = job.evidence;
+    const imageType = frameImageType(job.format, evidence?.manifest ?? false);
     const viewport: ContextOptions = {
       width: job.width,
       height: job.height,
@@ -113,50 +145,61 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       width: job.width,
       height: job.height,
       scale: job.scale,
-      imageType: frameImageType(job.format),
+      imageType,
       io,
       verbose: job.verbose,
       signal,
     });
-    const estimate =
-      (await driver.init({
-        input: toRenderInput(job.source, origin + base),
-        width: job.width,
-        height: job.height,
-        fps: job.fps,
-        ...job.settings,
-        ...(blueprint ? { blueprint } : {}),
-      })) || job.maxDurationMs;
-    if (estimate > job.maxDurationMs) {
+    const info = await driver.init({
+      input: toRenderInput(job.source, origin + base),
+      width: job.width,
+      height: job.height,
+      fps: job.fps,
+      ...job.settings,
+      ...(job.cues?.length ? { cues: job.cues } : {}),
+      ...(blueprint ? { blueprint } : {}),
+    });
+    const estimate = info.estimatedMs || job.maxDurationMs;
+    if (!job.fixedLength && estimate > job.maxDurationMs) {
       const need = formatClock(estimate / 1000);
       const max = formatClock(job.maxDurationMs / 1000);
       warn(io, `the build needs about ${need} but --max-duration is ${max}; the video will stop early`);
     }
 
-    const writer = await createWriter(job, deps, tmp);
+    const writer = await createWriter(job, deps, tmp, imageType);
     cleanup.defer(() => writer.abort());
     const maxFrames = Math.max(1, Math.round((job.maxDurationMs * job.fps) / 1000));
-    progress.expect(Math.min(maxFrames, Math.ceil((estimate * job.fps) / 1000) + 1));
-    const result = await runFrameLoop(driver, (frame, index) => writer.write(frame, index), {
+    progress.expect(job.fixedLength ? maxFrames : Math.min(maxFrames, Math.ceil((estimate * job.fps) / 1000) + 1));
+    const frameSha256: string[] = [];
+    const sink = (frame: Uint8Array, index: number) => {
+      if (evidence?.manifest) frameSha256.push(createHash("sha256").update(frame).digest("hex"));
+      return writer.write(frame, index);
+    };
+    const result = await runFrameLoop(driver, sink, {
       fps: job.fps,
       maxFrames,
+      untilDone: !job.fixedLength,
       signal,
       onFrame: (frame, step) => progress.update({ frame, ...step }),
     });
+    const fonts = evidence?.manifest ? await driver.platformFonts() : undefined;
 
     progress.phase("encoding");
     let output = await writer.finish();
     let audio = false;
+    let wav: Uint8Array | null = null;
     // A single frame never advanced the clock, so there is no soundtrack to render.
     if (job.settings.sound && formatHasAudio(job.format) && result.elapsedMs > 0) {
       progress.phase("rendering sound");
-      const wav = await driver.audioWav();
+      wav = await driver.audioWav();
       if (wav) {
         progress.phase("adding sound");
         output = await writer.addAudio(output, wav, result.durationMs);
         audio = true;
       }
     }
+    const events = evidence?.events ? await driver.soundLog() : undefined;
+    const browserVersion = browser.version();
     await driver.dispose();
     progress.clear();
     await moveIntoPlace(output, job.output);
@@ -164,9 +207,15 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       frames: result.frames,
       durationMs: result.durationMs,
       finished: result.finished,
+      builtAtMs: result.builtAtMs,
       audio,
       last: result.last,
       blockedRequests,
+      info,
+      browserVersion,
+      ...(evidence
+        ? { evidence: { imageType, frameSha256, ...(wav ? { wav } : {}), ...(events ? { events } : {}), fonts } }
+        : {}),
     };
   } finally {
     progress.clear();
@@ -197,9 +246,11 @@ async function captureLivePage(
   }
 }
 
-function createWriter(job: RenderJob, deps: RenderDeps, tmp: string): Promise<FrameWriter> {
+function createWriter(job: RenderJob, deps: RenderDeps, tmp: string, imageType: FrameImageType): Promise<FrameWriter> {
   if (job.format === "png-seq") return pngSequenceWriter(tmp);
   if (!deps.ffmpeg) throw new RenderError("ffmpeg is required for this format");
   const { path: ffmpegPath, caps } = deps.ffmpeg;
-  return Promise.resolve(ffmpegWriter(job.format, { ffmpegPath, caps, fps: job.fps, tmp, signal: deps.signal }));
+  return Promise.resolve(
+    ffmpegWriter(job.format, { ffmpegPath, caps, fps: job.fps, tmp, imageType, signal: deps.signal }),
+  );
 }

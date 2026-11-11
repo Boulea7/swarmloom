@@ -1,17 +1,46 @@
+import type { SoundEvent } from "@swarmloom/core";
 import type { BrowserContext, CDPSession, Page } from "playwright-core";
 import { type PageLog, watchPage } from "../browser/launch";
 import { briefMessage, CliError, RenderError } from "../errors";
 import type { CliIo } from "../io";
 import { guard } from "../util/async";
 import type { FrameSource } from "./frames";
-import { asStepResult, type RenderApi, type RenderInit, type StepResult } from "./protocol";
+import {
+  asRenderInfo,
+  asSoundEvents,
+  asStepResult,
+  type RenderApi,
+  type RenderInfo,
+  type RenderInit,
+  type StepResult,
+} from "./protocol";
 
 const PAGE_READY_MS = 60_000;
 const INIT_MS = 180_000;
 const STEP_MS = 60_000;
 const AUDIO_MS = 180_000;
+/** Most text-bearing elements asked for their fonts (each is one CDP round trip). */
+const MAX_FONT_NODES = 2000;
 
 type SwarmWindow = { __swarmloom: RenderApi };
+
+/** A font the browser used to draw the page's text (CSS.getPlatformFontsForNode). */
+export interface PlatformFont {
+  family: string;
+  postScriptName: string;
+  /** Loaded with @font-face rather than installed on the system. */
+  custom: boolean;
+  glyphs: number;
+}
+
+interface DomNode {
+  nodeId: number;
+  nodeType: number;
+  nodeValue?: string;
+  children?: DomNode[];
+  shadowRoots?: DomNode[];
+  contentDocument?: DomNode;
+}
 
 export interface DriverOptions {
   /** URL of the render page's index.html. */
@@ -72,13 +101,12 @@ export class RenderPageDriver implements FrameSource {
     return new RenderPageDriver(page, cdp, log, opts);
   }
 
-  /** Loads the input; resolves with the page's estimate of the full video length in ms (0 when unknown). */
-  async init(init: RenderInit): Promise<number> {
+  /** Loads the input; resolves with the page's estimate of the video length (0 when unknown) and what it loaded. */
+  async init(init: RenderInit): Promise<RenderInfo> {
     const result = await this.call("Loading the input", INIT_MS, () =>
       this.page.evaluate((o) => (globalThis as unknown as SwarmWindow).__swarmloom.init(o), init),
     );
-    const estimate = Number((result as { estimatedMs?: unknown } | null)?.estimatedMs);
-    return Number.isFinite(estimate) && estimate > 0 ? estimate : 0;
+    return asRenderInfo(result);
   }
 
   async step(ms: number): Promise<StepResult> {
@@ -106,6 +134,51 @@ export class RenderPageDriver implements FrameSource {
     return typeof base64 === "string" && base64.length > 0 ? Buffer.from(base64, "base64") : null;
   }
 
+  /**
+   * The run's sound events in video ms.
+   * @throws RenderError when the render page is too old to report them.
+   */
+  async soundLog(): Promise<SoundEvent[]> {
+    const supported = await this.page.evaluate(
+      () => typeof (globalThis as unknown as SwarmWindow).__swarmloom.soundLog === "function",
+    );
+    if (!supported) throw new RenderError("This render page cannot report its sound log (--events-out)");
+    const result = await this.call("Reading the sound log", AUDIO_MS, () =>
+      this.page.evaluate(() => (globalThis as unknown as SwarmWindow).__swarmloom.soundLog?.() ?? []),
+    );
+    return asSoundEvents(result);
+  }
+
+  /**
+   * Fonts the browser used for the text on screen now, merged per font and sorted by family.
+   * Best effort: null when the browser does not report them.
+   */
+  async platformFonts(): Promise<PlatformFont[] | null> {
+    try {
+      const { root } = (await this.cdp.send("DOM.getDocument", { depth: -1, pierce: true })) as { root: DomNode };
+      await this.cdp.send("CSS.enable");
+      const fonts = new Map<string, PlatformFont>();
+      for (const nodeId of textElements(root).slice(0, MAX_FONT_NODES)) {
+        const result = (await this.cdp.send("CSS.getPlatformFontsForNode", { nodeId })) as {
+          fonts: { familyName: string; postScriptName?: string; isCustomFont: boolean; glyphCount: number }[];
+        };
+        for (const f of result.fonts) {
+          const postScriptName = f.postScriptName ?? "";
+          const key = `${f.familyName}\u0000${postScriptName}\u0000${f.isCustomFont}`;
+          const seen = fonts.get(key);
+          if (seen) seen.glyphs += f.glyphCount;
+          else fonts.set(key, { family: f.familyName, postScriptName, custom: f.isCustomFont, glyphs: f.glyphCount });
+        }
+      }
+      await this.cdp.send("CSS.disable").catch(() => {});
+      return [...fonts.values()].sort(
+        (a, b) => a.family.localeCompare(b.family) || a.postScriptName.localeCompare(b.postScriptName),
+      );
+    } catch {
+      return null;
+    }
+  }
+
   /** Lets the page release its player; never throws. */
   async dispose(): Promise<void> {
     await this.page.evaluate(() => (globalThis as unknown as SwarmWindow).__swarmloom.dispose()).catch(() => {});
@@ -116,6 +189,20 @@ export class RenderPageDriver implements FrameSource {
       throw failure(what, error, this.log);
     });
   }
+}
+
+/** Elements (light DOM, shadow roots and frames) that directly hold non-blank text, in document order. */
+function textElements(root: DomNode): number[] {
+  const ids: number[] = [];
+  const visit = (node: DomNode): void => {
+    if (node.nodeType === 1 && node.children?.some((c) => c.nodeType === 3 && c.nodeValue?.trim()))
+      ids.push(node.nodeId);
+    for (const child of node.shadowRoots ?? []) visit(child);
+    for (const child of node.children ?? []) visit(child);
+    if (node.contentDocument) visit(node.contentDocument);
+  };
+  visit(root);
+  return ids;
 }
 
 /** Turns a Playwright/page error into a RenderError with the page's recent errors attached. */
