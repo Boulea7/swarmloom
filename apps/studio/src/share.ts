@@ -21,6 +21,29 @@ export const MAX_INFLATED_BYTES = 1024 * 1024;
 
 const NAME_LIMIT = 120;
 
+/**
+ * The only settings a share link may carry: the ones that shape the performance. Remote assets,
+ * sound, volume, theme, motion and locale always stay the recipient's own, whatever the link says.
+ */
+export const SHARE_SETTING_KEYS: readonly (keyof StudioSettings)[] = [
+  "seed",
+  "speed",
+  "agents",
+  "labels",
+  "finale",
+  "follow",
+];
+
+/** Validates untrusted settings and keeps only {@link SHARE_SETTING_KEYS}. */
+function shareSettings(raw: unknown): Partial<StudioSettings> {
+  const valid = sanitizeSettings(raw);
+  const out: Record<string, unknown> = {};
+  for (const key of SHARE_SETTING_KEYS) {
+    if (valid[key] !== undefined) out[key] = valid[key];
+  }
+  return out as Partial<StudioSettings>;
+}
+
 /** Thrown for any link that cannot be decoded into a valid payload. */
 export class ShareError extends Error {
   override readonly name = "ShareError";
@@ -102,7 +125,7 @@ export async function encodeShare(payload: SharePayload): Promise<string> {
   const name = sanitizeShareName(payload.name);
   if (!name) throw new ShareError("only text files can be shared as a link");
   if (!supported()) throw new ShareError("CompressionStream is not available");
-  const settings = payload.settings ? sanitizeSettings(payload.settings) : undefined;
+  const settings = payload.settings ? shareSettings(payload.settings) : undefined;
   const json = JSON.stringify({ v: 1, n: name, x: payload.text, ...(settings ? { s: settings } : {}) });
   const raw = new TextEncoder().encode(json);
   const deflated = await collect(
@@ -143,6 +166,6 @@ export async function decodeShare(encoded: string): Promise<SharePayload> {
   const name = sanitizeShareName(record.n);
   if (!name) throw new ShareError("payload has no valid file name");
   if (typeof record.x !== "string" || record.x.trim() === "") throw new ShareError("payload has no text");
-  const settings = sanitizeSettings(record.s);
+  const settings = shareSettings(record.s);
   return Object.keys(settings).length > 0 ? { name, text: record.x, settings } : { name, text: record.x };
 }
