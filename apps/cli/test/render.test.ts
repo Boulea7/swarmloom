@@ -137,6 +137,29 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
     TIMEOUT,
   );
 
+  it(
+    "goes live after the build: an HTML loop keeps moving through the tail, the same in two runs",
+    async (ctx) => {
+      if (!existsSync(path.join(EXPORT_RENDER_DIR, "index.html"))) ctx.skip("render page not built yet");
+      const take = async (dir: string) => {
+        const args = ["render", path.join(FIXTURES, "live/index.html"), "-o", `${dir}/live.mp4`, "--no-sound"];
+        const extra = ["--width", "320", "--height", "200", "--fps", "10", "--tail", "3000", "--finale", "none"];
+        const run = startCli([...args, ...extra, "--manifest-out", `${dir}/m.json`, "--quiet"], {
+          SWARMLOOM_RENDER_DIR: EXPORT_RENDER_DIR,
+        });
+        const { code, stderr } = await run.done;
+        expect(code, stderr).toBe(0);
+        return JSON.parse(await readFile(path.join(work, dir, "m.json"), "utf8"));
+      };
+      const [a, b] = [await take("live-a"), await take("live-b")];
+      expect(a.frames.buildFinished).toBe(true);
+      // Without go live the last frames of a finished build with no finale are all the same.
+      expect(new Set(a.frames.sha256.slice(-5)).size).toBe(5);
+      expect(a.frames.aggregateSha256).toBe(b.frames.aggregateSha256);
+    },
+    TIMEOUT,
+  );
+
   const fakePage = { SWARMLOOM_RENDER_DIR: path.join(FIXTURES, "render") };
 
   it(

@@ -35,8 +35,10 @@ export interface RenderInit {
   sound?: boolean;
   finale?: "flock" | "halo" | "none";
   locale?: string;
-  /** Hold time after the build completes (finale), ms. */
+  /** Hold time after the build completes (finale, then the live page), ms. */
   tail?: number;
+  /** Go live once the finale settles: the finished page plays its own animations. Default true. */
+  live?: boolean;
   follow?: "tour" | "none";
   /** Quick cross-fade build without flocking. */
   reducedMotion?: boolean;

@@ -129,6 +129,10 @@ describe("stageSize", () => {
   ])("%s", (_name, intrinsic, expected) => {
     expect(stageSize(intrinsic, 1280)).toEqual(expected);
   });
+
+  it("fills the width when asked to (callers that lay out in stage space)", () => {
+    expect(stageSize({ w: 480, h: 480 }, 1280, "width")).toEqual({ w: 1280, h: 1280 });
+  });
 });
 
 describe("svgAdapter input validation", () => {

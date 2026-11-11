@@ -1,6 +1,6 @@
 import { type CustomLayer, definePlugin, type LayerRenderer, type Plugin, type TaskFn } from "@swarmloom/core";
 import { sanitizeSvgTree } from "./sanitize";
-import { createSmilPlayback, SMIL_TASK } from "./smil";
+import { createSmilPlayback, SMIL_TASK, type SmilPlaybackOptions } from "./smil";
 import { SVG_NS } from "./units";
 
 /** Plugin name listed in `Blueprint.plugins`. */
@@ -50,25 +50,29 @@ function buildDefs(layer: CustomLayer, doc: Document): SVGSVGElement {
   return svg;
 }
 
-const mounted = new WeakMap<CustomLayer, SVGSVGElement>();
-
-/** Renderer of the `svg:defs` layer: an invisible definitions container inside the stage. */
-export const defsRenderer: LayerRenderer<CustomLayer> = {
-  mount(layer, container) {
-    mounted.get(layer)?.remove();
-    const svg = buildDefs(layer, container.ownerDocument);
-    mounted.set(layer, svg);
-    container.appendChild(svg);
-    return svg;
-  },
-  reveal() {
-    // Definitions are never visible themselves.
-  },
-  unmount(layer) {
-    mounted.get(layer)?.remove();
-    mounted.delete(layer);
-  },
-};
+/**
+ * Renderer of the `svg:defs` layer: an invisible definitions container inside the stage. One per
+ * plugin instance (player), so a second player of the same blueprint never removes the first one's.
+ */
+function createDefsRenderer(): LayerRenderer<CustomLayer> {
+  const mounted = new WeakMap<CustomLayer, SVGSVGElement>();
+  return {
+    mount(layer, container) {
+      mounted.get(layer)?.remove();
+      const svg = buildDefs(layer, container.ownerDocument);
+      mounted.set(layer, svg);
+      container.appendChild(svg);
+      return svg;
+    },
+    reveal() {
+      // Definitions are never visible themselves.
+    },
+    unmount(layer) {
+      mounted.get(layer)?.remove();
+      mounted.delete(layer);
+    },
+  };
+}
 
 /** The defs layer needs no cursor work; it completes as soon as the engine runs it. */
 // biome-ignore lint/correctness/useYield: a task with no steps; a generator keeps finish() lazy until the engine runs it.
@@ -79,16 +83,17 @@ const defsTask: TaskFn<CustomLayer> = function* (_agent, layer, stage) {
 /**
  * Creates an `svg` plugin instance: the `svg:defs` renderer, so `url(#...)` references of path
  * layers resolve inside the stage's shadow root, and the `svg:smil` replay of the drawing's own
- * animation after the weave (decision C04). Replay state is per instance, so the adapter hands each
- * animated drawing its own.
+ * animation after the weave (decision C04). State is per instance and every player gets its own
+ * (`perPlayer`), so players of one loaded drawing never share definitions or replay state.
  */
-export function createSvgPlugin(): Plugin {
-  const smil = createSmilPlayback();
+export function createSvgPlugin(options: SmilPlaybackOptions = {}): Plugin {
+  const smil = createSmilPlayback(options);
   return definePlugin({
     name: SVG_PLUGIN,
     tasks: { [DEFS_TASK]: defsTask, [SMIL_TASK]: smil.task },
-    renderers: { [DEFS_TASK]: defsRenderer, [SMIL_TASK]: smil.renderer },
+    renderers: { [DEFS_TASK]: createDefsRenderer(), [SMIL_TASK]: smil.renderer },
     frame: (now) => smil.frame(now),
+    perPlayer: () => createSvgPlugin(options),
   });
 }
 

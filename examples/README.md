@@ -1,6 +1,6 @@
 # Examples
 
-Samples for the supported formats live here, one folder per format: Markdown, HTML and web pages, DOCX, DOC, PDF, SVG, PPTX, XLSX/CSV, OpenDocument, EPUB, RTF, OFD, notebooks, mind maps, diffs, terminal recordings, source code, images and 3D models. Studio uses these samples for its sample wall, and the browser tests play each one to the end.
+Samples for the supported formats live here, one folder per format: Markdown, HTML and web pages, DOCX, DOC, PDF, SVG, PPTX, XLSX/CSV, OpenDocument, EPUB, RTF, OFD, notebooks, mind maps, diffs, terminal recordings, Lottie animations, source code, images and 3D models. Studio uses these samples for its sample wall, and the browser tests play each one to the end.
 
 ## Sources and licenses
 

@@ -9,9 +9,15 @@ export interface SnapshotOptions {
   origin?: "document" | "element";
   /** Copied into `Blueprint.source`. Default `{ type: "dom" }` plus the document title and http(s) URL. */
   source?: BlueprintSource;
-  /** Default 6000. When exceeded, the snapshot keeps reading order and sets `Blueprint.truncated`. */
+  /**
+   * Default 6000. When exceeded, the snapshot keeps reading order and sets `Blueprint.truncated`.
+   * Once the capture holds about twice as many layers, the rest of the page is only skimmed for fixed UI.
+   */
   maxLayers?: number;
-  /** Default 60000 px of world height. Content below is dropped and reported in `Blueprint.truncated`. */
+  /**
+   * Default 60000 px of world height. Content below is dropped and reported in `Blueprint.truncated`;
+   * subtrees that start below it are only skimmed for fixed and absolutely positioned content.
+   */
   maxHeight?: number;
   /** Repeated siblings -> master + duplicates. Default true. */
   detectDuplicates?: boolean;
@@ -37,6 +43,7 @@ export interface SnapshotOptions {
    * are page content and always shown.
    */
   showFormValues?: boolean;
+  /** Cancels the snapshot. The walk runs in slices of about 10 ms and checks it between slices. */
   signal?: AbortSignal;
 }
 

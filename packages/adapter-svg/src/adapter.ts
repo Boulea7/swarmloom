@@ -34,6 +34,17 @@ export interface SvgAdapterOptions {
   anchorsPerPath?: number;
   /** Maximum time spent waiting for web fonts and embedded images, ms (default 1500). */
   assetTimeout?: number;
+  /**
+   * Clock of the SMIL replay once the stage goes live: "own" (default) lets the drawing run on its
+   * own clock, "player" keeps it on player time (frame-exact exports, whose clock keeps ticking).
+   */
+  liveClock?: "own" | "player";
+  /**
+   * Scaling to `ctx.width`: "frame" (default) fits a drawing that would be taller than a 16:9
+   * frame whole into that frame; "width" always fills the width, for callers that lay the drawing
+   * out in stage space themselves (the Lottie adapter's woven frames).
+   */
+  fit?: "frame" | "width";
 }
 
 /**
@@ -211,6 +222,11 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
   for (const [name, v] of Object.entries({ maxLayers, maxBytes, maxElements, anchorsPerPath, assetTimeout })) {
     if (!(Number.isFinite(v) && v >= 1)) throw new RangeError(`SvgAdapterOptions.${name} must be a number >= 1`);
   }
+  if (options.liveClock !== undefined && options.liveClock !== "own" && options.liveClock !== "player") {
+    throw new TypeError('SvgAdapterOptions.liveClock must be "own" or "player"');
+  }
+  const fit = options.fit ?? "frame";
+  if (fit !== "frame" && fit !== "width") throw new TypeError('SvgAdapterOptions.fit must be "frame" or "width"');
 
   return {
     id: "svg",
@@ -270,7 +286,7 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
           viewBox = b.width > 0 && b.height > 0 ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
           intrinsic = viewBox ? { w: viewBox.w, h: viewBox.h } : DEFAULT_SIZE;
         }
-        const world = stageSize(intrinsic, ctx.width);
+        const world = stageSize(intrinsic, ctx.width, fit);
         const vb = viewBox ?? { x: 0, y: 0, w: intrinsic.w, h: intrinsic.h };
         svg.setAttribute("viewBox", [vb.x, vb.y, vb.w, vb.h].map((v) => formatNumber(v, 6)).join(" "));
         svg.setAttribute("width", String(world.w));
@@ -351,7 +367,7 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
           layers.push(smilLayer);
         }
         const usesPlugin = layers.some((l) => l.kind === "custom" && (l.task === DEFS_TASK || l.task === SMIL_TASK));
-        if (usesPlugin) plugins.push(replay ? createSvgPlugin() : svgPlugin);
+        if (usesPlugin) plugins.push(replay ? createSvgPlugin({ liveClock: options.liveClock }) : svgPlugin);
         if (timeline && timelinePlugin) plugins.push(timelinePlugin);
 
         const reasons: string[] = [];

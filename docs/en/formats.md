@@ -117,6 +117,7 @@ Source code is treated as text and never executed. Plain text has no reliable fo
 | asciinema terminal recording | `.cast` | Replays recorded keystrokes and output with ANSI styling |
 | Patch / diff | `.diff`, `.patch` | Builds review panels, strikes through removals and types additions |
 | XMind / FreeMind mind map | `.xmind`, `.mm` | Draws topics and connectors on the first sheet from the root outwards |
+| Lottie animation | `.lottie`, Lottie `.json` (found by content) | Weaves one frame as vector layers, drags out a keyframe timeline, then plays the animation on the player clock; expressions never run |
 
 ## Bitmap images
 

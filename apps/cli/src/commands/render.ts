@@ -66,7 +66,9 @@ Swarm:
       --labels <mode>     names | agents | roles | none. Default: names
       --finale <finale>   flock | halo | none. Default: flock
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
-      --tail <ms>         Hold after the build finishes, ms (0-60000). Default: 2500
+      --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
+                          goes live and its own animations play. Default: 2500
+      --no-live           Keep the finale through the whole tail instead of going live
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
       --bpm <n>           Tempo the placement notes, the fan-out and the final chord snap to (eighth
                           notes, 40-240). Default: 112
@@ -93,7 +95,7 @@ Programs:
       --ffmpeg <path>     ffmpeg 4+ executable. Default: SWARMLOOM_FFMPEG, then PATH
 
   -q, --quiet             Errors only: no progress, warnings or summary
-      --verbose           Echo the render page's console to stderr
+      --verbose           Echo the render page's console and blocked requests to stderr
   -h, --help              Show this help
 
 Examples:
@@ -130,6 +132,7 @@ const OPTIONS = {
   locale: { type: "string" },
   "no-sound": { type: "boolean" },
   "no-remote": { type: "boolean" },
+  "no-live": { type: "boolean" },
   chrome: { type: "string" },
   ffmpeg: { type: "string" },
   quiet: { type: "boolean", short: "q" },
@@ -201,6 +204,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     finale: readEnum("finale", values.finale, ["flock", "halo", "none"], "flock"),
     follow: readEnum("follow", values.follow, ["tour", "none"], "tour"),
     tail: readInt("tail", values.tail, 2500, 0, 60_000),
+    live: !values["no-live"],
     sound: !values["no-sound"] && formatHasAudio(format),
   };
   if (values.locale !== undefined) settings.locale = readLocale(values.locale);

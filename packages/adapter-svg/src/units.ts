@@ -75,11 +75,13 @@ const MAX_STAGE_HEIGHT = 60_000;
  * than a 16:9 frame; then it is fitted whole into the frame, so a logo or a square chart ends fully
  * in view (the stage enlarges it into a taller viewport). Drawings that would end up narrower than
  * half the width that way (long diagrams) keep the full width and scroll instead.
+ *
+ * @param fit "frame" (default) as above; "width" always fills the width.
  */
-export function stageSize(intrinsic: Size, width: number): Size {
+export function stageSize(intrinsic: Size, width: number, fit: "frame" | "width" = "frame"): Size {
   let scale = width / intrinsic.w;
   const framed = (width * FRAME_RATIO) / intrinsic.h;
-  if (framed < scale && framed >= scale / 2) scale = framed;
+  if (fit === "frame" && framed < scale && framed >= scale / 2) scale = framed;
   if (intrinsic.h * scale > MAX_STAGE_HEIGHT) scale = MAX_STAGE_HEIGHT / intrinsic.h;
   return { w: Math.max(1, Math.round(intrinsic.w * scale)), h: Math.max(1, Math.round(intrinsic.h * scale)) };
 }

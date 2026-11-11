@@ -286,7 +286,8 @@ export const FORMAT_META: readonly FormatMeta[] = [
     maxBytes: 32 * MIB,
   },
   {
-    // dotLottie archives. Lottie JSON keeps the .json extension and is detected by content.
+    // dotLottie archives. Lottie JSON keeps the .json extension and is detected by content. The
+    // bundled registry provides the adapter; registries without it (custom CDN builds) hide it.
     id: "lottie",
     label: "Lottie animation",
     extensions: ["lottie"],

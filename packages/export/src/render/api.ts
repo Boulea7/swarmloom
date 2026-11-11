@@ -9,6 +9,7 @@ import type {
 } from "@swarmloom/core";
 import { base64ToBytes, bytesToBase64 } from "../base64";
 import { RenderSession } from "../session";
+import { LiveStage, livePageOf, watchShadowRoots } from "./live";
 import {
   type ParsedInit,
   parseInit,
@@ -20,8 +21,12 @@ import {
 
 /** Services the render page needs; injected so the protocol can be tested with fakes. */
 export interface RenderDeps {
-  /** Detects and loads the input (normally `load` from `@swarmloom/formats`). */
-  load(input: SourceInput, ctx: AdapterContext, options: { format?: string }): Promise<LoadedSource>;
+  /**
+   * Detects and loads the input (normally `load` from `@swarmloom/formats`). `height` is the frame
+   * height, the viewport height for adapters that lay out pages. An HTML adapter that keeps its live
+   * page (`LoadedHtml.live`) gets it shown on go live.
+   */
+  load(input: SourceInput, ctx: AdapterContext, options: { format?: string; height: number }): Promise<LoadedSource>;
   createPlayer(options: PlayerOptions): Player;
   renderAudioWav(events: readonly SoundEvent[], durationMs: number, opts?: RenderOfflineOptions): Promise<Uint8Array>;
   /** Document the stage is mounted in. Default `globalThis.document`. */
@@ -35,6 +40,7 @@ interface Active {
   init: ParsedInit;
   loaded: LoadedSource;
   session: RenderSession;
+  live: LiveStage;
   host: HTMLElement;
 }
 
@@ -90,7 +96,12 @@ async function blueprintSha256(loaded: LoadedSource): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function playerOptions(init: ParsedInit, loaded: LoadedSource, host: HTMLElement): Omit<PlayerOptions, "clock"> {
+function playerOptions(
+  init: ParsedInit,
+  loaded: LoadedSource,
+  host: HTMLElement,
+  onLive: () => void,
+): Omit<PlayerOptions, "clock"> {
   const options: Omit<PlayerOptions, "clock"> = {
     blueprint: loaded.blueprint,
     plugins: loaded.plugins,
@@ -103,6 +114,7 @@ function playerOptions(init: ParsedInit, loaded: LoadedSource, host: HTMLElement
     controls: false,
     intro: true,
     sound: init.sound ? { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: true } : false,
+    onLive,
   };
   if (init.agents !== undefined) options.agents = init.agents;
   if (init.speed !== undefined) options.speed = init.speed;
@@ -118,6 +130,10 @@ function playerOptions(init: ParsedInit, loaded: LoadedSource, host: HTMLElement
  * One render at a time: `init()` loads the input and creates a player on a VirtualClock with the
  * toolbar off, `step()` advances it, `audioWav()` renders the soundtrack for the elapsed time and
  * `dispose()` releases everything. Errors reject with messages meant for the CLI user.
+ *
+ * Unless `live` is off or `reducedMotion` is on, the player goes live once the finale settles; from
+ * the moment the stage is live every step also seeks the page's animations to the frame time
+ * (see {@link LiveStage}), so the tail plays the finished page deterministically.
  */
 export function createRenderApi(deps: RenderDeps): RenderApi {
   let active: Active | null = null;
@@ -135,6 +151,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
     try {
       current.session.dispose();
     } finally {
+      current.live.dispose();
       current.loaded.dispose?.();
       current.host.remove();
     }
@@ -147,6 +164,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       const doc = deps.document ?? globalThis.document;
       let loaded: LoadedSource | null = null;
       let session: RenderSession | null = null;
+      let live: LiveStage | null = null;
       let host: HTMLElement | null = null;
       try {
         const init = parseInit(o);
@@ -161,18 +179,34 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
           theme: dark ? "dark" : "light",
           locale: init.locale,
         };
-        loaded = init.blueprint ? { blueprint: init.blueprint } : await deps.load(source, ctx, { format });
-        session = new RenderSession({
-          player: playerOptions(init, loaded, host),
+        loaded = init.blueprint
+          ? { blueprint: init.blueprint }
+          : await deps.load(source, ctx, { format, height: init.height });
+        // Recoverable: the render goes on; the CLI echoes these with --verbose.
+        const warn = (message: string) => console.warn(`[swarmloom] ${message}`);
+        const view = doc.defaultView as (Window & typeof globalThis) | null;
+        if (!view) throw new Error("The render page has no window");
+        // Watch from before the player exists: the stage attaches its world's shadow root right away.
+        const stage = new LiveStage({
+          document: doc,
+          host,
+          shadows: watchShadowRoots(view),
+          page: livePageOf(loaded),
+          onWarning: warn,
+        });
+        live = stage;
+        const started = new RenderSession({
+          player: playerOptions(init, loaded, host, () => stage.goLive(started.elapsed)),
           tailMs: init.tail,
+          live: init.live && !init.reducedMotion,
           cues: init.cues,
           createPlayer: deps.createPlayer,
-          // Recoverable: the render goes on; the CLI echoes these with --verbose.
-          onWarning: (error) => console.warn(`[swarmloom] ${error.message}`),
+          onWarning: (error) => warn(error.message),
         });
+        session = started;
         await session.start();
         const sha = await blueprintSha256(loaded);
-        active = { init, loaded, session, host };
+        active = { init, loaded, session, live: stage, host };
         const eta = session.player.eta();
         return {
           estimatedMs: Math.round((Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail),
@@ -181,6 +215,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         };
       } catch (error) {
         session?.dispose();
+        live?.dispose();
         loaded?.dispose?.();
         host?.remove();
         throw error;
@@ -190,7 +225,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
     },
 
     async step(ms: number): Promise<RenderStep> {
-      return activeRender().session.step(ms);
+      const { session, live } = activeRender();
+      const status = await session.step(ms);
+      live.sync(session.elapsed);
+      return status;
     },
 
     async audioWav(): Promise<string> {

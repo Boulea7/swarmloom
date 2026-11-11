@@ -22,12 +22,12 @@ npx swarmloom doctor
 | Command | What it does |
 | --- | --- |
 | `render <file\|url>` | Renders to `mp4` (H.264 + AAC, faststart), `webm` (VP9 + Opus), `gif` (palettegen/paletteuse), `webp` (animated) or `png-seq` (PNG frames + WAV). |
-| `snapshot <url\|file.html>` | Opens the page headless and writes its Blueprint JSON (`-o -` for stdout). |
+| `snapshot <url\|file.html>` | Opens the page headless and writes its Blueprint JSON (`-o -` for stdout). Local files open with their scripts turned off and get the same network rules as `render`: only the assets next to them, plus `https:` images and fonts. |
 | `serve` | Serves the bundled Studio on `127.0.0.1` (random free port unless `--port`); `--open` opens it. |
 | `formats` | Lists the supported input formats (`--json` for scripts). |
 | `doctor` | Checks Node.js, the browser, ffmpeg and the bundled pages. |
 
-Every command has `--help`. Common `render` options: `--width`/`--height` (CSS px, default 1280x720), `--scale` (device pixel ratio of the frames), `--fps` (default 30), `--agents`, `--speed`, `--seed`, `--theme`, `--labels`, `--finale`, `--tail` (hold after the build, ms), `--no-sound`, `--no-remote`, `--max-duration` (seconds, default 120; the video stops there even if the build is not done) and `--quiet`.
+Every command has `--help`. Common `render` options: `--width`/`--height` (CSS px, default 1280x720), `--scale` (device pixel ratio of the frames), `--fps` (default 30), `--agents`, `--speed`, `--seed`, `--theme`, `--labels`, `--finale`, `--tail` (hold after the build, ms: the finale, then the page goes live and its own animations play), `--no-live` (keep the finale instead), `--no-sound`, `--no-remote`, `--max-duration` (seconds, default 120; the video stops there even if the build is not done) and `--quiet`.
 
 For repeatable takes timed to music: `--duration` (exact length in seconds, keeps capturing after the build), `--bpm` (tempo the placement notes snap to), `--cue <at>:<action>` (pause, resume or finish at a time in seconds, ms or beats; repeatable), and the evidence outputs `--audio-out` (WAV), `--events-out` (sound log JSON on the frames' clock) and `--manifest-out` (arguments, input and blueprint hashes, program versions, fonts and per-frame PNG hashes).
 

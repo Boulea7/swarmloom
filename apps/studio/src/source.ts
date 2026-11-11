@@ -259,12 +259,13 @@ const SNIFFED_PASTE: Readonly<Record<string, string>> = {
   diff: "patch",
   mindmap: "mm",
   rtf: "rtf",
+  lottie: "lottie",
 };
 
 /**
  * Picks a file name for pasted text so the right adapter runs: SVG and HTML by their root
- * element; notebooks, asciicasts, patches, FreeMind maps and RTF by the registry's heuristics;
- * JSON and CSV by shape; Markdown otherwise.
+ * element; notebooks, asciicasts, patches, FreeMind maps, RTF and Lottie JSON by the registry's
+ * heuristics; JSON and CSV by shape; Markdown otherwise.
  */
 export function guessPasteName(text: string): string {
   const head = text.trimStart().slice(0, 2048);

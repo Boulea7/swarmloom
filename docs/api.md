@@ -5,8 +5,8 @@ description: createPlayer、格式适配器、DOM 快照、时钟与编排插件
 
 # JavaScript API
 
-::: warning 当前状态
-公共 TypeScript 契约已经定义；`createPlayer()`、适配器和导出器仍在实现中。示例描述目标 API，当前桩实现会抛出“not implemented yet”。
+::: info 当前状态
+本页的 API 都已实现：`createPlayer()`（`@swarmloom/core`）、`load()` 与内置适配器（`@swarmloom/formats`）、`snapshot()`（`@swarmloom/snapshot-dom`），以及 `exportFrames()`、`renderAudioWav()` 和 `recordElement()`（`@swarmloom/export`）。各格式的成熟度见[格式支持](./formats.md)。这些包还没有发布到 npm，目前从源码检出使用。
 :::
 
 ## 从输入到播放器
@@ -108,6 +108,9 @@ const dispose = () => {
 | `goLive()` | 返回真实页面或最终静态内容 |
 | `ready()` | 等待当前挂载图层的图片与字体解码 |
 | `eta()` | 当前速度下预计剩余构建时间，毫秒 |
+| `finish()` | 可选成员：约一秒内完成剩余构建，然后进入结尾（工具栏“完成”，快捷键 F） |
+| `seek(t)` | 可选成员：跳到 `play()` 之后的第 `t` 毫秒；向后快进，向前从头重放，期间不绘制、不发声 |
+| `setFinale(mode)` | 可选成员：修改结尾，结尾进行中也立即生效 |
 | `on(type, fn)` | 订阅事件，返回取消订阅函数 |
 | `destroy()` | 释放播放器、舞台、音频和插件资源 |
 
@@ -125,7 +128,7 @@ type PlayerEvent =
 
 ## 格式加载与适配器
 
-### `load(input, ctx?, registry?)`
+### `load(input, ctx?, options?)`
 
 `@swarmloom/formats` 探测输入，动态导入匹配适配器，返回 `LoadedSource`：
 
@@ -150,7 +153,9 @@ interface LoadedSource {
 | `maxLayers` | 图层上限；达到时设置 `Blueprint.truncated` |
 | `signal` | 可选取消信号 |
 
-未知格式会抛出错误。适配器自身的非法输入、缺失资源和解码错误也会向上抛出。
+第三个参数是 `LoadOptions`：`registry`（自定义注册表，默认 `formats`）、`format`（跳过探测，直接指定适配器 ID、扩展名或 MIME）、`maxBytes`（默认 50 MB）、`fetch`（默认先下载只有 `url` 的输入；设为 `false` 时原样交给适配器）和 `signal`。也可以直接传注册表数组，作为 `{ registry }` 的简写。
+
+未知格式、超出大小限制、空输入、加密文档和下载失败会以 `SourceError` 拒绝，`code` 说明原因。适配器自身的非法输入、缺失资源和解码错误原样向上抛出。
 
 ### 注册适配器
 
@@ -288,6 +293,8 @@ const player = createPlayer({
 - 随机性使用 `agent.rng`，不要调用 `Math.random()` 或 `Date.now()`。
 - 在 `finally` 中移除 overlay、释放按压并调用 `stage.finish()`。
 - `setup()` 可返回清理函数；`frame(now, dt)` 使用引擎时间。
+- 有内部状态的插件提供 `perPlayer()`：每个播放器创建时调用一次并使用返回的新实例，同一个 `LoadedSource` 因而可以同时驱动多个播放器。
+- 播放器以减少动态效果方式构建时 `stage.reducedMotion` 为 true，此时保持静止画面，不要自行启动动画。
 - 不要在每帧创建大量 DOM 节点或反复读取布局。
 
 ## 时钟与随机数
@@ -308,12 +315,30 @@ virtual.stop();
 
 相同种子与时钟只是确定性的一部分。字体、输入、视口、适配器和插件版本也必须固定。
 
-## 逐帧与音频导出 <Badge type="warning" text="规划中" />
+## 逐帧与音频导出
 
-`@swarmloom/export` 规划提供：
+`@swarmloom/export` 提供：
 
-- `exportFrames(playerOptions, frameOptions)`：用虚拟时钟逐帧驱动，`onFrame(index, timeMs)` 捕获画面；
-- `renderAudioWav(events, durationMs, options?)`：把声音事件日志渲染成完整 WAV；
-- `recordElement(target, options?)`：浏览器内实时区域录制，不保证确定性。
+- `exportFrames(playerOptions, { fps, onFrame, tailMs?, maxDurationMs?, onWarning?, signal? })`：在 `VirtualClock` 上逐帧驱动播放器。每帧的资源就绪后调用 `onFrame(index, timeMs)`，第 `n` 帧对应引擎时间 `n * 1000 / fps`；返回 `{ frames, durationMs, soundLog, warnings }`。可恢复的播放器错误进入 `onWarning` 和 `warnings`，导出继续；在 `onWarning` 中抛出即可中止；
+- `renderAudioWav(soundLog, durationMs, options?)`：用 `OfflineAudioContext` 把声音事件日志渲染成与视频等长的 WAV 字节；
+- `recordElement(target, options?)`：在点击处理函数中调用，请求共享当前标签页并裁剪到元素，用 `MediaRecorder` 实时录制。它不保证确定性；`canRecordElement()` 判断是否支持，失败时抛出带 `code` 的 `RecordingError`。
+
+```ts
+import { exportFrames, renderAudioWav } from "@swarmloom/export";
+
+const { frames, durationMs, soundLog } = await exportFrames(
+  { blueprint: source.blueprint, plugins: source.plugins, host, mode: "inline", seed: 7 },
+  {
+    fps: 30,
+    tailMs: 2000,
+    onFrame: async (index) => {
+      await captureFrame(index); // 例如截图或把画布交给编码器
+    },
+  },
+);
+const wav = await renderAudioWav(soundLog, durationMs);
+```
+
+`swarmloom render` 命令行用的就是同一套逐帧流程，见 [CLI](./cli.md)。
 
 核心还导出 `renderOffline()` 和 `encodeWav()`，供自定义音频管线使用。视频导出应始终等待 `player.ready()`，避免在字体和图片未解码时捕获。
