@@ -164,6 +164,7 @@ export const zhCN: StudioCatalog = {
   "export.web.sound": "正在加入声音…",
   "export.web.finishing": "正在生成文件…",
   "export.web.ready": "完成：时长 {time}，{size}。",
+  "export.web.blanks": { other: "有 {count} 个图片或字体无法读取，视频中缺少这些内容。" },
   "export.web.silent": "这个浏览器无法编码声音，视频没有声音。",
   "export.web.partial": "视频在 10 分钟处截止。",
   "export.web.cancelled": "已取消导出。",

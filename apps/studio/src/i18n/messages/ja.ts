@@ -170,6 +170,7 @@ export const ja: StudioCatalog = {
   "export.web.sound": "音を追加中…",
   "export.web.finishing": "ファイルを仕上げ中…",
   "export.web.ready": "完了: 長さ {time}、{size}。",
+  "export.web.blanks": { other: "{count} 件の画像またはフォントを読み込めなかったため、動画に含まれていません。" },
   "export.web.silent": "このブラウザは音をエンコードできないため、動画は無音です。",
   "export.web.partial": "動画は 10 分で終わります。",
   "export.web.cancelled": "書き出しをキャンセルしました。",

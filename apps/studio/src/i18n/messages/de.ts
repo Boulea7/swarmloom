@@ -192,6 +192,10 @@ export const de: StudioCatalog = {
   "export.web.sound": "Ton wird hinzugefügt …",
   "export.web.finishing": "Datei wird fertiggestellt …",
   "export.web.ready": "Fertig: {time} lang, {size}.",
+  "export.web.blanks": {
+    one: "{count} Bild oder Schrift konnte nicht gelesen werden und fehlt im Video.",
+    other: "{count} Bilder oder Schriften konnten nicht gelesen werden und fehlen im Video.",
+  },
   "export.web.silent": "Dieser Browser kann keinen Ton kodieren, daher ist das Video stumm.",
   "export.web.partial": "Das Video endet nach 10 Minuten.",
   "export.web.cancelled": "Export abgebrochen.",

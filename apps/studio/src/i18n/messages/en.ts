@@ -197,6 +197,10 @@ export const en = {
   "export.web.sound": "Adding sound…",
   "export.web.finishing": "Finishing the file…",
   "export.web.ready": "Done: {time} long, {size}.",
+  "export.web.blanks": {
+    one: "{count} image or font is missing from the video because it couldn't be read.",
+    other: "{count} images or fonts are missing from the video because they couldn't be read.",
+  },
   "export.web.silent": "This browser can't encode sound, so the video is silent.",
   "export.web.partial": "The video stops at 10 minutes.",
   "export.web.cancelled": "Export cancelled.",

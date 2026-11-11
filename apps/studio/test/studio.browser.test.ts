@@ -172,6 +172,7 @@ describe("Studio in a browser", () => {
           durationMs: 2000,
           finished: true,
           soundUnsupported: false,
+          warnings: ["https://img.test/a.png could not be embedded in the frame (Failed to fetch); it is left blank"],
         } as BrowserExportResult;
       },
     });
@@ -196,7 +197,12 @@ describe("Studio in a browser", () => {
     expect(calls[0]?.input.text).toContain("<svg");
     expect(download.download).toBe("chart.webm");
     expect(await (await fetch(download.href)).text()).toBe("VIDEO");
-    expect([start.hidden, status.textContent]).toEqual([false, expect.stringMatching(/^Done: 0:02 long/)]);
+    expect([start.hidden, status.textContent]).toEqual([
+      false,
+      expect.stringMatching(
+        /^Done: 0:02 long, .+\. 1 image or font is missing from the video because it couldn't be read\.$/,
+      ),
+    ]);
   });
 
   it("reports a failed and a cancelled export without a download", async () => {

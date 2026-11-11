@@ -191,6 +191,10 @@ export const es: StudioCatalog = {
   "export.web.sound": "Añadiendo el sonido…",
   "export.web.finishing": "Terminando el archivo…",
   "export.web.ready": "Listo: {time} de duración, {size}.",
+  "export.web.blanks": {
+    one: "{count} imagen o fuente no se pudo leer y falta en el vídeo.",
+    other: "{count} imágenes o fuentes no se pudieron leer y faltan en el vídeo.",
+  },
   "export.web.silent": "Este navegador no puede codificar sonido, así que el vídeo no lo tiene.",
   "export.web.partial": "El vídeo se corta a los 10 minutos.",
   "export.web.cancelled": "Exportación cancelada.",

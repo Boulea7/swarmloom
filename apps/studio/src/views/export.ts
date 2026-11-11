@@ -41,6 +41,8 @@ interface ExportFile {
   durationMs: number;
   /** Sound was asked for but the browser could not encode it. */
   silent: boolean;
+  /** Images or fonts the frame could not read (another site without CORS): blank in the video. */
+  blanks: number;
   /** The build ran longer than the export allows; the video stops there. */
   partial: boolean;
 }
@@ -120,6 +122,7 @@ export function createExporter(deps: ExportDeps): Exporter {
     // Whole seconds, rounded: clockOf rounds up, which suits a countdown but not a length.
     const time = clockOf(Math.round(f.durationMs / 1000) * 1000);
     const parts = [i18n.t("export.web.ready", { time, size: formatSize(f.size, i18n.locale) })];
+    if (f.blanks > 0) parts.push(i18n.t("export.web.blanks", { count: f.blanks }));
     if (f.silent) parts.push(i18n.t("export.web.silent"));
     if (f.partial) parts.push(i18n.t("export.web.partial"));
     return parts.join(" ");
@@ -372,12 +375,15 @@ export function createExporter(deps: ExportDeps): Exporter {
     running = null;
     progress = null;
     if (result) {
+      if (result.warnings.length > 0) console.warn("[studio] export warnings", result.warnings);
       file = {
         url: URL.createObjectURL(result.blob),
         name: exportFileName(opened.name, result.extension),
         size: result.blob.size,
         durationMs: result.durationMs,
         silent: result.soundUnsupported,
+        // Every warning but the silent-video one (reported once, as `silent`) is a resource left out.
+        blanks: Math.max(0, result.warnings.length - (result.soundUnsupported ? 1 : 0)),
         partial: !result.finished,
       };
     }

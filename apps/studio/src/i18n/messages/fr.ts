@@ -192,6 +192,10 @@ export const fr: StudioCatalog = {
   "export.web.sound": "Ajout du son…",
   "export.web.finishing": "Finalisation du fichier…",
   "export.web.ready": "Terminé : {time}, {size}.",
+  "export.web.blanks": {
+    one: "{count} image ou police n’a pas pu être lue et manque dans la vidéo.",
+    other: "{count} images ou polices n’ont pas pu être lues et manquent dans la vidéo.",
+  },
   "export.web.silent": "Ce navigateur ne sait pas encoder le son : la vidéo est muette.",
   "export.web.partial": "La vidéo s’arrête à 10 minutes.",
   "export.web.cancelled": "Export annulé.",

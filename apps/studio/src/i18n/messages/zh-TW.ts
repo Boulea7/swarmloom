@@ -165,6 +165,7 @@ export const zhTW: StudioCatalog = {
   "export.web.sound": "正在加入聲音…",
   "export.web.finishing": "正在產生檔案…",
   "export.web.ready": "完成：長度 {time}，{size}。",
+  "export.web.blanks": { other: "有 {count} 個圖片或字型無法讀取，影片中缺少這些內容。" },
   "export.web.silent": "這個瀏覽器無法編碼聲音，影片沒有聲音。",
   "export.web.partial": "影片在 10 分鐘處截止。",
   "export.web.cancelled": "已取消匯出。",

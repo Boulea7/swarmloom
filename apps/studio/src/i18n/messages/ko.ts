@@ -165,6 +165,7 @@ export const ko: StudioCatalog = {
   "export.web.sound": "소리를 넣는 중…",
   "export.web.finishing": "파일을 마무리하는 중…",
   "export.web.ready": "완료: 길이 {time}, {size}.",
+  "export.web.blanks": { other: "이미지 또는 글꼴 {count}개를 읽을 수 없어 영상에 포함되지 않았습니다." },
   "export.web.silent": "이 브라우저는 소리를 인코딩할 수 없어 영상에 소리가 없습니다.",
   "export.web.partial": "영상은 10분에서 끝납니다.",
   "export.web.cancelled": "내보내기를 취소했습니다.",
