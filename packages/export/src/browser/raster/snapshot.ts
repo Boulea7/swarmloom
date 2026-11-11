@@ -24,8 +24,21 @@ const SKIP_HTML = new Set([
   "object",
   "embed",
 ]);
-/** SMIL elements: dropped, the snapshot keeps the animated values they produced. */
-const SMIL = new Set(["animate", "animateTransform", "animateMotion", "animateColor", "set", "discard"]);
+/**
+ * SVG elements left out: SMIL (the snapshot keeps the animated values it produced), and style
+ * sheets and scripts. Every computed value is written inline, and a `<style>` copied into the one
+ * snapshot document would apply to all of it, not only to the tree it was scoped to.
+ */
+const SKIP_SVG = new Set([
+  "animate",
+  "animateTransform",
+  "animateMotion",
+  "animateColor",
+  "set",
+  "discard",
+  "style",
+  "script",
+]);
 /** Attributes that never reach the snapshot: styling is rewritten, loading hints do not apply. */
 const DROP_ATTRS = new Set([
   "style",
@@ -194,29 +207,36 @@ function attributes(walk: Walk, el: Element): string {
   const out: string[] = [];
   const svg = el.namespaceURI === SVG_NS;
   const local = el.localName;
+  const input = local === "input" && !svg ? (el as HTMLInputElement) : null;
+  const liveValue = input !== null && input.type !== "file" && input.type !== "password";
+  const option = local === "option" && !svg ? (el as HTMLOptionElement) : null;
   for (const attr of Array.from(el.attributes)) {
     let name = attr.name;
     if (attr.namespaceURI === XLINK_NS && attr.localName === "href") name = "href";
     else if (attr.namespaceURI === XML_NS) name = `xml:${attr.localName}`;
     else if (attr.namespaceURI || !XML_NAME.test(name)) continue;
     if (DROP_ATTRS.has(name) || name.startsWith("on") || name === "xmlns") continue;
+    // Live form state is written below; the authored attribute too would be a duplicate, which
+    // makes the SVG ill-formed.
+    if ((liveValue && name === "value") || (input && name === "checked") || (option && name === "selected")) continue;
     let value = attr.value;
     if (name === "src" && (local === "img" || local === "iframe" || local === "video")) continue;
     if (svg && name === "href" && local === "image") value = embedUrl(walk, value);
     out.push(` ${name}="${escapeAttr(value)}"`);
   }
-  if (local === "input" && !svg) {
-    const input = el as HTMLInputElement;
-    if (input.type !== "file" && input.type !== "password") out.push(` value="${escapeAttr(input.value)}"`);
-    if (input.checked) out.push(' checked="checked"');
-  }
-  if (local === "option" && !svg && (el as HTMLOptionElement).selected) out.push(' selected="selected"');
+  if (liveValue) out.push(` value="${escapeAttr(input.value)}"`);
+  if (input?.checked) out.push(' checked="checked"');
+  if (option?.selected) out.push(' selected="selected"');
   return out.join("");
 }
 
-/** Children in the flattened tree: the shadow tree of a host, the assigned nodes of a slot. */
+/**
+ * Children in the flattened tree: the shadow tree of a host, the assigned nodes of a slot. Watched
+ * roots cover closed ones; open roots the watch never saw (declarative shadow DOM, the live page's
+ * own realm) are read from the host.
+ */
 function flatChildren(walk: Walk, el: Element): readonly Node[] {
-  const root = walk.shadowRootOf(el);
+  const root = walk.shadowRootOf(el) ?? el.shadowRoot;
   if (root) return Array.from(root.childNodes);
   if (el.localName === "slot" && el.namespaceURI === XHTML_NS) {
     const assigned = (el as HTMLSlotElement).assignedNodes({ flatten: true });
@@ -261,7 +281,7 @@ function emitElement(
   const local = el.localName;
   const svg = ns === SVG_NS;
   if (ns === XHTML_NS && SKIP_HTML.has(local)) return;
-  if (svg && SMIL.has(local)) return;
+  if (svg && SKIP_SVG.has(local)) return;
   const cs = view.win.getComputedStyle(el);
   // SVG resources (gradients, symbols) count even inside display:none, so only HTML subtrees go.
   if (!svg && cs.getPropertyValue("display") === "none") return;
@@ -322,7 +342,8 @@ function emitElement(
   if (local === "textarea" && !svg) {
     walk.out.push(escapeText((el as HTMLTextAreaElement).value));
   } else {
-    const scrolled = el.scrollLeft !== 0 || el.scrollTop !== 0;
+    // The scrolling element reports the viewport's scroll, which emitDocument already applied.
+    const scrolled = (el.scrollLeft !== 0 || el.scrollTop !== 0) && el !== el.ownerDocument.scrollingElement;
     const childShift = scrolled ? { x: -el.scrollLeft, y: -el.scrollTop } : null;
     for (const child of flatChildren(walk, el)) {
       if (child.nodeType === 1) emitElement(walk, child as Element, view, inherited, ns, childShift);
