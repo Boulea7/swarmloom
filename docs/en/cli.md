@@ -268,7 +268,7 @@ swarmloom doctor
 
 ## Output and exit codes
 
-Progress goes to stderr and never mixes with file data: a progress bar with the time left on terminals, one line per quarter otherwise. The first Ctrl+C stops the render, closes the browser, stops ffmpeg and removes temporary files; a second one exits at once. The CLI only ends processes it started. With `SWARMLOOM_DEBUG=1`, unexpected errors include a stack trace.
+Progress goes to stderr and never mixes with file data: a progress bar with the time left on terminals (fields that do not fit a narrow terminal are left out whole), one line per quarter otherwise. The first Ctrl+C stops the render, closes the browser, stops ffmpeg and removes temporary files; a second one exits at once. The CLI only ends processes it started. With `SWARMLOOM_DEBUG=1`, unexpected errors include a stack trace.
 
 | Code | Meaning |
 | --- | --- |
