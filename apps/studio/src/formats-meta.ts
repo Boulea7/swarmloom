@@ -27,9 +27,9 @@ export interface FormatMeta {
    */
   readonly maxBytes?: number;
   /**
-   * The adapter ships separately and may be missing from the registry Studio is built with. Such
-   * formats stay hidden (picker, gallery, format list) until the registry has them, and are never
-   * registered as OS file handlers.
+   * The adapter ships separately and may be missing from a custom registry. Such formats stay
+   * hidden (picker, gallery, format list) until the registry has them. The PWA manifest still lists
+   * them: Studio's own build bundles the default registry, which provides them (test/pwa.test.ts).
    */
   readonly optional?: boolean;
 }
@@ -217,6 +217,8 @@ export const FORMAT_META: readonly FormatMeta[] = [
     handlers: {
       "application/vnd.oasis.opendocument.text": [".odt", ".fodt"],
       "application/vnd.oasis.opendocument.text-template": [".ott"],
+      // Flat ODS; .ods itself is registered by the spreadsheet reader above.
+      "application/vnd.oasis.opendocument.spreadsheet": [".fods"],
       "application/vnd.oasis.opendocument.spreadsheet-template": [".ots"],
       "application/vnd.oasis.opendocument.presentation": [".odp", ".fodp"],
       "application/vnd.oasis.opendocument.presentation-template": [".otp"],
@@ -291,7 +293,7 @@ export const FORMAT_META: readonly FormatMeta[] = [
     id: "lottie",
     label: "Lottie animation",
     extensions: ["lottie"],
-    handlers: {},
+    handlers: { "application/zip+dotlottie": [".lottie"] },
     textual: false,
     light: false,
     optional: true,

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
 import { build, type Plugin } from "vite";
-import { FORMAT_META } from "../src/formats-meta";
+import { FORMAT_META, type FormatMeta } from "../src/formats-meta";
 import { markSvg } from "../src/ui/mark";
 import { markPng } from "./icons";
 
@@ -35,13 +35,14 @@ const FAVICON = "favicon.svg";
 const MANIFEST = "manifest.webmanifest";
 
 /**
- * `accept` map for `file_handlers`: every MIME type Studio registers, with its extensions.
- * Optional formats are left out: the manifest is static, and their adapter may be missing.
+ * `accept` map for `file_handlers`: every MIME type of `formats`, with its extensions. The manifest
+ * belongs to Studio's own build, which bundles the default `@swarmloom/formats` registry, so it
+ * lists optional formats that registry provides (Lottie) as well; test/pwa.test.ts fails when it
+ * lists a format the registry lacks or misses an extension Studio opens.
  */
-export function fileHandlerAccept(): Record<string, string[]> {
+export function fileHandlerAccept(formats: readonly FormatMeta[] = FORMAT_META): Record<string, string[]> {
   const accept: Record<string, string[]> = {};
-  for (const meta of FORMAT_META) {
-    if (meta.optional) continue;
+  for (const meta of formats) {
     for (const [mime, extensions] of Object.entries(meta.handlers)) {
       accept[mime] = [...new Set([...(accept[mime] ?? []), ...extensions])];
     }

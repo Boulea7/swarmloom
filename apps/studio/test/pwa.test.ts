@@ -1,12 +1,31 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
 import { describe, expect, it } from "vitest";
-import { releaseVersion, shellFiles, WARM_MAX_BYTES, warmFiles } from "../build/pwa";
+import { fileHandlerAccept, releaseVersion, shellFiles, WARM_MAX_BYTES, warmFiles, webManifest } from "../build/pwa";
+import { acceptAttribute, availableFormats } from "../src/formats-meta";
 
 type Item = Parameters<typeof shellFiles>[0][string];
 
 const chunk = (fileName: string, extra: Partial<Item> = {}): Item => ({ type: "chunk", fileName, code: "x", ...extra });
+
+describe("PWA manifest", () => {
+  it("registers every extension the bundled registry opens, optional formats included", () => {
+    const bundled = availableFormats(REGISTRY.map((f) => f.id));
+    // Nothing the bundled registry lacks; the Lottie adapter ships in it.
+    expect(fileHandlerAccept()).toEqual(fileHandlerAccept(bundled));
+    const manifest = webManifest() as {
+      file_handlers: { accept: Record<string, string[]> }[];
+      share_target: { params: { files: { accept: string[] }[] } };
+    };
+    const handled = Object.values(manifest.file_handlers[0]?.accept ?? {}).flat();
+    const shared = manifest.share_target.params.files[0]?.accept ?? [];
+    for (const ext of acceptAttribute(bundled).split(",")) {
+      expect([ext, handled.includes(ext), shared.includes(ext)]).toEqual([ext, true, true]);
+    }
+  });
+});
 
 describe("PWA precache", () => {
   it("warms each lazy entry with its static imports, whole or not at all", () => {
