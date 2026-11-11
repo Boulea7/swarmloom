@@ -1,10 +1,11 @@
 // @vitest-environment node
 /**
  * End-to-end render tests: bundle the CLI, run it as a real process against a real browser and ffmpeg,
- * and inspect the result with ffprobe. Skipped (with the reason) when the machine lacks Chrome or ffmpeg.
+ * and inspect the result with ffprobe. Skipped (with the reason) when the machine lacks Chrome or ffmpeg;
+ * the tests on the real render page also skip while its build is missing or older than the sources.
  */
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +42,29 @@ const missing = !chrome
     : !ffprobe
       ? "no ffprobe next to ffmpeg or on PATH"
       : undefined;
+
+/**
+ * Why the real render page cannot be used: it is not built, or a file under packages/<name>/src changed
+ * after the build. The page bundles every package from src/, so a stale build would test old code.
+ */
+function renderPageProblem(): string | undefined {
+  const page = path.join(EXPORT_RENDER_DIR, "index.html");
+  const rebuild = "run pnpm -F @swarmloom/export build";
+  if (!existsSync(page)) return `render page not built yet: ${rebuild}`;
+  const builtAt = statSync(page).mtimeMs;
+  const packages = path.join(REPO, "packages");
+  for (const name of readdirSync(packages)) {
+    const src = path.join(packages, name, "src");
+    if (!existsSync(src)) continue;
+    const files = readdirSync(src, { recursive: true, encoding: "utf8" });
+    if (files.some((file) => statSync(path.join(src, file)).mtimeMs > builtAt)) {
+      return `render page is older than packages/${name}/src: ${rebuild}`;
+    }
+  }
+  return undefined;
+}
+
+const renderPage = renderPageProblem();
 
 function siblingOrPath(ffmpegPath: string, name: string): string | undefined {
   const ext = path.extname(ffmpegPath);
@@ -116,9 +140,7 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
   it(
     "renders a 2 s clip of examples/markdown/welcome.en.md to MP4 with video and audio",
     async (ctx) => {
-      if (!existsSync(path.join(EXPORT_RENDER_DIR, "index.html"))) {
-        ctx.skip("render page not built yet: run pnpm -F @swarmloom/export build (export/core still stubs?)");
-      }
+      if (renderPage) ctx.skip(renderPage);
       if (!existsSync(WELCOME)) ctx.skip("examples/markdown/welcome.en.md is not in this checkout yet");
       const args = ["render", WELCOME, "-o", "welcome.mp4", "--width", "640", "--height", "360"];
       const run = startCli([...args, "--fps", "15", "--max-duration", "2", "--quiet"], {
@@ -140,7 +162,7 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
   it(
     "goes live after the build: an HTML loop keeps moving through the tail, the same in two runs",
     async (ctx) => {
-      if (!existsSync(path.join(EXPORT_RENDER_DIR, "index.html"))) ctx.skip("render page not built yet");
+      if (renderPage) ctx.skip(renderPage);
       const take = async (dir: string) => {
         const args = ["render", path.join(FIXTURES, "live/index.html"), "-o", `${dir}/live.mp4`, "--no-sound"];
         const extra = ["--width", "320", "--height", "200", "--fps", "10", "--tail", "3000", "--finale", "none"];
