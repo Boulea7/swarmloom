@@ -140,7 +140,7 @@ export class SwarmStage implements Stage {
   readonly #offs: (() => void)[] = [];
   readonly #cleanups: (() => void)[] = [];
   readonly #textUnits = new Map<Slot, number>();
-  /** Typed texts whose views take layout reads in the next read phase ({@link measure}). */
+  /** Typed texts with layout reads to take: in the next read phase or on a caret miss ({@link measure}). */
   readonly #reads = new Set<Slot>();
   readonly #origin: ClientOrigin = { left: 0, top: 0 };
   #originDirty = true;
@@ -346,6 +346,9 @@ export class SwarmStage implements Stage {
       if (text > 0 && dom !== text) units = (units / text) * dom;
       // Typing goes on: the next caret block is read ahead, between frames.
       if (!slot.finished) this.#reads.add(slot);
+      // A caret not measured yet forces a layout to read: every pending read takes that layout too.
+      // Seek frames have no read phase (nothing renders between them), so this is where they read.
+      if (view.caretReady?.(units) === false) this.measure();
       const caret = view.caret(units);
       if (!caret) return fallback;
       // The caret goes where the text is drawn: a transient translate (text typed beside its snap
@@ -389,8 +392,9 @@ export class SwarmStage implements Stage {
 
   /**
    * A task is about to work on layer `id`. A typed text is mounted now (a DOM write, which is
-   * harmless mid-frame) and its first caret block is read in the next read phase, so typing
-   * starts on a measured caret instead of forcing a layout between other agents' writes.
+   * harmless mid-frame) and its first caret block is read in the next read phase (in a seek, with
+   * the first caret any text misses), so typing starts on a measured caret instead of forcing a
+   * layout between other agents' writes.
    */
   prefetch(id: string): void {
     const slot = this.#registry.get(id);
@@ -403,8 +407,9 @@ export class SwarmStage implements Stage {
 
   /**
    * Read phase, run by the engine at the start of a clock tick, before any task writes to the DOM:
-   * the layout is still clean from the browser's last frame, so these reads force no layout. Texts
-   * that finished, unmounted or broke drop out of the list.
+   * the layout is still clean from the browser's last frame, so these reads force no layout. Also
+   * run by caretAt() when a caret was not read yet, right before the layout that read forces
+   * anyway. Texts that finished, unmounted or broke drop out of the list.
    */
   measure(): void {
     if (this.#destroyed) return;

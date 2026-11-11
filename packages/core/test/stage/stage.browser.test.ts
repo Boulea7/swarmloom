@@ -460,6 +460,34 @@ describe("stage: reveal semantics per kind", () => {
     });
   });
 
+  it("text: a caret read without a read phase takes every pending text along (seek frames)", () => {
+    const text = "Typed while another agent starts on the next line.";
+    const layer = (id: string, y: number): Layer => ({
+      id,
+      kind: "text",
+      box: { x: 40, y, w: 400, h: 40 },
+      html: `<span>${text}</span>`,
+      text,
+      style: { "font-size": "16px", "line-height": "20px" },
+    });
+    const { stage } = mount([layer("a", 40), layer("b", 120)]);
+    stage.prefetch?.("a");
+    stage.prefetch?.("b");
+    stage.reveal("a", 0.5);
+    // No read phase ran: this read forces a layout, and b's first block is read under it.
+    stage.caretAt("a", 25);
+    stage.reveal("a", 0.6);
+    const range = vi.spyOn(Range.prototype, "getClientRects");
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    const caret = stage.caretAt("b", 0);
+    const reads = range.mock.calls.length + rect.mock.calls.length;
+    range.mockRestore();
+    rect.mockRestore();
+    // Another read here would force a second layout after a's write.
+    expect(reads).toBe(0);
+    expect(caret.y).toBeGreaterThanOrEqual(120);
+  });
+
   it("transient styles apply and finish() clears them", () => {
     const { stage } = mount([
       { id: "t", kind: "text", box: { x: 0, y: 0, w: 200, h: 30 }, html: "Title", text: "Title", style: {} },

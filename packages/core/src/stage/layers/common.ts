@@ -48,6 +48,8 @@ export interface LayerView {
   transient(css: CSSMap | null): void;
   /** Caret position after `units` of `total()` typing units, stage coordinates (text layers). */
   caret?(units: number): Point | null;
+  /** True when caret(units) is answered from measured geometry, without a layout read. */
+  caretReady?(units: number): boolean;
   /** Typing units of a text layer. */
   total?(): number;
   /**

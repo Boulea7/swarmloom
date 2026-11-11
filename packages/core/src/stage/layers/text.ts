@@ -33,6 +33,11 @@ class CaretCache {
     this.#blocks.clear();
   }
 
+  /** True when the block of boundary `u` is measured for geometry `gen`: get() reads no layout. */
+  has(u: number, gen: number): boolean {
+    return gen === this.#gen && this.#blocks.has(Math.floor(u / BLOCK));
+  }
+
   get(index: TextIndex, root: HTMLElement, u: number, gen: number, scale: number): Point | null {
     const b = Math.floor(u / BLOCK);
     const block = this.#block(index, root, b, gen, scale);
@@ -148,6 +153,8 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
   };
   /** Last reveal progress: where typing is, and so which caret block comes next. */
   let progress = 0;
+  /** Typing boundary of `units`, clamped to the text. */
+  const boundary = (units: number): number => Math.max(0, Math.min(getIndex().total, Math.round(units)));
 
   return {
     outer: shell.outer,
@@ -201,11 +208,12 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
       return getIndex().total;
     },
     caret(units) {
-      const ix = getIndex();
-      const u = Math.max(0, Math.min(ix.total, Math.round(units)));
-      const local = carets.get(ix, content, u, env.geometryGen(), env.scale());
+      const local = carets.get(getIndex(), content, boundary(units), env.geometryGen(), env.scale());
       if (!local) return null;
       return { x: layer.box.x + local.x, y: layer.box.y + local.y };
+    },
+    caretReady(units) {
+      return carets.has(boundary(units), env.geometryGen());
     },
     measure() {
       if (mode !== "type" || !content.isConnected) return;
