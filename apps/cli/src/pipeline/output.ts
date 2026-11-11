@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { FfmpegCaps } from "../discovery/ffmpeg";
-import { type OutputFormat, planMux, planVideo } from "./encode";
+import { type FrameImageType, type OutputFormat, planMux, planVideo } from "./encode";
 import { FfmpegJob } from "./ffmpeg-process";
 
 /** Where captured frames go and how they become the final file (inside the temporary directory). */
@@ -37,9 +37,16 @@ export async function pngSequenceWriter(tmp: string): Promise<FrameWriter> {
  */
 export function ffmpegWriter(
   format: Exclude<OutputFormat, "png-seq">,
-  opts: { ffmpegPath: string; caps: FfmpegCaps; fps: number; tmp: string; signal?: AbortSignal },
+  opts: {
+    ffmpegPath: string;
+    caps: FfmpegCaps;
+    fps: number;
+    tmp: string;
+    imageType?: FrameImageType;
+    signal?: AbortSignal;
+  },
 ): FrameWriter {
-  const plan = planVideo(format, opts.fps, opts.tmp, opts.caps);
+  const plan = planVideo(format, opts.fps, opts.tmp, opts.caps, opts.imageType);
   const stream = FfmpegJob.stream(opts.ffmpegPath, plan.stream);
   const kill = () => stream.kill();
   opts.signal?.addEventListener("abort", kill, { once: true });

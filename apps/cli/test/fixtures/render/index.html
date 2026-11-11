@@ -102,6 +102,13 @@
         async audioWav() {
           return current?.sound ? wavBase64(t) : "";
         },
+        async soundLog() {
+          if (!current?.sound) return [];
+          return [
+            { t: 0, name: "swell", pan: 0 },
+            { t: Math.min(t, BUILD_MS), name: "chord", pan: 0.25, vel: 0.9 },
+          ];
+        },
         dispose() {
           current = null;
         },
