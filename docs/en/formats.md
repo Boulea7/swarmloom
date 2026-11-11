@@ -132,7 +132,7 @@ Animated images use a deterministic representative frame by default; resuming th
 
 The 3D adapter is planned as a plugin with its own WebGL stage. Connected surface patches reveal vertices, feature edges and triangles, followed by materials, textures and lighting. A short camera orbit completes the build.
 
-GLB is the recommended single-file distribution. OBJ MTL files and textures, and glTF `.bin` files and textures, must resolve. Missing resources are listed instead of triggering silent network guesses. Formats without standard units, such as STL, need unit or up-axis overrides.
+GLB is the recommended single-file distribution. The reader reads only that one file and never loads companion files: a `.gltf` that references external `.bin` files or textures is rejected with a message to export a GLB or a glTF with embedded data, and OBJ `mtllib` materials and textures are not read (a palette is used and a note says so). Formats without standard units, such as STL, need unit or up-axis overrides.
 
 Large models use deterministic LOD and sampling budgets. Reduced-motion mode shows a static final state without automatic orbit. Unavailable WebGL or an excessive model budget produces an explicit error or fallback.
 

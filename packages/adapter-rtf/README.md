@@ -1,6 +1,6 @@
 # @swarmloom/adapter-rtf
 
-The Rich Text Format adapter for SwarmLoom. It has its own RTF tokenizer and parser (no dependencies), renders the result as page sheets, and exports the parser so `@swarmloom/adapter-doc` can route `.doc` files that are really RTF here. Load it through `@swarmloom/formats` so it is only fetched when needed.
+The Rich Text Format adapter for SwarmLoom. It has its own RTF tokenizer and parser (no dependencies), renders the result as page sheets, and exports the parser for other code. Load it through `@swarmloom/formats` so it is only fetched when needed. `@swarmloom/formats` recognises RTF by its `{\rtf` signature, so an RTF file saved with a `.doc` name opens here too. `@swarmloom/adapter-doc` does not forward such a file when called directly: it rejects it with a `DocError` (`code: "wrong-format"`, `format: "rtf"`).
 
 ```ts
 import { rtfAdapter, parseRtf, renderRtf } from "@swarmloom/adapter-rtf";
