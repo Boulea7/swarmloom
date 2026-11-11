@@ -1,5 +1,6 @@
+/// <reference types="@vitest/browser-playwright" />
 import { afterEach, describe, expect, it } from "vitest";
-import { userEvent } from "vitest/browser";
+import { cdp, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 
 /** Paints `colors` in order onto one canvas pixel and returns the blended sRGB channels. */
@@ -50,5 +51,30 @@ describe("keyboard focus ring", () => {
     const background = paint(getComputedStyle(foot).backgroundColor);
     const ring = paint(getComputedStyle(foot).backgroundColor, getComputedStyle(slider).outlineColor);
     expect(contrast(ring, background)).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("export progress bar", () => {
+  // Forced colours: the user's palette sets the contrast; the fill only has to stay visible.
+  it.each(["light", "dark", "forced"])("keeps the fill apart from its track in the %s theme", async (mode) => {
+    if (mode === "dark") document.documentElement.dataset.theme = "dark";
+    const forced = mode === "forced";
+    if (forced) {
+      await cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
+    }
+    try {
+      const track = document.createElement("div");
+      track.className = "export-progress";
+      const fill = document.createElement("div");
+      fill.className = "export-progress-fill";
+      track.append(fill);
+      document.body.append(track);
+
+      const under = getComputedStyle(track).backgroundColor;
+      const ratio = contrast(paint(under, getComputedStyle(fill).backgroundColor), paint(under));
+      expect(ratio).toBeGreaterThanOrEqual(forced ? 1.5 : 3);
+    } finally {
+      if (forced) await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+    }
   });
 });

@@ -277,11 +277,13 @@
   background: var(--surface-3);
 }
 
+/* --accent-text, not --accent: the brand pink reads only 2.6:1 on the track in the light theme,
+   under the 3:1 floor for a progress indicator. */
 .export-progress-fill {
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--accent-text);
   transition: width 160ms linear;
 }
 

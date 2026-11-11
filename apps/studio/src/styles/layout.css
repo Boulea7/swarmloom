@@ -125,7 +125,8 @@
     outline-color: Highlight;
   }
 
-  .switch {
+  .switch,
+  .export-progress {
     border: 1px solid CanvasText;
   }
 
@@ -134,6 +135,7 @@
   }
 
   .progress-fill,
+  .export-progress-fill,
   .watch-bar-fill {
     background: Highlight;
   }
