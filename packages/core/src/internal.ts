@@ -122,6 +122,12 @@ export interface Stage extends StageApi {
    */
   render(now: number, agents: readonly AgentView[]): void;
   /**
+   * Optional: a frame the engine simulated without drawing it (each seek step). The stage does
+   * the per-frame bookkeeping of render() without drawing: task touches age and virtualization
+   * runs, so a long seek keeps the mounted set as small as playback does.
+   */
+  skipFrame?(): void;
+  /**
    * Optional read phase: the engine calls it at the start of every clock tick, before tasks write
    * to the DOM. The stage takes the layout reads it can do ahead of time (caret geometry of typed
    * text), so a task asking for them mid-frame does not force a layout after other agents' writes.

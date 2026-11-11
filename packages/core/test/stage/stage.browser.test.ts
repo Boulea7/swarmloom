@@ -4,6 +4,7 @@ import { createRng } from "../../src/rng";
 import { createStage, stageStats } from "../../src/stage";
 import { resolveTheme } from "../../src/theme";
 import type { Blueprint, CursorShape, Layer, Plugin, Size } from "../../src/types";
+import { harness } from "../engine/fakes";
 
 const SHAPES: CursorShape[] = ["arrow", "crosshair", "ibeam", "pen", "hand", "grab", "move", "copy", "resize"];
 const PNG_1PX =
@@ -449,6 +450,17 @@ describe("stage: virtualization", () => {
     const fill = Number(css((stage.el("b1000") as HTMLElement).parentElement as HTMLElement).opacity);
     expect(fill).toBeGreaterThan(0);
     expect(fill).toBeLessThan(1);
+  });
+
+  it("a seek keeps virtualizing: layers built on the way unmount once the tour passes them", () => {
+    const { stage, stats } = tallPage();
+    const h = harness(stage.blueprint, { follow: "tour", intro: false, agents: 12 }, { stage });
+    void h.engine.play();
+    h.engine.seek(40_000);
+    // About 200 boxes (10,000 px of page) built; the view band itself holds about 50.
+    expect(h.engine.progress.built).toBeGreaterThan(150);
+    expect(stats().mounted).toBeLessThan(120);
+    h.engine.destroy();
   });
 
   it("reports user scrolls but not programmatic ones", async () => {

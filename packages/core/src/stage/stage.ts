@@ -430,8 +430,7 @@ export class SwarmStage implements Stage {
   render(now: number, agents: readonly AgentView[]): void {
     if (this.#destroyed) return;
     const t = typeof now === "number" && Number.isFinite(now) ? now : 0;
-    const frame = ++this.#frame;
-    this.#mounter.frame = frame;
+    const frame = this.#nextFrame();
     this.#scroll.step(t, frame);
 
     const o = this.#fade.step(t);
@@ -456,6 +455,16 @@ export class SwarmStage implements Stage {
     v.scrollX = (g.scrollLeft - g.offsetX) / g.scale;
     v.scrollY = (g.scrollTop - g.offsetY) / g.scale;
     overlay.render(t, Array.isArray(agents) ? agents : NO_AGENTS);
+  }
+
+  /**
+   * A frame the engine simulated without drawing (seek): task touches age and virtualization
+   * runs as in render(), so the layers a seek builds on its way down the page unmount again
+   * instead of all staying mounted until 120 frames after the seek.
+   */
+  skipFrame(): void {
+    if (this.#destroyed) return;
+    this.#maybePass(this.#nextFrame());
   }
 
   enter(): Promise<void> {
@@ -644,6 +653,13 @@ export class SwarmStage implements Stage {
       this.#originDirty = false;
     }
     return this.#origin;
+  }
+
+  /** Advances the frame counter that dates task touches (and expires them in the mounter). */
+  #nextFrame(): number {
+    const frame = ++this.#frame;
+    this.#mounter.frame = frame;
+    return frame;
   }
 
   #maybePass(frame: number): void {
