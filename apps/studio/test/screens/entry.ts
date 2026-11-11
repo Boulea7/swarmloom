@@ -1,6 +1,6 @@
 import "../../src/styles/studio.css";
-import { FORMAT_META } from "@swarmloom/formats/meta";
 import rawManifest from "virtual:studio-examples";
+import { FORMAT_META } from "@swarmloom/formats/meta";
 import { mountStudio } from "../../src/app";
 import { sanitizeManifest } from "../../src/examples/manifest";
 import { fakeServices } from "../fakes";
