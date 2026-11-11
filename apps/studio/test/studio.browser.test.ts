@@ -207,6 +207,37 @@ describe("Studio in a browser", () => {
     }
   });
 
+  it("lets a 320px phone scroll to the actions of a long German error card", async () => {
+    await page.viewport(320, 568);
+    try {
+      history.replaceState(null, "", `${location.pathname}?lang=de&src=https://example.test/unsupported.xyz`);
+      const root = document.createElement("div");
+      document.body.append(root);
+      const { services } = fakeServices({
+        manifest: MANIFEST,
+        examplesBase: EXAMPLES_BASE,
+        fetch: async () => new Response(new Uint8Array(9)),
+      });
+      // The unsupported-format message lists every format Studio opens, the longest error body.
+      services.load = async () => {
+        throw Object.assign(new Error("unsupported"), { name: "SourceError", code: "unsupported" });
+      };
+      app = await mountStudio(root, services);
+      const card = await until(() => root.querySelector<HTMLElement>(".stage-error"));
+      const overlay = card.parentElement as HTMLElement;
+      const frame = overlay.getBoundingClientRect();
+      expect(card.getBoundingClientRect().top).toBeGreaterThanOrEqual(frame.top);
+      overlay.scrollTop = overlay.scrollHeight;
+      for (const action of overlay.querySelectorAll<HTMLElement>(".stage-error-actions .btn")) {
+        const r = action.getBoundingClientRect();
+        expect(r.top).toBeGreaterThanOrEqual(frame.top);
+        expect(r.bottom).toBeLessThanOrEqual(frame.bottom);
+      }
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
   it("keeps the drop zone's cursors clear of a long German title on a 320px phone", async () => {
     await page.viewport(320, 568);
     try {
