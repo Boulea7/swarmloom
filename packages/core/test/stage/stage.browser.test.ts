@@ -353,7 +353,7 @@ describe("stage: reveal semantics per kind", () => {
     stage.prefetch?.("t");
     stage.measure?.();
     let s = spy();
-    stage.setStyle("t", { translate: "24px 0px" }); // a snap offset moves the text, not its glyphs
+    stage.setStyle("t", { translate: "24px 0px" }); // a snap offset moves the text and its caret, not its glyphs
     stage.reveal("t", 0);
     const first = [stage.caretAt("t", 0)];
     stage.reveal("t", 40 / text.length);
@@ -370,9 +370,9 @@ describe("stage: reveal semantics per kind", () => {
     later.push(stage.caretAt("t", text.length));
     expect(s.count()).toBe(0);
     s.stop();
-    // The same carets as measured on demand (up to float noise from another place on the page).
+    // The carets measured on demand, moved with the text (up to float noise from another place on the page).
     [...first, ...later].forEach((p, i) => {
-      expect(p.x).toBeCloseTo(expected[i]?.x ?? Number.NaN, 3);
+      expect(p.x).toBeCloseTo((expected[i]?.x ?? Number.NaN) + 24, 3);
       expect(p.y).toBeCloseTo(expected[i]?.y ?? Number.NaN, 3);
     });
   });

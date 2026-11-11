@@ -84,6 +84,18 @@ function finiteBoxes(layers: readonly Layer[]): Rect[] {
   return out;
 }
 
+const PX = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?px$/i;
+
+/** Offset of a CSS `translate` value written in px ("12px" or "12px 4px"); null for anything else. */
+function translateOffset(value: unknown): Point | null {
+  if (typeof value !== "string") return null;
+  const parts = value.trim().split(/\s+/);
+  if (parts.length > 3 || !parts.every((part) => PX.test(part))) return null;
+  const x = Number.parseFloat(parts[0] ?? "");
+  const y = parts.length > 1 ? Number.parseFloat(parts[1] ?? "") : 0;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
 function syncWindowScroll(win: Window, x: number, y: number): void {
   const left = Number.isFinite(x) ? Math.max(0, x) : 0;
   const top = Number.isFinite(y) ? Math.max(0, y) : 0;
@@ -330,7 +342,12 @@ export class SwarmStage implements Stage {
       if (text > 0 && dom !== text) units = (units / text) * dom;
       // Typing goes on: the next caret block is read ahead, between frames.
       if (!slot.finished) this.#reads.add(slot);
-      return view.caret(units) ?? fallback;
+      const caret = view.caret(units);
+      if (!caret) return fallback;
+      // The caret goes where the text is drawn: a transient translate (text typed beside its snap
+      // guide) moves it as well.
+      const shift = translateOffset(slot.css?.translate);
+      return shift ? { x: caret.x + shift.x, y: caret.y + shift.y } : caret;
     } catch {
       return fallback;
     }
