@@ -32,7 +32,7 @@ It is safe to import during server-side rendering: nothing touches the DOM until
 | `finale` | `flock`, `halo` or `none`. |
 | `autoplay` | Start once loaded. |
 | `inview` | Start when scrolled into view; pause offscreen and resume on return. |
-| `loop` | Replay after the build. A bare `loop` waits 1500 ms; `loop="4000"` waits 4 s. |
+| `loop` | Replay once the finale has settled. A bare `loop` waits 1500 ms; `loop="4000"` waits 4 s. |
 | `controls` | Show the player controls. |
 | `sound` | Enable sound. Browsers only start audio after a user gesture. |
 | `reduced-motion` | `auto` (follow the OS setting), `true` or `false`. |
