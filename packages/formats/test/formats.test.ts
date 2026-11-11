@@ -64,6 +64,8 @@ describe("detect", () => {
       "lottie",
     ],
     ["pasted lottie json", { text: LOTTIE }, "lottie"],
+    // Studio hands textual files over as decoded text: the content check must not depend on bytes.
+    ["lottie json text beats its .json name", { name: "loop.json", text: LOTTIE }, "lottie"],
     [
       "a plain .json file stays code",
       { name: "package.json", bytes: bytes('{"name":"x","version":"1.0.0","layers":[]}') },
