@@ -55,7 +55,7 @@ Phones use a bottom settings sheet. Watch mode omits full settings and keeps onl
 
 ## Offline use
 
-After PWA installation, the planned Service Worker caches the app shell and adapter chunks already used. Local files, cached examples and existing scenes can then run offline.
+After PWA installation, the Service Worker caches the app shell and, at install, fetches every format's adapter chunks together with what they import. Local files, cached examples and existing scenes can then run offline. The worker's version is a hash of the content of every cached file, so a change to only the page, the manifest or an icon still reaches installed copies.
 
 Offline mode does not make remote URLs readable. First-use formats, uncached remote resources, external fonts and model dependencies still need a network. Clearing site data removes the cache.
 

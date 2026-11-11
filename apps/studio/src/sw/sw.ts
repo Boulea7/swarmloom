@@ -43,13 +43,21 @@ const assetsUrl = new URL("assets/", scope).href;
 const examplesUrl = new URL("examples/", scope).href;
 const shareUrl = new URL(SHARE_TARGET_PATH, scope).href;
 
+/**
+ * Cache lookups ignore `Vary`. Every cached file is a same-origin static file, so no request header
+ * changes its bytes; but hosts that answer with `Vary: Origin` (CORS middleware, some CDNs) would
+ * otherwise make each lookup for a module chunk miss, since browsers send `Origin` when they load
+ * one and the request the worker cached it with had none. Offline, every miss is a failed import.
+ */
+const LOOKUP: CacheQueryOptions = { ignoreVary: true };
+
 /** Fetches the adapter chunks ahead; a failure only means that chunk is fetched on first use. */
 async function warm(): Promise<void> {
   const cache = await caches.open(ASSET_CACHE);
   await Promise.allSettled(
     __WARM__.map(async (path) => {
       const url = new URL(path, scope).href;
-      if (await cache.match(url)) return;
+      if (await cache.match(url, LOOKUP)) return;
       const response = await fetch(url);
       if (response.ok) await cache.put(url, response);
     }),
@@ -92,7 +100,9 @@ self.addEventListener("message", (event) => {
 });
 
 async function cacheFirst(request: Request, cacheName: string): Promise<Response> {
-  const hit = (await caches.match(request, { cacheName: SHELL_CACHE })) ?? (await caches.match(request, { cacheName }));
+  const hit =
+    (await caches.match(request, { ...LOOKUP, cacheName: SHELL_CACHE })) ??
+    (await caches.match(request, { ...LOOKUP, cacheName }));
   if (hit) return hit;
   const response = await fetch(request);
   if (response.ok && response.type === "basic") {
@@ -104,7 +114,7 @@ async function cacheFirst(request: Request, cacheName: string): Promise<Response
 
 async function staleWhileRevalidate(event: FetchEvent, cacheName: string): Promise<Response> {
   const cache = await caches.open(cacheName);
-  const hit = await cache.match(event.request);
+  const hit = await cache.match(event.request, LOOKUP);
   const refresh = fetch(event.request).then((response) => {
     if (response.ok && response.type === "basic") void cache.put(event.request, response.clone());
     return response;
@@ -122,12 +132,12 @@ async function staleWhileRevalidate(event: FetchEvent, cacheName: string): Promi
 }
 
 async function navigation(request: Request): Promise<Response> {
-  const shell = await caches.match(indexUrl, { cacheName: SHELL_CACHE });
+  const shell = await caches.match(indexUrl, { ...LOOKUP, cacheName: SHELL_CACHE });
   if (shell) return shell;
   try {
     return await fetch(request);
   } catch (error) {
-    const fallback = await caches.match(indexUrl);
+    const fallback = await caches.match(indexUrl, LOOKUP);
     if (fallback) return fallback;
     throw error;
   }

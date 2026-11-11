@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
 import { build, type Plugin } from "vite";
 import { FORMAT_META } from "../src/formats-meta";
@@ -95,7 +95,7 @@ interface ChunkLike {
 
 /**
  * The app shell to precache: the page, entry chunks and everything they import statically, their
- * CSS, icons and the manifest. Lazy chunks (adapters) are left to the runtime cache.
+ * CSS, icons and the manifest. Lazy chunks (adapters) go to the asset cache (see warmFiles).
  */
 export function shellFiles(bundle: Record<string, ChunkLike>): string[] {
   const shell = new Set<string>(["./", FAVICON, MANIFEST, ...ICONS.map((i) => i.src)]);
@@ -114,23 +114,55 @@ export function shellFiles(bundle: Record<string, ChunkLike>): string[] {
 /** Largest lazy chunk warmed at install; bigger ones (pdf.js workers) are cached on first use. */
 export const WARM_MAX_BYTES = 512 * 1024;
 
+/** A chunk small enough to warm and not part of a legacy build (old browsers only). */
+function warmable(item: ChunkLike): boolean {
+  return (item.code?.length ?? 0) <= WARM_MAX_BYTES && !(item.moduleIds ?? []).some((id) => id.includes("/legacy/"));
+}
+
 /**
- * Lazy chunks the worker fetches ahead at install so every format opens offline: adapters and
- * locales, without legacy builds (old browsers only) or anything over WARM_MAX_BYTES.
+ * Lazy chunks the worker fetches ahead at install so every format opens offline: each adapter or
+ * locale entry together with everything it imports statically and their CSS, since the dynamic
+ * import fails offline if any of them is missing. An entry is warmed whole or not at all: when a
+ * chunk it needs is legacy or over WARM_MAX_BYTES, the entry is left to the runtime cache too.
  */
 export function warmFiles(bundle: Record<string, ChunkLike>, shell: readonly string[]): string[] {
   const skip = new Set(shell);
-  return Object.values(bundle)
-    .filter(
-      (item) =>
-        item.type === "chunk" &&
-        item.isDynamicEntry === true &&
-        !skip.has(item.fileName) &&
-        (item.code?.length ?? 0) <= WARM_MAX_BYTES &&
-        !(item.moduleIds ?? []).some((id) => id.includes("/legacy/")),
-    )
-    .map((item) => item.fileName)
-    .sort();
+  /** The entry with its static imports and CSS outside the shell, or null if one is not warmable. */
+  const closure = (entry: string): Set<string> | null => {
+    const files = new Set<string>();
+    const pending = [entry];
+    for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
+      const item = bundle[name];
+      if (item?.type !== "chunk" || skip.has(name) || files.has(name)) continue;
+      if (!warmable(item)) return null;
+      files.add(name);
+      for (const css of item.viteMetadata?.importedCss ?? []) if (!skip.has(css)) files.add(css);
+      pending.push(...(item.imports ?? []));
+    }
+    return files;
+  };
+  const warm = new Set<string>();
+  for (const item of Object.values(bundle)) {
+    if (item.type !== "chunk" || item.isDynamicEntry !== true) continue;
+    for (const name of closure(item.fileName) ?? []) warm.add(name);
+  }
+  return [...warm].sort();
+}
+
+/**
+ * Release id the worker's cache names carry: a hash of every file it caches, by path and bytes
+ * (`./` is the page, index.html). The page, manifest and icons keep their names between releases,
+ * so a change to only one of them must still change the worker script, or browsers keep serving
+ * the old shell. Throws when a listed file is missing from `outDir`.
+ */
+export function releaseVersion(outDir: string, files: readonly string[]): string {
+  const hash = createHash("sha256");
+  for (const file of [...new Set(files)].sort()) {
+    hash.update(`${file}\0`);
+    hash.update(readFileSync(resolve(outDir, file === "./" ? "index.html" : file)));
+    hash.update("\0");
+  }
+  return hash.digest("hex").slice(0, 12);
 }
 
 /**
@@ -199,10 +231,7 @@ export function pwaPlugin(options: PwaOptions): Plugin {
         if (existsSync(page)) renameSync(page, resolve(outDir, EXTENSION_PAGE));
         return;
       }
-      const version = createHash("sha256")
-        .update(JSON.stringify([precache, warmList, assets]))
-        .digest("hex")
-        .slice(0, 12);
+      const version = releaseVersion(outDir, [...precache, ...warmList, ...assets]);
       await build({
         configFile: false,
         root,
