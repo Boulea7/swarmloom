@@ -54,6 +54,7 @@ export const de: StudioCatalog = {
   "error.title": "Konnte nicht geöffnet werden",
   "error.unsupported": "Dieser Dateityp wird nicht unterstützt. Studio öffnet {formats}.",
   "error.tooLarge": "Diese Datei ist {size} groß. Das Limit liegt bei {limit}.",
+  "error.tooLargeFormat": "Diese Datei ist {size} groß. Für {format} liegt das Limit bei {limit}.",
   "error.empty": "Diese Datei ist leer.",
   "error.encrypted": "Dieses Dokument ist passwortgeschützt. Entferne das Passwort und öffne es erneut.",
   "error.fetch":
@@ -62,6 +63,7 @@ export const de: StudioCatalog = {
     "Das Lesemodul für dieses Format konnte nicht geladen werden. Prüfe die Verbindung und versuche es erneut.",
   "error.player": "Der Player konnte nicht starten: {message}",
   "error.generic": "Etwas ist schiefgelaufen: {message}",
+  "error.tooComplex": "Diese Datei ist zu groß oder zu komplex zum Öffnen. Versuche es mit einer kleineren Datei.",
   "error.share": "Dieser Link ist beschädigt oder unvollständig.",
   "error.example": "Es gibt kein Beispiel namens „{id}“.",
   "error.file": "Lokale Dateien lassen sich nicht über einen Link erneut öffnen. Öffne die Datei noch einmal.",

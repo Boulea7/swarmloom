@@ -50,6 +50,7 @@ export const ko: StudioCatalog = {
   "error.title": "열 수 없습니다",
   "error.unsupported": "지원하지 않는 파일 형식입니다. 지원 형식: {formats}",
   "error.tooLarge": "이 파일은 {size}입니다. 한도는 {limit}입니다.",
+  "error.tooLargeFormat": "이 파일은 {size}입니다. 이 형식({format})의 한도는 {limit}입니다.",
   "error.empty": "빈 파일입니다.",
   "error.encrypted": "암호로 보호된 문서입니다. 암호를 제거한 뒤 다시 여세요.",
   "error.fetch":
@@ -57,6 +58,7 @@ export const ko: StudioCatalog = {
   "error.adapter": "이 형식의 읽기 모듈을 불러오지 못했습니다. 연결을 확인하고 다시 시도하세요.",
   "error.player": "플레이어를 시작할 수 없습니다: {message}",
   "error.generic": "문제가 발생했습니다: {message}",
+  "error.tooComplex": "파일이 너무 크거나 복잡해서 열 수 없습니다. 더 작은 파일로 다시 시도해 주세요.",
   "error.share": "공유 링크가 손상되었거나 불완전합니다.",
   "error.example": '"{id}"라는 예제가 없습니다.',
   "error.file": "로컬 파일은 링크로 다시 열 수 없습니다. 파일을 다시 열어 주세요.",

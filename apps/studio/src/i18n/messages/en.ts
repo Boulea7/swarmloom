@@ -60,6 +60,7 @@ export const en = {
   "error.title": "Couldn't open this",
   "error.unsupported": "This file type isn't supported. Studio opens {formats}.",
   "error.tooLarge": "This file is {size}. The limit is {limit}.",
+  "error.tooLargeFormat": "This file is {size}. {format} files can be up to {limit}.",
   "error.empty": "This file is empty.",
   "error.encrypted": "This document is password-protected. Remove the password and open it again.",
   "error.fetch":
@@ -67,6 +68,7 @@ export const en = {
   "error.adapter": "The reader for this format couldn't load. Check your connection and try again.",
   "error.player": "The player couldn't start: {message}",
   "error.generic": "Something went wrong: {message}",
+  "error.tooComplex": "This file is too large or complex to open. Try a smaller file.",
   "error.share": "This share link is damaged or incomplete.",
   "error.example": 'There is no example called "{id}".',
   "error.file": "Local files can't be reopened from a link. Open the file again.",
