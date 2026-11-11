@@ -124,6 +124,20 @@ describe("planner", () => {
     expect(s.frontier(200)).toBe(1600);
   });
 
+  it("puts the tour frontier where unfinished work can be seen, not at the top of its box", () => {
+    const p = plan([
+      // The content of a scrolled container: its box starts far above the part its clip shows.
+      box("scrolled", 0, 600, 400, 3400, { clip: { x: 0, y: 1500, w: 400, h: 300 } }),
+      // Clipped away entirely: any agent takes it wherever the viewport is, so it holds no tour.
+      box("hidden", 0, 300, 120, 200, { clip: { x: 0, y: 0, w: 800, h: 100 } }),
+      box("below", 0, 2000),
+    ]);
+    const s = new Schedule(p);
+    expect(s.frontier()).toBe(1500);
+    // Once its seen part is scrolled past, the clipped layer no longer holds the tour.
+    expect(s.frontier(1900)).toBe(2000);
+  });
+
   it("reports dangling references, duplicate ids and cycles instead of throwing", () => {
     const p = plan([
       box("a", 0, 0, 100, 100, { parent: "b" }),

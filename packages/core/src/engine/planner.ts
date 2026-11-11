@@ -59,7 +59,10 @@ export interface Plan {
   readonly outList: Int32Array;
   /** Tasks in a topological order that follows reading order where the graph allows. */
   readonly order: Int32Array;
-  /** Tasks sorted by top edge (then rank): drives the tour frontier. */
+  /**
+   * Tasks that can be seen, sorted by the top of their seen span (then rank): drives the tour
+   * frontier. Tasks with nothing to see are left out (any agent takes them wherever the viewport is).
+   */
   readonly byTop: Int32Array;
   readonly totalEstimate: number;
   /** Human-readable notes about skipped layers, dangling references and broken cycles. */
@@ -228,9 +231,9 @@ export function buildPlan(blueprint: Blueprint, opts: PlanOptions): Plan {
   }
 
   const order = Int32Array.from(topo.filter((v) => v < n));
-  const byTop = Int32Array.from({ length: n }, (_, i) => i).sort(
-    (a, b) => (y[a] as number) - (y[b] as number) || (rank[a] as number) - (rank[b] as number),
-  );
+  const byTop = Int32Array.from({ length: n }, (_, i) => i)
+    .filter((i) => (seenH[i] as number) >= 0)
+    .sort((a, b) => (seenY[a] as number) - (seenY[b] as number) || (rank[a] as number) - (rank[b] as number));
 
   return {
     nodeCount,

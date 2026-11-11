@@ -224,18 +224,21 @@ export class Schedule {
   }
 
   /**
-   * Top edge of the earliest (by top edge) task that is not done and does not end above
-   * `fromY`; +Infinity when there is none. Unfinished work the viewer scrolled past does not
-   * hold the tour back (it fades in once the crew runs out of work in sight).
+   * Top of the seen span of the earliest (by that top) task that is not done and whose seen span
+   * does not end above `fromY`; +Infinity when there is none. The tour goes where {@link pick}
+   * can take the work: a clipped layer counts from the part its clip shows, and layers with
+   * nothing to see do not count (they are taken anywhere). Unfinished work the viewer scrolled
+   * past does not hold the tour back (it fades in once the crew runs out of work in sight).
    */
   frontier(fromY = Number.NEGATIVE_INFINITY): number {
-    const { byTop, y, h } = this.plan;
+    const { byTop, seenY, seenH } = this.plan;
     while (this.#topCursor < byTop.length && this.status[byTop[this.#topCursor] as number] === DONE) {
       this.#topCursor++;
     }
     for (let k = this.#topCursor; k < byTop.length; k++) {
       const i = byTop[k] as number;
-      if (this.status[i] !== DONE && (y[i] as number) + (h[i] as number) > fromY) return y[i] as number;
+      const top = seenY[i] as number;
+      if (this.status[i] !== DONE && top + (seenH[i] as number) > fromY) return top;
     }
     return Number.POSITIVE_INFINITY;
   }
