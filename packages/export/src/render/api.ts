@@ -128,8 +128,8 @@ function playerOptions(
  * Implements the headless render protocol (`window.__swarmloom`) the CLI drives frame by frame.
  *
  * One render at a time: `init()` loads the input and creates a player on a VirtualClock with the
- * toolbar off, `step()` advances it, `audioWav()` renders the soundtrack for the elapsed time and
- * `dispose()` releases everything. Errors reject with messages meant for the CLI user.
+ * toolbar off, `step()` advances it, `audioWav()` renders the soundtrack (for the video's length when
+ * the driver passes it) and `dispose()` releases everything. Errors reject with messages meant for the CLI user.
  *
  * Unless `live` is off or `reducedMotion` is on, the player goes live once the finale settles; from
  * the moment the stage is live every step also seeks the page's animations to the frame time
@@ -231,12 +231,13 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       return status;
     },
 
-    async audioWav(): Promise<string> {
+    async audioWav(durationMs?: number): Promise<string> {
       const { init, session } = activeRender();
       if (session.elapsed <= 0) throw new Error("Nothing rendered yet: call step() before audioWav()");
       const events = init.sound ? session.soundLog : [];
       const sound = { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: true };
-      const wav = await deps.renderAudioWav(events, session.elapsed, { sampleRate: SAMPLE_RATE, channels: 2, sound });
+      const length = durationMs ?? session.elapsed;
+      const wav = await deps.renderAudioWav(events, length, { sampleRate: SAMPLE_RATE, channels: 2, sound });
       return bytesToBase64(wav);
     },
 

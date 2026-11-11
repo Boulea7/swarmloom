@@ -73,8 +73,8 @@ export interface RenderInfo {
 export interface RenderApi {
   init(o: RenderInit): Promise<RenderInfo>;
   step(ms: number): Promise<StepResult>;
-  /** Base64 WAV of the sound log rendered offline for the elapsed duration. */
-  audioWav(): Promise<string>;
+  /** Base64 WAV of the sound log rendered offline for `durationMs` (default: the elapsed time). */
+  audioWav(durationMs?: number): Promise<string>;
   /** Every sound event logged so far, on the frames' clock (optional: older render pages lack it). */
   soundLog?(): Promise<SoundEvent[]>;
   dispose(): void;

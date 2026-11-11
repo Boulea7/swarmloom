@@ -98,8 +98,11 @@ export interface RenderApi {
   init(o: RenderInit): Promise<RenderInfo>;
   /** Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame. */
   step(ms: number): Promise<RenderStep>;
-  /** Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for the elapsed duration. */
-  audioWav(): Promise<string>;
+  /**
+   * Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for `durationMs`. Pass the
+   * video's length (frames * 1000 / fps): its last frame lasts one frame past the elapsed time, the default.
+   */
+  audioWav(durationMs?: number): Promise<string>;
   /**
    * Every sound event logged so far, the list `audioWav()` renders: engine ms on the frames' clock
    * (frame n shows n * 1000 / fps; time held by a "pause" cue is included). Logged even when sound

@@ -233,6 +233,8 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
       expect(events.events.map((e: { frame: number }) => e.frame)).toEqual([0, 10]);
       expect(a.outputs.events.sha256).toBe(b.outputs.events.sha256);
       expect(Number((await probe(path.join(work, "a/take.mp4"))).format.duration)).toBeCloseTo(1.5, 1);
+      // --audio-out matches the video's 15 frames, not the 1.4 s up to the last frame's start.
+      expect(Number((await probe(path.join(work, "a/take.wav"))).format.duration)).toBeCloseTo(1.5, 3);
     },
     TIMEOUT,
   );
