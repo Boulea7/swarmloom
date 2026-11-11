@@ -171,9 +171,12 @@ export function decodeCssEscapes(css: string): string {
  * Sanitises CSS text (style elements and style attributes): drops `@import`, replaces every
  * `url()` that is not a fragment or an inline image/font with `none`, and neutralises legacy
  * script hooks. CSS escapes are removed first so they cannot spell `url(` or `@import` in disguise.
+ * The decoded text is what gets written back, and the browser decodes it again, so backslashes left
+ * over (from `\\` or `\5c`) are dropped too: `\\75rl(` decodes to `\75rl(`, which CSS reads as `url(`.
+ * (`loadsExternal` must not do this: it keeps the original value, and `url(\\#a)` loads `\#a`.)
  */
 export function sanitizeCss(css: string): string {
-  let out = decodeCssEscapes(css);
+  let out = decodeCssEscapes(css).replace(/\\/g, "");
   out = out.replace(/@import\b[^;]*;?/gi, "");
   out = out.replace(CSS_URL, (whole, _q: string, target: string) => (isSafeCssUrl(target) ? whole : "none"));
   // An unbalanced url( could still hide a request, and image-set()/src() accept bare strings.
