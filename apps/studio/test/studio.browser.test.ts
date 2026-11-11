@@ -87,6 +87,9 @@ describe("Studio in a browser", () => {
     expect(log.loads[0]?.text).toContain("<svg");
     expect(log.contexts[0]?.network).toBe("https");
     expect(log.players[0]).toMatchObject({ mode: "inline", host: root.querySelector(".stage-host") });
+    // This player cannot seek: the footer keeps the plain progress bar.
+    expect(root.querySelector<HTMLElement>(".progress")?.hidden).toBe(false);
+    expect(root.querySelector<HTMLElement>(".scrub-range")?.hidden).toBe(true);
 
     root.querySelector<HTMLButtonElement>(".play-big")?.click();
     expect(log.calls).toContain("play");
@@ -106,6 +109,19 @@ describe("Studio in a browser", () => {
     expect(seeks()).toEqual([]);
     await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(seeks()).toEqual(["seek:3600"]); // 300 / 1000 of the fake's 12 s plan
+  });
+
+  it("enables the seek slider once the build runs; End seeks to the end", async () => {
+    const { root, log } = await mount("?example=svg-chart", true);
+    const play = await until(() => root.querySelector<HTMLButtonElement>(".play-big"));
+    const seeker = root.querySelector<HTMLInputElement>(".scrub-range");
+    expect([seeker?.hidden, seeker?.disabled]).toEqual([false, true]);
+    expect(root.querySelector<HTMLElement>(".progress")?.hidden).toBe(true);
+
+    play.click();
+    expect(seeker?.disabled).toBe(false);
+    seeker?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+    await until(() => log.calls.includes("seek:12000"));
   });
 
   it("explains an unknown example instead of mounting a player", async () => {

@@ -1,7 +1,7 @@
 import type { LoadedSource, Player, PlayerOptions, PlayerState } from "@swarmloom/core";
 import { isCancellation, StudioError } from "./errors";
 import type { SourceRef } from "./route";
-import type { PlayerExtras, StudioServices } from "./services";
+import type { StudioServices } from "./services";
 import { impactOf, playerOptionsFrom, type SettingsImpact, type StudioSettings } from "./settings";
 import { type LocalInput, type OpenedSource, resolveSource } from "./source";
 
@@ -47,6 +47,10 @@ const END_STEP_SHARE = 0.1;
 const END_STEP_MIN_MS = 500;
 /** Steps tried before seeking to the end gives up (a 10% step covers a plan about 10x too short). */
 const END_STEP_PASSES = 24;
+/** Largest scrubber position before the build has ended, so a plan that is short never reads "finished". */
+const MAX_POSITION_BEFORE_END = 0.99;
+/** Player states after the build: the scrubber is full. */
+const BUILD_ENDED: ReadonlySet<PlayerState> = new Set(["finale", "done", "live"]);
 
 function layoutWidth(host: HTMLElement, preferred: number | undefined): number {
   const width = preferred ?? (host.clientWidth || host.ownerDocument.documentElement.clientWidth || 1280);
@@ -65,7 +69,7 @@ function messageOf(error: unknown): string {
 export class Session {
   opened: OpenedSource | null = null;
   loaded: LoadedSource | null = null;
-  player: (Player & PlayerExtras) | null = null;
+  player: Player | null = null;
   /**
    * Player ms from play() to the end of the build (scrubber length). An estimate (player time plus
    * eta() at the furthest point reached) until the build has ended once, then the measured end.
@@ -198,8 +202,29 @@ export class Session {
     return true;
   }
 
+  /** True when the current player implements the optional `seek(t)` (decisions-v1 S05). */
   get canSeek(): boolean {
     return typeof this.player?.seek === "function";
+  }
+
+  /**
+   * Scrubber position between 0 and 1, on the same scale {@link seek} takes: player time over
+   * plannedMs, 1 once the build has ended and at most 0.99 before. A player without `time` reports
+   * the share of layers built instead.
+   */
+  get position(): number {
+    const player = this.player;
+    if (!player) return 0;
+    if (BUILD_ENDED.has(player.state)) return 1;
+    const time = player.time;
+    let share: number;
+    if (time !== undefined && this.plannedMs > 0) {
+      share = time / this.plannedMs;
+    } else {
+      const { built, total } = player.progress;
+      share = total > 0 ? built / total : 0;
+    }
+    return Number.isFinite(share) ? Math.max(0, Math.min(MAX_POSITION_BEFORE_END, share)) : 0;
   }
 
   destroy(): void {
@@ -225,7 +250,7 @@ export class Session {
       onClose: () => this.o.onClose?.(),
       ...this.o.overrides,
     };
-    let player: Player & PlayerExtras;
+    let player: Player;
     try {
       player = this.o.services.createPlayer(options);
     } catch (error) {
@@ -243,6 +268,8 @@ export class Session {
         this.replan(player);
         this.o.onState?.(e.state);
         if ((e.state === "done" || e.state === "live") && this.phase === "playing") this.setPhase("done");
+        // A seek back or the toolbar's replay starts a new run of a finished build.
+        if ((e.state === "intro" || e.state === "building") && this.phase === "done") this.setPhase("playing");
       }),
       // Engine "error" events are non-fatal (blueprint diagnostics, failed layer tasks, plugin or
       // sound faults): the build keeps going, so they must not replace the stage with the error card.
@@ -265,7 +292,7 @@ export class Session {
    * and entering the finale measures the end. Replays over earlier ground are ignored. A player
    * without `time` keeps the first estimate, taken when the build started.
    */
-  private replan(player: Player & PlayerExtras): void {
+  private replan(player: Player): void {
     if (this.planExact) return;
     const now = player.time;
     if (now === undefined) {
@@ -287,7 +314,7 @@ export class Session {
    * After seeking to `t`, steps forward while layers remain, so a plan that was still too short
    * reaches the end anyway. The finale state event on the way measures the end.
    */
-  private seekToBuildEnd(player: Player & PlayerExtras, t: number): void {
+  private seekToBuildEnd(player: Player, t: number): void {
     let at = t;
     for (let pass = 0; pass < END_STEP_PASSES && this.layersLeft(player); pass++) {
       // Still building here, so a measured end (e.g. of a run rushed by finish()) was wrong.

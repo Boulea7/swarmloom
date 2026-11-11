@@ -11,6 +11,7 @@ import { icon } from "../ui/icons";
 import { appBar, settingsButton, themeButton } from "./chrome";
 import { createExporter } from "./export";
 import { formatLabel } from "./home";
+import { createScrubber } from "./scrubber";
 import { buildShareLink } from "./share-link";
 
 /** Name to show before the source has been resolved. */
@@ -37,8 +38,6 @@ function clock(ms: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-const SCRUB_STEPS = 1000;
-
 /**
  * Player: the source title bar, a full-bleed inline stage (core player with its own toolbar), a
  * Studio scrubber, share and export. Loading, ready and error states render over the stage.
@@ -47,10 +46,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   const { i18n } = ctx;
   let phase: SessionPhase = "opening";
   let scheme = ctx.scheme;
-  let built = 0;
-  let total = 0;
   let recTimer = 0;
-  let seekFrame = 0;
   /** Autoplay links start the first time the player is ready, never again after a rebuild. */
   let autoplayPending = ctx.route.autoplay;
 
@@ -101,45 +97,12 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   // Notice (truncated builds)
   const notice = h("div", { class: "player-notice", attrs: { hidden: true, role: "note" } });
 
-  // Scrubber: a seek slider when the engine can seek, a progress bar otherwise.
-  const fill = h("span", { class: "progress-fill" });
-  const track = h(
-    "div",
-    {
-      class: "progress",
-      attrs: {
-        role: "progressbar",
-        "aria-label": i18n.t("player.progress"),
-        "aria-valuemin": 0,
-        "aria-valuemax": 100,
-        "aria-valuenow": 0,
-      },
-    },
-    fill,
-  );
-  const seeker = h("input", {
-    class: "scrub-range",
-    attrs: {
-      type: "range",
-      min: 0,
-      max: SCRUB_STEPS,
-      step: 1,
-      value: 0,
-      "aria-label": i18n.t("player.scrub"),
-      hidden: true,
-    },
-    on: { input: () => scheduleSeek() },
+  // Scrubber: a seek slider when the player can seek, a progress bar otherwise.
+  const scrubber = createScrubber({
+    i18n,
+    seek: (fraction) => session.seek(fraction),
+    position: () => session.position,
   });
-  // A seek re-simulates the build synchronously, so dragging seeks once per frame to the latest
-  // value instead of once per input event.
-  const scheduleSeek = () => {
-    if (seekFrame !== 0) return;
-    seekFrame = window.requestAnimationFrame(() => {
-      seekFrame = 0;
-      session.seek(Number(seeker.value) / SCRUB_STEPS);
-    });
-  };
-  const count = h("span", { class: "scrub-count", attrs: { "aria-hidden": "true" } });
   const recLabel = h("span", { class: "rec-time" });
   const recPill = h(
     "div",
@@ -153,7 +116,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       onClick: () => exporter.stopRecording(),
     }),
   );
-  const foot = h("div", { class: "player-foot" }, h("div", { class: "scrubber" }, track, seeker), count, recPill);
+  const foot = h("div", { class: "player-foot" }, scrubber.root, scrubber.count, recPill);
 
   const root = h("main", { class: "view view-player", attrs: { id: "main", tabindex: -1 } }, bar, notice, frame, foot);
 
@@ -174,14 +137,6 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     },
   });
   root.append(exporter.panel.root);
-
-  const renderProgress = () => {
-    const fraction = total > 0 ? Math.min(1, built / total) : 0;
-    fill.style.transform = `scaleX(${fraction})`;
-    track.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
-    if (!seeker.matches(":active")) seeker.value = String(Math.round(fraction * SCRUB_STEPS));
-    count.textContent = total > 0 ? `${built} / ${total}` : "";
-  };
 
   const renderOverlay = (error?: unknown) => {
     frame.dataset.phase = phase;
@@ -304,11 +259,11 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       phase = next;
       root.dataset.phase = next;
       if (next === "ready" || next === "error") showOpened();
+      scrubber.setPhase(next);
       if (next === "ready") {
         showTruncated();
         exportButton.disabled = false;
-        seeker.hidden = !session.canSeek;
-        track.hidden = session.canSeek;
+        scrubber.ready(session.canSeek);
         if (autoplayPending) {
           autoplayPending = false;
           session.start();
@@ -317,19 +272,15 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       }
       renderOverlay(error);
     },
-    onProgress: (b, t) => {
-      built = b;
-      total = t;
-      renderProgress();
-    },
+    onProgress: (built, total) => scrubber.setProgress(built, total),
     onState: (state: PlayerState) => {
       root.dataset.state = state;
+      scrubber.setState(state);
     },
     onClose: () => ctx.navigate({ source: null }),
   });
 
   renderOverlay();
-  renderProgress();
   void session.open();
 
   async function share(): Promise<void> {
@@ -411,7 +362,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     schemeChanged: applyScheme,
     destroy() {
       window.clearInterval(recTimer);
-      window.cancelAnimationFrame(seekFrame);
+      scrubber.destroy();
       exporter.destroy();
       session.destroy();
     },
