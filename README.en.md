@@ -210,8 +210,8 @@ Foldables need nothing extra: where the browser supports Viewport Segments, Stud
 
 ## Roadmap
 
-- **Now**: Studio online, web pages plus 20 file formats, frame-by-frame CLI export, and Chrome / Edge / Firefox / Safari extensions built from source.
-- **Next**: the first GitHub Release and npm packages, store listings and signed extensions, video export inside Studio, and testing on phones and Safari devices.
+- **Now**: Studio online, web pages plus 20 file formats, frame-by-frame video export with the CLI or right in Studio, and Chrome / Edge / Firefox / Safari extensions built from source.
+- **Next**: the first GitHub Release and npm packages, store listings and signed extensions, and testing on phones and Safari devices.
 - **Later**: more formats and platforms, with no dates promised. Share ideas in [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 
 ## Contributing and support

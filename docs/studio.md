@@ -5,11 +5,11 @@ description: 在浏览器中打开文件、播放示例、调整构建、分享�
 
 # Studio
 
-::: warning 当前状态
-Studio 的界面与导出仍在实现中，部署地址是规划入口。本页描述 v1 行为。
+::: info 当前状态
+Studio 已经上线，地址见下方；支持 WebCodecs 的浏览器可以直接用“在浏览器里导出”。“用命令行渲染”给出的命令需要 `swarmloom` CLI，它还没有发布到 npm，目前需要从源码构建（见 [CLI](./cli.md)）。本页描述 v1 行为。
 :::
 
-Studio 是 SwarmLoom 的浏览器工作台，也是可安装 PWA。规划地址：
+Studio 是 SwarmLoom 的浏览器工作台，也是可安装 PWA。地址：
 
 [https://boulea7.github.io/swarmloom/studio/](https://boulea7.github.io/swarmloom/studio/)
 

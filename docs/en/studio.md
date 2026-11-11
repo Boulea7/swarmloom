@@ -5,11 +5,11 @@ description: Open files, play examples, adjust builds, share and export in Swarm
 
 # Studio
 
-::: warning Current status
-Studio's interface and export paths are still being implemented, and the deployment URL is a planned entry point. This page describes v1 behaviour.
+::: info Current status
+Studio is online at the address below, and **Export in this browser** works in browsers with WebCodecs. The command from **Render with the command line** needs the `swarmloom` CLI, which is not on npm yet; build it from source for now (see [CLI](./cli.md)). This page describes v1 behaviour.
 :::
 
-Studio is SwarmLoom's browser workbench and an installable PWA. Planned address:
+Studio is SwarmLoom's browser workbench and an installable PWA. Address:
 
 [https://boulea7.github.io/swarmloom/studio/](https://boulea7.github.io/swarmloom/studio/)
 
