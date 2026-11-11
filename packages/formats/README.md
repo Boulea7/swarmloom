@@ -5,8 +5,9 @@ Works out what an input is and loads it through the matching SwarmLoom adapter. 
 ```ts
 import { detect, load, SourceError } from "@swarmloom/formats";
 
-const id = await detect({ name: file.name, type: file.type, bytes: new Uint8Array(await file.arrayBuffer()) });
-const source = await load({ name: file.name, bytes }, { theme: "light" }, { maxBytes: 20 * 1024 * 1024 });
+const input = { name: file.name, type: file.type, bytes: new Uint8Array(await file.arrayBuffer()) };
+const id = await detect(input); // "markdown", "pdf", ... or null
+const source = await load(input, { document, width: 960, theme: "light" }, { maxBytes: 20 * 1024 * 1024 });
 ```
 
 ## Detection
@@ -29,7 +30,7 @@ Only ids present in the registry you pass are returned.
 - `format`: an id, extension or MIME type that overrides detection.
 - `registry`: the format list to use.
 - `maxBytes`: the size limit, 50 MB by default.
-- `fetch: false`: refuse URL-only inputs.
+- `fetch: false`: do not download URL-only inputs. They go to the adapter untouched (`maxBytes` does not apply to them) and the adapter fetches them itself, so this does not block URL loading; to refuse URLs, check the input before calling `load()`.
 - `signal`: abort the load.
 
 A failure rejects with a `SourceError`. Its `message` explains what to do, and its `code` is one of:
