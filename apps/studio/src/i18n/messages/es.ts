@@ -58,6 +58,40 @@ export const es: StudioCatalog = {
   "player.notes": "Se muestra con algunos cambios: {notes}",
   "player.fonts": "Las fuentes que faltan en este dispositivo se muestran con otras parecidas: {fonts}.",
   "player.fonts.more": "{count} más",
+  "note.lottie.noManifest": "El archivo .lottie no tiene manifiesto, así que se muestra su primera animación.",
+  "note.lottie.animations": "Este archivo .lottie contiene {count} animaciones; se muestra «{name}».",
+  "note.lottie.imageFormat": {
+    one: "Se omitió {count} imagen en un formato no compatible.",
+    other: "Se omitieron {count} imágenes en un formato no compatible.",
+  },
+  "note.lottie.imageExternal": {
+    one: "Se omitió {count} imagen que no está incrustada en el archivo.",
+    other: "Se omitieron {count} imágenes que no están incrustadas en el archivo.",
+  },
+  "note.lottie.footage": {
+    one: "Se quitó {count} recurso de audio o datos.",
+    other: "Se quitaron {count} recursos de audio o datos.",
+  },
+  "note.lottie.duplicate": {
+    one: "Se quitó {count} recurso que repite el ID de otro anterior.",
+    other: "Se quitaron {count} recursos que repiten el ID de otro anterior.",
+  },
+  "note.lottie.slots": {
+    one: "Se quitó {count} ranura de imagen; se muestran las imágenes del propio archivo.",
+    other: "Se quitaron {count} ranuras de imagen; se muestran las imágenes del propio archivo.",
+  },
+  "note.lottie.fontList": "Se quitó una lista de fuentes dañada.",
+  "note.lottie.webFonts": {
+    one: "{count} fuente web se sustituyó por una fuente instalada.",
+    other: "{count} fuentes web se sustituyeron por fuentes instaladas.",
+  },
+  "note.lottie.textOrder": "Los animadores de texto con orden de letras aleatorio se reproducen en un orden fijo.",
+  "note.lottie.audioLayers": "Las capas de audio no se reproducen.",
+  "note.lottie.dataLayers": "Las capas de datos no se reproducen.",
+  "note.lottie.expressions": {
+    one: "Se ignoró {count} expresión; su propiedad conserva los valores de sus fotogramas clave.",
+    other: "Se ignoraron {count} expresiones; sus propiedades conservan los valores de sus fotogramas clave.",
+  },
   "player.dismiss": "Cerrar",
   "player.retry": "Reintentar",
   "player.home": "Volver a Studio",

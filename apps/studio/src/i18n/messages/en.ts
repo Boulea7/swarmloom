@@ -65,6 +65,40 @@ export const en = {
   "player.notes": "Shown with some changes: {notes}",
   "player.fonts": "Fonts missing on this device are shown with similar ones: {fonts}.",
   "player.fonts.more": "{count} more",
+  "note.lottie.noManifest": "The .lottie file has no manifest, so its first animation is shown.",
+  "note.lottie.animations": "This .lottie file holds {count} animations; “{name}” is shown.",
+  "note.lottie.imageFormat": {
+    one: "{count} image in an unsupported format was left out.",
+    other: "{count} images in an unsupported format were left out.",
+  },
+  "note.lottie.imageExternal": {
+    one: "{count} image isn't embedded in the file and was left out.",
+    other: "{count} images aren't embedded in the file and were left out.",
+  },
+  "note.lottie.footage": {
+    one: "{count} audio or data asset was removed.",
+    other: "{count} audio or data assets were removed.",
+  },
+  "note.lottie.duplicate": {
+    one: "{count} asset that repeats an earlier asset's ID was removed.",
+    other: "{count} assets that repeat an earlier asset's ID were removed.",
+  },
+  "note.lottie.slots": {
+    one: "{count} image slot was removed; the file's own images are shown.",
+    other: "{count} image slots were removed; the file's own images are shown.",
+  },
+  "note.lottie.fontList": "A damaged font list was removed.",
+  "note.lottie.webFonts": {
+    one: "{count} web font was replaced by an installed font.",
+    other: "{count} web fonts were replaced by installed fonts.",
+  },
+  "note.lottie.textOrder": "Text animators with a random letter order play in a fixed order.",
+  "note.lottie.audioLayers": "Audio layers are not played.",
+  "note.lottie.dataLayers": "Data layers are not played.",
+  "note.lottie.expressions": {
+    one: "{count} expression was ignored; its property keeps its keyframed values.",
+    other: "{count} expressions were ignored; their properties keep their keyframed values.",
+  },
   "player.dismiss": "Dismiss",
   "player.retry": "Try again",
   "player.home": "Back to Studio",

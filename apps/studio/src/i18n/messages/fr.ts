@@ -58,6 +58,40 @@ export const fr: StudioCatalog = {
   "player.notes": "Affiché avec quelques modifications : {notes}",
   "player.fonts": "Les polices absentes de cet appareil sont remplacées par des polices proches : {fonts}.",
   "player.fonts.more": { one: "{count} autre", other: "{count} autres" },
+  "note.lottie.noManifest": "Le fichier .lottie n’a pas de manifeste : sa première animation est affichée.",
+  "note.lottie.animations": "Ce fichier .lottie contient {count} animations ; « {name} » est affichée.",
+  "note.lottie.imageFormat": {
+    one: "{count} image dans un format non pris en charge a été omise.",
+    other: "{count} images dans un format non pris en charge ont été omises.",
+  },
+  "note.lottie.imageExternal": {
+    one: "{count} image non intégrée au fichier a été omise.",
+    other: "{count} images non intégrées au fichier ont été omises.",
+  },
+  "note.lottie.footage": {
+    one: "{count} ressource audio ou de données a été supprimée.",
+    other: "{count} ressources audio ou de données ont été supprimées.",
+  },
+  "note.lottie.duplicate": {
+    one: "{count} ressource qui reprend l’ID d’une ressource précédente a été supprimée.",
+    other: "{count} ressources qui reprennent l’ID d’une ressource précédente ont été supprimées.",
+  },
+  "note.lottie.slots": {
+    one: "{count} emplacement d’image a été supprimé ; les images du fichier sont affichées.",
+    other: "{count} emplacements d’image ont été supprimés ; les images du fichier sont affichées.",
+  },
+  "note.lottie.fontList": "Une liste de polices endommagée a été supprimée.",
+  "note.lottie.webFonts": {
+    one: "{count} police web a été remplacée par une police installée.",
+    other: "{count} polices web ont été remplacées par des polices installées.",
+  },
+  "note.lottie.textOrder": "Les animateurs de texte à ordre de lettres aléatoire suivent un ordre fixe.",
+  "note.lottie.audioLayers": "Les calques audio ne sont pas lus.",
+  "note.lottie.dataLayers": "Les calques de données ne sont pas lus.",
+  "note.lottie.expressions": {
+    one: "{count} expression a été ignorée ; sa propriété garde ses valeurs d’images clés.",
+    other: "{count} expressions ont été ignorées ; leurs propriétés gardent leurs valeurs d’images clés.",
+  },
   "player.dismiss": "Fermer",
   "player.retry": "Réessayer",
   "player.home": "Retour à Studio",

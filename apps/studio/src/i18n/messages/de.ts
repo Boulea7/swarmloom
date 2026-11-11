@@ -58,6 +58,40 @@ export const de: StudioCatalog = {
   "player.notes": "Mit einigen Änderungen dargestellt: {notes}",
   "player.fonts": "Auf diesem Gerät fehlende Schriften werden durch ähnliche ersetzt: {fonts}.",
   "player.fonts.more": "{count} weitere",
+  "note.lottie.noManifest": "Die .lottie-Datei hat kein Manifest, daher wird ihre erste Animation gezeigt.",
+  "note.lottie.animations": "Diese .lottie-Datei enthält {count} Animationen; „{name}“ wird gezeigt.",
+  "note.lottie.imageFormat": {
+    one: "{count} Bild in einem nicht unterstützten Format wurde ausgelassen.",
+    other: "{count} Bilder in einem nicht unterstützten Format wurden ausgelassen.",
+  },
+  "note.lottie.imageExternal": {
+    one: "{count} Bild ist nicht in die Datei eingebettet und wurde ausgelassen.",
+    other: "{count} Bilder sind nicht in die Datei eingebettet und wurden ausgelassen.",
+  },
+  "note.lottie.footage": {
+    one: "{count} Audio- oder Daten-Asset wurde entfernt.",
+    other: "{count} Audio- oder Daten-Assets wurden entfernt.",
+  },
+  "note.lottie.duplicate": {
+    one: "{count} Asset mit der ID eines früheren Assets wurde entfernt.",
+    other: "{count} Assets mit der ID eines früheren Assets wurden entfernt.",
+  },
+  "note.lottie.slots": {
+    one: "{count} Bild-Slot wurde entfernt; die Bilder der Datei werden gezeigt.",
+    other: "{count} Bild-Slots wurden entfernt; die Bilder der Datei werden gezeigt.",
+  },
+  "note.lottie.fontList": "Eine beschädigte Schriftliste wurde entfernt.",
+  "note.lottie.webFonts": {
+    one: "{count} Webschrift wurde durch eine installierte Schrift ersetzt.",
+    other: "{count} Webschriften wurden durch installierte Schriften ersetzt.",
+  },
+  "note.lottie.textOrder": "Text-Animatoren mit zufälliger Buchstabenreihenfolge laufen in fester Reihenfolge.",
+  "note.lottie.audioLayers": "Audioebenen werden nicht abgespielt.",
+  "note.lottie.dataLayers": "Datenebenen werden nicht abgespielt.",
+  "note.lottie.expressions": {
+    one: "{count} Expression wurde ignoriert; ihre Eigenschaft behält die Keyframe-Werte.",
+    other: "{count} Expressions wurden ignoriert; ihre Eigenschaften behalten die Keyframe-Werte.",
+  },
   "player.dismiss": "Schließen",
   "player.retry": "Erneut versuchen",
   "player.home": "Zurück zu Studio",
