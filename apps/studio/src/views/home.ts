@@ -2,7 +2,7 @@ import type { AppContext, View } from "../context";
 import { describeError, MAX_INPUT_BYTES } from "../errors";
 import { type ExampleEntry, entriesForLocale } from "../examples/manifest";
 import { acceptAttribute, formatById } from "../formats-meta";
-import { isStudioKey } from "../i18n";
+import { formatName } from "../i18n";
 import { normalizeSourceUrl } from "../route";
 import { guessPasteName, readLocalFile } from "../source";
 import { CURSOR_PALETTE, decorCursor } from "../ui/brand";
@@ -17,15 +17,10 @@ const PASTE_FORMATS = ["md", "html", "svg", "csv", "json", "js", "ts", "py"] as 
 
 const DECOR_NAMES = ["Ada", "Lin", "Mo"] as const;
 
-/**
- * Translated short name of a format, e.g. "PDF" or "Markdown". Studio's own catalog names the
- * formats core does not translate yet; core names the rest.
- */
+/** Translated short name of a format, e.g. "PDF" or "Markdown"; "File" for unknown ids. */
 export function formatLabel(ctx: AppContext, id: string): string {
   const meta = formatById(id);
-  if (!meta) return ctx.i18n.t("format.other");
-  const key = `format.${id}`;
-  return isStudioKey(key) ? ctx.i18n.t(key) : ctx.i18n.core(key, meta.label);
+  return meta ? formatName(ctx.i18n, meta) : ctx.i18n.t("format.other");
 }
 
 function exampleCard(ctx: AppContext, entry: ExampleEntry, onOpen: (entry: ExampleEntry) => void): HTMLLIElement {

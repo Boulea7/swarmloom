@@ -28,6 +28,8 @@ const DOCUMENT = "?example=odf-report&autoplay=1";
 const SHOTS = [
   { name: "home-1440x900", size: [1440, 900], query: "" },
   { name: "home-1440x900-dark", size: [1440, 900], query: "?theme=dark" },
+  { name: "gallery-1440x900", size: [1440, 900], query: "", full: true },
+  { name: "gallery-1440x900-dark", size: [1440, 900], query: "?theme=dark", full: true },
   { name: "player-1440x900", size: [1440, 900], query: PLAYER },
   { name: "player-1440x900-settings", size: [1440, 900], query: PLAYER, keys: ["s"] },
   { name: "home-390x844", size: [390, 844], query: "", mobile: true, full: true },
@@ -100,6 +102,12 @@ try {
       await page.waitForSelector("html[data-screens-ready]");
       if (shot.query.includes("example="))
         await page.waitForSelector(".stage-host [data-fake-stage]", { timeout: 15_000 }).catch(() => undefined);
+    }
+    if (shot.full) {
+      // Bring lazy thumbnails into view once so a full-page shot shows them.
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.waitForTimeout(300);
+      await page.evaluate(() => window.scrollTo(0, 0));
     }
     for (const key of shot.keys ?? []) await page.keyboard.press(key);
     await page.waitForTimeout(shot.waitMs ?? 450);

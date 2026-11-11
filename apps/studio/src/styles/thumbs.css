@@ -333,13 +333,14 @@
   color: var(--indigo-text);
 }
 
+/* Mixed in oklab: oklch would blend the hue toward the indigo-tinted surface (red reads lavender). */
 .thumb-diff .t-add {
-  background: color-mix(in oklch, oklch(70% 0.15 155) 16%, var(--surface));
+  background: color-mix(in oklab, oklch(70% 0.15 155) 16%, var(--surface));
   color: var(--ink);
 }
 
 .thumb-diff .t-del {
-  background: color-mix(in oklch, oklch(64% 0.19 22) 14%, var(--surface));
+  background: color-mix(in oklab, oklch(64% 0.19 22) 14%, var(--surface));
   color: var(--ink);
 }
 

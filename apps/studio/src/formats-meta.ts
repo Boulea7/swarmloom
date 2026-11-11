@@ -264,6 +264,7 @@ export const FORMAT_META: readonly FormatMeta[] = [
     handlers: { "application/x-asciicast": [".cast"] },
     textual: true,
     light: true,
+    maxBytes: 32 * MIB,
   },
   {
     id: "diff",
@@ -272,6 +273,7 @@ export const FORMAT_META: readonly FormatMeta[] = [
     handlers: { "text/x-diff": [".diff", ".patch"] },
     textual: true,
     light: true,
+    maxBytes: 16 * MIB,
   },
   {
     // .mm is XML text but .xmind is a ZIP package; both travel as bytes.
@@ -281,6 +283,7 @@ export const FORMAT_META: readonly FormatMeta[] = [
     handlers: { "application/vnd.xmind.workbook": [".xmind"], "application/x-freemind": [".mm"] },
     textual: false,
     light: true,
+    maxBytes: 32 * MIB,
   },
   {
     // dotLottie archives. Lottie JSON keeps the .json extension and is detected by content.

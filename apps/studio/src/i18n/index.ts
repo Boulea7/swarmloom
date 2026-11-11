@@ -19,9 +19,13 @@ export interface StudioI18n {
   core(key: string, fallback: string, vars?: Vars): string;
 }
 
-/** True for keys of the Studio catalog (as opposed to core-owned keys such as `format.pdf`). */
-export function isStudioKey(key: string): key is StudioKey {
-  return Object.hasOwn(en, key);
+/**
+ * Translated short name of a format, e.g. "PDF" or "Markdown". Studio's catalog names the formats
+ * core does not translate yet; core names the rest, falling back to `meta.label`.
+ */
+export function formatName(i18n: StudioI18n, meta: { readonly id: string; readonly label: string }): string {
+  const key = `format.${meta.id}`;
+  return Object.hasOwn(en, key) ? i18n.t(key as StudioKey) : i18n.core(key, meta.label);
 }
 
 /** Used when nothing is known about the user's languages. */

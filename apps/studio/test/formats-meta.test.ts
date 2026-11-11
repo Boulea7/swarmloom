@@ -6,8 +6,10 @@ import { guessPasteName } from "../src/source";
 describe("format metadata", () => {
   it("mirrors the formats registry: same ids, and every extension opens the same adapter", () => {
     const listed = REGISTRY.filter((f) => f.id !== "dom");
-    const regular = FORMAT_META.filter((m) => !m.optional).map((m) => m.id);
-    expect(new Set(regular)).toEqual(new Set(listed.map((f) => f.id)));
+    const ids = listed.map((f) => f.id);
+    // Every registry format is known to Studio; optional ones (Lottie) may still be missing there.
+    expect(FORMAT_META.map((m) => m.id)).toEqual(expect.arrayContaining(ids));
+    expect(ids).toEqual(expect.arrayContaining(FORMAT_META.filter((m) => !m.optional).map((m) => m.id)));
     for (const entry of listed) {
       for (const ext of entry.extensions) {
         // The registry resolves an extension to its first entry, e.g. .ods to the spreadsheet reader.
