@@ -220,10 +220,20 @@ describe("licence notices", () => {
   it("lists the KaTeX fonts katex ships under the SIL Open Font License, not only katex's MIT licence", () => {
     const katex = realpathSync(join(import.meta.dirname, "../../../packages/adapter-markdown/node_modules/katex"));
     const text = renderNotices(collectNotices([katex]));
-    expect(text).toMatch(/^KaTeX fonts \S+\nLicense: OFL-1\.1$/m);
+    expect(text).toMatch(/^KaTeX fonts as shipped in katex \S+\nLicense: OFL-1\.1$/m);
     expect(text).toContain("Copyright (c) 2009-2010, Design Science, Inc. (<www.mathjax.org>)\n");
     expect(text).toContain("with Reserved Font Names KaTeX_AMS,");
     expect(text).toContain("SIL OPEN FONT LICENSE Version 1.1");
+  });
+
+  it("lists the Draco (Apache-2.0) and meshoptimizer decoders three ships, which its MIT notice does not cover", () => {
+    const three = realpathSync(join(import.meta.dirname, "../../../packages/adapter-three/node_modules/three"));
+    const text = renderNotices(collectNotices([three]));
+    expect(text).toMatch(/^draco3d as shipped in three \S+\nLicense: Apache-2\.0$/m);
+    expect(text).toContain("Copyright 2016 The Draco Authors\n\n");
+    expect(text).toContain("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION");
+    expect(text).toMatch(/^meshoptimizer \d\S*\nLicense: MIT$/m);
+    expect(text).toMatch(/Copyright \(C\) 2016-\d+, by Arseny Kapoulkine.*\n\nPermission is hereby granted/);
   });
 
   it("refuses a package without licence text it cannot reproduce, and a missing dependency", () => {
@@ -245,7 +255,10 @@ describe("package audit", () => {
     try {
       writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifestFor("chrome", "1.0.0")));
       writeFileSync(join(dir, "swarm.js"), "console.log(1);");
-      writeFileSync(join(dir, NOTICES_FILE), renderNotices([]));
+      // A listed embedded package passes, versioned by its host when it records no version of its own.
+      const draco = { name: "draco3d", version: "as shipped in three 1.0.0", license: "Apache-2.0", source: "" };
+      writeFileSync(join(dir, NOTICES_FILE), renderNotices([{ ...draco, texts: [] }]));
+      writeFileSync(join(dir, "draco_wasm_wrapper.js"), "var DracoDecoderModule;");
       writeFileSync(join(dir, LICENSE_COPY), "MIT License");
       mkdirSync(join(dir, "pages"));
       writeFileSync(join(dir, "pages", "welcome.js"), "const site = 'https://example.com/'; open(site);");
