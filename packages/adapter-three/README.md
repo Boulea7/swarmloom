@@ -41,7 +41,9 @@ The plugin:
 - `frame(now)` renders on engine time, and only when something changed, so exports are frame-exact.
 - `project(p)` maps a build-time anchor to the current screen point once the camera has moved, so cursors
   stay on the model during and after the finale orbit.
-- With `prefers-reduced-motion` there is no pop-in and no orbit.
+- Under the player's reduced motion (`StageApi.reducedMotion`; `reducedMotion: "auto"` reads
+  `prefers-reduced-motion`) there is no pop-in and no orbit. Exports set it themselves, so the host's
+  preference never changes a video.
 - The cleanup returned by `setup` and `LoadedSource.dispose()` release every GPU resource.
 
 The model is centred and fitted to its bounding sphere. Formats without materials (OBJ, STL, PLY without

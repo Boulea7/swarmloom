@@ -123,15 +123,6 @@ function easeInOut(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
 
-/** True when the page asks for reduced motion (read once per mount). */
-function prefersReducedMotion(view: Window | null): boolean {
-  try {
-    return view?.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * The WebGL backdrop of a 3D build: owns the reveal state (always) and the GPU scene (while
  * mounted). Rendering happens only in {@link frame} (engine time) and, after the build, on
@@ -261,11 +252,15 @@ export class ModelScene {
   /**
    * Creates the WebGL canvas inside `host` and all GPU resources. Returns the cleanup.
    * When WebGL is unavailable an accessible notice is shown instead and the build still runs.
+   *
+   * @param reducedMotion The player's resolved reduced-motion setting (`StageApi.reducedMotion`):
+   *   no pop-in and no finale orbit. Taken from the player, not from `prefers-reduced-motion`, so an
+   *   explicit setting and exports (which never inherit the host preference) decide.
    */
-  mount(host: HTMLElement): () => void {
+  mount(host: HTMLElement, reducedMotion = false): () => void {
     this.unmount();
     const doc = host.ownerDocument;
-    this.#reducedMotion = prefersReducedMotion(doc.defaultView);
+    this.#reducedMotion = reducedMotion;
     const { size } = this.#config;
     let renderer: WebGLRenderer;
     try {
