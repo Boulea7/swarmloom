@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createI18n } from "../../src/i18n/index";
 import type { Controls } from "../../src/internal";
 import { createControls, type ToolbarOptions } from "../../src/ui/index";
@@ -176,6 +176,15 @@ describe("createControls", () => {
     setState("done");
     await frame();
     expect(live?.textContent).toBe("Build complete");
+  });
+
+  it("measures its layout on the next frame, not inside createControls (no forced page layout)", async () => {
+    const measure = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    onTestFinished(() => measure.mockRestore());
+    mount();
+    expect(measure).not.toHaveBeenCalled();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    expect(measure).toHaveBeenCalled();
   });
 
   it("rejects malformed options", () => {

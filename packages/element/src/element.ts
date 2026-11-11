@@ -71,7 +71,7 @@ function toError(reason: unknown): Error {
  *
  * Attributes: `src` (URL to fetch, detect and load), `type` (format id, extension or MIME type that
  * overrides detection), `agents`, `speed`, `seed`, `theme`, `labels`, `finale`, `autoplay`,
- * `loop` (replay after N ms, default 1500), `controls`, `sound`, `inview` (start, and pause/resume,
+ * `loop` (replay N ms after the finale settles, default 1500), `controls`, `sound`, `inview` (start, and pause/resume,
  * with visibility), `reduced-motion` (`auto` | `true` | `false`).
  *
  * Without `src`, the light-DOM children are the content: they are snapshotted, covered by the stage
@@ -368,8 +368,10 @@ export class SwarmLoomElement extends BaseElement {
   #onState(state: PlayerState): void {
     this.#emit("swarm-state", { state });
     if (RUNNING.has(state)) this.#finished = false;
-    else if (FINISHED.has(state)) this.#markFinished();
-    else if (state === "live" && this.#parts?.root.dataset.mode === "children") {
+    else if (FINISHED.has(state)) {
+      this.#markFinished();
+      if (state === "done") this.#scheduleLoop();
+    } else if (state === "live" && this.#parts?.root.dataset.mode === "children") {
       // Hand the real, interactive children back.
       this.#parts.root.removeAttribute("data-active");
     }
@@ -379,6 +381,13 @@ export class SwarmLoomElement extends BaseElement {
     if (this.#finished) return;
     this.#finished = true;
     this.#emit("swarm-done", {});
+  }
+
+  /**
+   * Counts the loop delay from "done", not "finale": the finale takes most of the delay, so the
+   * finished result would vanish almost as soon as it settled.
+   */
+  #scheduleLoop(): void {
     const delay = this.#config().loop;
     if (delay === null) return;
     clearTimeout(this.#loopTimer);

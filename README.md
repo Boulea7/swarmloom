@@ -22,6 +22,8 @@ SwarmLoom 是一段可视化重放：一群虚拟光标当着你的面，把网�
 
 灵感来自 Joel Califa 的 Swarm 网站和 Dhvanil Patel 的 Swarm Rebuild 扩展。SwarmLoom 是独立的 clean-room 重写，没有复用它们的代码、光标图形或配色。
 
+宣传视频里担任指挥的 Clawd 是 Claude Code 吉祥物的同人形象，与 Anthropic 无关联。
+
 ## 许可证
 
 [MIT](LICENSE)

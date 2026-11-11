@@ -52,6 +52,8 @@ Small text can be encoded in the `#d=` URL hash. A hash is normally omitted from
 - Links may persist in browser history, chat logs or system sharing logs;
 - Link-preview behaviour belongs to each browser or service.
 
+`#d=` honours only playback settings (seed, speed, cursor count, labels, finale, follow) and ignores every other field. Remote assets and volume always follow the recipient's own settings; no link can change them.
+
 Check for credentials, private text, unpublished material and third-party copyrighted content before sharing. Never share configuration, source or documents containing secrets.
 
 ## Microphone

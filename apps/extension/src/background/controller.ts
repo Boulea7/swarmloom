@@ -147,13 +147,18 @@ export function createBackground(api: ExtensionApi, opts: BackgroundOptions = {}
 
   /**
    * The permission request runs synchronously, before any await: Firefox only shows prompts for
-   * calls made directly inside user input handlers.
+   * calls made directly inside user input handlers. Without access to a remote origin (declined,
+   * asked outside a gesture, or not requestable as on Safari) Studio can only read the file when
+   * the site allows CORS, so it also gets the file picker fallback.
    */
   function openInStudio(src: string | undefined, opener?: Tab, importFile = false): Promise<void> {
     const source = studioSource(src);
     if (source && android) return openTab(studioUrl(getURL, { src: source, importFile: true }), opener);
-    const granted = source ? requestSourceAccess(api, source) : Promise.resolve(false);
-    return granted.then(() => openTab(studioUrl(getURL, { src: source ?? undefined, importFile }), opener));
+    const remote = source !== null && !source.startsWith("file:");
+    const granted = remote ? requestSourceAccess(api, source) : Promise.resolve(false);
+    return granted.then((ok) =>
+      openTab(studioUrl(getURL, { src: source ?? undefined, importFile: importFile || (remote && !ok) }), opener),
+    );
   }
 
   async function clearBadge(tabId: number, t?: Translator): Promise<void> {

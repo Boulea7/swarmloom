@@ -27,6 +27,12 @@ describe("share links", () => {
     expect(decoded).toEqual({ name: "notes.md", text, settings: { seed: 42, speed: 2 } });
   });
 
+  it("keeps only performance settings from a link, never privacy or sound", async () => {
+    const s = { seed: 7, remoteAssets: true, sound: true, volume: 1, theme: "dark", locale: "ja" };
+    const decoded = await decodeShare(await deflate(JSON.stringify({ v: 1, n: "a.md", x: "hi", s })));
+    expect(decoded).toEqual({ name: "a.md", text: "hi", settings: { seed: 7 } });
+  });
+
   it.each([
     ["binary format", { name: "photo.png", text: "x" }],
     ["path traversal only", { name: "../", text: "x" }],

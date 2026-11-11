@@ -104,6 +104,22 @@ describe("<swarm-loom>", () => {
     expect(players[1]?.state).toBe("destroyed");
   });
 
+  it("counts the loop delay from done, not from the start of the finale", async () => {
+    const el = mount(`<swarm-loom autoplay loop="30"><p>Hi</p></swarm-loom>`);
+    const done = record(el, ["swarm-done"]);
+    await vi.waitFor(() => expect(players).toHaveLength(1));
+    const [player] = players as [FakePlayer];
+
+    player.finale();
+    await new Promise((r) => setTimeout(r, 90));
+    expect(done).toHaveLength(1);
+    expect(player.calls).not.toContain("replay");
+
+    player.finish();
+    await vi.waitFor(() => expect(player.calls).toContain("replay"));
+    expect(done).toHaveLength(1);
+  });
+
   it("keeps its stage and error banner out of page snapshots (real dom adapter)", async () => {
     const el = mount("<section><h2>Page heading</h2><swarm-loom><p>Woven words</p></swarm-loom></section>");
     await vi.waitFor(() => expect(players).toHaveLength(1));

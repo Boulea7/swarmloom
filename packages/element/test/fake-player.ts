@@ -67,6 +67,12 @@ export class FakePlayer implements Player {
     return Promise.resolve();
   }
 
+  /** Enters the finale; like the real player, play() resolves here, before "done". */
+  finale(): void {
+    this.#set("finale");
+    this.#resolve?.();
+  }
+
   /** Completes the build: progress to total, state done, play() resolves. */
   finish(): void {
     this.progress = { built: 3, total: 3 };

@@ -126,11 +126,15 @@ svg {
   outline: none;
 }
 
-/* Reduced motion overrides every component animation, hence !important. */
+/*
+ * Reduced motion overrides every component animation, hence !important. The Motion setting sets
+ * html[data-motion]: "auto" (or no attribute yet) follows the system, "reduce" and "full" force it.
+ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  html:not([data-motion="full"]),
+  html:not([data-motion="full"]) *,
+  html:not([data-motion="full"]) *::before,
+  html:not([data-motion="full"]) *::after {
     /* biome-ignore lint/complexity/noImportantStyles: see above */
     animation-duration: 0.01ms !important;
     /* biome-ignore lint/complexity/noImportantStyles: see above */
@@ -140,4 +144,18 @@ svg {
     /* biome-ignore lint/complexity/noImportantStyles: see above */
     scroll-behavior: auto !important;
   }
+}
+
+html[data-motion="reduce"],
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
+  /* biome-ignore lint/complexity/noImportantStyles: see above */
+  animation-duration: 0.01ms !important;
+  /* biome-ignore lint/complexity/noImportantStyles: see above */
+  animation-iteration-count: 1 !important;
+  /* biome-ignore lint/complexity/noImportantStyles: see above */
+  transition-duration: 0.01ms !important;
+  /* biome-ignore lint/complexity/noImportantStyles: see above */
+  scroll-behavior: auto !important;
 }

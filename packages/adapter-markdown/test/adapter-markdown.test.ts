@@ -11,6 +11,7 @@ import {
   assetPath,
   createMarkdownAdapter,
   createMathEngine,
+  type MarkdownLoadContext,
   markdownToHtml,
   safeHref,
   slugify,
@@ -242,6 +243,17 @@ describe("markdownAdapter.load", () => {
 
     await adapter.load({ text: "x" }, { document, width: 100, theme: "light" });
     expect(snap.calls[1]?.[1].width).toBe(360);
+  });
+
+  it("turns remote images off for one load when the host passes ctx.network none", async () => {
+    const snap = fake();
+    const off: MarkdownLoadContext = { document, width: 800, theme: "light", network: "none" };
+    const { warnings } = await createMarkdownAdapter({ snapshot: snap }).load(
+      { text: '![x](https://tracker.example/p.png) <img src="https://tracker.example/q.png">' },
+      off,
+    );
+    expect(snap.calls[0]?.[0]).not.toContain("tracker.example");
+    expect(warnings.some((w) => w.includes("remote images are off"))).toBe(true);
   });
 
   it.each([
