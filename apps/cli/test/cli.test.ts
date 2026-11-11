@@ -158,7 +158,9 @@ describe("documented examples", () => {
     const help = await Promise.all(["render", "snapshot"].map(async (c) => (await capture([c, "--help"])).out));
     // Bare names such as deck.pptx are placeholders; a path into a folder must be a real file.
     const inputs = [...docs, ...help]
-      .flatMap((t) => [...t.matchAll(/swarmloom (?:render|snapshot) (\S+)/g)].map((m) => m[1]!.replace(/^\.\//, "")))
+      .flatMap((t) =>
+        [...t.matchAll(/swarmloom (?:render|snapshot) (\S+)/g)].map((m) => (m[1] ?? "").replace(/^\.\//, "")),
+      )
       .filter((p) => p.includes("/") && !p.includes("://"));
     expect(inputs.length).toBeGreaterThan(0);
     expect(inputs.filter((p) => !existsSync(path.join(root, p)))).toEqual([]);
