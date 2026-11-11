@@ -20,7 +20,7 @@ It is intended for files, pasted text, public URLs and examples. It does not rep
 The home screen offers four entry points:
 
 - **Drop or open a file** in one of the [supported formats](./formats).
-- **Paste** a small Markdown, SVG, HTML or source-code input.
+- **Paste** a small Markdown, SVG, HTML or source-code input; Jupyter notebooks, terminal recordings (asciicast) and patches are recognised by their content.
 - **URL** to request a remote file or page.
 - **Example gallery** with one licence-cleared sample per format, playable on click.
 
@@ -36,6 +36,8 @@ The player uses an inline stage with its own scrolling content. Its settings dra
 - `flock`, `halo` and `none` finales;
 - Reduced motion;
 - Interface language.
+
+Below the stage, the progress bar becomes a time line you can drag when the player can seek. Once the build is playing, drag it anywhere; arrow keys move 2%, Page Up/Down 10%, and Home/End jump to the start or the end. The count beside it shows the layers built.
 
 Phones use a bottom settings sheet. Watch mode omits full settings and keeps only the minimum viewing controls.
 
