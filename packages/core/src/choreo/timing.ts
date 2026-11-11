@@ -91,6 +91,12 @@ export const IMAGE_TYPE_CHAR_W_PX = 9;
 export const IMAGE_TYPE_LINE_H_PX = 22;
 export const IMAGE_TYPE_SCALE = 0.6;
 export const IMAGE_TYPE_MAX_UNITS = 900;
+
+/** Lines of a "type" image reveal: the layer's own count, else one per {@link IMAGE_TYPE_LINE_H_PX}, 1-40. */
+export function imageTypeLines(lines: number | undefined, heightPx: number): number {
+  const own = typeof lines === "number" && lines >= 1 ? lines : heightPx / IMAGE_TYPE_LINE_H_PX;
+  return clamp(Math.round(own), 1, 40);
+}
 /** Frames an image task waits for its picture to load before revealing anyway (~0.75 s at 60 Hz). */
 export const IMAGE_WAIT_FRAMES = 45;
 

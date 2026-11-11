@@ -260,6 +260,7 @@ describe("stage: reveal semantics per kind", () => {
       { id: "s", kind: "image", box: { x: 0, y: 0, w: 100, h: 100 }, src: PNG_1PX },
       { id: "f", kind: "image", box: { x: 0, y: 120, w: 100, h: 100 }, src: PNG_1PX, reveal: "fade" },
       { id: "y", kind: "image", box: { x: 0, y: 240, w: 100, h: 88 }, src: PNG_1PX, reveal: "type" },
+      { id: "h", kind: "image", box: { x: 0, y: 340, w: 100, h: 60 }, src: PNG_1PX, reveal: "type", lines: 1 },
     ]);
     await stage.ready();
     const sweep = stage.el("s") as HTMLElement;
@@ -275,6 +276,12 @@ describe("stage: reveal semantics per kind", () => {
     const typed = stage.el("y") as HTMLElement;
     stage.reveal("y", 0.5);
     expect(css(typed.parentElement as HTMLElement).clipPath).toMatch(/^polygon/);
+    // A one-line crop (a large PDF heading) types at full height, not in 22 px bands.
+    const heading = (stage.el("h") as HTMLElement).parentElement as HTMLElement;
+    stage.reveal("h", 0.5);
+    expect(css(heading).clipPath.replaceAll(" ", "")).toBe(
+      "polygon(0px0px,100px0px,100px0px,50px0px,50px60px,0px60px)",
+    );
   });
 
   it("media: labelled placeholder that fades in", () => {

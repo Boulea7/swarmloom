@@ -65,6 +65,7 @@ describe("pdf adapter on the brochure sample", () => {
       expect(all).toContain(s);
     }
     expect(crops.find((c) => c.meta?.text === "SwarmLoom")?.role).toBe("heading");
+    expect(crops.every((c) => c.lines === 1)).toBe(true);
     expect(crops.find((c) => String(c.meta?.text).startsWith("Every cursor"))?.role).toBe("paragraph");
     expect(crops.find((c) => c.meta?.text === "example value")?.reveal).toBe("sweep");
     expect(crops.filter((c) => c.reveal === "type").length).toBeGreaterThan(40);

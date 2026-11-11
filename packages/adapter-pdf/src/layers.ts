@@ -256,6 +256,8 @@ export function pageLayers(scan: PageScan, at: PageLayout, body: number, pageBas
       natural,
       fit: "fill",
       reveal: typed ? "type" : "sweep",
+      // Each crop is one text line: typed left to right at full height, never in bands.
+      lines: 1,
       meta: {
         page: n,
         part: "text",

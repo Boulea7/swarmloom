@@ -40,9 +40,9 @@ import {
   HEADING_STEP_MS,
   IBEAM_NUDGE_MS,
   IMAGE_TYPE_CHAR_W_PX,
-  IMAGE_TYPE_LINE_H_PX,
   IMAGE_TYPE_MAX_UNITS,
   IMAGE_TYPE_SCALE,
+  imageTypeLines,
   MAX_ESTIMATE_MS,
   MEDIA_FADE_MS,
   MIN_ESTIMATE_MS,
@@ -145,7 +145,7 @@ function estimateImage(layer: ImageLayer, w: number, h: number): number {
       return base + TRAVEL_ESTIMATE_MS + rows * (dragDuration(w) * 0.8 + 90);
     }
     case "type": {
-      const lines = clamp(Math.round(h / IMAGE_TYPE_LINE_H_PX), 1, 40);
+      const lines = imageTypeLines(layer.lines, h);
       const perLine = clamp(
         Math.round(w / IMAGE_TYPE_CHAR_W_PX),
         4,

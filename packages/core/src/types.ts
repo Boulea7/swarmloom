@@ -139,6 +139,11 @@ export interface ImageLayer extends LayerBase {
   fit?: "fill" | "contain" | "cover";
   style?: CSSMap;
   reveal?: ImageReveal;
+  /**
+   * Text lines a "type" reveal goes through, top to bottom (a crop of one text line sets 1 so a
+   * large heading is typed at full height). Default: one line per 22 px of height.
+   */
+  lines?: number;
 }
 
 /** Video, iframe, canvas or embed that cannot be rebuilt: shown as a labelled placeholder or a snapshot. */

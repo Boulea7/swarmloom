@@ -17,10 +17,10 @@ import {
   dragDuration,
   FADE_MS,
   IMAGE_TYPE_CHAR_W_PX,
-  IMAGE_TYPE_LINE_H_PX,
   IMAGE_TYPE_MAX_UNITS,
   IMAGE_TYPE_SCALE,
   IMAGE_WAIT_FRAMES,
+  imageTypeLines,
   MAX_SOUNDS_PER_BATCH,
   PAINT_ROW_PX,
   PAINT_ROWS_MAX,
@@ -83,8 +83,7 @@ function* paint(scope: TaskScope, id: string, rect: Rect): TaskGen {
 }
 
 /** Pseudo words for an image typed in: letters, a space every 3-8, a line break per row. */
-function pseudoUnits(rect: Rect, rng: () => number): { units: string[]; perLine: number; lines: number } {
-  const lines = clamp(Math.round(rect.h / IMAGE_TYPE_LINE_H_PX), 1, 40);
+function pseudoUnits(rect: Rect, lines: number, rng: () => number): { units: string[]; perLine: number } {
   const perLine = clamp(
     Math.round(rect.w / IMAGE_TYPE_CHAR_W_PX),
     4,
@@ -99,12 +98,12 @@ function pseudoUnits(rect: Rect, rng: () => number): { units: string[]; perLine:
       word = 3 + Math.floor(rng() * 6);
     } else units.push("a");
   }
-  return { units, perLine, lines };
+  return { units, perLine };
 }
 
-function* typeIn(scope: TaskScope, id: string, rect: Rect): TaskGen {
+function* typeIn(scope: TaskScope, id: string, rect: Rect, lines: number): TaskGen {
   const { agent, stage } = scope;
-  const { units, perLine, lines } = pseudoUnits(rect, agent.rng);
+  const { units, perLine } = pseudoUnits(rect, lines, agent.rng);
   const strokes = planTyping(units, agent.rng, { scale: IMAGE_TYPE_SCALE });
   const lineH = rect.h / lines;
   const caretAt = (n: number) => ({
@@ -151,7 +150,7 @@ export const imageTask: TaskBody<ImageLayer> = function* image(scope, layer) {
     // The placeholder would cover the other reveal patterns (overlays draw above content).
     scope.drop(placed.ghost);
     if (mode === "paint") yield* paint(scope, layer.id, rect);
-    else if (mode === "type") yield* typeIn(scope, layer.id, rect);
+    else if (mode === "type") yield* typeIn(scope, layer.id, rect, imageTypeLines(layer.lines, rect.h));
     else yield* tween(agent, pick(agent.rng, FADE_MS), (t) => stage.reveal(layer.id, t), linear);
   }
   stage.reveal(layer.id, 1);

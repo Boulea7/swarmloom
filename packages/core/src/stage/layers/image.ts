@@ -5,8 +5,9 @@ import { clamp01, contentDiv, hashString, type LayerView, type MountEnv, Shell, 
 
 /*
  * Reveal geometry mirrors the image choreography (choreo/timing.ts) so the reveal follows the
- * operator: "type" goes line by line at IMAGE_TYPE_LINE_H_PX per line, "paint" follows a zig-zag
- * brush over PAINT_ROW_PX rows. If those constants change there, change them here.
+ * operator: "type" goes line by line (`layer.lines`, else one per IMAGE_TYPE_LINE_H_PX, as in
+ * imageTypeLines), "paint" follows a zig-zag brush over PAINT_ROW_PX rows. If those rules change
+ * there, change them here.
  */
 const TYPE_LINE_PX = 22;
 const TYPE_LINES_MAX = 40;
@@ -104,7 +105,11 @@ export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerVi
 
   const mode = layer.reveal === "fade" || layer.reveal === "paint" || layer.reveal === "type" ? layer.reveal : "sweep";
   const transient = new Transient();
-  const lines = clampInt(h / TYPE_LINE_PX, 1, TYPE_LINES_MAX);
+  const lines = clampInt(
+    typeof layer.lines === "number" && layer.lines >= 1 ? layer.lines : h / TYPE_LINE_PX,
+    1,
+    TYPE_LINES_MAX,
+  );
   const rows = clampInt(h / PAINT_ROW_PX, PAINT_ROWS_MIN, PAINT_ROWS_MAX);
   const cols = clampInt(w / PAINT_BLOCK_PX, 3, PAINT_BLOCKS_MAX);
   let jitter: Float32Array | null = null;
