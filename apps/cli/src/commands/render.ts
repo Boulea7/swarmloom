@@ -87,7 +87,9 @@ Capture evidence (for repeatable takes; see the README):
       --manifest-out <file>
                           Write a JSON manifest: arguments, input and blueprint SHA-256, player
                           settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256
-                          of every frame (frames are then captured as PNG) and of the sound log
+                          of every frame (frames are then captured as PNG) and of the sound log.
+                          Made to share: output paths relative to it, programs by name, no working
+                          directory, and URL user info, query and fragment redacted
 
 Programs:
       --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then
@@ -482,7 +484,6 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   );
   await writeEvidence(opts, summary, {
     argv: ["render", ...argv],
-    cwd: ctx.cwd,
     source,
     browserPath: browser.path,
     ffmpeg: ffmpeg ? { path: ffmpeg.path, version: formatFfmpegVersion(ffmpeg.version) } : null,
@@ -514,7 +515,6 @@ async function writeEvidence(
   summary: RenderSummary,
   run: {
     argv: string[];
-    cwd: string;
     source: RenderSource;
     browserPath: string;
     ffmpeg: { path: string; version: string } | null;
@@ -543,7 +543,7 @@ async function writeEvidence(
   const manifest = buildManifest({
     tool: { name: "swarmloom", version: pkg.version },
     argv: run.argv,
-    cwd: run.cwd,
+    manifestFile: opts.manifestOut,
     input: { ...input, format: run.source.kind === "page" ? "html" : run.source.format },
     info: summary.info,
     video: { format: opts.format, width: opts.width, height: opts.height, scale: opts.scale, fps: opts.fps },
