@@ -4,18 +4,23 @@ import { cdp } from "vitest/browser";
 import { exportVideo } from "../src/browser/index";
 
 /**
- * A blue and a grey box; red with reduced motion, green on a high-density screen (the CLI emulates no
- * preference and renders at one device pixel per CSS px).
+ * A blue and a grey box; black in a dark color scheme, red with reduced motion, green on a
+ * high-density screen (the CLI emulates a light scheme for `theme: "auto"`, no motion preference
+ * and one device pixel per CSS px).
  */
 const PAGE =
   "<!doctype html><html><head><style>body{margin:0;background:#fff}" +
   ".box{width:100px;height:40px;background:rgb(0,0,255)}.dense{background:rgb(128,128,128)}" +
+  "@media (prefers-color-scheme: dark){.box{background:rgb(0,0,0)}}" +
   "@media (prefers-reduced-motion: reduce){.box{background:rgb(255,0,0)}}" +
   "@media (min-resolution: 2dppx){.dense{background:rgb(0,160,0)}}" +
   '</style></head><body><div class="box"></div><div class="box dense"></div></body></html>';
 
-/** What the export frame's scripts and the HTML adapter's page see without a pinned feature. */
-const PINNED = "false rgb(0, 0, 255) rgb(128, 128, 128)";
+/**
+ * What the export frame's scripts, its default text colour and the HTML adapter's page show without
+ * a pinned feature.
+ */
+const PINNED = "false rgb(0, 0, 0) rgb(0, 0, 255) rgb(128, 128, 128)";
 
 /** Overrides the device scale factor and keeps the page's viewport. */
 function metrics(deviceScaleFactor: number): Promise<unknown> {
@@ -30,6 +35,14 @@ function metrics(deviceScaleFactor: number): Promise<unknown> {
 
 /** Host settings the export must not follow, each set and reset through the DevTools protocol. */
 const HOSTS = [
+  {
+    name: "a dark color scheme",
+    query: "(prefers-color-scheme: dark)",
+    set: () =>
+      cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] }),
+    reset: () => cdp().send("Emulation.setEmulatedMedia", { features: [] }),
+    samePixels: true,
+  },
   {
     name: "reduced motion",
     query: "(prefers-reduced-motion: reduce)",
@@ -70,7 +83,9 @@ async function exportPage(): Promise<{ hashes: string[]; seen: string | null }> 
       const [box, dense] = Array.from(page?.querySelectorAll(".box") ?? []);
       if (seen !== null || !win || !page?.defaultView || !box || !dense) return;
       const color = (el: Element) => page.defaultView?.getComputedStyle(el).backgroundColor;
-      seen = `${win.matchMedia("(prefers-reduced-motion: reduce), (min-resolution: 2dppx)").matches} ${color(box)} ${color(dense)}`;
+      const pinned = "(prefers-color-scheme: dark), (prefers-reduced-motion: reduce), (min-resolution: 2dppx)";
+      const text = win.getComputedStyle(win.document.body).color;
+      seen = `${win.matchMedia(pinned).matches} ${text} ${color(box)} ${color(dense)}`;
     },
   });
   return { hashes: result.frameSha256, seen };

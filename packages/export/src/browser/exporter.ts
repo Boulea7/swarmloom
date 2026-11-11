@@ -3,7 +3,7 @@ import { type ShadowWatch, watchShadowRoots } from "../render/live";
 import type { RenderApi, RenderInfo, RenderInit, RenderInput } from "../render/protocol";
 import { CHANNELS, type CodecProbe, type EncodingPlan, planEncoding, SAMPLE_RATE, VideoFileWriter } from "./encode";
 import { FRAME_ATTRIBUTE } from "./marker";
-import { type MediaPin, pinMediaFeatures } from "./media";
+import { type ColorScheme, type MediaPin, pinMediaFeatures } from "./media";
 import { type FontWatch, watchFontFaces } from "./raster/fonts";
 import { FrameRasterizer } from "./raster/rasterize";
 import { type FrameProgress, runFrameSchedule } from "./schedule";
@@ -77,11 +77,15 @@ function escapeHtmlAttr(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
-/** The render page document: the CLI's render/index.html, with the frame module as its script. */
-function frameDocument(moduleUrl: string): string {
+/**
+ * The render page document: the CLI's render/index.html, with the frame module as its script. That
+ * page takes both schemes and gets the one its browser emulates; this one takes only `scheme`, so the
+ * browser's own colours do not follow the host.
+ */
+function frameDocument(moduleUrl: string, scheme: ColorScheme): string {
   return (
     '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
-    '<meta name="color-scheme" content="light dark">' +
+    `<meta name="color-scheme" content="${scheme}">` +
     "<style>html,body{margin:0;padding:0;overflow:hidden;background:#fff}</style>" +
     `<script type="module" src="${escapeHtmlAttr(moduleUrl)}"></script></head><body></body></html>`
   );
@@ -94,18 +98,15 @@ interface OpenFrame {
 }
 
 /** Adds the hidden frame and waits until its render page has installed `window.__swarmloom`. */
-async function openFrame(o: BrowserExportOptions, container: HTMLElement): Promise<OpenFrame> {
+async function openFrame(o: BrowserExportOptions, container: HTMLElement, scheme: ColorScheme): Promise<OpenFrame> {
   const { FRAME_MODULE_URL } = await import("./frame");
   const frame = container.ownerDocument.createElement("iframe");
   frame.setAttribute(FRAME_ATTRIBUTE, o.network ?? "https");
   frame.setAttribute("aria-hidden", "true");
   frame.tabIndex = -1;
   frame.title = "SwarmLoom export";
-  const theme = o.settings?.theme;
-  // The frame's prefers-color-scheme follows its element's color-scheme, as the CLI sets it per theme.
-  const scheme = theme === "dark" || theme === "light" ? `color-scheme:${theme};` : "";
-  frame.style.cssText = `${FRAME_STYLE}width:${o.width}px;height:${o.height}px;${scheme}`;
-  frame.srcdoc = frameDocument(FRAME_MODULE_URL);
+  frame.style.cssText = `${FRAME_STYLE}width:${o.width}px;height:${o.height}px;`;
+  frame.srcdoc = frameDocument(FRAME_MODULE_URL, scheme);
   const loaded = new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("The export frame did not start")), FRAME_START_TIMEOUT);
     frame.addEventListener(
@@ -188,6 +189,9 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
   if (soundUnsupported) warn("This browser cannot encode sound, so the video is silent");
 
   const container = o.container ?? document.body;
+  // The CLI's browser emulates dark for theme "dark" and light otherwise ("auto" included), whatever
+  // the host's system setting.
+  const scheme: ColorScheme = settings.theme === "dark" ? "dark" : "light";
   let opened: OpenFrame | null = null;
   let shadows: ShadowWatch | null = null;
   let fonts: FontWatch | null = null;
@@ -195,13 +199,13 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
   let writer: VideoFileWriter | null = null;
   let finished = false;
   try {
-    opened = await openFrame(o, container);
+    opened = await openFrame(o, container, scheme);
     const { win, api } = opened;
     // Watch before init(): the stage attaches its closed shadow roots and adapters register fonts there.
     shadows = watchShadowRoots(win);
     fonts = watchFontFaces(win);
     pinPixelRatio(win);
-    const pinned = pinMediaFeatures(win, shadows);
+    const pinned = pinMediaFeatures(win, shadows, scheme);
     media = pinned;
     const tail = settings.tail ?? 2500;
     const info = await api.init({ ...settings, input: o.input, width, height, fps, tail });

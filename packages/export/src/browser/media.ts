@@ -6,7 +6,7 @@ import type { ShadowWatch } from "../render/live";
  */
 const FEATURE_TEST = /\(([^()]*)\)/g;
 /** Media query text that may test a pinned feature. */
-const MENTIONS_PINNED = /prefers-reduced-motion|resolution|device-pixel-ratio/i;
+const MENTIONS_PINNED = /prefers-reduced-motion|prefers-color-scheme|resolution|device-pixel-ratio/i;
 /** Media conditions that never and always hold, valid wherever a media feature is. */
 const NEVER = "(width < 0px)";
 const ALWAYS = "(width >= 0px)";
@@ -14,6 +14,10 @@ const ALWAYS = "(width >= 0px)";
 /** Device pixels per CSS px of the export: the video has one pixel per CSS px, as `--scale 1`. */
 const RESOLUTION = 1;
 const MOTION = /^prefers-reduced-motion(?:\s*:\s*([a-z-]+))?$/;
+const SCHEME = /^prefers-color-scheme(?:\s*:\s*([a-z-]+))?$/;
+
+/** Color scheme of the export: the CLI's browser emulates dark for theme "dark" and light otherwise. */
+export type ColorScheme = "light" | "dark";
 /** `resolution` (in `dppx`, `x`, `dpi`, `dpcm`) and `-webkit-device-pixel-ratio` (a bare number). */
 const RESOLUTION_FEATURE = /^(-webkit-)?(min-|max-)?(resolution|device-pixel-ratio)(?:\s*:\s*(\S+))?$/;
 const RANGE = /^(?:(\S+)\s*(<=|>=|<|>|=)\s*)?(resolution|-webkit-device-pixel-ratio)(?:\s*(<=|>=|<|>|=)\s*(\S+))?$/;
@@ -63,59 +67,63 @@ function resolutionTest(test: string): boolean | null {
 }
 
 /** Answer of one feature test in the CLI's browser, or null when it tests no pinned feature. */
-function pinnedAnswer(test: string): boolean | null {
+function pinnedAnswer(test: string, scheme: ColorScheme): boolean | null {
   const motion = MOTION.exec(test);
   if (motion) {
     if (motion[1] === undefined || motion[1] === "reduce") return false;
     return motion[1] === "no-preference" ? true : null;
   }
+  const colors = SCHEME.exec(test);
+  // A bare `(prefers-color-scheme)` holds for either scheme, so it is left alone.
+  if (colors) return colors[1] === "light" || colors[1] === "dark" ? colors[1] === scheme : null;
   return resolutionTest(test);
 }
 
 /**
  * `query` with every test of a pinned feature replaced by its answer in the CLI's browser context,
- * which emulates `prefers-reduced-motion: no-preference` and renders at one device pixel per CSS px:
- * `(prefers-reduced-motion: no-preference)` and `(min-resolution: 1dppx)` always hold,
- * `(prefers-reduced-motion: reduce)` and `(min-resolution: 2dppx)` never do. Everything else in the
- * query is left as it is.
+ * which emulates `prefers-reduced-motion: no-preference` and the export's color scheme, and renders
+ * at one device pixel per CSS px: `(prefers-reduced-motion: no-preference)` and
+ * `(min-resolution: 1dppx)` always hold, `(prefers-reduced-motion: reduce)` and
+ * `(min-resolution: 2dppx)` never do, `(prefers-color-scheme: dark)` holds only for `scheme` dark.
+ * Everything else in the query is left as it is.
  */
-export function pinnedQuery(query: string): string {
+export function pinnedQuery(query: string, scheme: ColorScheme = "light"): string {
   if (!MENTIONS_PINNED.test(query)) return query;
   return query.replace(FEATURE_TEST, (test, inner: string) => {
-    const answer = pinnedAnswer(inner.trim().toLowerCase().replace(/\s+/g, " "));
+    const answer = pinnedAnswer(inner.trim().toLowerCase().replace(/\s+/g, " "), scheme);
     return answer === null ? test : answer ? ALWAYS : NEVER;
   });
 }
 
-function pin(media: MediaList | null | undefined): void {
+function pin(media: MediaList | null | undefined, scheme: ColorScheme): void {
   const text = media?.mediaText;
   if (!media || !text) return;
-  const pinned = pinnedQuery(text);
+  const pinned = pinnedQuery(text, scheme);
   if (pinned !== text) media.mediaText = pinned;
 }
 
-function pinSheet(sheet: CSSStyleSheet): void {
-  pin(sheet.media);
+function pinSheet(sheet: CSSStyleSheet, scheme: ColorScheme): void {
+  pin(sheet.media, scheme);
   let rules: CSSRuleList;
   try {
     rules = sheet.cssRules;
   } catch {
     return; // Cross-origin sheets keep their rules private.
   }
-  pinRules(rules);
+  pinRules(rules, scheme);
 }
 
-function pinRules(rules: CSSRuleList): void {
+function pinRules(rules: CSSRuleList, scheme: ColorScheme): void {
   for (const rule of Array.from(rules)) {
     // CSSRule.IMPORT_RULE and MEDIA_RULE; constructor checks would fail across windows.
     if (rule.type === 3) {
-      pin((rule as CSSImportRule).media);
+      pin((rule as CSSImportRule).media, scheme);
       const imported = (rule as CSSImportRule).styleSheet;
-      if (imported) pinSheet(imported);
+      if (imported) pinSheet(imported, scheme);
     } else if (rule.type === 4) {
-      pin((rule as CSSMediaRule).media);
+      pin((rule as CSSMediaRule).media, scheme);
     }
-    if ("cssRules" in rule) pinRules((rule as CSSGroupingRule).cssRules);
+    if ("cssRules" in rule) pinRules((rule as CSSGroupingRule).cssRules, scheme);
   }
 }
 
@@ -129,21 +137,27 @@ export interface MediaPin {
 
 /**
  * Makes the export frame show what the CLI shows. Its browser context emulates
- * `prefers-reduced-motion: no-preference` and renders at one device pixel per CSS px, while a frame
- * in the page follows the host: a reduced-motion setting or a high-density screen would change pages
- * with `@media (prefers-reduced-motion)` or `@media (min-resolution: 2dppx)` rules, and adapters that
- * ask. Scripts get a `matchMedia` that answers with the pinned values; while the host differs, the
- * pinned tests of style sheets (the frame, the watched shadow roots and same-origin child frames such
- * as the HTML adapter's capture page, swept once that has loaded) are rewritten to their answers.
+ * `prefers-reduced-motion: no-preference` and `scheme` (light unless the theme is dark) and renders at
+ * one device pixel per CSS px, while a frame in the page follows the host (the frame element's
+ * `color-scheme` does not change what the frame prefers): a reduced-motion or dark system setting or
+ * a high-density screen would change pages with `@media (prefers-reduced-motion)`,
+ * `@media (prefers-color-scheme: dark)` or `@media (min-resolution: 2dppx)` rules, the player's
+ * `theme: "auto"`, and adapters that ask. Scripts get a `matchMedia` that answers with the pinned
+ * values; while the host differs, the pinned tests of style sheets (the frame, the watched shadow
+ * roots and same-origin child frames such as the HTML adapter's capture page, swept once that has
+ * loaded) are rewritten to their answers.
  *
- * Not covered: `srcset` and `image-set()` still pick images for the host's pixel density.
+ * Not covered: `srcset` and `image-set()` still pick images for the host's pixel density, and the
+ * browser's own colours in child frames that opt into both schemes (`color-scheme: light dark`:
+ * default text and background, form controls) follow the host's scheme.
  */
-export function pinMediaFeatures(win: Window & typeof globalThis, shadows: ShadowWatch): MediaPin {
+export function pinMediaFeatures(win: Window & typeof globalThis, shadows: ShadowWatch, scheme: ColorScheme): MediaPin {
   const original = win.matchMedia;
-  const pinned = (query: string): MediaQueryList => original.call(win, pinnedQuery(String(query)));
+  const pinned = (query: string): MediaQueryList => original.call(win, pinnedQuery(String(query), scheme));
   win.matchMedia = pinned;
   const hostDiffers = (): boolean =>
     original.call(win, "(prefers-reduced-motion: reduce)").matches ||
+    original.call(win, "(prefers-color-scheme: dark)").matches !== (scheme === "dark") ||
     !original.call(win, `(resolution: ${RESOLUTION}dppx)`).matches;
 
   const sweep = (): void => {
@@ -151,7 +165,7 @@ export function pinMediaFeatures(win: Window & typeof globalThis, shadows: Shado
     const roots: (Document | ShadowRoot)[] = [win.document, ...shadows.roots()];
     for (let i = 0; i < roots.length; i++) {
       const root = roots[i];
-      for (const sheet of [...Array.from(root.styleSheets), ...root.adoptedStyleSheets]) pinSheet(sheet);
+      for (const sheet of [...Array.from(root.styleSheets), ...root.adoptedStyleSheets]) pinSheet(sheet, scheme);
       for (const frame of Array.from(root.querySelectorAll("iframe"))) {
         if (frame.contentDocument) roots.push(frame.contentDocument);
       }
