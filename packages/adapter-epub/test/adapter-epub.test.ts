@@ -152,6 +152,18 @@ describe("book CSS scoping", () => {
     );
     expect(quoted).toBe(String.raw`background:url("data:image/png,\"),url(https://t.example/q.png")`);
   });
+
+  it("cleans megabyte inline styles in linear time and rewrites every url() Chromium would fetch", () => {
+    const clean = (css: string) => cleanDeclarations(css, "c.xhtml", () => null);
+    // Chromium fetches both: `\ ` belongs to an unquoted URL, a request modifier may follow a quoted one.
+    for (const url of [String.raw`url(https://t.example/a\ b)`, `url("https://t.example/b" cross-origin(anonymous))`])
+      expect(clean(`background:${url}`)).not.toContain("t.example");
+    expect(clean("--x:url (url (")).toBe("--x:none(none(");
+    // Open url( tokens used to make each match scan to the end of the text: minutes for 1 MB.
+    const started = performance.now();
+    for (const unit of ["a:url(", "url ("]) clean(`--x:${unit.repeat(200_000)}`);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
 });
 
 describe("rejections", () => {
