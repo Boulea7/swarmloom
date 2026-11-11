@@ -20,6 +20,7 @@ const zhSidebar: DefaultTheme.Sidebar = [
       { text: "使用技巧", link: "/usage" },
       { text: "Studio", link: "/studio" },
       { text: "性能", link: "/performance" },
+      { text: "性能基准", link: "/benchmarks" },
     ],
   },
   {
@@ -56,6 +57,7 @@ const enSidebar: DefaultTheme.Sidebar = [
       { text: "Usage", link: "/en/usage" },
       { text: "Studio", link: "/en/studio" },
       { text: "Performance", link: "/en/performance" },
+      { text: "Benchmarks", link: "/en/benchmarks" },
     ],
   },
   {
