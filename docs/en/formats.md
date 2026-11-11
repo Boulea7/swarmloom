@@ -77,7 +77,7 @@ Scanned pages and outlined text have no text items, so they reveal by region or 
 
 A pen cursor places anchors, pulls curves and traces strokes, followed by fills, gradients and text. `<use>` instances can appear as duplicates. Groups and paint order are preserved in the Blueprint. A drawing that would be taller than a 16:9 frame at full width is fitted whole into the frame, so logos, badges and square charts finish fully in view; clearly portrait drawings (a long flow chart) keep the full width and scroll along with the build.
 
-SMIL-animated SVG (`animate`, `animateTransform`, `animateMotion`, `set`, `mpath`) is first rebuilt as a static drawing. Once the weave is done, the animated drawing fades in and plays from 0 s; it follows player time while building, so exported videos stay frame-exact, and runs on its own clock after go live. CSS animation inside an SVG is not replayed yet (the first frame is shown). When the host registers the keyframe timeline plugin (`anim:timeline`), a timeline bar with the keyframes is built under the drawing before the animation plays. `href` may only point to `#fragment` targets inside the document. Scripts, external resources and interaction handlers are never executed.
+SMIL-animated SVG (`animate`, `animateTransform`, `animateMotion`, `set`, `mpath`) is first rebuilt as a static drawing. Once the weave is done, the animated drawing fades in and plays from 0 s; it follows player time while building, so exported videos stay frame-exact, and runs on its own clock after go live. CSS animations and transitions inside such a drawing follow the same timeline: they hold at 0 s until the replay starts and are seeked with it. An SVG animated only with CSS (no SMIL) is not replayed yet and shows its first frame. When the host registers the keyframe timeline plugin (`anim:timeline`), a timeline bar with the keyframes is built under the drawing before the animation plays. `href` may only point to `#fragment` targets inside the document. Scripts, external resources and interaction handlers are never executed.
 
 ## Slides
 
@@ -151,4 +151,4 @@ The CLI's `render` command writes these formats (`swarmloom doctor` shows which 
 | Animated WebP | Smaller web animation | No |
 | PNG sequence | Editing, compositing and frame validation | Separate WAV |
 
-Studio live recording and CLI frame-by-frame export are different pipelines. Use the CLI for reproducible output and fix the seed, viewport, frame rate, theme and dependency versions.
+Studio's in-browser export runs the same render page and virtual clock as the CLI and writes MP4 (or WebM when the browser has no H.264 encoder). It draws frames from an SVG snapshot instead of a screenshot, so a few styles can differ; see [Studio](./studio#export-and-sharing). Use the CLI for the other formats and for reference output, and fix the seed, viewport, frame rate, theme and dependency versions.
