@@ -79,10 +79,11 @@ function resolveTarget(stage: StageApi, spec: TimelineSpec): AnimTarget | undefi
  * pose sits, scrubs back to the start and across the whole cycle (the target follows), and then
  * starts playback. When finished, the playhead keeps following the target's time.
  *
- * Without motion (reduced motion, finish-all) the task never runs: the bar appears complete and
- * the target keeps showing the static pose.
+ * With reduced motion the task never runs: the bar appears complete and the target keeps showing
+ * the static pose. When the build is finished early (finish now, go live) before the task could
+ * start playback, the bar appears complete and the target plays on from the static pose.
  *
- * One plugin instance serves one player at a time.
+ * State lives in the instance, and every player gets its own (`Plugin.perPlayer`).
  */
 export function createAnimTimelinePlugin(): Plugin {
   const mounted = new Map<CustomLayer, Mounted>();
@@ -130,6 +131,10 @@ export function createAnimTimelinePlugin(): Plugin {
       if (!m) return;
       m.bar = 1;
       m.done = true;
+      // Finished without its task (finish now, go live): play on from the woven pose. A completed
+      // task already started playback; reduced motion keeps the still frame.
+      const target = m.stage.reducedMotion ? undefined : targetOf(m);
+      if (target && target.time() === null) target.play(m.spec.rest * m.spec.duration);
       draw(layer);
     },
     unmount(layer) {
@@ -221,6 +226,7 @@ export function createAnimTimelinePlugin(): Plugin {
     name: TIMELINE_PLUGIN,
     tasks: { [TIMELINE_TASK]: task },
     renderers: { [TIMELINE_TASK]: renderer },
+    perPlayer: () => createAnimTimelinePlugin(),
     frame() {
       for (const [layer, m] of mounted) if (m.done) draw(layer);
     },

@@ -49,7 +49,8 @@ interface PlayerState {
  * once per engine tick (coalesced in a microtask), so fast-forward seeks stay cheap. When the
  * engine clock goes back (replay, seek), every player returns to the woven pose.
  *
- * One plugin instance serves one player at a time.
+ * State lives in the instance, and every player gets its own (`Plugin.perPlayer`), so several
+ * players of one loaded source never reset or redraw each other.
  */
 export function createLottiePlugin(options: LottiePluginOptions = {}): Plugin {
   const load = options.runtime ?? loadRuntime;
@@ -214,8 +215,9 @@ export function createLottiePlugin(options: LottiePluginOptions = {}): Plugin {
     name: LOTTIE_PLUGIN,
     tasks: { [PLAYER_TASK]: task },
     renderers: { [PLAYER_TASK]: renderer },
+    perPlayer: () => createLottiePlugin(options),
     setup() {
-      // A new player on the same loaded source (Studio re-creates players): start from the woven pose.
+      // A host that hands this very instance to a new player: start from the woven pose.
       lastNow = Number.NEGATIVE_INFINITY;
       for (const s of states.values()) toStatic(s);
     },

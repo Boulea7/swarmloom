@@ -38,8 +38,11 @@ async function loadExample(): Promise<LottieLoadedSource> {
   return (await lottieAdapter.load({ text: shuttleJson, name: "shuttle-loop.json" }, ctx)) as LottieLoadedSource;
 }
 
-/** Plays a loaded source to "done" with the real player on a virtual clock; returns its stage. */
-async function playToDone(loaded: LottieLoadedSource, reducedMotion: boolean) {
+/**
+ * Plays a loaded source to "done" with the real player on a virtual clock; returns its stage.
+ * `finishEarly` presses "finish now" as soon as the build starts, before the timeline task runs.
+ */
+async function playToDone(loaded: LottieLoadedSource, { reducedMotion = false, finishEarly = false } = {}) {
   let stage: StageApi | null = null;
   const probe: Plugin = {
     name: "probe",
@@ -64,6 +67,10 @@ async function playToDone(loaded: LottieLoadedSource, reducedMotion: boolean) {
   player.on("error", (e) => errors.push(e.error.message));
   void player.play();
   for (let i = 0; i < 60 * 90 && player.state !== "done"; i++) {
+    if (finishEarly && player.state === "building") {
+      player.finish?.();
+      finishEarly = false;
+    }
     clock.advance(1000 / 60);
     // Tasks may wait for lottie-web to load: let promises settle as an exporter does.
     if (i % 20 === 0) await player.ready();
@@ -78,7 +85,6 @@ async function playToDone(loaded: LottieLoadedSource, reducedMotion: boolean) {
   const close = (): void => {
     player.destroy();
     host.remove();
-    loaded.dispose?.();
   };
   return { stage: stage as StageApi, advance, close };
 }
@@ -138,7 +144,8 @@ describe("lottieAdapter on the example", () => {
 
 describe("lottie playback with the real player", () => {
   it("plays to done, then the animation follows the engine clock only", async () => {
-    const { stage, advance, close } = await playToDone(await loadExample(), false);
+    const loaded = await loadExample();
+    const { stage, advance, close } = await playToDone(loaded);
     const el = stage.el(PLAYER_ID);
     const target = animTargetOf(el);
     expect(el?.querySelector("svg")).not.toBeNull();
@@ -154,15 +161,54 @@ describe("lottie playback with the real player", () => {
     await new Promise((r) => setTimeout(r, 120));
     expect(target?.time()).toBe(t1);
     close();
+    loaded.dispose?.();
   });
 
   it("keeps the woven pose with reduced motion", async () => {
-    const { stage, advance, close } = await playToDone(await loadExample(), true);
+    const loaded = await loadExample();
+    const { stage, advance, close } = await playToDone(loaded, { reducedMotion: true });
     const el = stage.el(PLAYER_ID) as HTMLElement;
     await advance(500);
     expect(animTargetOf(el)?.time()).toBeNull();
     expect(el.style.visibility).toBe("hidden");
     close();
+    loaded.dispose?.();
+  });
+
+  it("still plays when the build is finished before the timeline ran", async () => {
+    const loaded = await loadExample();
+    const { stage, advance, close } = await playToDone(loaded, { finishEarly: true });
+    const el = stage.el(PLAYER_ID) as HTMLElement;
+    const target = animTargetOf(el);
+    await target?.ready?.();
+    // Before the fix the woven pose stayed and time() was null for good.
+    const t0 = target?.time() ?? Number.NaN;
+    expect(Number.isFinite(t0)).toBe(true);
+    await advance(500);
+    expect(((target?.time() ?? Number.NaN) - t0 + 4000) % 4000).toBeCloseTo(500, 6);
+    expect(el.style.visibility).toBe("");
+    close();
+    loaded.dispose?.();
+  });
+
+  it("plays two players of one loaded source without resetting each other", async () => {
+    const loaded = await loadExample();
+    const first = await playToDone(loaded);
+    const second = await playToDone(loaded);
+    const one = animTargetOf(first.stage.el(PLAYER_ID));
+    const two = animTargetOf(second.stage.el(PLAYER_ID));
+    const t1 = one?.time() ?? Number.NaN;
+    const t2 = two?.time() ?? Number.NaN;
+    expect(Number.isFinite(t1) && Number.isFinite(t2)).toBe(true);
+    // Each player moves only with its own clock.
+    await first.advance(500);
+    await second.advance(1000);
+    expect(((one?.time() ?? Number.NaN) - t1 + 4000) % 4000).toBeCloseTo(500, 6);
+    expect(((two?.time() ?? Number.NaN) - t2 + 4000) % 4000).toBeCloseTo(1000, 6);
+    expect((first.stage.el(PLAYER_ID) as HTMLElement).querySelector("svg")).not.toBeNull();
+    first.close();
+    second.close();
+    loaded.dispose?.();
   });
 });
 

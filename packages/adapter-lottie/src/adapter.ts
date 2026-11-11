@@ -130,8 +130,8 @@ function validateContext(ctx: AdapterContext): void {
  *     keyframes, scrubs the playhead, and the real animation then plays from the engine clock.
  *     With reduced motion the woven pose stays.
  *
- * The returned plugins (`svg` when definitions are used, `lottie`, `anim:timeline`) serve one
- * player at a time.
+ * The returned plugins (`svg` when definitions are used, `lottie`, `anim:timeline`) give every
+ * player its own instance (`Plugin.perPlayer`), so one loaded source can drive several players.
  */
 export function createLottieAdapter(options: LottieAdapterOptions = {}): Adapter {
   const maxLayers = options.maxLayers ?? LIMITS.maxLayers;
