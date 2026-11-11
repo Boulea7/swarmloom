@@ -94,4 +94,15 @@ describe("Studio in a browser", () => {
     await until(() => root.querySelector(".stage-error"));
     expect(log.players).toHaveLength(0);
   });
+
+  it("applies the Motion setting to Studio's own animations, not only the player", async () => {
+    const { root } = await mount();
+    const cursor = await until(() => root.querySelector<HTMLElement>(".decor-cursor"));
+    const iterations = () => getComputedStyle(cursor).animationIterationCount;
+    app?.context.updateSettings({ reducedMotion: "reduce" });
+    expect(iterations()).toBe("1");
+    // "full" overrides a system reduce preference, matching what the player gets.
+    app?.context.updateSettings({ reducedMotion: "full" });
+    expect(iterations()).toBe("infinite");
+  });
 });
