@@ -40,6 +40,31 @@ const BUBBLE_FONT = `500 11px ${UI_FONT_STACK}`;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), hi);
 
+/** Gap between the hotspot and a name tag flipped to its left or above it, CSS px at scale 1. */
+const FLIP_GAP = 4;
+
+/**
+ * Top-left corner of a cursor's name tag, CSS px. The tag sits at `offset` from the hotspot
+ * (below right); where it would cross the right or bottom edge of the `width` x `height` canvas it
+ * flips to the hotspot's left or above it, then it is kept inside the canvas. Depends only on the
+ * arguments, so the same cursor path places tags the same way in every run.
+ */
+export function tagOrigin(
+  cx: number,
+  cy: number,
+  offset: { x: number; y: number },
+  size: number,
+  tag: { w: number; h: number },
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  let x = cx + offset.x * size;
+  if (x + tag.w > width) x = cx - FLIP_GAP * size - tag.w;
+  let y = cy + offset.y * size;
+  if (y + tag.h > height) y = cy - FLIP_GAP * size - tag.h;
+  return { x: Math.max(0, Math.min(x, width - tag.w)), y: Math.max(0, Math.min(y, height - tag.h)) };
+}
+
 /** Wraps an angle to (-PI, PI]. */
 function wrapAngle(a: number): number {
   const t = (a + Math.PI) % (Math.PI * 2);
@@ -110,8 +135,9 @@ export class CursorPainter {
       const cache = this.#agentCache(a, frame);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (cache.tag) {
-        const tx = Math.round((cx + def.tag.x * size) * dpr) / dpr;
-        const ty = Math.round((cy + def.tag.y * size) * dpr) / dpr;
+        const at = tagOrigin(cx, cy, def.tag, size, cache.tag, view.width, view.height);
+        const tx = Math.round(at.x * dpr) / dpr;
+        const ty = Math.round(at.y * dpr) / dpr;
         ctx.drawImage(cache.tag.canvas, tx, ty, cache.tag.w, cache.tag.h);
       }
       if (bubbles && cache.bubbleSprite) {

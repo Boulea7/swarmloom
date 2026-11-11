@@ -31,8 +31,12 @@ const ROLE_BY_TASK: Readonly<Record<string, RoleKey>> = {
   media: "media",
 };
 
-/** Role of the task that builds `layer` with the choreography `taskKey`. */
+/**
+ * Role of the task that builds `layer` with the choreography `taskKey`. An image revealed by typing
+ * is a line of text drawn as a picture (PDF pages, scans), so it reads as typing, not as an image.
+ */
 export function roleFor(taskKey: string, layer: Layer): RoleKey {
+  if (taskKey === "image" && layer.kind === "image" && layer.reveal === "type") return "type";
   const direct = ROLE_BY_TASK[taskKey];
   if (direct) return direct;
   if (taskKey.startsWith("three") || layer.role === "mesh") return "3d";
