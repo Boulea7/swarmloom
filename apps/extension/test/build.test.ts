@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -215,6 +215,15 @@ describe("licence notices", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("lists the KaTeX fonts katex ships under the SIL Open Font License, not only katex's MIT licence", () => {
+    const katex = realpathSync(join(import.meta.dirname, "../../../packages/adapter-markdown/node_modules/katex"));
+    const text = renderNotices(collectNotices([katex]));
+    expect(text).toMatch(/^KaTeX fonts \S+\nLicense: OFL-1\.1$/m);
+    expect(text).toContain("Copyright (c) 2009-2010, Design Science, Inc. (<www.mathjax.org>)\n");
+    expect(text).toContain("with Reserved Font Names KaTeX_AMS,");
+    expect(text).toContain("SIL OPEN FONT LICENSE Version 1.1");
   });
 
   it("refuses a package without licence text it cannot reproduce, and a missing dependency", () => {

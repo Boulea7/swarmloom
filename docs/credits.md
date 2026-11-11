@@ -64,7 +64,7 @@ SwarmLoom 源码以 [MIT License](https://github.com/Boulea7/swarmloom/blob/main
 | cfb | 旧版 DOC 的 Compound File Binary 读取 | Apache-2.0 |
 | word-extractor | Node 旧版 DOC 文本提取 | MIT |
 | fflate | ZIP 与压缩数据 | MIT |
-| KaTeX | 数学排版，按需加载 | MIT |
+| KaTeX | 数学排版，按需加载 | MIT；随附的数学字体为 OFL-1.1 |
 | Mermaid | 图表编译，按需加载 | MIT |
 | highlight.js | 源码高亮 | BSD-3-Clause |
 | DOMPurify | 不受信 HTML 清洗 | 采用 Apache-2.0 分支 |

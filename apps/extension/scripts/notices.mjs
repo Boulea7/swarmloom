@@ -37,16 +37,22 @@ const RULE = "=".repeat(80);
  * @property {string} name
  * @property {string} host installed package whose files contain this one, pre-bundled
  * @property {string} file file of the host holding `record`
- * @property {RegExp} record matches the embedded code's version (group 1) and copyright line (group 2)
+ * @property {"utf8" | "utf-16be"} [encoding] how `file` stores `record` (default utf8; a font's name table is UTF-16BE)
+ * @property {RegExp} record must match in `file`; its `version` and `copyright` groups, when it has them,
+ *   give the embedded code's version (else the host's) and copyright line (else `copyright`)
+ * @property {string} [copyright] the copyright notice when `record` captures none
  * @property {string} marker string every bundled copy carries, minified or not (audit.mjs looks for it)
- * @property {string} license
+ * @property {"MIT" | "OFL-1.1"} license
  * @property {string} source
  */
 
+/** Full SIL Open Font License 1.1 text, shared with the npm notices (amo-source.mjs ships it). */
+const OFL_1_1 = new URL("../../../scripts/release/licenses/OFL-1.1.txt", import.meta.url);
+
 /**
- * MIT packages that a dependency ships pre-bundled inside its own files, so they are never installed and
- * have no licence file to read. Listed whenever their host is bundled. Keep in step with
- * EMBEDDED_PACKAGES in scripts/release/third-party-notices.mjs (the npm package notices).
+ * Code and assets that a dependency ships pre-bundled inside its own files under another licence than
+ * its own, so they have no package or licence file to read. Listed whenever their host is bundled. Keep
+ * in step with EMBEDDED_PACKAGES in scripts/release/third-party-notices.mjs (the npm package notices).
  * @type {readonly EmbeddedPackage[]}
  */
 export const EMBEDDED_PACKAGES = [
@@ -55,10 +61,27 @@ export const EMBEDDED_PACKAGES = [
     host: "pdfjs-dist",
     // core-js records itself in its shared store: { version, mode, copyright, license, source }.
     file: "legacy/build/pdf.mjs",
-    record: /\bversion:\s*["']([^"']+)["'],\s*mode:[^,]+,\s*copyright:\s*["']([^"']+)["']/,
+    record: /\bversion:\s*["'](?<version>[^"']+)["'],\s*mode:[^,]+,\s*copyright:\s*["'](?<copyright>[^"']+)["']/,
     marker: "__core-js_shared__",
     license: "MIT",
     source: "https://github.com/zloirock/core-js",
+  },
+  {
+    name: "KaTeX fonts",
+    host: "katex",
+    // The Studio's Markdown adapter inlines the dist/fonts WOFF2 files (Brotli-compressed); the TTF next to
+    // each carries the same name table, whose description (name ID 13) states the copyright and licence.
+    file: "dist/fonts/KaTeX_Main-Regular.ttf",
+    encoding: "utf-16be",
+    record: /\bThis Font Software is licensed under the SIL Open Font License, Version 1\.1\./,
+    copyright:
+      "Copyright (c) 2009-2010, Design Science, Inc. (<www.mathjax.org>)\n" +
+      "Copyright (c) 2014-2018 Khan Academy (<www.khanacademy.org>),\n" +
+      "with Reserved Font Names KaTeX_AMS, KaTeX_Caligraphic, KaTeX_Fraktur, KaTeX_Main, KaTeX_Math, " +
+      "KaTeX_SansSerif, KaTeX_Script, KaTeX_Size1, KaTeX_Size2, KaTeX_Size3, KaTeX_Size4, KaTeX_Typewriter.",
+    marker: "KaTeX_Main",
+    license: "OFL-1.1",
+    source: "https://github.com/KaTeX/katex-fonts",
   },
 ];
 
@@ -72,20 +95,24 @@ export const EMBEDDED_PACKAGES = [
 function embeddedNotices(dir, pkg) {
   return EMBEDDED_PACKAGES.filter((embedded) => embedded.host === pkg.name).map((embedded) => {
     const path = join(dir, embedded.file);
-    const found = existsSync(path) ? readFileSync(path, "utf8").match(embedded.record) : null;
-    if (!found) {
+    const found = existsSync(path)
+      ? new TextDecoder(embedded.encoding ?? "utf8").decode(readFileSync(path)).match(embedded.record)
+      : null;
+    const copyright = found?.groups?.copyright ?? embedded.copyright;
+    if (!found || !copyright) {
       throw new Error(
         `${pkg.name}@${pkg.version}: no ${embedded.name} record in ${embedded.file}; update EMBEDDED_PACKAGES`,
       );
     }
-    const [, version, copyright] = found;
-    const file = `(standard MIT text; pre-bundled inside ${pkg.name}, which ships no licence file for it)`;
+    const ofl = embedded.license === "OFL-1.1";
+    const terms = ofl ? readFileSync(OFL_1_1, "utf8").trim() : MIT_TEXT;
+    const file = `(${ofl ? "SIL Open Font License 1.1" : "standard MIT text"}; pre-bundled inside ${pkg.name}, which ships no licence file for it)`;
     return {
       name: embedded.name,
-      version,
+      version: found.groups?.version ?? pkg.version,
       license: embedded.license,
       source: embedded.source,
-      texts: [{ file, text: `${copyright}\n\n${MIT_TEXT}` }],
+      texts: [{ file, text: `${copyright}\n\n${terms}` }],
     };
   });
 }

@@ -44,6 +44,7 @@ const ROOT_FILES = [
   "tsconfig.base.json",
   "tsconfig.json",
   "LICENSE",
+  "scripts/release/licenses/OFL-1.1.txt", // notices.mjs: the licence of the KaTeX fonts
 ];
 /** Workspace folders (pnpm-workspace.yaml: packages/*, apps/*). */
 const WORKSPACE_DIRS = ["packages", "apps"];

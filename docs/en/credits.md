@@ -64,7 +64,7 @@ These libraries are the main implementation routes selected during research. The
 | cfb | Compound File Binary reading for legacy DOC | Apache-2.0 |
 | word-extractor | Node legacy-DOC text extraction | MIT |
 | fflate | ZIP and compressed data | MIT |
-| KaTeX | Lazy-loaded maths layout | MIT |
+| KaTeX | Lazy-loaded maths layout | MIT; its bundled math fonts are OFL-1.1 |
 | Mermaid | Lazy-loaded diagram compilation | MIT |
 | highlight.js | Source-code highlighting | BSD-3-Clause |
 | DOMPurify | Untrusted HTML sanitisation | Apache-2.0 branch selected |

@@ -65,6 +65,12 @@ test("every published package that bundles third-party code gets generated notic
   for (const dir of ["apps/cli", "packages/element", "packages/adapter-markdown"]) {
     assert.ok(byDir.get(dir)?.covered.has("katex"), dir);
     assert.ok(byDir.get(dir)?.contents?.startsWith(GENERATED_MARKER), dir);
+    // The math fonts katex ships (and the adapter inlines) are OFL-1.1, not under katex's MIT licence.
+    assert.match(
+      byDir.get(dir)?.contents ?? "",
+      /Copyright \(c\) 2009-2010, Design Science[^`]*KaTeX_Typewriter\.\n\nThis Font Software is licensed under the SIL Open Font License, Version 1\.1\./,
+      dir,
+    );
   }
   // Three ships the Draco (Apache-2.0) and meshoptimizer (MIT) decoders in examples/jsm/libs, and Vite emits them.
   for (const dir of ["apps/cli", "packages/element", "packages/export"]) {

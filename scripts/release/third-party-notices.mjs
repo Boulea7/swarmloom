@@ -192,6 +192,21 @@ export const EMBEDDED_PACKAGES = new Map([
       copyright: "2016 The Inter Project Authors (https://github.com/rsms/inter)", // the fonts' name table
     },
   ],
+  [
+    "KaTeX fonts",
+    {
+      host: "katex",
+      files: "dist/fonts/", // the woff2 files @swarmloom/adapter-markdown inlines (src/math/katex-assets.ts)
+      license: "OFL-1.1",
+      source: "https://github.com/KaTeX/katex-fonts",
+      // The fonts' name table (description, name ID 13), with the Reserved Font Name of every font.
+      copyright:
+        "(c) 2009-2010, Design Science, Inc. (<www.mathjax.org>)\n" +
+        "Copyright (c) 2014-2018 Khan Academy (<www.khanacademy.org>),\n" +
+        "with Reserved Font Names KaTeX_AMS, KaTeX_Caligraphic, KaTeX_Fraktur, KaTeX_Main, KaTeX_Math, " +
+        "KaTeX_SansSerif, KaTeX_Script, KaTeX_Size1, KaTeX_Size2, KaTeX_Size3, KaTeX_Size4, KaTeX_Typewriter.",
+    },
+  ],
 ]);
 
 /**
