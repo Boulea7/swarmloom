@@ -253,7 +253,8 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
             button({
               label: i18n.t("player.home"),
               variant: "secondary",
-              onClick: () => ctx.navigate({ source: null }),
+              // `?import=1` (extension without access to the origin): land on the file picker.
+              onClick: () => ctx.navigate({ source: null, import: ctx.route.import }),
             }),
           ),
         ),
