@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { parseArgs } from "node:util";
 import pkg from "../../package.json" with { type: "json" };
 import { expectPositionals, parseCommand, readEnum, readInt, readNumber } from "../args";
 import { locateAssets, requireRenderDir } from "../assets";
@@ -29,6 +30,7 @@ import {
   buildManifest,
   cueFrame,
   eventsDocument,
+  type PathArg,
   type ResolvedCue,
   sha256File,
   sourceDigest,
@@ -88,8 +90,8 @@ Capture evidence (for repeatable takes; see the README):
                           Write a JSON manifest: arguments, input and blueprint SHA-256, player
                           settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256
                           of every frame (frames are then captured as PNG) and of the sound log.
-                          Made to share: output paths relative to it, programs by name, no working
-                          directory, and URL user info, query and fragment redacted
+                          Made to share: file paths (arguments too) relative to it, programs by
+                          name, no working directory, and URL user info, query and fragment redacted
 
 Programs:
       --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then
@@ -141,6 +143,16 @@ const OPTIONS = {
   verbose: { type: "boolean" },
   help: { type: "boolean", short: "h" },
 } as const;
+
+/** Options whose value is a file the render writes or a program it runs, for the manifest. */
+const PATH_OPTIONS: Partial<Record<keyof typeof OPTIONS, PathArg["kind"]>> = {
+  output: "file",
+  "audio-out": "file",
+  "events-out": "file",
+  "manifest-out": "file",
+  chrome: "program",
+  ffmpeg: "program",
+};
 
 /** Largest output dimension in device pixels (encoders and memory stay sane below it). */
 const MAX_OUTPUT_PX = 8192;
@@ -499,6 +511,8 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   );
   await writeEvidence(opts, summary, {
     argv: ["render", ...argv],
+    pathArgs: renderPathArgs(argv),
+    cwd: ctx.cwd,
     source,
     browserPath: browser.path,
     ffmpeg: ffmpeg ? { path: ffmpeg.path, version: formatFfmpegVersion(ffmpeg.version) } : null,
@@ -520,6 +534,23 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   return 0;
 }
 
+/**
+ * Where valid `render` arguments name the input, output files and programs, with indexes into
+ * `["render", ...argv]` (the manifest's argv), for {@link buildManifest} to make them shareable.
+ */
+export function renderPathArgs(argv: string[]): PathArg[] {
+  const { tokens } = parseArgs({ args: argv, options: OPTIONS, allowPositionals: true, strict: true, tokens: true });
+  const found: PathArg[] = [];
+  for (const token of tokens) {
+    if (token.kind === "positional") found.push({ index: token.index + 1, value: token.value, kind: "input" });
+    if (token.kind !== "option" || token.value === undefined) continue;
+    const kind = PATH_OPTIONS[token.name as keyof typeof OPTIONS];
+    // A value not inline (--output take.mp4) is the argument after the option.
+    if (kind) found.push({ index: token.index + (token.inlineValue ? 1 : 2), value: token.value, kind });
+  }
+  return found;
+}
+
 function wantsEvidence(opts: RenderOptions): boolean {
   return Boolean(opts.audioOut || opts.eventsOut || opts.manifestOut);
 }
@@ -530,6 +561,8 @@ async function writeEvidence(
   summary: RenderSummary,
   run: {
     argv: string[];
+    pathArgs: PathArg[];
+    cwd: string;
     source: RenderSource;
     browserPath: string;
     ffmpeg: { path: string; version: string } | null;
@@ -558,6 +591,8 @@ async function writeEvidence(
   const manifest = buildManifest({
     tool: { name: "swarmloom", version: pkg.version },
     argv: run.argv,
+    pathArgs: run.pathArgs,
+    cwd: run.cwd,
     manifestFile: opts.manifestOut,
     input: { ...input, format: run.source.kind === "page" ? "html" : run.source.format },
     info: summary.info,
