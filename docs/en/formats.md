@@ -5,8 +5,8 @@ description: How SwarmLoom turns pages, documents, animation, code, images and 3
 
 # Supported formats
 
-::: warning Current status
-The format registry is defined, but adapters are still being implemented. This page describes the intended v1 pipelines and fidelity limits. All input support listed here is planned.
+::: info Current status
+Every format on this page has a working reader and opens in Studio and the CLI; `swarmloom formats` prints the current list. The sections below describe what each reader keeps, simplifies or leaves out.
 :::
 
 Every input becomes a format-neutral **Blueprint**: world dimensions, background, layers, reading order and any required plugins. The player works with layers and choreographies rather than the original file format.
@@ -27,7 +27,7 @@ This is a visual snapshot at one point in time, not a clone of application state
 
 **Extensions:** `.html`, `.htm`, `.xhtml`
 
-HTML strings and URLs are planned to load in an isolated sandbox, then use the DOM snapshot pipeline. HTML input never runs scripts, and there is no option to enable them. The network is limited to `https:` images and fonts (sent without a referrer); every other request is blocked, and a Studio setting turns that loading off. Relative resources need a correct base URL. Remote resources remain subject to CORS, permissions and site access controls.
+A full HTML document is sanitized and laid out in a sandboxed frame; a fragment is sanitized and laid out in the current theme. Both then use the DOM snapshot pipeline. HTML input never runs scripts, and there is no option to enable them. The network is limited to `https:` images and fonts (sent without a referrer); every other request is blocked, and a Studio setting turns that loading off. Relative resources need a correct base URL. Remote resources remain subject to CORS, permissions and site access controls.
 
 CSS animation is frozen for the rebuild: finite animations at their end state, infinite ones at half a cycle. Go live resumes the original animations. When the host registers the keyframe timeline plugin (`anim:timeline`, from the Lottie adapter), up to six animated elements also get a small timeline bar with their keyframes in free space under or above them, built after the page. Script-driven and event-driven animation is not guaranteed to round-trip.
 
@@ -35,9 +35,9 @@ CSS animation is frozen for the rebuild: finite animations at their end state, i
 
 **Extensions:** `.md`, `.markdown`, `.mdown`, `.mkd`
 
-The planned parser handles CommonMark and GFM: headings, paragraphs, lists, task states, tables, code, links, images and footnotes. Headings grow while typed, task boxes are checked, table grids appear before cells, and code is typed using precomputed syntax tokens.
+The parser handles CommonMark and GFM: headings, paragraphs, lists, task states, tables, code, links, images and footnotes. Headings grow while typed, task boxes are checked, table grids appear before cells, and code is typed using precomputed syntax tokens.
 
-Markdown has no intrinsic paper size or original font. SwarmLoom applies its own theme and fixed layout width rather than inventing source pagination. Raw HTML is treated as untrusted input. Maths, Mermaid and additional highlighting languages are separate lazy-loaded enhancements.
+Markdown has no intrinsic paper size or original font. SwarmLoom applies its own theme and fixed layout width rather than inventing source pagination. Raw HTML is treated as untrusted input. Maths is rendered with KaTeX, which loads only when a document contains formulas; Mermaid fences are shown as code.
 
 ## DOCX
 
@@ -49,13 +49,13 @@ HTML layout is not Microsoft Word's live pagination engine. Without reliable pag
 
 Fonts missing on the device are replaced from one shared fallback table, also used for DOC, PPTX, XLSX and OpenDocument: metric-compatible open fonts where they exist (Calibri to Carlito, Cambria to Caladea, Arial to Liberation Sans, Times New Roman to Liberation Serif, SimSun to Noto Serif SC, Microsoft YaHei to Noto Sans SC, and the matching Noto faces for Traditional Chinese, Japanese and Korean). An installed original always wins, no font files are bundled, and substitutions are listed in the load notes.
 
-A semantics-first simplified mode is planned for long documents and accessibility. It is not intended for precise style comparisons.
+If the styled renderer fails on a document, a built-in plain renderer takes over. It keeps headings, paragraphs, lists, tables, hyperlinks and page breaks, leaves out pictures, headers, footers and footnotes, and says so in the load notes.
 
 ## DOC (Word 97–2003)
 
 **Extension:** `.doc`
 
-The legacy binary DOC pipeline is planned around CFB and the WordDocument stream. It extracts body text and paragraphs into simplified HTML. The first version prioritises text, not original table geometry, image positions, exact fonts or pagination.
+The legacy binary DOC reader opens the compound file (CFB) in pure JavaScript and decodes the text through the piece table. Documents open in text mode: paragraphs, headings, lists, tables, headers and footers, footnotes and endnotes appear in the document's body font, on page sheets that break only at sections and explicit page breaks. Pictures, character formatting (fonts, sizes, colours, emphasis), text boxes, comments and floating shapes are left out, and the load notes say so.
 
 Encrypted, corrupt or unsupported structures produce explicit errors. An RTF file saved with a `.doc` name is recognised by its content and opened with the RTF reader.
 
@@ -81,11 +81,11 @@ SMIL-animated SVG (`animate`, `animateTransform`, `animateMotion`, `set`, `mpath
 
 **Extension:** `.pptx` (`.odp` opens with the OpenDocument reader)
 
-Each slide is planned as a stage section: background, master placeholders and guides first, then shapes and connectors, typed headings and body text, swept images, and finally tables, charts and slide numbers.
+Each slide becomes a 16:9 page on the stage. The reader takes the slide, its layout and master, and the theme into account: backgrounds, preset and custom shapes with fills, outlines and shadows, text with bullets, numbering and placeholder inheritance, cropped pictures and simple tables.
 
-PPTX is the main parsing target. Legacy `.ppt` is not supported yet: opening one asks you to save it as `.pptx` or PDF. SmartArt, OLE, complex media and original PowerPoint animation may use snapshots, placeholders or explicit degradation.
+PPTX is the main parsing target. Legacy `.ppt` is not supported yet: opening one asks you to save it as `.pptx` or PDF. Charts, SmartArt, video and other embedded objects appear as labelled placeholders, and original PowerPoint animation is not replayed.
 
-Native Keynote object graphs are not a first-release promise. Export PPTX or PDF from Keynote. An iWork file with a reliable preview PDF can use the PDF pipeline.
+Keynote files are not read. Export PPTX or PDF from Keynote.
 
 ## Spreadsheets
 
@@ -123,15 +123,15 @@ Source code is treated as text and never executed. Plain text has no reliable fo
 
 **Extensions:** `.png`, `.apng`, `.jpg`, `.jpeg`, `.jfif`, `.gif`, `.webp`, `.avif`, `.bmp`
 
-The bitmap pipeline is planned to extract an edge sketch, paint spatial tiles, and finish with the complete image. Cursors follow edges or painted regions rather than merely fading in the full bitmap.
+The bitmap pipeline extracts an edge sketch, paints spatial tiles, and finishes with the complete image. Cursors follow edges or painted regions rather than merely fading in the full bitmap.
 
-Animated images use a deterministic representative frame by default; resuming their timeline is a later enhancement. Very large images may be downsampled or tiled with an explicit notice.
+Animated images use their first frame; resuming their timeline is a later enhancement. Very large images may be downsampled or tiled with an explicit notice.
 
 ## 3D models
 
 **Extensions:** `.glb`, `.gltf`, `.obj`, `.stl`, `.ply`
 
-The 3D adapter is planned as a plugin with its own WebGL stage. Connected surface patches reveal vertices, feature edges and triangles, followed by materials, textures and lighting. A short camera orbit completes the build.
+The 3D adapter is a plugin with its own WebGL stage. Connected surface patches reveal vertices, feature edges and triangles, followed by materials, textures and lighting. A short camera orbit completes the build; afterwards the model can be rotated by dragging and zoomed with the wheel or a pinch.
 
 GLB is the recommended single-file distribution. The reader reads only that one file and never loads companion files: a `.gltf` that references external `.bin` files or textures is rejected with a message to export a GLB or a glTF with embedded data, and OBJ `mtllib` materials and textures are not read (a palette is used and a note says so). Formats without standard units, such as STL, need unit or up-axis overrides.
 
@@ -139,9 +139,9 @@ Large models use deterministic LOD and sampling budgets. Reduced-motion mode sho
 
 ## Export formats
 
-Export is still being implemented. These are the target formats:
+The CLI's `render` command writes these formats (`swarmloom doctor` shows which ones the local ffmpeg supports):
 
-| Format | Planned use | Audio |
+| Format | Use | Audio |
 | --- | --- | --- |
 | MP4 | General sharing; H.264, `yuv420p`, fast start | Synchronised soundtrack |
 | WebM | Browser and open-web workflows; VP9 / Opus | Synchronised soundtrack |
