@@ -128,6 +128,29 @@ describe("parseLottie", () => {
     expect(parsed.keyTimes).toEqual([0, 30]);
   });
 
+  it("removes image slots and asset slot ids, so a slot cannot put a remote image back", () => {
+    const png = "data:image/png;base64,iVBORw0KGgo=";
+    const color = { p: { a: 0, k: [1, 0, 0] } };
+    const parsed = parseLottie(
+      JSON.stringify(
+        lottie({
+          assets: [{ id: "img", w: 10, h: 10, u: "", p: png, e: 1, sid: "s1" }],
+          // lottie-web stringifies an array path as well.
+          slots: {
+            s1: { p: { p: "https://example.invalid/a.png" } },
+            s2: { p: { p: ["https://example.invalid/b.png"] } },
+            color,
+          },
+          layers: [shapeLayer(), { ty: 2, refId: "img", ks: {}, ip: 0, op: 60 }],
+        }),
+      ),
+    );
+    const json = JSON.parse(parsed.json);
+    expect(parsed.json).not.toContain("example.invalid");
+    expect(json.assets[0]).not.toHaveProperty("sid");
+    expect(json.slots).toEqual({ color });
+  });
+
   it("drops a font list that is not a real list (lottie-web would still load it by index)", () => {
     const web = { fName: "Evil", fFamily: "Evil", fOrigin: "g", fPath: "https://example.invalid/evil.css" };
     const parsed = parseLottie(JSON.stringify(lottie({ fonts: { list: { 0: web, length: 1 } } })));

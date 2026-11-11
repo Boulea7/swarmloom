@@ -99,6 +99,10 @@ function sanitizeAssets(data: Json, state: SanitizeState): void {
   for (const asset of data.assets) {
     if (!isRecord(asset) || (typeof asset.id !== "string" && typeof asset.id !== "number")) continue;
     const id = String(asset.id);
+    // lottie-web merges `slots[sid].p` into the asset an image layer points to when it draws the
+    // image, after this check. Precompositions lose it too: an image layer finds the first asset
+    // with its id, which can be a precomposition that shares the id.
+    delete asset.sid;
     if (Array.isArray(asset.layers)) {
       state.precomps.set(id, asset.layers);
       state.stats.precomps++;
@@ -137,6 +141,32 @@ function sanitizeAssets(data: Json, state: SanitizeState): void {
   data.assets = kept;
   if (external > 0) state.notes.add(`${external} image(s) are not embedded in the file and were left out.`);
   if (footage > 0) state.notes.add(`${footage} audio or data asset(s) were removed.`);
+}
+
+/** Asset keys lottie-web builds an image URL from; property and text slots never carry them. */
+const IMAGE_SLOT_KEYS = ["p", "u", "e"];
+
+/**
+ * lottie-web merges `slots[sid].p` into assets, properties and text documents that carry a `sid`.
+ * Assets lose theirs in sanitizeAssets; slots that carry image fields (of any type: lottie-web
+ * stringifies an array path too) are removed as well, so no unchecked path is left in the JSON.
+ * Value slots (properties, text) stay.
+ */
+function sanitizeSlots(data: Json, state: SanitizeState): void {
+  if (data.slots === undefined) return;
+  if (!isRecord(data.slots)) {
+    delete data.slots;
+    return;
+  }
+  let removed = 0;
+  for (const [sid, slot] of Object.entries(data.slots)) {
+    const value = isRecord(slot) ? slot.p : undefined;
+    if (isRecord(value) && IMAGE_SLOT_KEYS.some((key) => key in value)) {
+      delete data.slots[sid];
+      removed++;
+    }
+  }
+  if (removed > 0) state.notes.add(`${removed} image slot(s) were removed; the file's own images are shown.`);
 }
 
 function sanitizeFonts(data: Json, state: SanitizeState): void {
@@ -253,7 +283,8 @@ function resolveOptions(opts: ParseLottieOptions): ResolvedOptions {
  *  - limits: size, nesting depth, layer and keyframe counts, duration, embedded image size;
  *  - expressions are removed (the light player never evaluates them); an animation whose motion
  *    comes only from expressions is rejected, because it would not move at all;
- *  - images must be embedded (data:image/*); audio, data/footage layers and web fonts are removed;
+ *  - images must be embedded (data:image/*) and image slots are removed, so a slot cannot put a
+ *    remote path back; audio, data/footage layers and web fonts are removed;
  *  - text animators with a random letter order get the fixed order (lottie-web would shuffle with
  *    `Math.random`, so plays and exports would differ);
  *  - After Effects layer ids/classes (`ln`, `cl`) are dropped.
@@ -273,6 +304,7 @@ export function parseLottie(text: string, options: ParseLottieOptions = {}): Par
     precomps: new Map(),
   };
   sanitizeAssets(data, state);
+  sanitizeSlots(data, state);
   sanitizeFonts(data, state);
   for (const [id, layers] of state.precomps) {
     const kept = sanitizeLayers(layers, `precomposition "${id}"`, state);
