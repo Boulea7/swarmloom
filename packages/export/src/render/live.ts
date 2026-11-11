@@ -102,7 +102,11 @@ function showLivePage(page: LivePage, world: HTMLElement | null, host: HTMLEleme
   const rect = world.getBoundingClientRect();
   const view = host.getBoundingClientRect();
   const scale = world.offsetWidth > 0 ? rect.width / world.offsetWidth : 1;
-  win.scrollTo((view.left - rect.left) / scale, (view.top - rect.top) / scale);
+  // "instant" overrides a page-level `scroll-behavior: smooth`, which would scroll on wall time
+  // and leave scrollX/scrollY (read below) at their old values.
+  const left = (view.left - rect.left) / scale;
+  const top = (view.top - rect.top) / scale;
+  win.scrollTo({ left, top, behavior: "instant" as ScrollBehavior });
   const style = page.frame.style;
   style.left = `${rect.left + win.scrollX * scale}px`;
   style.top = `${rect.top + win.scrollY * scale}px`;
