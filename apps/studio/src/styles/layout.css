@@ -110,9 +110,19 @@
     color: ButtonText;
   }
 
+  /*
+   * Already a system colour pair, so opt out of forcing: otherwise Chromium paints its Canvas
+   * text backplate over the Highlight fill and HighlightText disappears into it.
+   */
   .segmented input:checked + label {
+    forced-color-adjust: none;
     background: Highlight;
     color: HighlightText;
+    box-shadow: none;
+  }
+
+  .segmented input:focus-visible + label {
+    outline-color: Highlight;
   }
 
   .switch {
