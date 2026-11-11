@@ -214,6 +214,32 @@ describe("Studio in a browser", () => {
     }
   });
 
+  it("keeps the home brand clear of the app bar buttons in a narrow side panel", async () => {
+    // A desktop screen, so the narrow window keeps the normal home instead of the watch face.
+    Object.defineProperties(screen, {
+      width: { value: 1280, configurable: true },
+      height: { value: 800, configurable: true },
+    });
+    try {
+      for (const width of [280, 320, 360]) {
+        await page.viewport(width, 400);
+        const { root } = await mount();
+        const actions = root.querySelector<HTMLElement>(".appbar-actions")?.getBoundingClientRect();
+        const word = root.querySelector<HTMLElement>(".brand-word");
+        if (!actions || !word) throw new Error(`no app bar at ${width}px`);
+        if (word.getClientRects().length > 0) {
+          expect(word.getBoundingClientRect().right, `${width}px`).toBeLessThanOrEqual(actions.left);
+        }
+        app?.destroy();
+        app = null;
+      }
+    } finally {
+      delete (screen as { width?: number }).width;
+      delete (screen as { height?: number }).height;
+      await page.viewport(414, 896);
+    }
+  });
+
   it("lets a 320px phone scroll to the actions of a long German error card", async () => {
     await page.viewport(320, 568);
     try {

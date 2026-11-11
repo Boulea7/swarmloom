@@ -45,10 +45,30 @@
   text-decoration: none;
 }
 
+.brand-word {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .brand-product {
   margin-left: 6px;
   color: var(--ink-3);
   font-weight: 500;
+}
+
+/* Narrow windows (a side panel, split screen) keep every button: the brand drops "Studio", then the
+   wordmark. The link keeps its accessible name. */
+@media (max-width: 379px) {
+  .brand-product {
+    display: none;
+  }
+}
+
+@media (max-width: 319px) {
+  .brand-word {
+    display: none;
+  }
 }
 
 /* Home layout */
