@@ -37,7 +37,7 @@ async function drawn(rasterizer: FrameRasterizer): Promise<(x: number, y: number
 
 it("leaves out what is far from the viewport, keeping layout and what reaches into view", async () => {
   const { win, rasterizer } = await frameOf(`<body style="margin:0">
-    <section style="height:600px;padding:1px"><p>far above</p></section>
+    <section style="height:600px;padding:1px;background:rgb(0,0,255)"><p>far above</p></section>
     <section style="height:400px;padding:1px"><p>near</p></section>
     <section style="height:98px;padding:1px;background:rgb(255,0,0)"></section>
     <div style="position:absolute;top:2000px"><p>far below</p></div>
@@ -46,6 +46,8 @@ it("leaves out what is far from the viewport, keeping layout and what reaches in
   win.scrollTo(0, 1004);
   const { svg, stats } = await rasterizer.snapshot();
   expect(svg).not.toMatch(/far (above|below)/);
+  // The empty box keeps what sets its size and place only: nothing of it shows.
+  expect(svg).not.toContain("0, 0, 255");
   expect(svg).toContain(">near<");
   expect(stats.culled).toBe(2);
   // The first section went empty but kept its height: the red one is still in view.

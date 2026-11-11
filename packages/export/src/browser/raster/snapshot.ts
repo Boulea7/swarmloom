@@ -858,16 +858,27 @@ function flatChildren(walk: Walk, el: Element): readonly Node[] {
   return Array.from(el.childNodes);
 }
 
-/** `::before` / `::after` of `el` as a rule on a class of the clone, or null when it has none. */
-function pseudoRules(walk: Walk, el: Element, view: DocView, inherited: InheritedValues): string | null {
+/**
+ * `::before` / `::after` of `el` as a rule on a class of the clone, or null when it has none. Those
+ * of an empty box away from the viewport (`hollow`) keep only what sets their size and place, and
+ * their counters.
+ */
+function pseudoRules(
+  walk: Walk,
+  el: Element,
+  view: DocView,
+  inherited: InheritedValues,
+  hollow: boolean,
+): string | null {
+  const props = hollow ? walk.baseline.layout : walk.baseline.props;
   let cls: string | null = null;
   for (const pseudo of ["::before", "::after"] as const) {
     const ps = view.win.getComputedStyle(el, pseudo);
     const content = ps.getPropertyValue("content");
     if (!content || content === "none" || content === "normal") continue;
     cls ??= `sl${walk.nextClass++}`;
-    const { text } = styleText(walk.baseline, ps, inherited);
-    for (const family of familiesOf(ps.getPropertyValue("font-family"))) walk.families.add(family);
+    const { text } = styleText(walk.baseline, ps, inherited, undefined, props);
+    if (!hollow) for (const family of familiesOf(ps.getPropertyValue("font-family"))) walk.families.add(family);
     walk.rules.push(`.${cls}${pseudo}{${embedCssUrls(walk, text, "s")};content:${embedCssUrls(walk, content, "s")}}`);
   }
   return cls;
@@ -955,8 +966,10 @@ function* emitElement(
     if (cs.getPropertyValue("display") === "inline") override.display = "inline-block";
     if (cs.getPropertyValue("position") === "static") override.position = "relative";
   }
-  const { text: styleBody, inherited } = styleText(walk.baseline, cs, parent, override);
-  for (const family of familiesOf(cs.getPropertyValue("font-family"))) walk.families.add(family);
+  // An empty box away from the viewport shows nothing: only what sets its size and place counts.
+  const props = hollow ? walk.baseline.layout : walk.baseline.props;
+  const { text: styleBody, inherited } = styleText(walk.baseline, cs, parent, override, props);
+  if (!hollow) for (const family of familiesOf(cs.getPropertyValue("font-family"))) walk.families.add(family);
 
   let tag = svg || ns !== XHTML_NS ? local : local === "html" || local === "body" ? "div" : local;
   if (!XML_NAME.test(tag)) tag = "span";
@@ -965,12 +978,13 @@ function* emitElement(
   const canvas = local === "canvas" && !svg ? (el as HTMLCanvasElement) : null;
   const overlay = canvas ? overlayOf(walk, canvas, cs, view) : null;
   // Anything else drawn after the overlay candidates may cover them: they go into the image. A
-  // canvas drawn over the image too keeps them, as it is drawn after them.
-  const covers = !overlay && walk.overlays.length > 0;
+  // canvas drawn over the image too keeps them, as it is drawn after them; an empty box away from
+  // the viewport covers nothing.
+  const covers = !hollow && !overlay && walk.overlays.length > 0;
   if (covers && paintsBox(cs, svg || replaced || VOID.has(local))) dropOverlays(walk);
   const xmlns = ns !== parentNs ? ` xmlns="${ns}"` : "";
-  const pseudo = svg || replaced || VOID.has(local) ? null : pseudoRules(walk, el, view, inherited);
-  if (pseudo) dropOverlays(walk);
+  const pseudo = svg || replaced || VOID.has(local) ? null : pseudoRules(walk, el, view, inherited, hollow);
+  if (pseudo && !hollow) dropOverlays(walk);
   const cls = pseudo ? ` class="${pseudo}"` : "";
   const style = styleBody ? ` style="${escapeAttr(embedCssUrls(walk, styleBody, "c"))}"` : "";
   let attrs = attributes(walk, el);

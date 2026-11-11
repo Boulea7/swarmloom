@@ -169,6 +169,55 @@ const SKIP = new Set([
   "unicode-bidi",
 ]);
 
+/**
+ * What gives a box without content its size and place among its siblings, and what it counts
+ * (content that shows may show the counters). An empty box away from the viewport needs nothing
+ * else: nothing of it shows.
+ */
+const LAYOUT = new Set([
+  "display",
+  "position",
+  "float",
+  "clear",
+  "box-sizing",
+  "width",
+  "height",
+  "min-width",
+  "min-height",
+  "max-width",
+  "max-height",
+  ...["top", "right", "bottom", "left"].flatMap((side) => [
+    `margin-${side}`,
+    `padding-${side}`,
+    `border-${side}-width`,
+    `border-${side}-style`,
+  ]),
+  "overflow-x",
+  "overflow-y",
+  "contain",
+  "container-type",
+  "scrollbar-gutter",
+  "zoom",
+  "writing-mode",
+  "direction",
+  "flex-grow",
+  "flex-shrink",
+  "flex-basis",
+  "order",
+  "align-self",
+  "justify-self",
+  "grid-row-start",
+  "grid-row-end",
+  "grid-column-start",
+  "grid-column-end",
+  "column-span",
+  "break-before",
+  "break-after",
+  "counter-increment",
+  "counter-reset",
+  "counter-set",
+]);
+
 function skipped(name: string): boolean {
   if (SKIP.has(name)) return true;
   return SKIP_PREFIXES.some((prefix) => name.startsWith(prefix));
@@ -184,6 +233,8 @@ const PROBE_COLOR = "rgb(1, 2, 3)";
 export interface StyleBaseline {
   /** Longhands to compare, in a stable order. */
   readonly props: readonly string[];
+  /** Of those, the ones an empty box away from the viewport needs ({@link LAYOUT}). */
+  readonly layout: readonly string[];
   /** Initial value (as computed on a reset probe) per property. */
   readonly initial: ReadonlyMap<string, string>;
   /** Non-inherited properties whose initial value is `currentcolor` (border, outline, rule colours). */
@@ -224,7 +275,8 @@ export function readBaseline(doc: Document): StyleBaseline {
       const style = name.endsWith("-width") ? `${name.slice(0, -"width".length)}style` : null;
       if (style && initial.has(style)) widthStyle.set(name, style);
     }
-    return { props, initial, currentColor, widthStyle };
+    const layout = props.filter((name) => LAYOUT.has(name));
+    return { props, layout, initial, currentColor, widthStyle };
   } finally {
     probe.remove();
   }
@@ -260,18 +312,20 @@ function unchanged(
  * Declarations of `cs` that a reset clone needs: inherited properties that differ from the
  * parent's value (all of them for a root, `parent` null), other properties that differ from what
  * the clone computes for them. `override` replaces or adds values (scroll offsets, forced overflow).
+ * Only `props` are read: all of them, or {@link StyleBaseline.layout} for an empty box.
  *
- * @returns The declarations and this element's inherited values, for its children.
+ * @returns The declarations and this element's inherited values among `props`, for its children.
  */
 export function styleText(
   baseline: StyleBaseline,
   cs: CSSStyleDeclaration,
   parent: InheritedValues | null,
   override?: Readonly<Record<string, string>>,
+  props: readonly string[] = baseline.props,
 ): { text: string; inherited: Map<string, string> } {
   const out: string[] = [];
   const inherited = new Map<string, string>();
-  for (const name of baseline.props) {
+  for (const name of props) {
     const value = cs.getPropertyValue(name);
     if (INHERITED.has(name)) inherited.set(name, value);
     if (override && name in override) continue;
