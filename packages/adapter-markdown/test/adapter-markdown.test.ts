@@ -93,6 +93,9 @@ describe("markdownToHtml: GFM", () => {
     expect(dom.querySelector(".loom-math .katex")).not.toBeNull();
     expect(dom.querySelector(".loom-math-block .katex-display")).not.toBeNull();
     expect(dom.querySelector(".katex-mathml")).toBeNull();
+    // snapshot-dom copies KaTeX's markup as-is; its computed styles cannot rebuild the layout.
+    expect(dom.querySelectorAll(".loom-math > .katex[data-swarmloom-verbatim]")).toHaveLength(1);
+    expect(dom.querySelectorAll(".loom-math-block > .katex-display[data-swarmloom-verbatim]")).toHaveLength(1);
     expect(css).toMatch(/@font-face\{font-family:KaTeX_Main;[^}]*data:font\/woff2;base64,/);
     expect(fonts.some((f) => f.family === "KaTeX_Math")).toBe(true);
   });
