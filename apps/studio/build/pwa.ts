@@ -88,8 +88,9 @@ interface ChunkLike {
   fileName: string;
   isEntry?: boolean;
   isDynamicEntry?: boolean;
-  code?: string;
   moduleIds?: readonly string[];
+  /** Source paths of an asset. */
+  originalFileNames?: readonly string[];
   imports?: readonly string[];
   viteMetadata?: { importedCss?: Set<string>; importedAssets?: Set<string> };
 }
@@ -112,32 +113,41 @@ export function shellFiles(bundle: Record<string, ChunkLike>): string[] {
   return [...shell].sort();
 }
 
-/** Largest lazy chunk warmed at install; bigger ones (pdf.js workers) are cached on first use. */
-export const WARM_MAX_BYTES = 512 * 1024;
+/**
+ * Sources whose output is never warmed, only cached on first use: pdf.js's legacy build (old
+ * browsers only) and three's bundled Draco decoders (the 3D reader loads a decoder only from a
+ * configured `dracoDecoderPath`, which Studio does not set).
+ */
+const COLD_SOURCES = ["/legacy/", "/three/examples/jsm/libs/draco/"];
 
-/** A chunk small enough to warm and not part of a legacy build (old browsers only). */
-function warmable(item: ChunkLike): boolean {
-  return (item.code?.length ?? 0) <= WARM_MAX_BYTES && !(item.moduleIds ?? []).some((id) => id.includes("/legacy/"));
+function cold(sources: readonly string[] = []): boolean {
+  return sources.some((id) => COLD_SOURCES.some((part) => id.includes(part)));
 }
 
 /**
  * Lazy chunks the worker fetches ahead at install so every format opens offline: each adapter or
- * locale entry together with everything it imports statically and their CSS, since the dynamic
- * import fails offline if any of them is missing. An entry is warmed whole or not at all: when a
- * chunk it needs is legacy or over WARM_MAX_BYTES, the entry is left to the runtime cache too.
+ * locale entry together with everything it imports statically, their CSS and the files they load
+ * by URL (pdf.js's worker script), since the reader fails offline if any of them is missing. Size
+ * is no limit: pdf.js's worker and its main-thread fallback (a lazy entry of its own) are both
+ * over 1 MiB. An entry is warmed whole or not at all: when a chunk it imports is cold, the entry
+ * is left to the runtime cache too. A cold file loaded by URL is an alternative build and is
+ * skipped alone.
  */
 export function warmFiles(bundle: Record<string, ChunkLike>, shell: readonly string[]): string[] {
   const skip = new Set(shell);
-  /** The entry with its static imports and CSS outside the shell, or null if one is not warmable. */
+  /** The entry with its static imports, CSS and URL assets outside the shell, or null if it is cold. */
   const closure = (entry: string): Set<string> | null => {
     const files = new Set<string>();
     const pending = [entry];
     for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
       const item = bundle[name];
       if (item?.type !== "chunk" || skip.has(name) || files.has(name)) continue;
-      if (!warmable(item)) return null;
+      if (cold(item.moduleIds)) return null;
       files.add(name);
       for (const css of item.viteMetadata?.importedCss ?? []) if (!skip.has(css)) files.add(css);
+      for (const asset of item.viteMetadata?.importedAssets ?? []) {
+        if (!skip.has(asset) && !cold(bundle[asset]?.originalFileNames)) files.add(asset);
+      }
       pending.push(...(item.imports ?? []));
     }
     return files;

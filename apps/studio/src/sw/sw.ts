@@ -2,8 +2,9 @@
 /**
  * Studio service worker, hand-written and small:
  *  - precaches the app shell (HTML, entry chunks, CSS, icons, manifest) per release;
- *  - warms the lazy adapter and locale chunks at install (best effort), and caches every other
- *    hashed asset (pdf.js workers, legacy builds) on first use, cache-first;
+ *  - warms the lazy adapter and locale chunks with what they load (pdf.js workers included) at
+ *    install (best effort), and caches every other hashed asset (legacy builds) on first use,
+ *    cache-first;
  *  - serves examples stale-while-revalidate;
  *  - answers navigations from the cached shell, so Studio opens offline;
  *  - receives the PWA share target (POST) into a short-lived inbox the page reads (`?inbox=`).
@@ -27,7 +28,7 @@ declare const self: ServiceWorkerGlobalScope;
 declare const __PRECACHE__: readonly string[];
 /** Every hashed asset of this release, relative to the scope (to drop stale runtime entries). */
 declare const __ASSETS__: readonly string[];
-/** Lazy chunks fetched ahead at install (adapters, locales), relative to the scope. */
+/** Lazy chunks and the files they load, fetched ahead at install (adapters, locales), relative to the scope. */
 declare const __WARM__: readonly string[];
 /** Content hash of the release. */
 declare const __VERSION__: string;

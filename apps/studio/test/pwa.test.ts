@@ -3,12 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
 import { describe, expect, it } from "vitest";
-import { fileHandlerAccept, releaseVersion, shellFiles, WARM_MAX_BYTES, warmFiles, webManifest } from "../build/pwa";
+import { fileHandlerAccept, releaseVersion, shellFiles, warmFiles, webManifest } from "../build/pwa";
 import { acceptAttribute, availableFormats } from "../src/formats-meta";
 
 type Item = Parameters<typeof shellFiles>[0][string];
 
-const chunk = (fileName: string, extra: Partial<Item> = {}): Item => ({ type: "chunk", fileName, code: "x", ...extra });
+const chunk = (fileName: string, extra: Partial<Item> = {}): Item => ({ type: "chunk", fileName, ...extra });
+const asset = (fileName: string, source: string): Item => ({ type: "asset", fileName, originalFileNames: [source] });
 
 describe("PWA manifest", () => {
   it("registers every extension the bundled registry opens, optional formats included", () => {
@@ -28,7 +29,7 @@ describe("PWA manifest", () => {
 });
 
 describe("PWA precache", () => {
-  it("warms each lazy entry with its static imports, whole or not at all", () => {
+  it("warms each lazy entry with its static imports and URL assets, whole or not at all", () => {
     const items = [
       chunk("assets/index.js", { isEntry: true, imports: ["assets/shared.js"] }),
       chunk("assets/shared.js"),
@@ -38,9 +39,16 @@ describe("PWA precache", () => {
         viteMetadata: { importedCss: new Set(["assets/lib.css"]) },
       }),
       chunk("assets/purify.js"),
-      // A loader whose static dependency is over the cap is left to the runtime cache with it.
-      chunk("assets/loader.js", { isDynamicEntry: true, imports: ["assets/three.js"] }),
-      chunk("assets/three.js", { code: "x".repeat(WARM_MAX_BYTES + 1) }),
+      // The PDF reader opens offline only with its worker script and the main-thread fallback; the
+      // legacy build (old browsers) and loaders importing it stay cold.
+      chunk("assets/pdf-reader.js", {
+        isDynamicEntry: true,
+        viteMetadata: { importedAssets: new Set(["assets/pdf.worker.mjs", "assets/pdf.worker-legacy.mjs"]) },
+      }),
+      asset("assets/pdf.worker.mjs", "/pdfjs-dist/build/pdf.worker.min.mjs"),
+      asset("assets/pdf.worker-legacy.mjs", "/pdfjs-dist/legacy/build/pdf.worker.min.mjs"),
+      chunk("assets/pdf.worker.js", { isDynamicEntry: true, moduleIds: ["/pdfjs-dist/build/pdf.worker.min.mjs"] }),
+      chunk("assets/legacy-loader.js", { isDynamicEntry: true, imports: ["assets/pdf-legacy.js"] }),
       chunk("assets/pdf-legacy.js", { isDynamicEntry: true, moduleIds: ["/pdfjs-dist/legacy/build/pdf.mjs"] }),
     ];
     const bundle = Object.fromEntries(items.map((item) => [item.fileName, item]));
@@ -50,6 +58,9 @@ describe("PWA precache", () => {
       "assets/lib.css",
       "assets/lib.js",
       "assets/markdown.js",
+      "assets/pdf-reader.js",
+      "assets/pdf.worker.js",
+      "assets/pdf.worker.mjs",
       "assets/purify.js",
     ]);
   });
