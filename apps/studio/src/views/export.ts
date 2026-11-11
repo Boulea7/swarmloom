@@ -64,6 +64,16 @@ interface ExportUi {
 /** Shortest gap between two status line updates, so screen readers are not flooded. */
 const STATUS_INTERVAL = 1000;
 
+/** Settles as `work` does, or rejects with the signal's reason as soon as it aborts. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 /**
  * Export dialog: a frame-exact export in this page (WebCodecs and Mediabunny, loaded when the
  * dialog first opens) and the `npx swarmloom render` command that makes the same file. Browsers
@@ -341,27 +351,34 @@ export function createExporter(deps: ExportDeps): Exporter {
     const moveFocus = focusIsOurs();
     render();
     if (moveFocus) ui.cancel?.focus();
+    const { signal } = controller;
     let result: BrowserExportResult | null = null;
     try {
-      const exporter = await loadExporter();
-      controller.signal.throwIfAborted();
-      result = await exporter.exportVideo({
-        input: renderInputOf(opened, exporter.bytesToBase64),
-        width: preset.width,
-        height: preset.height,
-        fps,
-        maxDurationMs: EXPORT_MAX_SECONDS * 1000,
-        settings: exportSettingsOf(ctx.settings, { sound: soundOn(), scheme: ctx.scheme, locale: ctx.i18n.locale }),
-        network: ctx.settings.remoteAssets ? "https" : "none",
-        signal: controller.signal,
-        onProgress: (p) => {
-          const phaseChanged = p.phase !== progress?.phase;
-          progress = p;
-          render(phaseChanged);
-        },
-      });
+      // Cancel answers at once, also while the exporter or the hidden frame still loads; the
+      // exporter notices the signal at its next step and cleans up after itself.
+      const exporter = await untilAborted(loadExporter(), signal);
+      result = await untilAborted(
+        exporter.exportVideo({
+          input: renderInputOf(opened, exporter.bytesToBase64),
+          width: preset.width,
+          height: preset.height,
+          fps,
+          maxDurationMs: EXPORT_MAX_SECONDS * 1000,
+          settings: exportSettingsOf(ctx.settings, { sound: soundOn(), scheme: ctx.scheme, locale: ctx.i18n.locale }),
+          network: ctx.settings.remoteAssets ? "https" : "none",
+          signal,
+          onProgress: (p) => {
+            // A cancelled run may still report while it winds down; the dialog has moved on.
+            if (running !== controller) return;
+            const phaseChanged = p.phase !== progress?.phase;
+            progress = p;
+            render(phaseChanged);
+          },
+        }),
+        signal,
+      );
     } catch (error) {
-      if (controller.signal.aborted) note = () => ctx.i18n.t("export.web.cancelled");
+      if (signal.aborted) note = () => ctx.i18n.t("export.web.cancelled");
       else if ((error as { name?: string }).name === "UnsupportedExportError")
         note = () => ctx.i18n.t("export.web.noCodec");
       else {

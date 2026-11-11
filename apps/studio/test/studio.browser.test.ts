@@ -231,6 +231,21 @@ describe("Studio in a browser", () => {
     expect([signal?.aborted, ...shown()]).toEqual([true, false, true, true]);
   });
 
+  it("cancels at once while the exporter is still loading", async () => {
+    const unused = () => Promise.reject(new Error("not loaded yet"));
+    const { root, services } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      exportVideo: unused,
+    });
+    // A stalled network: the exporter's download never ends.
+    services.loadExporter = () => new Promise(() => undefined);
+    const { start, cancel, status } = await openExport(root);
+    start.click();
+    cancel.click();
+    await until(() => status.textContent === "Export cancelled.");
+    expect([start.hidden, cancel.hidden]).toEqual([false, true]);
+  });
+
   it("explains an unknown example instead of mounting a player", async () => {
     const { root, log } = await mount("?example=missing");
     await until(() => root.querySelector(".stage-error"));
