@@ -1,4 +1,4 @@
-import type { LabelMode } from "@swarmloom/core";
+import type { LabelMode, SoundEvent } from "@swarmloom/core";
 
 /** Input of a render: what `SourceInput` carries, serialisable across the driver boundary. */
 export interface RenderInput {
@@ -13,6 +13,18 @@ export interface RenderInput {
   text?: string;
   /** URL fetched by the page (http(s) or data:). */
   url?: string;
+}
+
+/** Player actions a render can schedule (see {@link RenderInit.cues}). */
+export const CUE_ACTIONS = ["pause", "resume", "finish"] as const;
+export type CueAction = (typeof CUE_ACTIONS)[number];
+
+/** A player action applied at a fixed video time. */
+export interface RenderCue {
+  /** Video time in ms (frame `n` shows `n * 1000 / fps`); applied on the first frame at or after it. */
+  at: number;
+  /** "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly. */
+  action: CueAction;
 }
 
 /** Options of `window.__swarmloom.init()`. Mirrors the CLI flags. */
@@ -43,6 +55,18 @@ export interface RenderInit {
   bpm?: number;
   /** Sound pack id ("studio", "soft", "8bit", "silent-keys"). Default "studio". */
   pack?: string;
+  /** Player actions at fixed video times, e.g. a hold and a quick finish timed to music. Default none. */
+  cues?: RenderCue[];
+}
+
+/** What `init()` reports about the loaded input. */
+export interface RenderInfo {
+  /** Estimated length of the whole video (build plus tail), ms; 0 when unknown. */
+  estimatedMs: number;
+  /** Number of layers in the blueprint. */
+  layers: number;
+  /** SHA-256 (hex) of the blueprint's JSON, so a capture can record exactly what was played. */
+  blueprintSha256: string;
 }
 
 /** Result of one `step()` call. */
@@ -58,11 +82,17 @@ export interface RenderStep {
 /** The protocol the CLI drives through Playwright on `dist/render/index.html`. */
 export interface RenderApi {
   /** Loads the input with a VirtualClock and controls off; the first frame (t = 0) is ready when it resolves. */
-  init(o: RenderInit): Promise<{ estimatedMs: number }>;
+  init(o: RenderInit): Promise<RenderInfo>;
   /** Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame. */
   step(ms: number): Promise<RenderStep>;
   /** Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for the elapsed duration. */
   audioWav(): Promise<string>;
+  /**
+   * Every sound event logged so far, the list `audioWav()` renders: engine ms on the frames' clock
+   * (frame n shows n * 1000 / fps; time held by a "pause" cue is included). Logged even when sound
+   * is off, so drivers can record or compare runs.
+   */
+  soundLog(): Promise<SoundEvent[]>;
   /** Destroys the player and releases the loaded source; `init()` may be called again afterwards. */
   dispose(): void;
 }
@@ -116,9 +146,27 @@ function optionalString(o: Record<string, unknown>, key: string): string | undef
   return value;
 }
 
+/** Most cues one render accepts. */
+const MAX_CUES = 1000;
+/** Latest cue time, ms (one hour of video). */
+const MAX_CUE_MS = 3_600_000;
+
+function cueList(raw: unknown): RenderCue[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_CUES) fail(`cues must be an array of at most ${MAX_CUES} cues`);
+  const cues = raw.map((cue, i) => {
+    if (!isRecord(cue)) fail(`cues[${i}] must be an object`);
+    const at = number(cue, "at", 0, MAX_CUE_MS) ?? fail(`cues[${i}].at is required`);
+    const action = oneOf(cue, "action", CUE_ACTIONS) ?? fail(`cues[${i}].action is required`);
+    return { at, action };
+  });
+  // Stable: cues at the same time apply in the order given.
+  return cues.sort((a, b) => a.at - b.at);
+}
+
 /** Init options after validation, with defaults filled in. */
 export type ParsedInit = RenderInit &
-  Required<Pick<RenderInit, "seed" | "tail" | "sound" | "follow" | "reducedMotion" | "theme">>;
+  Required<Pick<RenderInit, "seed" | "tail" | "sound" | "follow" | "reducedMotion" | "theme" | "cues">>;
 
 /**
  * Validates untrusted init options (they cross a process boundary) and fills defaults.
@@ -164,5 +212,6 @@ export function parseInit(raw: unknown): ParsedInit {
     reducedMotion: reducedMotion ?? false,
     bpm: number(raw, "bpm", 20, 400),
     pack: optionalString(raw, "pack"),
+    cues: cueList(raw.cues),
   };
 }

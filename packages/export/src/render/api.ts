@@ -9,7 +9,14 @@ import type {
 } from "@swarmloom/core";
 import { base64ToBytes, bytesToBase64 } from "../base64";
 import { RenderSession } from "../session";
-import { type ParsedInit, parseInit, type RenderApi, type RenderInit, type RenderStep } from "./protocol";
+import {
+  type ParsedInit,
+  parseInit,
+  type RenderApi,
+  type RenderInfo,
+  type RenderInit,
+  type RenderStep,
+} from "./protocol";
 
 /** Services the render page needs; injected so the protocol can be tested with fakes. */
 export interface RenderDeps {
@@ -53,6 +60,14 @@ function mountHost(doc: Document, width: number, height: number): HTMLElement {
   host.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:${height}px;overflow:hidden`;
   doc.body.append(host);
   return host;
+}
+
+/** SHA-256 (hex) of the blueprint's JSON; empty when the page has no Web Crypto (not a secure context). */
+async function blueprintSha256(loaded: LoadedSource): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return "";
+  const digest = await subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(loaded.blueprint)));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function playerOptions(init: ParsedInit, loaded: LoadedSource, host: HTMLElement): Omit<PlayerOptions, "clock"> {
@@ -106,7 +121,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
   };
 
   return {
-    async init(o: RenderInit) {
+    async init(o: RenderInit): Promise<RenderInfo> {
       if (active || initializing) throw new Error("A render is already active; call dispose() first");
       initializing = true;
       const doc = deps.document ?? globalThis.document;
@@ -130,12 +145,18 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         session = new RenderSession({
           player: playerOptions(init, loaded, host),
           tailMs: init.tail,
+          cues: init.cues,
           createPlayer: deps.createPlayer,
         });
         await session.start();
+        const sha = await blueprintSha256(loaded);
         active = { init, loaded, session, host };
         const eta = session.player.eta();
-        return { estimatedMs: Math.round((Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail) };
+        return {
+          estimatedMs: Math.round((Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail),
+          layers: loaded.blueprint.layers.length,
+          blueprintSha256: sha,
+        };
       } catch (error) {
         session?.dispose();
         loaded?.dispose?.();
@@ -157,6 +178,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       const sound = { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: true };
       const wav = await deps.renderAudioWav(events, session.elapsed, { sampleRate: SAMPLE_RATE, channels: 2, sound });
       return bytesToBase64(wav);
+    },
+
+    async soundLog(): Promise<SoundEvent[]> {
+      return activeRender().session.soundLog.map((event) => ({ ...event }));
     },
 
     dispose,
