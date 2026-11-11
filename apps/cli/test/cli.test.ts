@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import pkg from "../package.json" with { type: "json" };
@@ -121,5 +122,19 @@ describe("render options", () => {
     expect(opts.cues[0]?.at).toBeCloseTo(17_333.333, 3);
     expect(opts.eventsOut).toBe(path.join(cwd, "ev/e.json"));
     expect(opts.manifestOut).toBe(path.join(cwd, "m.json"));
+  });
+});
+
+describe("documented examples", () => {
+  it("point at inputs that exist when they name a repo folder", async () => {
+    const root = path.resolve(import.meta.dirname, "../../..");
+    const docs = ["docs/cli.md", "docs/en/cli.md"].map((f) => readFileSync(path.join(root, f), "utf8"));
+    const help = await Promise.all(["render", "snapshot"].map(async (c) => (await capture([c, "--help"])).out));
+    // Bare names such as deck.pptx are placeholders; a path into a folder must be a real file.
+    const inputs = [...docs, ...help]
+      .flatMap((t) => [...t.matchAll(/swarmloom (?:render|snapshot) (\S+)/g)].map((m) => m[1]!.replace(/^\.\//, "")))
+      .filter((p) => p.includes("/") && !p.includes("://"));
+    expect(inputs.length).toBeGreaterThan(0);
+    expect(inputs.filter((p) => !existsSync(path.join(root, p)))).toEqual([]);
   });
 });

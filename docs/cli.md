@@ -122,7 +122,7 @@ swarmloom render ./README.md -o readme.mp4
 不指定 `-o` 时，下面的命令写出当前目录下的 `README.mp4`：
 
 ```bash
-swarmloom render ./docs/README.md
+swarmloom render ./examples/README.md
 ```
 
 导出无声音、固定种子的 WebM：
@@ -187,7 +187,7 @@ swarmloom snapshot <url|file.html> [options]
 
 ```bash
 swarmloom snapshot https://example.com -o example.blueprint.json --width 1440
-swarmloom snapshot ./docs/index.html -o - > page.json
+swarmloom snapshot ./examples/html/landing.html -o - > page.json
 ```
 
 Blueprint 可能包含页面文字和图片引用。分享快照前应像分享原内容一样检查敏感信息。

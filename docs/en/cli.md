@@ -122,7 +122,7 @@ swarmloom render ./README.md -o readme.mp4
 Without `-o`, this writes `README.mp4` in the current directory:
 
 ```bash
-swarmloom render ./docs/README.md
+swarmloom render ./examples/README.md
 ```
 
 Export a silent WebM with a fixed seed:
@@ -187,7 +187,7 @@ Web page URLs run their scripts as usual.
 
 ```bash
 swarmloom snapshot https://example.com -o example.blueprint.json --width 1440
-swarmloom snapshot ./docs/index.html -o - > page.json
+swarmloom snapshot ./examples/html/landing.html -o - > page.json
 ```
 
 A Blueprint may contain page text and image references. Review it for sensitive content as carefully as the original before sharing.
