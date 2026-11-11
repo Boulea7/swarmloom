@@ -43,6 +43,14 @@
     "@swarmloom/adapter-office": "workspace:*",
     "@swarmloom/adapter-code": "workspace:*",
     "@swarmloom/adapter-image": "workspace:*",
-    "@swarmloom/adapter-three": "workspace:*"
+    "@swarmloom/adapter-three": "workspace:*",
+    "@swarmloom/adapter-odf": "workspace:*",
+    "@swarmloom/adapter-epub": "workspace:*",
+    "@swarmloom/adapter-rtf": "workspace:*",
+    "@swarmloom/adapter-ofd": "workspace:*",
+    "@swarmloom/adapter-notebook": "workspace:*",
+    "@swarmloom/adapter-terminal": "workspace:*",
+    "@swarmloom/adapter-diff": "workspace:*",
+    "@swarmloom/adapter-mindmap": "workspace:*"
   }
 }

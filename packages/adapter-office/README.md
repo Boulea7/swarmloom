@@ -20,7 +20,7 @@ Each slide becomes a 16:9 page box (role `slide`), stacked vertically with gaps.
 - simple tables;
 - charts, SmartArt, video and unsupported image types as labelled placeholders.
 
-Options: `createSlidesAdapter({ maxSlides })` (default 40). Legacy `.ppt` and OpenDocument `.odp` are rejected with a message that suggests saving as PPTX or PDF.
+Options: `createSlidesAdapter({ maxSlides })` (default 40). Legacy `.ppt` is rejected with a message that suggests saving as PPTX or PDF. OpenDocument `.odp` is handled by `@swarmloom/adapter-odf` (the formats registry routes it there).
 
 ## Sheets
 

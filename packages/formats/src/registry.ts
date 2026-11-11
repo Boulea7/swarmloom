@@ -17,6 +17,14 @@ const LOADERS: Record<string, () => Promise<Adapter>> = {
   code: () => import("@swarmloom/adapter-code").then((m) => m.codeAdapter),
   image: () => import("@swarmloom/adapter-image").then((m) => m.imageAdapter),
   three: () => import("@swarmloom/adapter-three").then((m) => m.threeAdapter),
+  odf: () => import("@swarmloom/adapter-odf").then((m) => m.odfAdapter),
+  epub: () => import("@swarmloom/adapter-epub").then((m) => m.epubAdapter),
+  rtf: () => import("@swarmloom/adapter-rtf").then((m) => m.rtfAdapter),
+  ofd: () => import("@swarmloom/adapter-ofd").then((m) => m.ofdAdapter),
+  notebook: () => import("@swarmloom/adapter-notebook").then((m) => m.notebookAdapter),
+  terminal: () => import("@swarmloom/adapter-terminal").then((m) => m.terminalAdapter),
+  diff: () => import("@swarmloom/adapter-diff").then((m) => m.diffAdapter),
+  mindmap: () => import("@swarmloom/adapter-mindmap").then((m) => m.mindmapAdapter),
 };
 
 /** Every supported format with a lazy `import()` of its adapter. */

@@ -1,0 +1,112 @@
+import { describe, expect, it } from "vitest";
+import { normalizeSourceUrl, parseRoute, type Route, routeToUrl } from "../src/route";
+import { DEFAULT_SETTINGS, impactOf } from "../src/settings";
+import { decodeShare, encodeShare, MAX_INFLATED_BYTES, ShareError, sanitizeShareName } from "../src/share";
+
+const BASE = "https://studio.example/app/";
+
+function base64url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function deflate(text: string): Promise<string> {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  return base64url(new Uint8Array(await new Response(stream).arrayBuffer()));
+}
+
+describe("share links", () => {
+  it("round-trips text, name and settings through the hash payload", async () => {
+    const text = "# 标题\n\nSome *markdown* with unicode: é ü 中文.\n".repeat(20);
+    const encoded = await encodeShare({ name: "notes.md", text, settings: { seed: 42, speed: 2 } });
+    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(encoded.length).toBeLessThan(text.length);
+    const decoded = await decodeShare(encoded);
+    expect(decoded).toEqual({ name: "notes.md", text, settings: { seed: 42, speed: 2 } });
+  });
+
+  it.each([
+    ["binary format", { name: "photo.png", text: "x" }],
+    ["path traversal only", { name: "../", text: "x" }],
+  ])("refuses to encode a %s", async (_label, payload) => {
+    await expect(encodeShare(payload)).rejects.toBeInstanceOf(ShareError);
+  });
+
+  it("strips directories and control characters from names", () => {
+    expect(sanitizeShareName("a/b\\c\u0007.md")).toBe("c.md");
+    expect(sanitizeShareName(42)).toBeNull();
+  });
+
+  it.each([
+    ["empty", async () => ""],
+    ["not base64url", async () => "abc$def"],
+    ["not deflate", async () => "AAAAAAAA"],
+    ["not JSON", () => deflate("hello")],
+    ["wrong version", () => deflate(JSON.stringify({ v: 2, n: "a.md", x: "" }))],
+    ["binary name", () => deflate(JSON.stringify({ v: 1, n: "a.exe", x: "" }))],
+    ["decompression bomb", () => deflate(JSON.stringify({ v: 1, n: "a.md", x: "a".repeat(MAX_INFLATED_BYTES) }))],
+  ])("rejects a %s payload", async (_label, make) => {
+    await expect(decodeShare(await make())).rejects.toBeInstanceOf(ShareError);
+  });
+});
+
+describe("routes", () => {
+  it.each<[string, Partial<Route>]>([
+    ["?example=svg-chart&autoplay=1", { source: { kind: "example", id: "svg-chart" }, autoplay: true }],
+    [
+      `?src=${encodeURIComponent("https://a.example/doc.pdf")}`,
+      { source: { kind: "url", url: "https://a.example/doc.pdf" } },
+    ],
+    ["?round=1", { source: null, watch: true, round: true }],
+    ["?import=1", { source: null, import: true }],
+    ["?from=bookmarklet", { source: { kind: "handoff" } }],
+    ["?example=a&agents=12&speed=2&lang=ja-JP", { overrides: { agents: 12, speed: 2, locale: "ja" } }],
+  ])("parses %s", (search, expected) => {
+    expect(parseRoute(`${BASE}${search}`)).toMatchObject(expected);
+  });
+
+  it("serializes routes back to the same route", () => {
+    const route: Route = {
+      source: { kind: "shared", payload: "abc_-123" },
+      autoplay: true,
+      watch: true,
+      round: false,
+      import: false,
+      overrides: { seed: 7, sound: false },
+    };
+    const href = routeToUrl(route, BASE);
+    expect(new URL(href).hash).toBe("#d=abc_-123");
+    expect(parseRoute(href)).toEqual(route);
+  });
+
+  it.each(["javascript:alert(1)", "data:text/html,<b>x</b>", "https://user:pw@a.example/", "file:///etc/passwd"])(
+    "never routes to %s",
+    (src) => {
+      expect(parseRoute(`${BASE}?src=${encodeURIComponent(src)}`).source).toBeNull();
+    },
+  );
+
+  it("accepts file: sources only when the extension allows them", () => {
+    expect(normalizeSourceUrl("file:///tmp/a.pdf", BASE, { allowFileUrls: true })).toBe("file:///tmp/a.pdf");
+  });
+
+  it("ignores invalid ids and overrides without throwing", () => {
+    const route = parseRoute(`${BASE}?example=../../etc&agents=9999&theme=neon`);
+    expect(route.source).toBeNull();
+    expect(route.overrides).toEqual({});
+    expect(parseRoute(`${BASE}#d=not*valid`).source).toEqual({ kind: "shared", payload: "" });
+  });
+});
+
+describe("settings impact", () => {
+  it.each([
+    [{}, "none"],
+    [{ speed: 2 }, "live"],
+    [{ speed: 2, agents: 8 }, "rebuild"],
+    [{ agents: 8, theme: "dark" }, "reload"],
+  ] as const)("classifies %o as %s", (change, impact) => {
+    expect(impactOf(DEFAULT_SETTINGS, { ...DEFAULT_SETTINGS, ...change })).toBe(impact);
+  });
+});

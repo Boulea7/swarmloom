@@ -262,14 +262,36 @@ importers:
         specifier: 10.8.0
         version: 10.8.0(supports-color@7.2.0)
 
+  apps/site:
+    dependencies:
+      '@swarmloom/element':
+        specifier: workspace:*
+        version: link:../../packages/element
+    devDependencies:
+      '@fontsource-variable/bricolage-grotesque':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@phosphor-icons/core':
+        specifier: 2.1.1
+        version: 2.1.1
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+
   apps/studio:
     dependencies:
       '@swarmloom/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@swarmloom/export':
+        specifier: workspace:*
+        version: link:../../packages/export
       '@swarmloom/formats':
         specifier: workspace:*
         version: link:../../packages/formats
+      uqr:
+        specifier: ^0.1.3
+        version: 0.1.3
 
   packages/adapter-code:
     dependencies:
@@ -283,14 +305,26 @@ importers:
         specifier: ^11.12.0
         version: 11.12.0
 
+  packages/adapter-diff:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/adapter-doc:
     dependencies:
+      '@swarmloom/adapter-docx':
+        specifier: workspace:*
+        version: link:../adapter-docx
       '@swarmloom/core':
         specifier: workspace:*
         version: link:../core
       '@swarmloom/snapshot-dom':
         specifier: workspace:*
         version: link:../snapshot-dom
+      cfb:
+        specifier: 1.2.2
+        version: 1.2.2
 
   packages/adapter-docx:
     dependencies:
@@ -300,6 +334,28 @@ importers:
       '@swarmloom/snapshot-dom':
         specifier: workspace:*
         version: link:../snapshot-dom
+      docx-preview:
+        specifier: 0.4.1
+        version: 0.4.1
+      jszip:
+        specifier: 3.10.2
+        version: 3.10.2
+
+  packages/adapter-epub:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      dompurify:
+        specifier: ^3.4.17
+        version: 3.4.17
+    devDependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
 
   packages/adapter-html:
     dependencies:
@@ -378,6 +434,68 @@ importers:
         specifier: ^31.0.0
         version: 31.0.0(@napi-rs/canvas@1.1.0)
 
+  packages/adapter-mindmap:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
+  packages/adapter-notebook:
+    dependencies:
+      '@swarmloom/adapter-terminal':
+        specifier: workspace:*
+        version: link:../adapter-terminal
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      dompurify:
+        specifier: ^3.4.17
+        version: 3.4.17
+      highlight.js:
+        specifier: ^11.12.0
+        version: 11.12.0
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1(supports-color@7.2.0)
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0(supports-color@7.2.0)
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
+    devDependencies:
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
+
+  packages/adapter-odf:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+      '@swarmloom/snapshot-dom':
+        specifier: workspace:*
+        version: link:../snapshot-dom
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
+  packages/adapter-ofd:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
   packages/adapter-office:
     dependencies:
       '@swarmloom/core':
@@ -396,7 +514,22 @@ importers:
         specifier: 6.5.438
         version: 6.5.438
 
+  packages/adapter-rtf:
+    dependencies:
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/adapter-svg:
+    dependencies:
+      '@swarmloom/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/adapter-terminal:
     dependencies:
       '@swarmloom/core':
         specifier: workspace:*
@@ -440,12 +573,18 @@ importers:
       '@swarmloom/adapter-code':
         specifier: workspace:*
         version: link:../adapter-code
+      '@swarmloom/adapter-diff':
+        specifier: workspace:*
+        version: link:../adapter-diff
       '@swarmloom/adapter-doc':
         specifier: workspace:*
         version: link:../adapter-doc
       '@swarmloom/adapter-docx':
         specifier: workspace:*
         version: link:../adapter-docx
+      '@swarmloom/adapter-epub':
+        specifier: workspace:*
+        version: link:../adapter-epub
       '@swarmloom/adapter-html':
         specifier: workspace:*
         version: link:../adapter-html
@@ -455,15 +594,33 @@ importers:
       '@swarmloom/adapter-markdown':
         specifier: workspace:*
         version: link:../adapter-markdown
+      '@swarmloom/adapter-mindmap':
+        specifier: workspace:*
+        version: link:../adapter-mindmap
+      '@swarmloom/adapter-notebook':
+        specifier: workspace:*
+        version: link:../adapter-notebook
+      '@swarmloom/adapter-odf':
+        specifier: workspace:*
+        version: link:../adapter-odf
+      '@swarmloom/adapter-ofd':
+        specifier: workspace:*
+        version: link:../adapter-ofd
       '@swarmloom/adapter-office':
         specifier: workspace:*
         version: link:../adapter-office
       '@swarmloom/adapter-pdf':
         specifier: workspace:*
         version: link:../adapter-pdf
+      '@swarmloom/adapter-rtf':
+        specifier: workspace:*
+        version: link:../adapter-rtf
       '@swarmloom/adapter-svg':
         specifier: workspace:*
         version: link:../adapter-svg
+      '@swarmloom/adapter-terminal':
+        specifier: workspace:*
+        version: link:../adapter-terminal
       '@swarmloom/adapter-three':
         specifier: workspace:*
         version: link:../adapter-three
@@ -1115,6 +1272,9 @@ packages:
     resolution: {integrity: sha512-5D2qVpZrgpjtqU4eNOcWGp1gnUCgjfM+vKGE2y03kKN6z5EBhtx0qdRFbg8QuNNj8wXNoX93KJoYb+NqoxswmQ==}
     engines: {node: '>=14.0.0', npm: '>=7.0.0'}
 
+  '@fontsource-variable/bricolage-grotesque@5.3.0':
+    resolution: {integrity: sha512-TLi9Q4hJjS2UvoTMRSS2nHu6c4R56lAw60NR9QYtVRCHn0XtsFpiEhNffZ8Glsoxu6wEEwLKBP8lb94J52PNBA==}
+
   '@fregante/relaxed-json@2.0.0':
     resolution: {integrity: sha512-PyUXQWB42s4jBli435TDiYuVsadwRHnMc27YaLouINktvTWsL3FcKrRMGawTayFk46X+n5bE23RjUTWQwrukWw==}
     engines: {node: '>= 0.10.0'}
@@ -1250,6 +1410,9 @@ packages:
 
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
+
+  '@phosphor-icons/core@2.1.1':
+    resolution: {integrity: sha512-v4ARvrip4qBCImOE5rmPUylOEK4iiED9ZyKjcvzuezqMaiRASCHKcRIuvvxL/twvLpkfnEODCOJp5dM4eZilxQ==}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -1769,6 +1932,10 @@ packages:
       safe-compare:
         optional: true
 
+  adler-32@1.3.1:
+    resolution: {integrity: sha512-ynZ4w/nUUv5rrsR8UUGoe1VC9hZj6V5hU9Qw1HlMDJGEJw5S7TfTErWTjMys6M7vr0YWcPqs3qAr4ss0nDfP+A==}
+    engines: {node: '>=0.8'}
+
   adm-zip@0.6.1:
     resolution: {integrity: sha512-Xwrja8nx9e5o2N1my4DsKCeKpdrnACyr1wtbPxBDgGzKzKyE9kRtBFA8mWldI+RVlD7CBZNWY/wQ2+ydwOR6kQ==}
     engines: {node: '>=14.0'}
@@ -1897,6 +2064,10 @@ packages:
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
+  cfb@1.2.2:
+    resolution: {integrity: sha512-KfdUZsSOw19/ObEWasvBP/Ac4reZvAGauZhs6S/gqNhXhI7cKwvlH7ulj+dOEYnca4bm4SGo8C1bTAQvnTjgQA==}
+    engines: {node: '>=0.8'}
+
   chai@6.3.0:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
     engines: {node: '>=18'}
@@ -2011,6 +2182,11 @@ packages:
   core-util-is@1.0.3:
     resolution: {integrity: sha512-ZQBvi1DcpJ4GDqanjucZ2Hj3wEO5pZDS89BWbkcrvdxksJorwUDDZamX9ldFkp9aw2lmBDLgkObEA4DWNJ9FYQ==}
 
+  crc-32@1.2.2:
+    resolution: {integrity: sha512-ROmzCKrTnOwybPcJApAA6WBWij23HVfGVNKqqrZpuyZOHqK2CwHSvpGuyt/UNNvaIjEd8X5IFGp4Mh+Ie1IHJQ==}
+    engines: {node: '>=0.8'}
+    hasBin: true
+
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
@@ -2103,6 +2279,9 @@ packages:
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
+
+  docx-preview@0.4.1:
+    resolution: {integrity: sha512-Dv4g+LeE0swHpPvNC0lAT0YsR5Zq5pAxw7d3vHQ8EChBLgIrqqe9VPL5nVt2HBJap8bEZbXUI0TJob7kBeNU9w==}
 
   dom-serializer@2.0.0:
     resolution: {integrity: sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==}
@@ -3530,6 +3709,9 @@ packages:
     resolution: {integrity: sha512-+dwUY4L35XFYEzE+OAL3sarJdUioVovq+8f7lcIJ7wnmnYQV5UD1Y/lcwaMSyaQ6Bj3JMj1XSTjZbNLHn/19yA==}
     engines: {node: '>=18'}
 
+  uqr@0.1.3:
+    resolution: {integrity: sha512-0rjE8iEJe4YmT9TOhwsZtqCMRLc5DXZUI2UEYUUg63ikBkqqE5EYWaI0etFe/5KUcmcYwLih2RND1kq+hrUJXA==}
+
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
@@ -4367,6 +4549,8 @@ snapshots:
 
   '@fluent/syntax@0.19.0': {}
 
+  '@fontsource-variable/bricolage-grotesque@5.3.0': {}
+
   '@fregante/relaxed-json@2.0.0': {}
 
   '@humanfs/core@0.19.2':
@@ -4471,6 +4655,8 @@ snapshots:
     optional: true
 
   '@oxc-project/types@0.156.0': {}
+
+  '@phosphor-icons/core@2.1.1': {}
 
   '@pinojs/redact@0.4.0': {}
 
@@ -4943,6 +5129,8 @@ snapshots:
       upath: 3.0.8
       yauzl: 3.4.0
 
+  adler-32@1.3.1: {}
+
   adm-zip@0.6.1: {}
 
   agent-base@7.1.4: {}
@@ -5070,6 +5258,11 @@ snapshots:
 
   ccount@2.0.1: {}
 
+  cfb@1.2.2:
+    dependencies:
+      adler-32: 1.3.1
+      crc-32: 1.2.2
+
   chai@6.3.0: {}
 
   chalk@4.1.2:
@@ -5180,6 +5373,8 @@ snapshots:
 
   core-util-is@1.0.3: {}
 
+  crc-32@1.2.2: {}
+
   cross-spawn@7.0.6:
     dependencies:
       path-key: 3.1.1
@@ -5260,6 +5455,10 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
+
+  docx-preview@0.4.1:
+    dependencies:
+      jszip: 3.10.2
 
   dom-serializer@2.0.0:
     dependencies:
@@ -6946,6 +7145,8 @@ snapshots:
       pupa: 3.3.0
       semver: 7.8.6
       xdg-basedir: 5.1.0
+
+  uqr@0.1.3: {}
 
   uri-js@4.4.1:
     dependencies:

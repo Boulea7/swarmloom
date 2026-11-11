@@ -25,9 +25,11 @@ const ZIP_FOLDERS: readonly [string, string][] = [
   ["ppt/", "slides"],
   ["xl/", "sheet"],
 ];
-const ODF_TYPES: readonly [string, string][] = [
-  ["application/vnd.oasis.opendocument.presentation", "slides"],
+/** `mimetype` entry prefixes: ODS stays with the spreadsheet adapter, other OpenDocument types go to `odf`. */
+const MIMETYPES: readonly [string, string][] = [
   ["application/vnd.oasis.opendocument.spreadsheet", "sheet"],
+  ["application/vnd.oasis.opendocument.", "odf"],
+  ["application/epub+zip", "epub"],
 ];
 /** MIME types that say nothing about the content; detection ignores them. */
 const WEAK_MIME = new Set(["", "text/plain", "application/octet-stream", "binary/octet-stream", "application/unknown"]);
@@ -62,7 +64,18 @@ function zipFormat(zip: ZipInfo): string | null {
   for (const [part, id] of ZIP_PARTS) if (zip.names.includes(part)) return id;
   for (const [folder, id] of ZIP_FOLDERS) if (zip.names.some((n) => n.startsWith(folder))) return id;
   const mimetype = zip.mimetype;
-  return (mimetype && ODF_TYPES.find(([type]) => mimetype.startsWith(type))?.[1]) || null;
+  if (mimetype) return MIMETYPES.find(([type]) => mimetype.startsWith(type))?.[1] ?? null;
+  if (zip.names.includes("OFD.xml")) return "ofd";
+  // XMind: content.json (XMind Zen) or content.xml (XMind 8) at the root, and no ODF mimetype entry.
+  const xmind = zip.names.includes("content.json") || zip.names.includes("content.xml");
+  return xmind && !zip.names.includes("mimetype") ? "mindmap" : null;
+}
+
+/** RTF: `{\rtf` after an optional UTF-8 BOM and a little whitespace. Also catches RTF saved as .doc. */
+function isRtf(b: Uint8Array): boolean {
+  let i = hasBytes(b, [0xef, 0xbb, 0xbf]) ? 3 : 0;
+  while (i < 64 && (b[i] === 0x20 || b[i] === 0x09 || b[i] === 0x0a || b[i] === 0x0d)) i++;
+  return hasAscii(b, "{\\rtf", i);
 }
 
 function cfbFormat(names: readonly string[]): string | null {
@@ -77,6 +90,7 @@ function cfbFormat(names: readonly string[]): string | null {
 /** Signatures that identify a format on their own (no container parsing). */
 function magicFormat(b: Uint8Array): string | null {
   if (findAscii(b, "%PDF-", 0, 1024) >= 0) return "pdf";
+  if (isRtf(b)) return "rtf";
   if (hasAscii(b, "glTF") || hasAscii(b, "ply\n") || hasAscii(b, "ply\r\n")) return "three";
   // Binary STL: 80-byte header, triangle count, 50 bytes per triangle. The exact length is the signature.
   if (b.length > 84 && b.length === 84 + u32(b, 80) * 50) return "three";
@@ -126,15 +140,16 @@ function inspectBytes(
  *
  * Order, from most to least trustworthy:
  *  1. live element -> `dom`;
- *  2. containers: ZIP sub-type from entry names (word/, ppt/, xl/, ODF mimetype) and CFB stream
- *     names (WordDocument, Workbook, PowerPoint Document), falling back to the extension for
- *     unknown or encrypted packages;
- *  3. magic bytes (PDF, glTF/GLB, PLY, binary STL, PNG, JPEG, GIF, WebP, AVIF, BMP), then custom
- *     `sniff` hooks of the registry;
+ *  2. containers: ZIP sub-type from entry names (word/, ppt/, xl/, the ODF/EPUB mimetype entry,
+ *     OFD.xml, XMind content) and CFB stream names (WordDocument, Workbook, PowerPoint Document),
+ *     falling back to the extension for unknown or encrypted packages;
+ *  3. magic bytes (PDF, RTF, glTF/GLB, PLY, binary STL, PNG, JPEG, GIF, WebP, AVIF, BMP), then
+ *     custom `sniff` hooks of the registry;
  *  4. file extension (name, else URL path), then MIME type (generic types such as text/plain and
  *     application/octet-stream are ignored);
- *  5. text heuristics on the decoded head (SVG/HTML prologs, glTF JSON, OBJ/STL, Markdown vs code
- *     vs CSV). Binary content never reaches this step.
+ *  5. text heuristics on the decoded head (SVG/HTML prologs, notebooks, asciicasts, patches,
+ *     FreeMind maps, glTF JSON, OBJ/STL, Markdown vs code vs CSV). Binary content never reaches
+ *     this step.
  *
  * The result is restricted to ids present in `registry`.
  */

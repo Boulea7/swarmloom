@@ -1,5 +1,5 @@
 import type { Adapter, PlayerOptions, SourceInput } from "@swarmloom/core";
-import type { FormatEntry } from "@swarmloom/formats";
+import { type FormatEntry, formats } from "@swarmloom/formats";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { configure, define, runtime, type SwarmLoomElement } from "../src/index";
 import { FakePlayer } from "./fake-player";
@@ -102,6 +102,22 @@ describe("<swarm-loom>", () => {
     el.remove();
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
     expect(players[1]?.state).toBe("destroyed");
+  });
+
+  it("keeps its stage and error banner out of page snapshots (real dom adapter)", async () => {
+    const el = mount("<section><h2>Page heading</h2><swarm-loom><p>Woven words</p></swarm-loom></section>");
+    await vi.waitFor(() => expect(players).toHaveLength(1));
+    // While a replay runs, the stage is shown; an error banner may be shown too. Neither is page content.
+    el.shadowRoot?.querySelector(".stage")?.append("Stage cursor label");
+    el.shadowRoot?.querySelector(".root")?.toggleAttribute("data-error", true);
+    el.shadowRoot?.querySelector(".error")?.append("Load failed");
+    const dom = (await formats.find((f) => f.id === "dom")?.loader()) as Adapter;
+    const page = el.parentElement as Element;
+    const { blueprint } = await dom.load({ element: page }, { document, width: 640, theme: "light" });
+    const text = blueprint.layers.map((l) => (l.kind === "text" ? l.text : "")).join(" ");
+    expect(text).toContain("Page heading");
+    expect(text).not.toContain("Stage cursor label");
+    expect(text).not.toContain("Load failed");
   });
 
   it("keeps playing when moved within the document", async () => {

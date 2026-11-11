@@ -103,6 +103,19 @@ Syntax highlighting runs once during import. Cursors type tokens while preservin
 
 Source code is treated as text and never executed. Plain text has no reliable font or style information; ambiguous encodings require confirmation.
 
+## More document and developer formats
+
+| Format | Extensions | Rebuild |
+| --- | --- | --- |
+| EPUB | `.epub` | Turns the cover and chapters into safe pages in spine order |
+| OpenDocument | `.odt`, `.ods`, `.odp`, `.odg` and corresponding Flat XML | Rebuilds text, sheets, slides and drawings without recalculating formulas |
+| RTF | `.rtf` | Lays out paragraphs, character styles, tables and pictures as pages |
+| OFD | `.ofd` | Rebuilds fixed-layout text, paths and images page by page without verifying signatures |
+| Jupyter notebook | `.ipynb` | Rebuilds Markdown, code and output cells in order without a live kernel |
+| asciinema terminal recording | `.cast` | Replays recorded keystrokes and output with ANSI styling |
+| Patch / diff | `.diff`, `.patch` | Builds review panels, strikes through removals and types additions |
+| XMind / FreeMind mind map | `.xmind`, `.mm` | Draws topics and connectors on the first sheet from the root outwards |
+
 ## Bitmap images
 
 **Extensions:** `.png`, `.apng`, `.jpg`, `.jpeg`, `.jfif`, `.gif`, `.webp`, `.avif`, `.bmp`

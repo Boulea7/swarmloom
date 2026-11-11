@@ -31,7 +31,36 @@ const FINISHED: ReadonlySet<PlayerState> = new Set(["finale", "done"]);
 /** Children are snapshotted once their images decode, or after this long. */
 const IMAGE_WAIT_MS = 3000;
 
-const TEMPLATE = `<style>${STYLES}</style><div class="root" part="root"><div class="sizer"></div><div class="content" part="content"><slot></slot></div><div class="stage" part="stage"></div><div class="error" part="error" role="alert"></div></div>`;
+/**
+ * Marks shadow parts that snapshot-dom must skip when it captures the element's own children
+ * (`{ element: this }`): the stage (a previous replay, cursors) and the error banner are not content.
+ */
+const IGNORE_ATTR = "data-swarmloom-ignore";
+
+function part(doc: Document, className: string, attrs: Record<string, string> = {}): HTMLElement {
+  const el = doc.createElement("div");
+  el.className = className;
+  for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+  return el;
+}
+
+/**
+ * Builds the shadow tree with DOM calls rather than an innerHTML template, so extension store
+ * linters (web-ext UNSAFE_VAR_ASSIGNMENT) have nothing to flag.
+ */
+function buildShadow(shadow: ShadowRoot): Parts {
+  const doc = shadow.ownerDocument;
+  const style = doc.createElement("style");
+  style.textContent = STYLES;
+  const root = part(doc, "root", { part: "root" });
+  const content = part(doc, "content", { part: "content" });
+  content.append(doc.createElement("slot"));
+  const stage = part(doc, "stage", { part: "stage", [IGNORE_ATTR]: "" });
+  const error = part(doc, "error", { part: "error", role: "alert", [IGNORE_ATTR]: "" });
+  root.append(part(doc, "sizer"), content, stage, error);
+  shadow.replaceChildren(style, root);
+  return { root, stage, error };
+}
 
 function toError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error(String(reason));
@@ -169,9 +198,7 @@ export class SwarmLoomElement extends BaseElement {
   #ensureShadow(): Parts {
     if (this.#parts) return this.#parts;
     const shadow = this.shadowRoot ?? this.attachShadow({ mode: "open" });
-    shadow.innerHTML = TEMPLATE;
-    const find = (selector: string): HTMLElement => shadow.querySelector(selector) as HTMLElement;
-    this.#parts = { root: find(".root"), stage: find(".stage"), error: find(".error") };
+    this.#parts = buildShadow(shadow);
     return this.#parts;
   }
 

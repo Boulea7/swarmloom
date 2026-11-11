@@ -64,11 +64,11 @@ export function createSlidesAdapter(options: SlidesAdapterOptions = {}): OfficeA
   return {
     id: "slides",
     label: "Presentation",
-    extensions: ["pptx", "ppt", "odp"],
+    // OpenDocument presentations belong to @swarmloom/adapter-odf.
+    extensions: ["pptx", "ppt"],
     mime: [
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "application/vnd.ms-powerpoint",
-      "application/vnd.oasis.opendocument.presentation",
     ],
     async load(input: SourceInput, ctx: AdapterContext): Promise<OfficeLoadedSource> {
       const bytes = await readBytes(input, ctx.signal);

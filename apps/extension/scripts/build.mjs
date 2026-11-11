@@ -149,8 +149,12 @@ async function bundle(target, out, studioEntry) {
     charset: "utf8",
     logLevel: "warning",
     plugins: [noFormatAdapters],
-    // Readable output: store reviewers (AMO in particular) read the shipped code.
-    minify: false,
+    // Whitespace and syntax minification keeps the content script inside its 150 KB gzip budget,
+    // while identifiers stay unmangled so store reviewers (AMO in particular) can still read the
+    // shipped code; the AMO source package rebuilds it byte for byte.
+    minifySyntax: true,
+    minifyWhitespace: true,
+    minifyIdentifiers: false,
     // Path comments in the output are relative to this directory, whatever the caller's cwd, so a
     // reviewer rebuilding from the source package gets byte-identical files.
     absWorkingDir: root,

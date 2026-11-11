@@ -77,11 +77,10 @@ export const FORMAT_META: readonly FormatMeta[] = [
   {
     id: "slides",
     label: "Presentation",
-    extensions: ["pptx", "ppt", "odp"],
+    extensions: ["pptx", "ppt"],
     mime: [
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "application/vnd.ms-powerpoint",
-      "application/vnd.oasis.opendocument.presentation",
     ],
   },
   {
@@ -169,6 +168,49 @@ export const FORMAT_META: readonly FormatMeta[] = [
     id: "three",
     label: "3D model",
     extensions: ["glb", "gltf", "obj", "stl", "ply"],
-    mime: ["model/gltf-binary", "model/gltf+json", "model/obj", "model/stl", "model/x-ply"],
+    mime: [
+      "model/gltf-binary",
+      "model/gltf+json",
+      "model/obj",
+      "model/stl",
+      "model/x.stl-binary",
+      "model/x.stl-ascii",
+      "application/sla",
+      "application/vnd.ms-pki.stl",
+      "model/x-ply",
+      "application/ply",
+    ],
+  },
+  {
+    // After "sheet": .ods and the ODS MIME type stay with the spreadsheet adapter.
+    id: "odf",
+    label: "OpenDocument",
+    extensions: ["odt", "ott", "fodt", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "fodg"],
+    mime: [
+      "application/vnd.oasis.opendocument.text",
+      "application/vnd.oasis.opendocument.text-template",
+      "application/vnd.oasis.opendocument.spreadsheet",
+      "application/vnd.oasis.opendocument.spreadsheet-template",
+      "application/vnd.oasis.opendocument.presentation",
+      "application/vnd.oasis.opendocument.presentation-template",
+      "application/vnd.oasis.opendocument.graphics",
+    ],
+  },
+  { id: "epub", label: "EPUB e-book", extensions: ["epub"], mime: ["application/epub+zip"] },
+  { id: "rtf", label: "Rich Text (RTF)", extensions: ["rtf"], mime: ["application/rtf", "text/rtf"] },
+  { id: "ofd", label: "OFD document", extensions: ["ofd"], mime: ["application/ofd"] },
+  { id: "notebook", label: "Jupyter notebook", extensions: ["ipynb"], mime: ["application/x-ipynb+json"] },
+  { id: "terminal", label: "Terminal recording", extensions: ["cast"], mime: ["application/x-asciicast"] },
+  {
+    id: "diff",
+    label: "Patch",
+    extensions: ["diff", "patch"],
+    mime: ["text/x-diff", "text/x-patch", "application/x-patch"],
+  },
+  {
+    id: "mindmap",
+    label: "Mind map",
+    extensions: ["xmind", "mm"],
+    mime: ["application/vnd.xmind.workbook", "application/x-freemind", "application/x-xmind"],
   },
 ];

@@ -20,7 +20,7 @@ dev dependency and run locally. Nothing has been published to npm or to any exte
    - `swarmloom-firefox-X.Y.Z.zip`（桌面版和 Android 共用一个包）和 `swarmloom-firefox-source-X.Y.Z.zip`（给 AMO 审核的源码）
    - `swarmloom-safari-X.Y.Z.zip`（web 资源，用来生成 Xcode 工程）
    - `swarmloom-cli-X.Y.Z.tgz`（CLI 当前是 private 包，不发到 npm）
-   - `swarmloom-bookmarklet-X.Y.Z.zip`（书签工具安装页；仅当 `apps/bookmarklet` 存在时）
+   - `swarmloom-bookmarklet-X.Y.Z.zip`（书签工具安装页，与 Pages 上 `/swarmloom/bm/` 的构建相同）
    - `SHA256SUMS.txt`
    发布说明由 GitHub 按 `.github/release.yml` 的分类自动生成。手动推送 `v*` tag 或在 Actions 页面手动运行
    （输入已有的 tag）也会执行这一步。
