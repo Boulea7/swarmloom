@@ -10,12 +10,15 @@ describe("format metadata", () => {
     // Every registry format is known to Studio; optional ones (Lottie) may still be missing there.
     expect(FORMAT_META.map((m) => m.id)).toEqual(expect.arrayContaining(ids));
     expect(ids).toEqual(expect.arrayContaining(FORMAT_META.filter((m) => !m.optional).map((m) => m.id)));
-    for (const entry of listed) {
-      for (const ext of entry.extensions) {
-        // The registry resolves an extension to its first entry, e.g. .ods to the spreadsheet reader.
-        const expected = REGISTRY.find((f) => f.extensions.includes(ext))?.id;
-        expect([ext, formatOfName(`file.${ext}`)?.id]).toEqual([ext, expected]);
-      }
+    // Both directions, so an extension the registry drops (legacy .ppt/.xls) cannot linger here.
+    const extensions = new Set([
+      ...listed.flatMap((f) => f.extensions),
+      ...FORMAT_META.filter((m) => !m.optional).flatMap((m) => m.extensions),
+    ]);
+    for (const ext of extensions) {
+      // The registry resolves an extension to its first entry, e.g. .ods to the spreadsheet reader.
+      const expected = REGISTRY.find((f) => f.extensions.includes(ext))?.id;
+      expect([ext, formatOfName(`file.${ext}`)?.id]).toEqual([ext, expected]);
     }
   });
 

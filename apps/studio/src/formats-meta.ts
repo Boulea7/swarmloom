@@ -91,10 +91,11 @@ export const FORMAT_META: readonly FormatMeta[] = [
   {
     id: "slides",
     label: "Presentation",
-    extensions: ["pptx", "ppt"],
+    // Legacy .ppt/.xls are not listed, as in the registry: only their CFB streams reach these
+    // adapters, which ask for .pptx/.xlsx. Studio never offers them in the picker or as handlers.
+    extensions: ["pptx"],
     handlers: {
       "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
-      "application/vnd.ms-powerpoint": [".ppt"],
     },
     textual: false,
     light: false,
@@ -102,11 +103,10 @@ export const FORMAT_META: readonly FormatMeta[] = [
   {
     id: "sheet",
     label: "Spreadsheet",
-    extensions: ["xlsx", "xlsm", "xls", "ods", "csv", "tsv"],
+    extensions: ["xlsx", "xlsm", "ods", "csv", "tsv"],
     handlers: {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
       "application/vnd.ms-excel.sheet.macroenabled.12": [".xlsm"],
-      "application/vnd.ms-excel": [".xls"],
       "application/vnd.oasis.opendocument.spreadsheet": [".ods"],
       "text/csv": [".csv"],
       "text/tab-separated-values": [".tsv"],
