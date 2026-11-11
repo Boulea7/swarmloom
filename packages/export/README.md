@@ -1,6 +1,6 @@
 # @swarmloom/export
 
-Deterministic video and audio export for SwarmLoom, plus a quick in-browser recorder.
+Deterministic video and audio export for SwarmLoom: the CLI's render page, the same export inside a web page (`@swarmloom/export/browser`), and a quick in-browser recorder.
 
 ## Render page (used by the CLI)
 
@@ -25,6 +25,36 @@ Invalid `init` options reject with a `TypeError` that names the field. Recoverab
 - `createRenderApi(deps)` builds the `window.__swarmloom` object with your own loader and player factory. `deps.load` gets the frame height too (`{ format, height }`); a loaded source with a live page (`LoadedHtml.live`) gets it shown on go live.
 - `RenderSession` takes `live: true` to go live once the finale settles.
 
+## In-browser export
+
+`@swarmloom/export/browser` makes the CLI's video in a web page, with no screenshots and no share prompt. Studio's Export dialog uses it.
+
+```ts
+import { exportVideo } from "@swarmloom/export/browser";
+
+const result = await exportVideo({
+  input: { name: "notes.md", text },
+  width: 1280,
+  height: 720,
+  fps: 30,
+  settings: { seed: 1, theme: "light", sound: true },
+  signal,
+  onProgress: (p) => console.log(p.phase, p.frames, p.totalFrames, p.etaMs),
+});
+// result.blob is an MP4 (H.264) or WebM (VP9); result.extension says which.
+```
+
+- A hidden same-origin `<iframe srcdoc>` runs the render page (the code of `dist/render`) in its own window. The exporter calls `init()` and `step(1000 / fps)` in the CLI's order, so the same input, settings and seed give the same frames as `swarmloom render`. `settings` takes the `init` options other than input, size and fps.
+- Each frame is serialised into an SVG `<foreignObject>` image (computed styles inlined, shadow roots and same-origin iframes flattened, images and fonts embedded as data URLs), drawn into a canvas and read back as RGBA. Nothing depends on wall time. `result.frameSha256` holds the SHA-256 of every frame's pixels before encoding, so two runs can be compared.
+- WebCodecs encodes H.264 when `isConfigSupported` accepts it at this size, else VP9; [Mediabunny](https://github.com/Vanilagy/mediabunny) (MPL-2.0, used unmodified) writes the MP4 or WebM. Timestamps come from the frame index.
+- Sound: the run's sound log rendered with `OfflineAudioContext`, encoded as AAC or Opus. When neither encoder exists the video is silent, `result.soundUnsupported` is true and a warning says so.
+- The loop yields to the event loop after every frame; `signal` cancels between frames. Without WebCodecs `exportVideo` throws `UnsupportedExportError`; `hasWebCodecs()` checks first.
+- `maxDurationMs` (default 10 minutes) caps a build that never ends; `result.finished` is false then.
+
+Limits of the snapshot: custom `::marker` and `::first-letter` styles are not reproduced, `position: sticky` does not stick, WebGL canvases show what `toDataURL()` returns, and cross-origin images without CORS are left blank (with a warning).
+
+The frame loads one of this package's modules as a module script. In a bundled app that module shares chunks with the app's entry, so the entry must not start the app inside the frame: check `isExportFrame()` first. Style sheets a bundler's preloader links into the frame are switched off.
+
 ## Quick recording
 
 `recordElement(element, { mimeType?, fps?, videoBitsPerSecond?, audio?, signal? })` records an element live. It must be called from a click handler. It asks the user to share the current tab, crops the capture to the element (Element Capture, else Region Capture), mixes in audio and encodes with `MediaRecorder` (WebM, or MP4 where WebM is unavailable).
@@ -33,4 +63,4 @@ The `audio` option takes `"tab"` (default), an `AudioNode`, a `MediaStream` or `
 
 This is a real-time recording, not a deterministic export. `canRecordElement()` reports support. Failures throw a `RecordingError` with code `unsupported` (the message points to `npx swarmloom render`), `denied`, `wrong-surface` or `failed`.
 
-License: MIT.
+License: MIT. Mediabunny, a dependency of the in-browser export, is MPL-2.0.

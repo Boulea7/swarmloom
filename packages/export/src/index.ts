@@ -5,6 +5,7 @@
 
 export { renderAudioWav } from "./audio";
 export { base64ToBytes, bytesToBase64 } from "./base64";
+export { FRAME_ATTRIBUTE, isExportFrame } from "./browser/marker";
 export { exportFrames, type FrameExportOptions, type FrameExportResult } from "./frames";
 export {
   canRecordElement,
