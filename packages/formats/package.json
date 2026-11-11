@@ -51,6 +51,7 @@
     "@swarmloom/adapter-notebook": "workspace:*",
     "@swarmloom/adapter-terminal": "workspace:*",
     "@swarmloom/adapter-diff": "workspace:*",
-    "@swarmloom/adapter-mindmap": "workspace:*"
+    "@swarmloom/adapter-mindmap": "workspace:*",
+    "@swarmloom/adapter-lottie": "workspace:*"
   }
 }

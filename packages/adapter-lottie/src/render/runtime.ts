@@ -1,3 +1,7 @@
+// Pulls the module shims into every program that compiles this file from source (packages that
+// resolve @swarmloom/adapter-lottie through the "@swarmloom/source" condition do not include them).
+/// <reference path="./lottie-modules.d.ts" />
+
 import type { AnimationConfigWithData, AnimationItem } from "lottie-web";
 
 /** The part of lottie-web the adapter uses. */

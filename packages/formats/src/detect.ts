@@ -31,6 +31,8 @@ const MIMETYPES: readonly [string, string][] = [
   ["application/vnd.oasis.opendocument.", "odf"],
   ["application/epub+zip", "epub"],
 ];
+/** dotLottie animation entry: `animations/<id>.json` (v1) or `a/<id>.json` (v2), next to a root manifest.json. */
+const DOTLOTTIE_ANIMATION = /^(?:animations|a)\/[^/]+\.json$/;
 /** MIME types that say nothing about the content; detection ignores them. */
 const WEAK_MIME = new Set(["", "text/plain", "application/octet-stream", "binary/octet-stream", "application/unknown"]);
 
@@ -63,6 +65,8 @@ function byMime(mime: string, registry: readonly FormatEntry[]): string | null {
 function zipFormat(zip: ZipInfo): string | null {
   for (const [part, id] of ZIP_PARTS) if (zip.names.includes(part)) return id;
   for (const [folder, id] of ZIP_FOLDERS) if (zip.names.some((n) => n.startsWith(folder))) return id;
+  // Mirrors looksLikeDotLottie of @swarmloom/adapter-lottie.
+  if (zip.names.includes("manifest.json") && zip.names.some((n) => DOTLOTTIE_ANIMATION.test(n))) return "lottie";
   const mimetype = zip.mimetype;
   if (mimetype) return MIMETYPES.find(([type]) => mimetype.startsWith(type))?.[1] ?? null;
   if (zip.names.includes("OFD.xml")) return "ofd";
@@ -140,16 +144,17 @@ function inspectBytes(
  *
  * Order, from most to least trustworthy:
  *  1. live element -> `dom`;
- *  2. containers: ZIP sub-type from entry names (word/, ppt/, xl/, the ODF/EPUB mimetype entry,
- *     OFD.xml, XMind content) and CFB stream names (WordDocument, Workbook, PowerPoint Document),
- *     falling back to the extension for unknown or encrypted packages;
+ *  2. containers: ZIP sub-type from entry names (word/, ppt/, xl/, the dotLottie manifest and
+ *     animation, the ODF/EPUB mimetype entry, OFD.xml, XMind content) and CFB stream names
+ *     (WordDocument, Workbook, PowerPoint Document), falling back to the extension for unknown or
+ *     encrypted packages;
  *  3. magic bytes (PDF, RTF, glTF/GLB, PLY, binary STL, PNG, JPEG, GIF, WebP, AVIF, BMP), then
- *     custom `sniff` hooks of the registry;
+ *     custom `sniff` hooks of the registry (Lottie JSON);
  *  4. file extension (name, else URL path), then MIME type (generic types such as text/plain and
  *     application/octet-stream are ignored);
  *  5. text heuristics on the decoded head (SVG/HTML prologs, notebooks, asciicasts, patches,
- *     FreeMind maps, glTF JSON, OBJ/STL, Markdown vs code vs CSV). Binary content never reaches
- *     this step.
+ *     FreeMind maps, glTF JSON, OBJ/STL, Lottie JSON, Markdown vs code vs CSV). Binary content
+ *     never reaches this step.
  *
  * The result is restricted to ids present in `registry`.
  */

@@ -12,7 +12,8 @@ export type TextFormat =
   | "notebook"
   | "terminal"
   | "diff"
-  | "mindmap";
+  | "mindmap"
+  | "lottie";
 
 /** Only the head is inspected; classification must stay cheap for 50 MB inputs. */
 const SAMPLE_CHARS = 16384;
@@ -34,6 +35,37 @@ const PATCH_HEADER_RE = /^(?:diff --git |From [0-9a-f]{7,64} |commit [0-9a-f]{7,
 const PATCH_BODY_RE = /^(?:diff --git |--- |@@ )/m;
 const UNIFIED_DIFF_RE = /^--- [^\n]*\n\+\+\+ [^\n]*\n@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/m;
 const FREEMIND_RE = /^(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<map[\s>]/;
+/** Keys every Lottie (Bodymovin) head carries; mirrors `looksLikeLottieText` of @swarmloom/adapter-lottie. */
+const LOTTIE_KEYS: readonly RegExp[] = [
+  /"v"\s*:\s*"\d+\.\d+/,
+  /"fr"\s*:/,
+  /"ip"\s*:/,
+  /"op"\s*:/,
+  /"(?:layers|assets)"\s*:/,
+];
+
+/**
+ * True when text starts like a Lottie animation: a JSON object whose head has a version string
+ * `"v"`, the timing keys `"fr"`, `"ip"` and `"op"`, and `"layers"` or `"assets"`. Mirrored rather
+ * than imported: the adapter's entry pulls in the SVG adapter, and detection loads no adapter code.
+ *
+ * @param head Leading text of the input (the first 16K characters are enough).
+ */
+export function isLottieJson(head: string): boolean {
+  const sample = head.slice(0, SAMPLE_CHARS);
+  return /^\uFEFF?\s*\{/.test(sample) && LOTTIE_KEYS.every((re) => re.test(sample));
+}
+
+/**
+ * {@link isLottieJson} for raw UTF-8 bytes. Lottie files keep the `.json` extension, so this runs
+ * as a registry `sniff` hook, before names are consulted; anything not starting with `{` is
+ * rejected without decoding.
+ */
+export function isLottieJsonBytes(head: Uint8Array): boolean {
+  let i = head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf ? 3 : 0;
+  while (i < head.length && (head[i] === 0x20 || head[i] === 0x09 || head[i] === 0x0a || head[i] === 0x0d)) i++;
+  return head[i] === 0x7b && isLottieJson(new TextDecoder().decode(head.subarray(i, i + SAMPLE_CHARS)));
+}
 
 /** Notebooks, asciicasts, patches, FreeMind maps and RTF text, or null. */
 function secondWave(head: string): TextFormat | null {
@@ -111,7 +143,7 @@ function isProse(line: string): boolean {
  * Guesses the adapter id of a text document from its content.
  *
  * Strong signatures first (SVG/HTML prologs, RTF, notebooks, asciicasts, patches, FreeMind maps,
- * glTF JSON, OBJ/STL geometry, shebang), then a
+ * glTF JSON, OBJ/STL geometry, Lottie JSON, shebang), then a
  * weighted vote between Markdown and code syntax, with delimiter consistency for CSV/TSV.
  * Text without clear signals is treated as prose (Markdown) when most lines read like
  * sentences and as plain text (code adapter) otherwise, so any readable text can be played.
@@ -127,6 +159,8 @@ export function classifyText(text: string): TextFormat | null {
   const special = secondWave(head);
   if (special) return special;
   if (GLTF_RE.test(head) || STL_RE.test(head) || /^ply\r?\n/.test(head)) return "three";
+  // Before the generic JSON rule: an animation is not source code.
+  if (isLottieJson(head)) return "lottie";
   if (head.startsWith("#!") || head.startsWith("<?xml") || JSON_RE.test(head)) return "code";
 
   const lines = head.split(/\r?\n/, SAMPLE_LINES).filter((line) => line.trim() !== "");

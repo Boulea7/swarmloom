@@ -9,6 +9,7 @@ import { bytes, makeCfb, makeZip, wordStream } from "./fixtures";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const CFB = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+const LOTTIE = '{"v":"5.12.0","fr":30,"ip":0,"op":120,"w":480,"h":300,"layers":[]}';
 const binarySTL = (triangles: number): Uint8Array => {
   const out = new Uint8Array(84 + triangles * 50);
   new DataView(out.buffer).setUint32(80, triangles, true);
@@ -52,6 +53,22 @@ describe("detect", () => {
     ["epub by mimetype entry", { bytes: makeZip([{ name: "mimetype", data: "application/epub+zip" }]) }, "epub"],
     ["ofd by root OFD.xml", { bytes: makeZip([{ name: "OFD.xml" }, { name: "Doc_0/Document.xml" }]) }, "ofd"],
     ["nameless xmind", { bytes: makeZip([{ name: "content.json" }, { name: "metadata.json" }]) }, "mindmap"],
+    [
+      "dotLottie by manifest and animation",
+      { bytes: makeZip([{ name: "manifest.json" }, { name: "a/loop.json" }]) },
+      "lottie",
+    ],
+    [
+      "lottie json beats its .json name",
+      { name: "loop.json", bytes: bytes([0xef, 0xbb, 0xbf], ` ${LOTTIE}`) },
+      "lottie",
+    ],
+    ["pasted lottie json", { text: LOTTIE }, "lottie"],
+    [
+      "a plain .json file stays code",
+      { name: "package.json", bytes: bytes('{"name":"x","version":"1.0.0","layers":[]}') },
+      "code",
+    ],
     ["rtf saved as .doc", { name: "letter.doc", bytes: bytes([0xef, 0xbb, 0xbf], "{\\rtf1\\ansi Hi}") }, "rtf"],
     ["notebook json", { text: '{\n "cells": [{ "cell_type": "markdown" }],\n "nbformat": 4\n}' }, "notebook"],
     ["asciicast v2", { text: '{"version": 2, "width": 80, "height": 24}\n[0.1, "o", "hi"]\n' }, "terminal"],

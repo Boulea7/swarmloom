@@ -594,6 +594,9 @@ importers:
       '@swarmloom/adapter-image':
         specifier: workspace:*
         version: link:../adapter-image
+      '@swarmloom/adapter-lottie':
+        specifier: workspace:*
+        version: link:../adapter-lottie
       '@swarmloom/adapter-markdown':
         specifier: workspace:*
         version: link:../adapter-markdown
