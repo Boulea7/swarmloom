@@ -295,8 +295,10 @@ describe("Engine", () => {
     expect(h.engine.soundLog.slice(0, head.length)).toEqual(head);
     expect(h.engine.progress.built).toBeGreaterThan(built);
     expect(h.engine.state).toBe("paused");
+    expect(h.engine.time).toBeCloseTo(2000, 3);
     h.engine.seek(1000);
     expect(h.stage.calls.reset).toBe(1);
+    expect(h.engine.time).toBeCloseTo(1000, 3);
     h.engine.resume();
     h.engine.finish();
     h.engine.seek(3000);

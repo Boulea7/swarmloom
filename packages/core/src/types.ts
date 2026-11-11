@@ -493,6 +493,11 @@ export interface Player {
   readonly progress: { built: number; total: number };
   /** Every sound event emitted so far (for offline audio rendering of exports). */
   readonly soundLog: readonly SoundEvent[];
+  /**
+   * Optional. Player time in ms since play(), pauses excluded: the timeline {@link seek} moves on.
+   * Pairs with {@link eta} to estimate where the build ends.
+   */
+  readonly time?: number;
   /** Starts intro + build. Resolves when the build (not the finale) completes. */
   play(): Promise<void>;
   pause(): void;

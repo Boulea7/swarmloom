@@ -265,6 +265,11 @@ export class Engine implements Player {
     return this.#soundLog;
   }
 
+  /** Player time since play(), ms: the timeline seek() moves on. */
+  get time(): number {
+    return this.#pt;
+  }
+
   /** Pool size (explicit or auto). */
   get agentCount(): number {
     return this.#count;
