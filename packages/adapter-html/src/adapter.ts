@@ -6,12 +6,13 @@ import {
   type SourceText,
   type TextAdapter,
 } from "@swarmloom/adapter-code";
-import type { AdapterContext, Blueprint, BlueprintSource, SourceInput } from "@swarmloom/core";
+import type { AdapterContext, Blueprint, BlueprintSource, Plugin, SourceInput } from "@swarmloom/core";
 import { decodeHtml, isFullDocument } from "./detect";
 import { renderInFrame } from "./frame";
 import { applyNetworkPolicy, type NetworkPolicy } from "./policy";
 import { prepareDocument } from "./prepare";
 import { sanitizeFragment } from "./sanitize";
+import { findTimelinePlugin, type KeyframeTimeline, timelineLayers } from "./timeline";
 
 /** Options of {@link createHtmlAdapter}. */
 export interface HtmlAdapterOptions {
@@ -52,6 +53,13 @@ export interface HtmlAdapterOptions {
  */
 export interface HtmlLoadContext extends AdapterContext {
   network?: NetworkPolicy;
+  /**
+   * Plugins the host registers with its player. When one is named `anim:timeline` (from
+   * @swarmloom/adapter-lottie, looked up by name, not imported), animated elements of a full
+   * document also get a keyframe timeline before their animations play again; otherwise nothing
+   * changes.
+   */
+  plugins?: readonly Plugin[];
 }
 
 /** The live page behind a capture (see {@link HtmlAdapterOptions.keepLive}). */
@@ -91,6 +99,8 @@ function checkContext(ctx: HtmlLoadContext): void {
     throw new RangeError(`html: ctx.width must be positive, got ${ctx.width}`);
   if (ctx.theme !== "light" && ctx.theme !== "dark") throw new TypeError(`html: ctx.theme must be "light" or "dark"`);
   checkPolicy(ctx.network, "ctx.network policy");
+  if (ctx.plugins !== undefined && !Array.isArray(ctx.plugins))
+    throw new TypeError("html: ctx.plugins must be an array");
 }
 
 function positive(name: string, value: number | undefined, fallback: number): number {
@@ -149,6 +159,7 @@ export function createHtmlAdapter(options: HtmlAdapterOptions = {}): TextAdapter
       checkContext(ctx);
       // The stricter policy wins: a host's "none" turns remote loading off for this load.
       const network: NetworkPolicy = ctx.network === "none" ? "none" : configured;
+      const timelinePlugin = findTimelinePlugin(ctx.plugins);
       ctx.signal?.throwIfAborted();
       const win = ctx.document.defaultView;
       if (!win) throw new Error("html: ctx.document must belong to a window");
@@ -206,6 +217,7 @@ export function createHtmlAdapter(options: HtmlAdapterOptions = {}): TextAdapter
         loadTimeoutMs,
         settleMs: positive("settleMs", options.settleMs, DEFAULT_SETTLE_MS),
         infinitePhase: options.infinitePhase,
+        keyframes: timelinePlugin !== undefined,
         signal: ctx.signal,
       });
       let kept = false;
@@ -220,6 +232,7 @@ export function createHtmlAdapter(options: HtmlAdapterOptions = {}): TextAdapter
           signal: ctx.signal,
         });
         const result: LoadedHtml = { blueprint: finish(blueprint, source, ctx.theme), warnings };
+        if (timelinePlugin && frame.timelines) addTimelines(result, timelinePlugin, frame.timelines, ctx.maxLayers);
         if (options.keepLive) {
           kept = true;
           result.live = { frame: frame.frame, document: frame.doc, resume: () => frame.frozen.resume() };
@@ -231,6 +244,22 @@ export function createHtmlAdapter(options: HtmlAdapterOptions = {}): TextAdapter
       }
     },
   };
+}
+
+/** Appends the timeline layers that fit the layer budget and lists the plugin the blueprint now needs. */
+function addTimelines(
+  result: LoadedHtml,
+  plugin: Plugin,
+  timelines: readonly KeyframeTimeline[],
+  maxLayers: number | undefined,
+): void {
+  const { blueprint } = result;
+  const room = maxLayers === undefined ? timelines.length : Math.floor(maxLayers) - blueprint.layers.length;
+  const layers = timelineLayers(timelines.slice(0, Math.max(0, room)), blueprint.layers, blueprint.size);
+  if (layers.length === 0) return;
+  blueprint.layers.push(...layers);
+  blueprint.plugins = [...(blueprint.plugins ?? []), plugin.name];
+  result.plugins = [...(result.plugins ?? []), plugin];
 }
 
 function refusedNote(count: number, network: NetworkPolicy): string {

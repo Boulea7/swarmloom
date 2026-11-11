@@ -1,8 +1,8 @@
-import type { Blueprint } from "@swarmloom/core";
+import type { Blueprint, CustomLayer, Plugin } from "@swarmloom/core";
 import { afterEach, describe, expect, it } from "vitest";
 import fadeIn from "../../../examples/html/fade-in.html?raw";
 import landing from "../../../examples/html/landing.html?raw";
-import { createHtmlAdapter } from "../src/index";
+import { createHtmlAdapter, type HtmlLoadContext, TIMELINE_PLUGIN } from "../src/index";
 import { probeSnapshot } from "./probe";
 
 const ctx = { document, width: 1280, theme: "light" as const };
@@ -83,6 +83,42 @@ describe("html examples in Chromium", () => {
     } finally {
       loaded.dispose?.();
     }
+  });
+
+  it("adds keyframe timelines under animated elements only when the host registers anim:timeline", async () => {
+    const timeline: Plugin = {
+      name: TIMELINE_PLUGIN,
+      tasks: {
+        [TIMELINE_PLUGIN]: function* () {
+          yield 0;
+        },
+      },
+    };
+    const plain = await adapter.load({ name: "fade-in.html", text: fadeIn }, ctx);
+    expect(plain.plugins).toBeUndefined();
+    const registered: HtmlLoadContext = { ...ctx, plugins: [timeline] };
+    const { blueprint, plugins } = await adapter.load({ name: "fade-in.html", text: fadeIn }, registered);
+    const bars = blueprint.layers.filter((l): l is CustomLayer => l.kind === "custom" && l.task === TIMELINE_PLUGIN);
+    // The data has the shape the Lottie zone's plugin reads; rest is the captured pose.
+    const timings = [
+      { duration: 900, keyframes: [0, 900], rest: 900 },
+      { duration: 1300, keyframes: [400, 1300], rest: 1300 },
+      { duration: 2000, keyframes: [0, 1000, 2000], rest: 1000 },
+    ];
+    expect(bars.map((l) => l.data)).toEqual(timings);
+    for (const bar of bars) {
+      // A bar sits in free space under or above its element: nothing else on the page is under it.
+      const b = bar.box;
+      const under = blueprint.layers.filter(
+        (l) =>
+          l !== bar && l.box.x < b.x + b.w && b.x < l.box.x + l.box.w && l.box.y < b.y + b.h && b.y < l.box.y + l.box.h,
+      );
+      expect(under.map((l) => l.id)).toEqual([]);
+    }
+    expect(blueprint.plugins).toEqual([TIMELINE_PLUGIN]);
+    expect(plugins).toEqual([timeline]);
+    const bad = { ...ctx, plugins: { [TIMELINE_PLUGIN]: timeline } } as unknown as HtmlLoadContext;
+    await expect(adapter.load({ text: fadeIn }, bad)).rejects.toThrow(/ctx.plugins must be an array/);
   });
 
   it("never runs scripts or loads remote style sheets, and says so", async () => {

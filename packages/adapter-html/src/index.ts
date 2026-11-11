@@ -18,3 +18,5 @@ export { allowedResource, applyNetworkPolicy, rewriteCssUrls } from "./policy";
 export type { PreparedDocument, PrepareOptions } from "./prepare";
 export { contentSecurityPolicy, prepareDocument } from "./prepare";
 export { sanitizeDocument, sanitizeFragment } from "./sanitize";
+export type { KeyframeTimeline, TimelineData } from "./timeline";
+export { MAX_TIMELINE_MS, MAX_TIMELINES, TIMELINE_PLUGIN } from "./timeline";
