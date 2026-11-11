@@ -33,7 +33,9 @@ import {
   fitSheets,
   inheritHeadersAndFooters,
   lengthPx,
+  numberPageFields,
   styleClass,
+  tagPageNumbers,
   unwrapNoteReferenceRuns,
 } from "../src/preview";
 
@@ -298,6 +300,39 @@ describe("page breaks handed to docx-preview", () => {
     expect(plain.verticalAlign).toBe("sup");
   });
 
+  it("numbers PAGE and NUMPAGES fields per sheet, restarting where a section says so", () => {
+    const field = (code: string, ...result: Node[]): Node[] => [
+      { type: "run", fieldRun: true, children: [{ type: "complexField", charType: "begin" }] },
+      { type: "run", fieldRun: true, children: [{ type: "instruction", text: code }] },
+      { type: "run", fieldRun: true, children: [{ type: "complexField", charType: "separate" }] },
+      ...result,
+      { type: "run", fieldRun: true, children: [{ type: "complexField", charType: "end" }] },
+    ];
+    const [pageRun, extraRun] = [run(t("1")), run(t("0"))];
+    const pagesRun = run(t("9"));
+    const footer = p(
+      {},
+      ...field(" PAGE \\* MERGEFORMAT ", pageRun, extraRun),
+      run(t(" / ")),
+      ...field("NUMPAGES", pagesRun),
+    );
+    const front = p({ sectionProps: { pageNumber: { format: "lowerRoman" } } }, run(t("front")));
+    const main = p({}, run(t("main")));
+    const body = { type: "document", children: [front, main], props: { type: "nextPage", pageNumber: { start: 1 } } };
+    const sections = tagPageNumbers(body, [{ rootElement: { type: "footer", children: [footer] } }]);
+    expect(extraRun.children).toEqual([]);
+
+    // Sheets as docx-preview lays them out: the front section runs over two sheets.
+    const sheet = (block?: Node) => {
+      const el = document.createElement("section");
+      el.innerHTML = `${block ? `<p class="${block.className}"></p>` : ""}<footer><span class="${pageRun.className}">1</span><span class="${pagesRun.className}">9</span></footer>`;
+      return el;
+    };
+    const sheets = [sheet(front), sheet(front), sheet(main)];
+    numberPageFields(sheets, sections);
+    expect(sheets.map((s) => s.querySelector("footer")?.textContent)).toEqual(["i3", "ii3", "13"]);
+  });
+
   it("ignores malformed models", () => {
     expect(() => adjustPageBreaks(null, true)).not.toThrow();
     expect(() => adjustPageBreaks({ children: [null, 3, { type: "paragraph", children: "x" }] }, true)).not.toThrow();
@@ -305,6 +340,9 @@ describe("page breaks handed to docx-preview", () => {
       inheritHeadersAndFooters({ children: [{ type: "paragraph", sectionProps: 1 }], props: null }),
     ).not.toThrow();
     expect(() => unwrapNoteReferenceRuns("x")).not.toThrow();
+    expect(tagPageNumbers({ children: [null, run({ type: "complexField", charType: "end" })] }, [null, {}])).toEqual(
+      [],
+    );
   });
 });
 

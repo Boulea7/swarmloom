@@ -11,10 +11,11 @@ const { blueprint, notes, pages, renderer } = await loadDocx({ name: "report.doc
 ## Pipeline
 
 1. **Checks.** The file must be at most 100 MB (`maxBytes`). The ZIP package may hold at most 10,000 entries and 512 MiB unpacked, with a compression ratio of at most 200:1. ZIP64, encrypted entries and unsafe entry names are rejected. Every XML part is checked before it is parsed: DTD and entity declarations are refused and nesting is capped at 256 levels. Password-protected files and Word 97-2003 files renamed to .docx are recognised and reported.
-2. **Rendering.** docx-preview renders the document into a closed sandbox, with pictures as data URLs. Comments, tracked changes and embedded alternative-format chunks are not rendered. Before rendering, the parsed model is corrected in three places:
+2. **Rendering.** docx-preview renders the document into a closed sandbox, with pictures as data URLs. Comments, tracked changes and embedded alternative-format chunks are not rendered. Before rendering, the parsed model is corrected in four places:
    - sheets start at sections and page breaks (see Pagination);
    - a footnote reference in a superscript run is rendered once;
-   - sections without their own header or footer inherit the previous section's, as in Word.
+   - sections without their own header or footer inherit the previous section's, as in Word;
+   - PAGE and NUMPAGES fields show each sheet's number and the sheet count instead of the value Word saved, with section restarts and number formats (`w:pgNumType`).
 3. **Clean-up.** Scripts, frames, embeds, forms, event handlers and `@import` are removed. Links keep http(s), mailto and in-document targets; pictures and styles keep data and blob URLs only (CSS escapes are decoded first; `image-set()` and `src()` are disabled), so nothing is fetched from the network. Fonts that are not installed get metric-compatible fallbacks from the shared table in `@swarmloom/core` (`FONT_FALLBACKS`, decisions F01: Calibri to Carlito, Cambria to Caladea, SimSun to Noto Serif SC, and so on). List numbers and bullets become real text. Heading paragraphs get the ARIA heading role, so snapshots classify them as headings.
 4. **Snapshot.** Sheets wider than the screen are narrowed: margins shrink and text reflows, nothing is scaled. The sheets are then measured and snapshotted with snapshot-dom, and the content is grouped under its page layers.
 
@@ -28,7 +29,7 @@ Word's automatic page flow is not imitated. A new sheet starts only at:
 - an explicit page break, or a paragraph with "page break before";
 - a page break Word saved when the file was last laid out (`w:lastRenderedPageBreak`). Turn this off with `savedPageBreaks: false`.
 
-Content between two breaks stays on one sheet, which grows as needed. When a sheet runs well past its page height, `notes` says that pages can be longer than in Word.
+Content between two breaks stays on one sheet, which grows as needed. When a sheet runs well past its page height, `notes` says that pages can be longer than in Word. Page numbers count sheets, so they match Word's wherever the sheets do.
 
 ## Notes and errors
 

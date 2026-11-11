@@ -83,13 +83,17 @@ describe.each(["preview", "plain"] as const)("DOCX sample with the %s renderer",
     expect(bp.icon).toMatch(/^data:image\/svg\+xml/);
   });
 
-  it("shows each footnote once and repeats linked headers", () => {
+  it("shows each footnote once, repeats linked headers and numbers the footers", () => {
     const texts = textsOf(loaded.blueprint);
     const note = texts.filter((t) => t.text.includes("All figures are for demonstration only."));
     const headers = texts.filter((t) => t.text.includes("SwarmLoom · 群织"));
     if (renderer === "preview") {
       expect(note).toHaveLength(1);
       expect(headers).toHaveLength(3);
+      // The footer's PAGE field saved "1"; every sheet shows its own number.
+      const html = new DOMParser().parseFromString(calls[0].html, "text/html");
+      const footers = Array.from(html.querySelectorAll("footer"), (f) => f.textContent?.replace(/\s+/g, " ").trim());
+      expect(footers).toEqual(["第 1 页 · Page", "第 2 页 · Page", "第 3 页 · Page"]);
     } else {
       // The simplified view leaves notes, headers and footers out (and says so).
       expect(note).toHaveLength(0);
