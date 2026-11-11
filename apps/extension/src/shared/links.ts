@@ -3,6 +3,7 @@
  * Every value placed in a query string is validated first; nothing from a page is trusted.
  */
 
+import { FORMAT_META } from "@swarmloom/formats/meta";
 import { BUNDLED_STUDIO } from "./build-info";
 import type { BlockReason } from "./restricted";
 
@@ -12,28 +13,18 @@ export const HOSTED_STUDIO = "https://boulea7.github.io/swarmloom/studio/";
 /** Longest source URL handed to Studio; longer values are dropped instead of truncated. */
 export const MAX_SOURCE_URL = 4096;
 
-/** File extensions Studio can open from a link (lower case, no dot). */
+/**
+ * Formats left out of the link menu: web pages are rebuilt in place, and source-code extensions
+ * (.php, .js, .json and the like) mostly name pages, scripts or API endpoints on the web.
+ */
+const PAGE_LIKE_FORMATS: ReadonlySet<string> = new Set(["dom", "html", "code"]);
+
+/**
+ * File extensions Studio can open from a link (lower case, no dot). Derived from the format
+ * registry Studio itself loads, so a new adapter shows up in the menu without a second list.
+ */
 export const STUDIO_EXTENSIONS: readonly string[] = [
-  "pdf",
-  "docx",
-  "doc",
-  "md",
-  "markdown",
-  "svg",
-  "pptx",
-  "xlsx",
-  "csv",
-  "glb",
-  "gltf",
-  "obj",
-  "stl",
-  "ply",
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "gif",
-  "avif",
+  ...new Set(FORMAT_META.filter((f) => !PAGE_LIKE_FORMATS.has(f.id)).flatMap((f) => f.extensions)),
 ];
 
 /** Match patterns for context menus on links/images Studio can open. */

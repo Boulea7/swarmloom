@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { detectBackgroundCapabilities, detectPageCapabilities, fileAccessState } from "../src/shared/capabilities";
 import { createTranslator, matchLocale, resolveLocale } from "../src/shared/i18n";
-import { noticeUrl, studioUrl } from "../src/shared/links";
+import { noticeUrl, studioLinkPatterns, studioUrl } from "../src/shared/links";
 import { parseCaptureReply, parseLaunch, parseMessage } from "../src/shared/messages";
 import { DEFAULT_PREFS, loadPrefs, PREFS_KEY, sanitizePrefs, savePrefs, toPlayerOptions } from "../src/shared/prefs";
 import { type ClassifyContext, classifyInjectionError, classifyUrl } from "../src/shared/restricted";
@@ -121,6 +121,14 @@ describe("messages, links and locales", () => {
     const notice = new URL(noticeUrl(getURL, "store", `https://x/${"a".repeat(5000)}`));
     expect(notice.searchParams.get("reason")).toBe("store");
     expect(notice.searchParams.has("url")).toBe(false);
+  });
+
+  it("offers the Studio link menu for every file format Studio reads, but not for web pages", () => {
+    const patterns = studioLinkPatterns(false);
+    for (const ext of ["pdf", "epub", "rtf", "odt", "ofd", "ipynb", "cast", "patch", "xmind", "bmp", "jfif"]) {
+      expect(patterns, ext).toContain(`*://*/*.${ext}`);
+    }
+    for (const ext of ["html", "php"]) expect(patterns, ext).not.toContain(`*://*/*.${ext}`);
   });
 
   it("resolves locales with Chinese script variants and English fallback", () => {
