@@ -9,9 +9,7 @@ export const AVAILABLE = 2;
 export const RUNNING = 3;
 export const DONE = 4;
 
-/* Pick scoring (lower is better). Regions dominate tiers, tiers dominate position. */
-const REGION_ABOVE = 1e12;
-const REGION_BELOW = 2e12;
+/* Pick scoring (lower is better). Tiers dominate position. */
 const TIER_WEIGHT = 1e9;
 /** Reading position weight of x relative to y inside the viewport. */
 const X_WEIGHT = 0.2;
@@ -25,8 +23,9 @@ const GUIDE_BONUS_VIEWPORTS = 2;
  * idle agent may take, and aggregates for progress, ETA and the tour.
  *
  * A task whose dependencies are done is available when its `unlockY` is within the boundary,
- * otherwise it waits in a heap ordered by `unlockY`. Completing a task wakes only its direct
- * dependents (gates complete in the same cascade), so no step scans the whole graph.
+ * otherwise it waits in a heap ordered by `unlockY`. Agents only pick available tasks in sight.
+ * Completing a task wakes only its direct dependents (gates complete in the same cascade), so no
+ * step scans the whole graph.
  */
 export class Schedule {
   readonly plan: Plan;
@@ -125,13 +124,22 @@ export class Schedule {
     }
   }
 
+  /** True when task `i` can be seen in the vertical span [top, bottom] (or needs no gesture at all). */
+  #inSight(i: number, top: number, bottom: number): boolean {
+    const sh = this.plan.seenH[i] as number;
+    if (sh < 0) return true;
+    const sy = this.plan.seenY[i] as number;
+    return sy <= bottom && sy + sh >= top;
+  }
+
   /**
-   * Best available task for an agent at (ax, ay), or -1. Order: tasks intersecting the viewport
-   * (guides first, then reading position plus distance), then the nearest ones above it (just
-   * scrolled past), then the nearest ones below. Priority tiers order tasks within each region.
+   * Best available task in sight for an agent at (ax, ay), or -1. Only tasks whose visible part
+   * intersects the viewport qualify: the swarm never works on what nobody can see (the engine
+   * fades such layers in without cursors instead). Guides first, then reading position plus
+   * distance; priority tiers order everything.
    */
   pick(ax: number, ay: number, vp: Rect): number {
-    const { x, y, h, tier, flags } = this.plan;
+    const { x, seenY, tier, flags } = this.plan;
     const top = vp.y;
     const bottom = vp.y + vp.h;
     const guideBonus = GUIDE_BONUS_VIEWPORTS * Math.max(1, vp.h);
@@ -139,19 +147,13 @@ export class Schedule {
     let bestScore = Number.POSITIVE_INFINITY;
     for (let k = 0; k < this.#availCount; k++) {
       const i = this.#avail[k] as number;
-      const ty = y[i] as number;
-      const tb = ty + (h[i] as number);
-      let score: number;
-      if (tb < top) score = REGION_ABOVE + (top - tb);
-      else if (ty > bottom) score = REGION_BELOW + (ty - bottom);
-      else {
-        const anchorY = Math.max(ty, top);
-        const tx = x[i] as number;
-        const dx = tx - ax;
-        const dy = anchorY - ay;
-        score = anchorY - top + tx * X_WEIGHT + Math.sqrt(dx * dx + dy * dy) * DISTANCE_WEIGHT;
-        if ((flags[i] as number) & FLAG_GUIDE) score -= guideBonus;
-      }
+      if (!this.#inSight(i, top, bottom)) continue;
+      const anchorY = Math.max(seenY[i] as number, top);
+      const tx = x[i] as number;
+      const dx = tx - ax;
+      const dy = anchorY - ay;
+      let score = anchorY - top + tx * X_WEIGHT + Math.sqrt(dx * dx + dy * dy) * DISTANCE_WEIGHT;
+      if ((flags[i] as number) & FLAG_GUIDE) score -= guideBonus;
       score += (tier[i] as number) * TIER_WEIGHT;
       if (score < bestScore || (score === bestScore && i < best)) {
         bestScore = score;
@@ -159,6 +161,34 @@ export class Schedule {
       }
     }
     return best;
+  }
+
+  /** True when an available task is in sight of `vp` (what {@link pick} could return). */
+  hasWorkInSight(vp: Rect): boolean {
+    const top = vp.y;
+    const bottom = vp.y + vp.h;
+    for (let k = 0; k < this.#availCount; k++) {
+      if (this.#inSight(this.#avail[k] as number, top, bottom)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Estimates of the unfinished tasks in sight of `vp`, and whether any unfinished task lies out
+   * of sight. One pass over the tasks; meant for ETA polling, not for every frame.
+   */
+  remainingInSight(vp: Rect): { estimate: number; outside: boolean } {
+    const { taskCount, estimate } = this.plan;
+    const top = vp.y;
+    const bottom = vp.y + vp.h;
+    let sum = 0;
+    let outside = false;
+    for (let i = 0; i < taskCount; i++) {
+      if (this.status[i] === DONE) continue;
+      if (this.#inSight(i, top, bottom)) sum += estimate[i] as number;
+      else outside = true;
+    }
+    return { estimate: sum, outside };
   }
 
   /** Marks an available task as taken by an agent. */
@@ -193,13 +223,21 @@ export class Schedule {
     this.#topCursor = plan.byTop.length;
   }
 
-  /** Top edge of the earliest (by top edge) task that is not done; +Infinity when all are. */
-  frontier(): number {
-    const { byTop, y } = this.plan;
+  /**
+   * Top edge of the earliest (by top edge) task that is not done and does not end above
+   * `fromY`; +Infinity when there is none. Unfinished work the viewer scrolled past does not
+   * hold the tour back (it fades in once the crew runs out of work in sight).
+   */
+  frontier(fromY = Number.NEGATIVE_INFINITY): number {
+    const { byTop, y, h } = this.plan;
     while (this.#topCursor < byTop.length && this.status[byTop[this.#topCursor] as number] === DONE) {
       this.#topCursor++;
     }
-    return this.#topCursor < byTop.length ? (y[byTop[this.#topCursor] as number] as number) : Number.POSITIVE_INFINITY;
+    for (let k = this.#topCursor; k < byTop.length; k++) {
+      const i = byTop[k] as number;
+      if (this.status[i] !== DONE && (y[i] as number) + (h[i] as number) > fromY) return y[i] as number;
+    }
+    return Number.POSITIVE_INFINITY;
   }
 
   /**

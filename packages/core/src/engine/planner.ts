@@ -1,4 +1,4 @@
-import type { Blueprint, Layer } from "../types";
+import type { Blueprint, Layer, Rect } from "../types";
 import { DEFAULT_ESTIMATE_MS } from "./constants";
 import { IndexHeap } from "./heap";
 import { type RoleKey, roleFor } from "./labels";
@@ -34,6 +34,13 @@ export interface Plan {
   readonly y: Float64Array;
   readonly w: Float64Array;
   readonly h: Float64Array;
+  /**
+   * Vertical span of the part of each task's layer that can be seen: the box cut by its clip.
+   * `seenH` is -1 when nothing can be seen (choreographies reveal such layers without a gesture,
+   * so any agent may take them, wherever the viewport is).
+   */
+  readonly seenY: Float64Array;
+  readonly seenH: Float64Array;
   /** Reading-order rank per node (gates: -1). */
   readonly rank: Float64Array;
   /** Dense rank of Layer.priority per task (0 when no layer sets a priority). */
@@ -129,6 +136,8 @@ export function buildPlan(blueprint: Blueprint, opts: PlanOptions): Plan {
   const y = new Float64Array(n);
   const w = new Float64Array(n);
   const h = new Float64Array(n);
+  const seenY = new Float64Array(n);
+  const seenH = new Float64Array(n);
   const keys: string[] = [];
   const roles: RoleKey[] = [];
   const graph = new GraphBuilder();
@@ -152,6 +161,7 @@ export function buildPlan(blueprint: Blueprint, opts: PlanOptions): Plan {
     y[i] = finiteOr(layer.box.y, 0);
     w[i] = Math.max(0, finiteOr(layer.box.w, 0));
     h[i] = Math.max(0, finiteOr(layer.box.h, 0));
+    seenSpan(layer, i, seenY, seenH);
     if (layer.parent !== undefined) parentOf[i] = resolve(layer.parent, i);
   }
 
@@ -226,6 +236,8 @@ export function buildPlan(blueprint: Blueprint, opts: PlanOptions): Plan {
     y,
     w,
     h,
+    seenY,
+    seenH,
     rank,
     tier,
     unlockY,
@@ -239,6 +251,33 @@ export function buildPlan(blueprint: Blueprint, opts: PlanOptions): Plan {
     totalEstimate,
     diagnostics,
   };
+}
+
+/** A rect with finite coordinates and a positive size. */
+function isVisibleRect(r: Rect | undefined): boolean {
+  return !!r && Number.isFinite(r.x) && Number.isFinite(r.y) && r.w > 0 && r.h > 0 && Number.isFinite(r.w + r.h);
+}
+
+/**
+ * Writes the visible vertical span of task `i` into `seenY`/`seenH`: its box, cut by its clip.
+ * `seenH` is -1 when nothing of the layer can be seen (empty or malformed box, malformed clip, or a
+ * clip that leaves nothing), the same rule choreographies use to reveal a layer without a gesture.
+ */
+function seenSpan(layer: Layer, i: number, seenY: Float64Array, seenH: Float64Array): void {
+  const { box, clip } = layer;
+  seenY[i] = Number.isFinite(box.y) ? box.y : 0;
+  seenH[i] = -1;
+  if (!isVisibleRect(box)) return;
+  if (clip === undefined) {
+    seenH[i] = box.h;
+    return;
+  }
+  if (!Number.isFinite(clip.x + clip.y + clip.w + clip.h) || clip.w < 0 || clip.h < 0) return;
+  const top = Math.max(box.y, clip.y);
+  const bottom = Math.min(box.y + box.h, clip.y + clip.h);
+  if (bottom <= top || Math.min(box.x + box.w, clip.x + clip.w) <= Math.max(box.x, clip.x)) return;
+  seenY[i] = top;
+  seenH[i] = bottom - top;
 }
 
 function safeEstimate(opts: PlanOptions, layer: Layer): number {

@@ -18,7 +18,7 @@ import { Camera } from "./camera";
 import {
   EXIT_MS,
   FINALE_SETTLE_MS,
-  IDLE_EXPAND_MS,
+  IDLE_RUSH_MS,
   INTRO_MIN_MS,
   INTRO_SPAN_MS,
   LOOKAHEAD_SHARE,
@@ -32,6 +32,8 @@ import {
   REDUCED_TOTAL_MS,
   RULER_GRACE_MS,
   SCROLL_PX_PER_AGENT,
+  TOUR_LEAD_SHARE,
+  TOUR_STARVED_LEAD_SHARE,
 } from "./constants";
 import { restAfterTask, sendAway } from "./crew";
 import { CrossFade, type CrossFadeTiming } from "./crossfade";
@@ -101,6 +103,10 @@ const FINALE_SHARE = 0.7;
 const MAX_CHAIN = 8;
 /** "Finish now": remaining layers fade in within this budget. */
 const RUSH_TIMING: CrossFadeTiming = { fadeMs: 180, totalMs: 1200, maxStaggerMs: 40 };
+/** The camera counts as standing still while the viewport stays within this many px. */
+const IDLE_STILL_PX = 1;
+/** Layers out of sight when the crew ran out of work in sight: a quick batch nobody watches. */
+const OUT_OF_SIGHT_TIMING: CrossFadeTiming = { fadeMs: 160, totalMs: 700, maxStaggerMs: 12 };
 const REDUCED_TIMING: CrossFadeTiming = {
   fadeMs: REDUCED_FADE_MS,
   totalMs: REDUCED_TOTAL_MS,
@@ -209,6 +215,8 @@ export class Engine implements Player {
 
   #userScrolled = false;
   #idleFor = 0;
+  /** Viewport top when the crew's idle wait (re)started: a camera that moves restarts it. */
+  #idleY = 0;
   #finaleAt = 0;
   #liveAt = 0;
   #dissolving = false;
@@ -219,6 +227,8 @@ export class Engine implements Player {
   #diagnosticsShown = false;
   #seeking = false;
   #soundFailed = false;
+  /** Set during a frame once a pick found no available task in sight. */
+  #nothingInSight = false;
 
   constructor(deps: EngineDeps) {
     this.#deps = deps;
@@ -367,9 +377,14 @@ export class Engine implements Player {
       this.#build.abort(a);
       restAfterTask(a, this.#sim);
     }
+    this.#fade = this.#fadeRest(RUSH_TIMING);
+  }
+
+  /** A cursor-free pass over every unfinished layer in plan order, starting now. */
+  #fadeRest(timing: CrossFadeTiming): CrossFade {
     const { status } = this.#build.schedule;
     const queue = this.#plan.order.filter((i) => status[i] !== DONE);
-    this.#fade = new CrossFade(queue, this.#plan.layers, this.#tt, RUSH_TIMING);
+    return new CrossFade(queue, this.#plan.layers, this.#tt, timing);
   }
 
   goLive(): void {
@@ -426,8 +441,15 @@ export class Engine implements Player {
       const fade = Math.max(0, left - 1) * REDUCED_MAX_STAGGER_MS + REDUCED_FADE_MS;
       return Math.min(REDUCED_TOTAL_MS, fade) / speed;
     }
-    // Running tasks count with the part of their estimate not yet spent.
+    // Cursors build only what is in sight; without a tour the rest fades in after a short wait.
     let remaining = schedule.remainingEstimate;
+    let tail = 0;
+    if (this.#follow !== "tour") {
+      const seen = schedule.remainingInSight(this.#vp);
+      remaining = seen.estimate;
+      if (seen.outside) tail = IDLE_RUSH_MS + OUT_OF_SIGHT_TIMING.totalMs;
+    }
+    // Running tasks count with the part of their estimate not yet spent.
     for (const a of this.#roster.agents) {
       const run = a.run;
       if (run) remaining -= Math.min(this.#plan.estimate[run.task] as number, Math.max(0, this.#tt - run.startedAt));
@@ -440,7 +462,7 @@ export class Engine implements Player {
         : s === "idle" && settings.intro && !settings.reducedMotion
           ? INTRO_MIN_MS + INTRO_SPAN_MS / 2
           : 0;
-    return intro + Math.max(0, remaining) / (speed * crew);
+    return intro + Math.max(0, remaining) / (speed * crew) + tail / speed;
   }
 
   ready(): Promise<void> {
@@ -521,6 +543,7 @@ export class Engine implements Player {
     this.#sim = 0;
     this.#physAcc = 0;
     this.#idleFor = 0;
+    this.#idleY = 0;
     this.#finaleAt = 0;
     this.#liveAt = 0;
     this.#dissolving = false;
@@ -690,7 +713,9 @@ export class Engine implements Player {
     this.#camera.track(vp0, dt, this.#userScrolled);
     let vp = vp0;
     if (this.#follow === "tour" && !this.#fade) {
-      const y = this.#camera.tour(vp, schedule.frontier(), this.#stage.blueprint.size.h, speed, dt, this.#pt);
+      // While idle cursors found nothing in sight last frame, the tour brings new work into view.
+      const lead = this.#nothingInSight ? TOUR_STARVED_LEAD_SHARE : TOUR_LEAD_SHARE;
+      const y = this.#camera.tour(vp, schedule.frontier(vp.y), this.#stage.blueprint.size.h, speed, dt, this.#pt, lead);
       if (Number.isFinite(y)) {
         this.#guard(() => this.#stage.scrollTo(y));
         vp = this.#readViewport();
@@ -702,7 +727,7 @@ export class Engine implements Player {
       this.#fade.step(tt, this.#stage, schedule, (error, layer) => this.#report(layerError(error, layer)));
     } else {
       this.#runAgents(tt, vp);
-      this.#expandWhenIdle(dtt, vp);
+      this.#fadeOutOfSight(dtt, vp);
       const boost = this.#follow === "scroll" ? Math.ceil(this.#camera.scrollSpeed / SCROLL_PX_PER_AGENT) : 0;
       const backlog = Math.ceil(schedule.availableEstimate / BACKLOG_PER_AGENT_MS);
       this.#roster.balance(clamp(this.#base + boost + backlog, this.#base, this.#count), vp, this.#sim);
@@ -720,18 +745,30 @@ export class Engine implements Player {
     if (schedule.done && this.#roster.workingCount() === 0) this.#enterFinale();
   }
 
-  /** Drives working agents and gives idle ones the best available task, in agent order. */
+  /**
+   * Drives working agents and gives idle ones the best available task in sight, in agent order.
+   * Once a pick finds nothing in sight, nobody else looks again this frame (the answer does not
+   * depend on the agent).
+   */
   #runAgents(tt: number, vp: Rect): void {
-    const schedule = this.#build.schedule;
+    this.#nothingInSight = false;
     for (const a of this.#roster.agents) {
       if (a.mode === WORKING) this.#drive(a, tt, vp);
-      else if (a.mode === IDLE && schedule.available > 0) {
-        const i = schedule.pick(a.x, a.y, vp);
+      else if (a.mode === IDLE) {
+        const i = this.#pick(a, vp);
         if (i < 0) continue;
         this.#build.start(a, i, tt);
         this.#drive(a, tt, vp);
       }
     }
+  }
+
+  #pick(a: Agent, vp: Rect): number {
+    const schedule = this.#build.schedule;
+    if (this.#nothingInSight || schedule.available === 0) return -1;
+    const i = schedule.pick(a.x, a.y, vp);
+    if (i < 0) this.#nothingInSight = true;
+    return i;
   }
 
   /**
@@ -740,12 +777,13 @@ export class Engine implements Player {
    */
   #drive(a: Agent, tt: number, vp: Rect): void {
     const build = this.#build;
-    const schedule = build.schedule;
     for (let chained = 0; a.mode === WORKING; chained++) {
       if (!build.step(a, tt)) return;
+      // The finished task may have released work in sight.
+      this.#nothingInSight = false;
       const at = Math.min(a.localTime, tt);
-      if (chained < MAX_CHAIN && schedule.available > 0) {
-        const next = schedule.pick(a.x, a.y, vp);
+      if (chained < MAX_CHAIN) {
+        const next = this.#pick(a, vp);
         if (next >= 0) {
           build.start(a, next, at);
           continue;
@@ -755,18 +793,27 @@ export class Engine implements Player {
     }
   }
 
-  /** Scroll mode: when the crew has nothing to do for a while, unlock one more viewport below. */
-  #expandWhenIdle(dtt: number, vp: Rect): void {
+  /**
+   * The crew only builds what is in sight. When it has had nothing to do for IDLE_RUSH_MS while
+   * the camera stood still (judged by where the viewport is, so a tour or scroll the stage clamps
+   * does not count as moving), everything left (layers out of sight and whatever they block)
+   * fades in without cursors, so an unscrolled page still completes and the swarm never works
+   * out of sight. A scroll that brings work into view restarts the wait.
+   */
+  #fadeOutOfSight(dtt: number, vp: Rect): void {
     const schedule = this.#build.schedule;
-    if (this.#follow !== "scroll" || schedule.available > 0 || schedule.locked === 0) {
+    const moved = this.#userScrolled || Math.abs(vp.y - this.#idleY) > IDLE_STILL_PX;
+    if (schedule.done || moved || this.#roster.workingCount() > 0) {
       this.#idleFor = 0;
+      this.#idleY = vp.y;
       return;
     }
-    if (this.#roster.workingCount() > 0) return;
     this.#idleFor += dtt;
-    if (this.#idleFor < IDLE_EXPAND_MS) return;
+    if (this.#idleFor < IDLE_RUSH_MS) return;
     this.#idleFor = 0;
-    schedule.setBoundary(Math.max(schedule.boundary + vp.h, schedule.nextLockedY()));
+    // Agents still walking in may be about to take work in sight: wait for them.
+    if (schedule.hasWorkInSight(vp)) return;
+    this.#fade = this.#fadeRest(OUT_OF_SIGHT_TIMING);
   }
 
   #stepFinale(dt: number, vp: Rect): void {

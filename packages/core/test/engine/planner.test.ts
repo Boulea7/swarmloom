@@ -6,7 +6,8 @@ import { blueprintOf, box, guide, samplePage, text } from "./fakes";
 
 const plan = (layers: Layer[]): Plan => buildPlan(blueprintOf(layers), { estimate: () => 100 });
 const ids = (p: Plan, tasks: ArrayLike<number>): string[] => Array.from(tasks, (i) => (p.layers[i] as Layer).id);
-const full = { x: 0, y: 0, w: 800, h: 600 };
+/** A viewport that sees the whole test world. */
+const full = { x: 0, y: 0, w: 800, h: 10_000 };
 
 /** Completes tasks in schedule order (always the best pick for an agent at the origin). */
 function drain(s: Schedule): string[] {
@@ -84,18 +85,34 @@ describe("planner", () => {
     expect(s.boundary).toBe(1550);
   });
 
-  it("picks work in view (guides first) before work above, and above before below", () => {
-    const p = plan([box("above", 0, 0), box("in", 600, 700), guide("g", 700), box("below", 0, 1600)]);
+  it("picks only work in sight (guides first); work above, below or clipped below waits for the camera", () => {
+    const p = plan([
+      box("above", 0, 0),
+      box("in", 600, 700),
+      guide("g", 700),
+      box("below", 0, 1600),
+      // Its box reaches into view, but the ancestor clip only shows the part below the fold.
+      box("clipped", 0, 1100, 120, 200, { clip: { x: 0, y: 1250, w: 800, h: 400 } }),
+      // Clipped away entirely: nobody will ever see it, so it needs no camera (revealed without a gesture).
+      box("hidden", 0, 2400, 120, 200, { clip: { x: 0, y: 0, w: 800, h: 100 } }),
+    ]);
     const s = new Schedule(p);
     s.setBoundary(Number.POSITIVE_INFINITY);
     const vp = { x: 0, y: 600, w: 800, h: 600 };
-    const take = (): string => {
-      const i = s.pick(0, 600, vp);
+    const take = (view = vp): string | null => {
+      const i = s.pick(0, 600, view);
+      if (i < 0) return null;
       s.start(i);
       s.complete(i);
       return (p.layers[i] as Layer).id;
     };
-    expect([take(), take(), take(), take()]).toEqual(["g", "in", "above", "below"]);
+    expect([take(), take(), take(), take()]).toEqual(["g", "in", "hidden", null]);
+    expect(s.hasWorkInSight(vp)).toBe(false);
+    expect(s.remainingInSight(vp)).toEqual({ estimate: 0, outside: true });
+    expect(take({ ...vp, y: 1300 })).toBe("clipped");
+    // The tour frontier skips unfinished work that ends above the given position.
+    expect(s.frontier()).toBe(0);
+    expect(s.frontier(200)).toBe(1600);
   });
 
   it("reports dangling references, duplicate ids and cycles instead of throwing", () => {
