@@ -1,7 +1,7 @@
 import { createPlayer } from "@swarmloom/core";
 import { describe, expect, it } from "vitest";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
-import { watchShadowRoots } from "../src/render/live";
+import { LiveStage, watchShadowRoots } from "../src/render/live";
 
 describe("export in Chromium", () => {
   it("detects live recording support", async () => {
@@ -43,6 +43,48 @@ describe("export in Chromium", () => {
     } finally {
       api.dispose();
       shadows.stop();
+    }
+  });
+
+  it("holds a <marquee> on the live page at its resting pose instead of scrolling on wall time", async () => {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc = '<body style="margin:0"><marquee scrollamount="12" style="width:300px">Ticker</marquee>';
+    // The stage world is the host of a shadow root that sits in another one, as tall as the page.
+    const host = document.createElement("div");
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.height = "200px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument as Document;
+      const textOffset = () => {
+        const marquee = doc.querySelector("marquee") as HTMLElement;
+        const range = doc.createRange();
+        range.selectNodeContents(marquee);
+        return range.getBoundingClientRect().left - marquee.getBoundingClientRect().left;
+      };
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(textOffset()).toBeGreaterThan(0); // scrolling in from the right
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: doc },
+      });
+      stage.goLive(0);
+      const atLive = textOffset();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      stage.sync(150);
+      expect([atLive, textOffset()]).toEqual([0, 0]);
+    } finally {
+      frame.remove();
+      host.remove();
     }
   });
 });
