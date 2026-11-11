@@ -68,8 +68,13 @@ export function fontFaceCss(doc: Document, roots: Iterable<ShadowRoot>, families
   if (families.size === 0) return "";
   const out: string[] = [];
   const budget = { left: CSS_BUDGET };
-  const sheets: CSSStyleSheet[] = [...Array.from(doc.styleSheets), ...(doc.adoptedStyleSheets ?? [])];
-  for (const root of roots) sheets.push(...Array.from(root.styleSheets), ...(root.adoptedStyleSheets ?? []));
+  // A Set: web components adopt one shared sheet in every instance's shadow root, and reading its
+  // rules once per root made this one unsliced task grow with roots x rules.
+  const sheets = new Set<CSSStyleSheet>([...Array.from(doc.styleSheets), ...(doc.adoptedStyleSheets ?? [])]);
+  for (const root of roots) {
+    for (const sheet of Array.from(root.styleSheets)) sheets.add(sheet);
+    for (const sheet of root.adoptedStyleSheets ?? []) sheets.add(sheet);
+  }
   for (const sheet of sheets) collectSheet(sheet, families, out, 0, budget);
   return [...new Set(out)].join("\n");
 }
