@@ -100,7 +100,7 @@ For takes that can be checked and repeated. These files and `--output` must all 
 | --- | --- | --- |
 | `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
 | `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
-| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256, player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels |
+| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256 (the blueprint's addresses that change per run, such as the served input path and `blob:` URLs, are normalized first), player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels |
 
 ### Programs and logging
 
@@ -279,6 +279,6 @@ Progress goes to stderr and never mixes with file data: a progress bar with the 
 
 ## Determinism
 
-The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once it is ready, without relying on the browser's BeginFrame. Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
+The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once it is ready and the page has painted it in its next animation frame, without relying on the browser's BeginFrame. (A screenshot taken before that frame could rasterize anti-aliased edges a shade differently between runs at scales such as 2.5 or 3.) Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
 
 Deterministic validation compares raw frames and PCM, not MP4/WebM bytes; the per-frame PNG hashes and the sound log hash that `--manifest-out` records can be compared across two runs directly. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.

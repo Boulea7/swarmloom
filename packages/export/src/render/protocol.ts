@@ -78,7 +78,11 @@ export interface RenderInfo {
   estimatedMs: number;
   /** Number of layers in the blueprint. */
   layers: number;
-  /** SHA-256 (hex) of the blueprint's JSON, so a capture can record exactly what was played. */
+  /**
+   * SHA-256 (hex) of the blueprint's JSON, so a capture can record exactly what was played. Addresses
+   * that differ between runs are normalised first (the input's directory URL, blob: URLs), so the
+   * same input gives the same hash every time.
+   */
   blueprintSha256: string;
 }
 
@@ -94,9 +98,15 @@ export interface RenderStep {
 
 /** The protocol the CLI drives through Playwright on `dist/render/index.html`. */
 export interface RenderApi {
-  /** Loads the input with a VirtualClock and controls off; the first frame (t = 0) is ready when it resolves. */
+  /**
+   * Loads the input with a VirtualClock and controls off; the first frame (t = 0) is ready, and the
+   * page has had an animation frame to paint it, when it resolves.
+   */
   init(o: RenderInit): Promise<RenderInfo>;
-  /** Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame. */
+  /**
+   * Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame and
+   * the page has had an animation frame to paint it.
+   */
   step(ms: number): Promise<RenderStep>;
   /** Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for the elapsed duration. */
   audioWav(): Promise<string>;

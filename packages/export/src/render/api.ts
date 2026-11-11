@@ -9,6 +9,7 @@ import type {
 } from "@swarmloom/core";
 import { base64ToBytes, bytesToBase64 } from "../base64";
 import { RenderSession } from "../session";
+import { blueprintSha256 } from "./digest";
 import { LiveStage, livePageOf, watchShadowRoots } from "./live";
 import {
   type ParsedInit,
@@ -35,6 +36,8 @@ export interface RenderDeps {
 
 const SAMPLE_RATE = 48_000;
 const HOST_ID = "swarmloom-render";
+/** Longest wait for the page's next animation frame (a hidden page gets none). */
+const FRAME_WAIT_MS = 1000;
 
 interface Active {
   init: ParsedInit;
@@ -42,6 +45,7 @@ interface Active {
   session: RenderSession;
   live: LiveStage;
   host: HTMLElement;
+  view: Window;
 }
 
 function toSourceInput({ input }: ParsedInit): { source: SourceInput; format?: string } {
@@ -88,12 +92,23 @@ function mountHost(doc: Document, width: number, height: number): HTMLElement {
   return host;
 }
 
-/** SHA-256 (hex) of the blueprint's JSON; empty when the page has no Web Crypto (not a secure context). */
-async function blueprintSha256(loaded: LoadedSource): Promise<string> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) return "";
-  const digest = await subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(loaded.blueprint)));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+/**
+ * Resolves in the page's next animation frame, after FRAME_WAIT_MS at the latest.
+ *
+ * The browser then paints the state a step left in its regular frame, before the driver asks for
+ * a screenshot. A screenshot requested right after the DOM changed sometimes forces that frame
+ * through a different raster path; at a deviceScaleFactor other than 1, 2 or 4 the anti-aliased
+ * edges then came out a shade apart between two runs of the same render.
+ */
+function nextFrame(view: Window | null): Promise<void> {
+  if (!view || typeof view.requestAnimationFrame !== "function") return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = view.setTimeout(resolve, FRAME_WAIT_MS);
+    view.requestAnimationFrame(() => {
+      view.clearTimeout(timer);
+      resolve();
+    });
+  });
 }
 
 function playerOptions(
@@ -205,8 +220,9 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         });
         session = started;
         await session.start();
-        const sha = await blueprintSha256(loaded);
-        active = { init, loaded, session, live: stage, host };
+        const sha = await blueprintSha256(loaded.blueprint, init.input.url);
+        active = { init, loaded, session, live: stage, host, view };
+        await nextFrame(view);
         const eta = session.player.eta();
         return {
           estimatedMs: Math.round((Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail),
@@ -225,9 +241,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
     },
 
     async step(ms: number): Promise<RenderStep> {
-      const { session, live } = activeRender();
+      const { session, live, view } = activeRender();
       const status = await session.step(ms);
       live.sync(session.elapsed);
+      await nextFrame(view);
       return status;
     },
 

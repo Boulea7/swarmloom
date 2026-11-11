@@ -149,6 +149,41 @@ describe("render page protocol", () => {
     expect(goLive).toHaveBeenCalledTimes(calls);
   });
 
+  it("resolves init and each step only after the page's next animation frame", async () => {
+    const { api } = setup();
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
+    let stepped = false;
+    const init = api.init(base);
+    await vi.waitFor(() => expect(frames).toHaveLength(1));
+    frames[0]?.(0);
+    await init;
+    const step = api.step(40).then(() => {
+      stepped = true;
+    });
+    await vi.waitFor(() => expect(frames).toHaveLength(2));
+    expect(stepped).toBe(false);
+    frames[1]?.(16);
+    await step;
+    expect(stepped).toBe(true);
+    raf.mockRestore();
+  });
+
+  it("hashes the blueprint the same when the input is served from a new address", async () => {
+    const hashes: string[] = [];
+    for (const dir of ["http://127.0.0.1:4001/input/aa11/", "http://127.0.0.1:4002/input/bb22/"]) {
+      const api = createRenderApi({
+        load: async (input) => ({ blueprint: { ...blueprint, source: { type: "svg", url: input.url } } }),
+        createPlayer: (options) => new ClockPlayer(options),
+        renderAudioWav: async () => new Uint8Array(),
+      });
+      hashes.push((await api.init({ ...base, input: { name: "a.svg", url: `${dir}a.svg` } })).blueprintSha256);
+      api.dispose();
+    }
+    expect(hashes[0]).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashes[1]).toBe(hashes[0]);
+  });
+
   it("renders silence when sound is off", async () => {
     const { api, audio } = setup();
     await api.init({ ...base, sound: false });
