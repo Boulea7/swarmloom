@@ -104,13 +104,14 @@ describe("render page protocol", () => {
     for (let i = 0; i < 20; i++) states.push((await api.step(50)).state);
     // Step i reaches (i + 1) * 50 ms: paused from the step that reached 300 ms to the one that reached 500.
     expect(states.slice(4, 10)).toEqual(["building", "paused", "paused", "paused", "paused", "building"]);
-    // finish() at 600 ms completes the remaining layers on the next tick (650 ms, player time 450).
+    // finish() at 600 ms fans out at once (player time 400) and completes the remaining layers on the
+    // next tick (650 ms, player time 450).
     expect(states.slice(11, 13)).toEqual(["building", "finale"]);
-    expect(player.soundLog.map((e) => e.t)).toEqual([250, 450, 450, 450]);
+    expect(player.soundLog.map((e) => e.t)).toEqual([250, 400, 450, 450, 450]);
     // The key at 250 sounded before the hold; the later ones move 200 ms later, onto the frame that shows them.
-    expect((await api.soundLog()).map((e) => e.t)).toEqual([250, 650, 650, 650]);
+    expect((await api.soundLog()).map((e) => e.t)).toEqual([250, 600, 650, 650, 650]);
     await api.audioWav();
-    expect(audio.mock.calls[0]?.[0].map((e) => e.t)).toEqual([250, 650, 650, 650]);
+    expect(audio.mock.calls[0]?.[0].map((e) => e.t)).toEqual([250, 600, 650, 650, 650]);
 
     api.dispose();
     const bad: [unknown, string][] = [
@@ -119,6 +120,27 @@ describe("render page protocol", () => {
       [{ ...base, cues: "pause" }, "cues must be an array"],
     ];
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
+  });
+
+  it("shifts the sounds a cue logs itself when it ends a pause", async () => {
+    const { api } = setup();
+    // Hold 300..500 ms; finish() ends the hold and fans out at once, which the video shows at 500 ms.
+    await api.init({
+      ...base,
+      cues: [
+        { at: 300, action: "pause" },
+        { at: 500, action: "finish" },
+      ],
+    });
+    for (let i = 0; i < 12; i++) await api.step(50);
+    expect((await api.soundLog()).map((e) => [e.name, e.t])).toEqual([
+      ["key", 250],
+      ["fanout", 500],
+      ["key", 550],
+      ["key", 550],
+      ["key", 550],
+    ]);
+    api.dispose();
   });
 
   it("plays a driver-supplied blueprint instead of loading the input", async () => {
@@ -155,6 +177,14 @@ describe("render page protocol", () => {
     await api.step(1000);
     await api.audioWav();
     expect(audio).toHaveBeenCalledWith([], 1000, expect.anything());
+  });
+
+  it("renders the soundtrack for the length the driver asks for (the video is one frame longer)", async () => {
+    const { api, audio } = setup();
+    await api.init(base);
+    await api.step(1000);
+    await api.audioWav(1040);
+    expect(audio).toHaveBeenLastCalledWith(expect.anything(), 1040, expect.anything());
   });
 
   it("rejects invalid init options and steps with a field name", async () => {
