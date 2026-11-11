@@ -64,7 +64,7 @@ Chaque animation ci-dessous est un véritable rendu de SwarmLoom. Sélectionnez-
 <details>
 <summary>Autres formats pris en charge</summary>
 
-OpenDocument (ODT / ODS / ODP), EPUB, RTF, OFD, Jupyter Notebook, enregistrements de terminal asciinema, fichiers Patch / Diff et cartes mentales XMind / FreeMind sont également pris en charge. Les formats de feuilles de calcul compatibles sont XLSX / CSV / ODS ; les formats 3D sont GLB / glTF / OBJ / STL / PLY. Le [guide des formats](https://boulea7.github.io/swarmloom/docs/en/formats.html) répertorie toutes les extensions et le degré de fidélité de la reconstitution pour chaque format.
+OpenDocument (ODT / ODS / ODP), EPUB, RTF, OFD, Jupyter Notebook, enregistrements de terminal asciinema, fichiers Patch / Diff, cartes mentales XMind / FreeMind et animations Lottie sont également pris en charge. Les formats de feuilles de calcul compatibles sont XLSX / CSV / ODS ; les formats 3D sont GLB / glTF / OBJ / STL / PLY. Le [guide des formats](https://boulea7.github.io/swarmloom/docs/en/formats.html) répertorie toutes les extensions et le degré de fidélité de la reconstitution pour chaque format.
 
 </details>
 
@@ -210,7 +210,7 @@ Aucune installation supplémentaire n’est nécessaire sur les écrans pliables
 
 ## Feuille de route
 
-- **Aujourd’hui** : Studio en ligne, pages web et 19 formats de fichiers, export image par image via la CLI, et extensions Chrome / Edge / Firefox / Safari compilables depuis les sources.
+- **Aujourd’hui** : Studio en ligne, pages web et 20 formats de fichiers, export image par image via la CLI, et extensions Chrome / Edge / Firefox / Safari compilables depuis les sources.
 - **Ensuite** : première version sur GitHub Releases et paquets npm, fiches en boutique et extensions signées, export vidéo dans Studio, ainsi que tests sur téléphones et appareils Safari.
 - **Plus tard** : d’autres formats et plateformes, sans date promise. Partagez vos idées dans [Idées](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 

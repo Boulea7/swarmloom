@@ -64,7 +64,7 @@
 <details>
 <summary>还能打开的格式</summary>
 
-OpenDocument（ODT / ODS / ODP）、EPUB、RTF、OFD、Jupyter Notebook、asciinema 终端录屏、Patch / Diff、XMind / FreeMind 思维导图；表格支持 XLSX / CSV / ODS，3D 支持 GLB / glTF / OBJ / STL / PLY。每种格式的扩展名和还原程度见[格式文档](https://boulea7.github.io/swarmloom/docs/formats.html)。
+OpenDocument（ODT / ODS / ODP）、EPUB、RTF、OFD、Jupyter Notebook、asciinema 终端录屏、Patch / Diff、XMind / FreeMind 思维导图、Lottie 动画；表格支持 XLSX / CSV / ODS，3D 支持 GLB / glTF / OBJ / STL / PLY。每种格式的扩展名和还原程度见[格式文档](https://boulea7.github.io/swarmloom/docs/formats.html)。
 
 </details>
 
@@ -210,7 +210,7 @@ Chrome / Edge 打开 Studio 后，用地址栏或菜单里的“安装应用”�
 
 ## Roadmap
 
-- **现在**：在线 Studio，网页加 19 类文件格式，CLI 逐帧导出，Chrome / Edge / Firefox / Safari 扩展可从源码构建。
+- **现在**：在线 Studio，网页加 20 类文件格式，CLI 逐帧导出，Chrome / Edge / Firefox / Safari 扩展可从源码构建。
 - **下一步**：首个 GitHub Release 和 npm 包，扩展上架与签名，Studio 内直接导出视频，手机和 Safari 真机测试。
 - **以后**：更多格式和平台，不承诺日期。欢迎到 [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) 提建议。
 

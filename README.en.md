@@ -64,7 +64,7 @@ Every animation below is a real SwarmLoom render. Select one to play the same ex
 <details>
 <summary>More formats it opens</summary>
 
-OpenDocument (ODT / ODS / ODP), EPUB, RTF, OFD, Jupyter Notebook, asciinema terminal recordings, Patch / Diff, and XMind / FreeMind mind maps. Spreadsheets cover XLSX / CSV / ODS; 3D covers GLB / glTF / OBJ / STL / PLY. The [format guide](https://boulea7.github.io/swarmloom/docs/en/formats.html) lists every extension and how closely each format is reproduced.
+OpenDocument (ODT / ODS / ODP), EPUB, RTF, OFD, Jupyter Notebook, asciinema terminal recordings, Patch / Diff, XMind / FreeMind mind maps, and Lottie animations. Spreadsheets cover XLSX / CSV / ODS; 3D covers GLB / glTF / OBJ / STL / PLY. The [format guide](https://boulea7.github.io/swarmloom/docs/en/formats.html) lists every extension and how closely each format is reproduced.
 
 </details>
 
@@ -210,7 +210,7 @@ Foldables need nothing extra: where the browser supports Viewport Segments, Stud
 
 ## Roadmap
 
-- **Now**: Studio online, web pages plus 19 file formats, frame-by-frame CLI export, and Chrome / Edge / Firefox / Safari extensions built from source.
+- **Now**: Studio online, web pages plus 20 file formats, frame-by-frame CLI export, and Chrome / Edge / Firefox / Safari extensions built from source.
 - **Next**: the first GitHub Release and npm packages, store listings and signed extensions, video export inside Studio, and testing on phones and Safari devices.
 - **Later**: more formats and platforms, with no dates promised. Share ideas in [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 
