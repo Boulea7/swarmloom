@@ -51,7 +51,8 @@
   --accent-soft: oklch(95.5% 0.025 10);
   --accent-text: oklch(52% 0.19 10);
   --danger: oklch(53% 0.2 22);
-  --focus: color-mix(in oklch, var(--indigo) 60%, transparent);
+  /* Focus rings stay opaque: a translucent ring fell under the 3:1 non-text contrast floor. */
+  --focus: var(--indigo);
   --scrim: oklch(17% 0.02 277 / 0.38);
   --code-bg: oklch(19% 0.02 277);
   --code-ink: oklch(93% 0.008 277);

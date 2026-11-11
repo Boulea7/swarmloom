@@ -95,7 +95,7 @@ export interface EngineDeps {
 const STEP_S = PHYSICS_STEP_MS / 1000;
 /** Gap between two cursors joining the intro orbit, ms. */
 const INTRO_JOIN_MS = 45;
-/** Backlog (sum of available estimates) that calls one more agent, task ms. */
+/** Backlog (sum of estimates of available tasks in sight) that calls one more agent, task ms. */
 const BACKLOG_PER_AGENT_MS = 2500;
 /** Share of the pool that takes part in the finale. */
 const FINALE_SHARE = 0.7;
@@ -118,6 +118,7 @@ const MAX_TICK_TOTAL_MS = 60_000;
 const SEEK_FRAME_MS = 1000 / 60;
 /** Longest seek target accepted, ms. */
 const MAX_SEEK_MS = 60 * 60 * 1000;
+const DEFER_SCROLL = { defer: true } as const;
 /** Stereo spread of sound events: cursor x weighs 0.7, layer centre 0.3, scaled to +-0.7. */
 const PAN_SPREAD = 0.7;
 const FALLBACK_VIEWPORT: Readonly<Rect> = { x: 0, y: 0, w: 1280, h: 800 };
@@ -363,7 +364,11 @@ export class Engine implements Player {
       if (!forward) this.replay();
       else if (paused) this.resume();
       while (this.#pt + 1e-6 < target && !this.#ended()) {
+        // Every seek frame starts with the read phase of a tick, before its tasks write.
+        this.#measure();
         this.#frame(Math.min(SEEK_FRAME_MS, target - this.#pt), false);
+        // Undrawn, but the stage still ages task touches and virtualizes as in a drawn frame.
+        this.#guard(() => this.#stage.skipFrame?.());
       }
     } finally {
       this.#seeking = false;
@@ -584,6 +589,8 @@ export class Engine implements Player {
     this.#lastGuideAt = Number.NEGATIVE_INFINITY;
     this.#lastBuilt = -1;
     this.#errors = 0;
+    // Read by the first building frame's tour lead, so it must not carry over from the last run.
+    this.#nothingInSight = false;
     this.#userScrolled = false;
     this.#setRulers(false);
     if (this.#done.settled) this.#done = deferred();
@@ -680,23 +687,36 @@ export class Engine implements Player {
   /**
    * Clock tick: the stage's read phase, then the frame. Long deltas (coarse export frames) are
    * integrated in slices of at most MAX_TICK_MS so player time always equals the clock time
-   * delivered, then drawn once.
+   * delivered, then drawn once. Slicing stops early only when this tick ends the run (goes live
+   * or destroys the player); a player already live keeps the whole delta, since live plugins and
+   * the cursor exit follow player time.
    */
   #onTick(dt: number): void {
     const s = this.#state;
     if (s === "idle" || s === "destroyed") return;
     // Read phase first: the layout is clean until this tick's tasks write to the DOM.
-    try {
-      this.#stage.measure?.();
-    } catch (error) {
-      this.#report(error);
-    }
+    this.#measure();
+    const wasLive = s === "live";
     let left = Number.isFinite(dt) ? clamp(dt, 0, MAX_TICK_TOTAL_MS) : 0;
     do {
       const slice = Math.min(left, MAX_TICK_MS);
       left -= slice;
       this.#frame(slice, left <= 0);
-    } while (left > 0 && !this.#ended());
+    } while (left > 0 && !this.#endedDuringTick(wasLive));
+  }
+
+  /** The stage's read phase (caret blocks of typed text), taken before a frame's DOM writes. */
+  #measure(): void {
+    try {
+      this.#stage.measure?.();
+    } catch (error) {
+      this.#report(error);
+    }
+  }
+
+  /** True once the player was destroyed, or went live during a tick that started before live. */
+  #endedDuringTick(wasLive: boolean): boolean {
+    return this.#state === "destroyed" || (!wasLive && this.#state === "live");
   }
 
   /** Advances every timeline by `dt` player ms; draws when `draw` (and not seeking). */
@@ -762,7 +782,9 @@ export class Engine implements Player {
       const lead = this.#nothingInSight ? TOUR_STARVED_LEAD_SHARE : TOUR_LEAD_SHARE;
       const y = this.#camera.tour(vp, schedule.frontier(vp.y), this.#stage.blueprint.size.h, speed, dt, this.#pt, lead);
       if (Number.isFinite(y)) {
-        this.#guard(() => this.#stage.scrollTo(y));
+        // A seek writes the scroller once, when it draws: each write here would land after the
+        // last frame's task writes and force a layout.
+        this.#guard(() => this.#stage.scrollTo(y, this.#seeking ? DEFER_SCROLL : undefined));
         vp = this.#readViewport();
       }
     }
@@ -774,7 +796,9 @@ export class Engine implements Player {
       this.#runAgents(tt, vp);
       this.#fadeOutOfSight(dtt, vp);
       const boost = this.#follow === "scroll" ? Math.ceil(this.#camera.scrollSpeed / SCROLL_PX_PER_AGENT) : 0;
-      const backlog = Math.ceil(schedule.availableEstimate / BACKLOG_PER_AGENT_MS);
+      // Only work in sight calls cursors: they may not pick anything else.
+      const room = Math.max(0, this.#count - this.#base - boost);
+      const backlog = Math.ceil(schedule.availableInSight(vp, room * BACKLOG_PER_AGENT_MS) / BACKLOG_PER_AGENT_MS);
       this.#roster.balance(clamp(this.#base + boost + backlog, this.#base, this.#count), vp, this.#sim);
     }
 

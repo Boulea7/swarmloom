@@ -111,6 +111,16 @@ function textOf(name: string, bytes: Uint8Array): string | undefined {
   }
 }
 
+/**
+ * Adapter id known before loading. Text with a known name goes through the loader's own detection,
+ * which checks content first: Lottie JSON keeps its .json name but is not held to the code limit.
+ */
+function formatOf(input: SourceInput): string | undefined {
+  const named = formatOfName(input.name ?? "");
+  if (!named || input.text === undefined) return named?.id;
+  return inspect(input).id ?? named.id;
+}
+
 function fromLocal(ref: SourceRef, local: LocalInput): OpenedSource {
   const size = local.bytes?.byteLength ?? local.text?.length ?? 0;
   if (size > MAX_INPUT_BYTES) throw new StudioError("tooLarge", { size });
@@ -125,7 +135,7 @@ function fromLocal(ref: SourceRef, local: LocalInput): OpenedSource {
     input,
     name: local.name,
     title: local.name,
-    format: formatOfName(local.name)?.id,
+    format: formatOf(input),
     text,
     cliTarget: local.name,
     cliNeedsFile: true,
@@ -173,7 +183,7 @@ async function fromUrl(ref: { kind: "url"; url: string }, ctx: ResolveContext): 
     input,
     name,
     title: name,
-    format: formatOfName(name)?.id,
+    format: formatOf(input),
     text,
     cliTarget: ref.url,
     cliNeedsFile: false,
@@ -187,12 +197,13 @@ async function fromShared(ref: { kind: "shared"; payload: string }): Promise<Ope
   } catch (error) {
     throw new StudioError("share", {}, { cause: error instanceof ShareError ? error : undefined });
   }
+  const input: SourceInput = { name: decoded.name, text: decoded.text };
   return {
     ref,
-    input: { name: decoded.name, text: decoded.text },
+    input,
     name: decoded.name,
     title: decoded.name,
-    format: formatOfName(decoded.name)?.id,
+    format: formatOf(input),
     text: decoded.text,
     cliTarget: decoded.name,
     cliNeedsFile: true,

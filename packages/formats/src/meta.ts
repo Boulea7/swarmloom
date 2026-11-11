@@ -10,7 +10,10 @@ export interface FormatMeta {
   extensions: string[];
   /** Lower-case MIME types without parameters. */
   mime: string[];
-  /** Optional extra content check for formats the built-in signature table does not know. */
+  /**
+   * Optional extra content check for formats the built-in signature table does not know. Runs
+   * before names, on the first 16 KB of bytes or the UTF-8 head of a text input.
+   */
   sniff?(head: Uint8Array, name?: string): boolean;
 }
 

@@ -1,4 +1,5 @@
 import type { AppContext, NavigateOptions, View } from "./context";
+import { describeError } from "./errors";
 import { availableFormats } from "./formats-meta";
 import { createStudioI18n, loadCatalog, negotiateLocale, type StudioI18n } from "./i18n";
 import { watchViewport } from "./layout/viewport";
@@ -406,16 +407,28 @@ export async function mountStudio(
     route = { ...route, source: null };
     launchTimer = win.setTimeout(() => navigate({ source: null }, { replace: true }), LAUNCH_WAIT_MS);
   }
-  services.onLaunch?.((files) => {
-    const file = files[0];
-    if (!file) return;
-    win.clearTimeout(launchTimer);
-    void readLocalFile(file).then(
-      (input) =>
-        navigate({ source: { kind: "file", name: input.name }, autoplay: true }, { local: input, replace: true }),
-      (error: unknown) => console.warn("[studio] launch file unreadable", error),
-    );
-  });
+  /** Opens the first launched file. One that cannot be read leaves `?launch=1` for home and says why. */
+  const openLaunched = async (files: Promise<File[]>) => {
+    let file: File | undefined;
+    let input: LocalInput;
+    try {
+      file = (await files)[0];
+      if (!file) return;
+      win.clearTimeout(launchTimer);
+      input = await readLocalFile(file);
+    } catch (error) {
+      console.warn("[studio] launch file unreadable", error);
+      if (destroyed) return;
+      win.clearTimeout(launchTimer);
+      const waiting = parseRoute(win.location.href, routeOptions).source?.kind === "launch";
+      if (waiting) navigate({ source: null }, { replace: true });
+      toast.show(describeError(error, i18n, { formats: ctx.formatList(), label: file?.name }), { icon: "alert" });
+      return;
+    }
+    if (destroyed) return;
+    navigate({ source: { kind: "file", name: input.name }, autoplay: true }, { local: input, replace: true });
+  };
+  services.onLaunch?.((files) => void openLaunched(files));
 
   renderAll();
 

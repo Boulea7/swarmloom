@@ -1,6 +1,8 @@
 // @ts-check
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -10,7 +12,7 @@ import {
   runtimeImports,
   synthesizedMitLicense,
 } from "../lib/notices.mjs";
-import { expectedLicenseFiles } from "../third-party-notices.mjs";
+import { expectedLicenseFiles, pagesLicenseFiles } from "../third-party-notices.mjs";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -63,6 +65,18 @@ test("every published package that bundles third-party code gets generated notic
   for (const dir of ["apps/cli", "packages/element", "packages/adapter-markdown"]) {
     assert.ok(byDir.get(dir)?.covered.has("katex"), dir);
     assert.ok(byDir.get(dir)?.contents?.startsWith(GENERATED_MARKER), dir);
+    // The math fonts katex ships (and the adapter inlines) are OFL-1.1, not under katex's MIT licence.
+    assert.match(
+      byDir.get(dir)?.contents ?? "",
+      /Copyright \(c\) 2009-2010, Design Science[^`]*KaTeX_Typewriter\.\n\nThis Font Software is licensed under the SIL Open Font License, Version 1\.1\./,
+      dir,
+    );
+  }
+  // Three ships the Draco (Apache-2.0) and meshoptimizer (MIT) decoders in examples/jsm/libs, and Vite emits them.
+  for (const dir of ["apps/cli", "packages/element", "packages/export"]) {
+    const contents = byDir.get(dir)?.contents ?? "";
+    assert.match(contents, /Copyright 2016 The Draco Authors\n\n\s*Apache License\s+Version 2\.0/, dir);
+    assert.match(contents, /Copyright \(c\) 2016-2026 Arseny Kapoulkine/, dir);
   }
   // A library that bundles nothing gets no file and keeps the repository LICENSE from pnpm pack.
   assert.equal(byDir.get("packages/core")?.contents, null);
@@ -70,4 +84,23 @@ test("every published package that bundles third-party code gets generated notic
   const paths = expected.map((item) => `${item.pkg.dir}/LICENSE.md`);
   const tracked = execFileSync("git", ["ls-files", "--", ...paths], { cwd: root, encoding: "utf8" });
   assert.equal(tracked.trim(), "", "generated LICENSE.md files must not be committed");
+});
+
+test("every app deployed to Pages gets the licences of what it bundles or inlines", () => {
+  const byDir = new Map(pagesLicenseFiles(root, "_site").map((item) => [item.pkg.dir, item]));
+  // The report: the site inlines Phosphor SVG paths (read from disk, not imported); Studio bundles lottie-web.
+  assert.match(byDir.get("apps/site")?.contents ?? "", /Copyright \(c\) \d{4} Phosphor Icons/);
+  assert.equal(byDir.get("apps/site")?.path, join(root, "_site", "LICENSE.md"));
+  assert.match(byDir.get("apps/studio")?.contents ?? "", /Copyright \(c\) 2015 Bodymovin/);
+  assert.equal(byDir.get("apps/studio")?.path, join(root, "_site", "studio", "LICENSE.md"));
+  // The docs are no workspace package: VitePress emits Vue, its theme's Inter font and MiniSearch/mark.js search.
+  const docs = byDir.get("docs");
+  assert.equal(docs?.path, join(root, "_site", "docs", "LICENSE.md"));
+  for (const name of ["vitepress", "@vue/runtime-core", "minisearch", "mark.js", "focus-trap", "Inter"]) {
+    assert.ok(docs?.covered.has(name), name);
+  }
+  const inter = /Copyright 2016 The Inter Project Authors[^\n]*\n\n[\s\S]{0,300}SIL OPEN FONT LICENSE Version 1\.1/;
+  assert.match(docs?.contents ?? "", inter);
+  const workflow = readFileSync(join(root, ".github/workflows/pages.yml"), "utf8");
+  assert.match(workflow, /third-party-notices\.mjs --pages _site\b/);
 });

@@ -67,8 +67,12 @@ export async function resolveSource(
 ): Promise<RenderSource> {
   if (isWebUrl(spec)) return fetchSource(spec, opts.fetch ?? fetch, opts.signal);
   if (isOtherUrl(spec)) throw new UsageError(`Unsupported URL scheme in ${spec}`, "Use a file path or an http(s) URL.");
-  const file = /^file:/i.test(spec) ? fileURLToPath(spec) : path.resolve(opts.cwd, spec);
-  return openFileSource(file);
+  return openFileSource(inputFilePath(spec, opts.cwd));
+}
+
+/** Absolute path of a local input given as a path or a file: URL (not for http(s) URLs). */
+export function inputFilePath(spec: string, cwd: string): string {
+  return /^file:/i.test(spec) ? fileURLToPath(spec) : path.resolve(cwd, spec);
 }
 
 async function openFileSource(file: string): Promise<RenderSource> {

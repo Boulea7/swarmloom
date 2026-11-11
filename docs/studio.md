@@ -116,6 +116,6 @@ Studio 始终有普通响应式布局。在支持 Viewport Segments 的 Chromium
 
 ## 扩展内置 Studio
 
-扩展规划内置同一份 Studio 构建，用于打开 PDF、文档、图片、模型链接和受限页面。
+发行构建（`pnpm build:extension`）在每个扩展包里内置同一份 Studio 构建，用于打开 PDF、文档、图片、模型链接，以及经提示页打开受限页面。用 `--without-studio` 做的本地构建会改用在线 Studio 打开这些链接。
 
 扩展模式使用相对资源路径，不注册 Service Worker。它仍遵循相同的格式管线和隐私边界，不需要连接独立的 SwarmLoom 服务。

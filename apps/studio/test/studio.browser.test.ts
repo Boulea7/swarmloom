@@ -1,3 +1,4 @@
+import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import "../src/styles/studio.css";
@@ -30,6 +31,9 @@ const MANIFEST: ExampleManifest = {
 
 const EXAMPLES_BASE = new URL("/examples/", location.origin).href;
 
+// Like main.ts: the bundled registry's ids, so optional formats it provides (Lottie) show.
+const REGISTRY_IDS = REGISTRY.map((meta) => meta.id);
+
 let app: StudioApp | null = null;
 
 async function mount(search = "", seekable = false) {
@@ -37,6 +41,7 @@ async function mount(search = "", seekable = false) {
   const root = document.createElement("div");
   document.body.append(root);
   const fake = fakeServices({ manifest: MANIFEST, examplesBase: EXAMPLES_BASE, seekable });
+  fake.services.formats = REGISTRY_IDS;
   app = await mountStudio(root, fake.services);
   return { root, ...fake };
 }
@@ -69,7 +74,9 @@ describe("Studio in a browser", () => {
     expect(MANIFEST.entries.length).toBeGreaterThanOrEqual(4);
     const ids = [...root.querySelectorAll<HTMLAnchorElement>(".card")].map((card) => card.dataset.example);
     // One card per example group: language and file-type variants share a card.
-    expect(ids).toEqual(entriesForLocale(MANIFEST, "en", availableFormats()).map((e) => e.id));
+    expect(ids).toEqual(entriesForLocale(MANIFEST, "en", availableFormats(REGISTRY_IDS)).map((e) => e.id));
+    // Optional formats the registry provides get their card (Lottie is hidden without services.formats).
+    expect(ids).toContain("lottie-shuttle-loop");
     expect(root.querySelector('.card[data-example="epub-loom-notes"] .card-sub')?.textContent).toMatch(/^EPUB/);
   });
 
@@ -95,19 +102,25 @@ describe("Studio in a browser", () => {
     expect(log.calls).toContain("play");
   });
 
-  it("seeks once per frame to the latest value while the scrubber is dragged", async () => {
+  it("previews a scrubber drag and seeks once, to where it is let go", async () => {
     const { root, log } = await mount("?example=svg-chart", true);
     (await until(() => root.querySelector<HTMLButtonElement>(".play-big"))).click();
     const seeker = root.querySelector<HTMLInputElement>(".scrub-range");
-    expect(seeker?.hidden).toBe(false);
+    if (!seeker || seeker.hidden) throw new Error("no seek slider");
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const seeks = () => log.calls.filter((c) => c.startsWith("seek:"));
+    // A seek back replays the build from the start: dragging only moves the thumb.
     for (const value of ["100", "200", "300"]) {
-      if (!seeker) break;
       seeker.value = value;
       seeker.dispatchEvent(new Event("input", { bubbles: true }));
+      await frame();
     }
-    const seeks = () => log.calls.filter((c) => c.startsWith("seek:"));
     expect(seeks()).toEqual([]);
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect([seeker.value, seeker.getAttribute("aria-valuetext")]).toEqual(["300", "30%"]);
+    // Letting go (pointerup anywhere, then change on the slider) seeks once.
+    document.body.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    seeker.dispatchEvent(new Event("change", { bubbles: true }));
+    await frame();
     expect(seeks()).toEqual(["seek:3600"]); // 300 / 1000 of the fake's 12 s plan
   });
 
@@ -196,6 +209,63 @@ describe("Studio in a browser", () => {
       const { root } = await mount("?import=1");
       expect(document.documentElement.dataset.view).toBe("home");
       expect(root.querySelector('input[type="file"]')).not.toBeNull();
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
+  it("keeps the home brand clear of the app bar buttons in a narrow side panel", async () => {
+    // A desktop screen, so the narrow window keeps the normal home instead of the watch face.
+    Object.defineProperties(screen, {
+      width: { value: 1280, configurable: true },
+      height: { value: 800, configurable: true },
+    });
+    try {
+      for (const width of [280, 320, 360]) {
+        await page.viewport(width, 400);
+        const { root } = await mount();
+        const actions = root.querySelector<HTMLElement>(".appbar-actions")?.getBoundingClientRect();
+        const word = root.querySelector<HTMLElement>(".brand-word");
+        if (!actions || !word) throw new Error(`no app bar at ${width}px`);
+        if (word.getClientRects().length > 0) {
+          expect(word.getBoundingClientRect().right, `${width}px`).toBeLessThanOrEqual(actions.left);
+        }
+        app?.destroy();
+        app = null;
+      }
+    } finally {
+      delete (screen as { width?: number }).width;
+      delete (screen as { height?: number }).height;
+      await page.viewport(414, 896);
+    }
+  });
+
+  it("lets a 320px phone scroll to the actions of a long German error card", async () => {
+    await page.viewport(320, 568);
+    try {
+      history.replaceState(null, "", `${location.pathname}?lang=de&src=https://example.test/unsupported.xyz`);
+      const root = document.createElement("div");
+      document.body.append(root);
+      const { services } = fakeServices({
+        manifest: MANIFEST,
+        examplesBase: EXAMPLES_BASE,
+        fetch: async () => new Response(new Uint8Array(9)),
+      });
+      // The unsupported-format message lists every format Studio opens, the longest error body.
+      services.load = async () => {
+        throw Object.assign(new Error("unsupported"), { name: "SourceError", code: "unsupported" });
+      };
+      app = await mountStudio(root, services);
+      const card = await until(() => root.querySelector<HTMLElement>(".stage-error"));
+      const overlay = card.parentElement as HTMLElement;
+      const frame = overlay.getBoundingClientRect();
+      expect(card.getBoundingClientRect().top).toBeGreaterThanOrEqual(frame.top);
+      overlay.scrollTop = overlay.scrollHeight;
+      for (const action of overlay.querySelectorAll<HTMLElement>(".stage-error-actions .btn")) {
+        const r = action.getBoundingClientRect();
+        expect(r.top).toBeGreaterThanOrEqual(frame.top);
+        expect(r.bottom).toBeLessThanOrEqual(frame.bottom);
+      }
     } finally {
       await page.viewport(414, 896);
     }

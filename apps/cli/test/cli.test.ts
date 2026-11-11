@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { link, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import pkg from "../package.json" with { type: "json" };
@@ -101,6 +104,8 @@ describe("render options", () => {
     [["a.md", "--no-sound", "--audio-out", "a.wav"], "--audio-out needs sound"],
     [["a.md", "--bpm", "300"], "--bpm must be a number"],
     [["a.md", "-o", "x.mp4", "--manifest-out", "x.mp4"], "must be different files"],
+    [["a.md", "-o", "take.mp4", "--events-out", "TAKE.MP4"], "must be different files"],
+    [["a.md", "-o", "out/take.mp4", "--events-out", "out./take.mp4. "], "must be different files"],
   ])("rejects %j", (argv, message) => {
     expect(() => parseRenderOptions(argv, cwd)).toThrow(message);
   });
@@ -120,5 +125,44 @@ describe("render options", () => {
     expect(opts.cues[0]?.at).toBeCloseTo(17_333.333, 3);
     expect(opts.eventsOut).toBe(path.join(cwd, "ev/e.json"));
     expect(opts.manifestOut).toBe(path.join(cwd, "m.json"));
+  });
+});
+
+describe("render input", () => {
+  it.each([
+    ["--manifest-out", "take.svg"],
+    ["--events-out", "alias.svg"],
+  ])("refuses %s %s, which would overwrite the input (also through a hard link)", async (flag, file) => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "swarmloom-cli-"));
+    try {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>';
+      await writeFile(path.join(dir, "take.svg"), svg);
+      await link(path.join(dir, "take.svg"), path.join(dir, "alias.svg"));
+      const err: string[] = [];
+      // A missing --chrome would stop the render later with exit 2; the check must come first.
+      const argv = ["render", "take.svg", "-f", "png-seq", "-o", "frames", flag, file, "--chrome", "no-chrome"];
+      const code = await run(argv, { io: { out: () => {}, err: (l) => err.push(l) }, cwd: dir, env: {} });
+      expect(err.join("\n")).toContain(`${flag} would overwrite the input`);
+      expect(code).toBe(1);
+      expect(await readFile(path.join(dir, "take.svg"), "utf8")).toBe(svg);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("documented examples", () => {
+  it("point at inputs that exist when they name a repo folder", async () => {
+    const root = path.resolve(import.meta.dirname, "../../..");
+    const docs = ["docs/cli.md", "docs/en/cli.md"].map((f) => readFileSync(path.join(root, f), "utf8"));
+    const help = await Promise.all(["render", "snapshot"].map(async (c) => (await capture([c, "--help"])).out));
+    // Bare names such as deck.pptx are placeholders; a path into a folder must be a real file.
+    const inputs = [...docs, ...help]
+      .flatMap((t) =>
+        [...t.matchAll(/swarmloom (?:render|snapshot) (\S+)/g)].map((m) => (m[1] ?? "").replace(/^\.\//, "")),
+      )
+      .filter((p) => p.includes("/") && !p.includes("://"));
+    expect(inputs.length).toBeGreaterThan(0);
+    expect(inputs.filter((p) => !existsSync(path.join(root, p)))).toEqual([]);
   });
 });

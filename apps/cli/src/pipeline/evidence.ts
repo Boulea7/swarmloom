@@ -5,6 +5,10 @@
  *
  * Nothing here depends on wall-clock time, so two renders with the same arguments on the same
  * machine produce the same events file and the same manifest apart from output paths.
+ *
+ * The manifest is meant to travel with the take, so it leaves out where things live on this machine:
+ * no working directory, programs by file name only, outputs relative to the manifest, and http(s)
+ * URLs without user info, query or fragment (see {@link redactUrl}).
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -13,7 +17,7 @@ import path from "node:path";
 import type { SoundEvent } from "@swarmloom/core";
 import type { PlatformFont } from "./driver";
 import type { FrameImageType, OutputFormat } from "./encode";
-import type { RenderSource } from "./input";
+import { isWebUrl, type RenderSource } from "./input";
 import type { RenderCue, RenderInfo } from "./protocol";
 import type { PlayerSettings } from "./render";
 
@@ -98,9 +102,10 @@ export function eventsDocument(
 
 export interface ManifestInput {
   tool: { name: string; version: string };
-  /** Arguments after `swarmloom`, as given. */
+  /** Arguments after `swarmloom`, as given (URLs are redacted in the manifest). */
   argv: readonly string[];
-  cwd: string;
+  /** Absolute path the manifest is written to; output paths are recorded relative to its folder. */
+  manifestFile: string;
   input: { arg: string; kind: RenderSource["kind"]; name: string; format: string; sha256: string; bytes: number };
   info: RenderInfo;
   video: { format: OutputFormat; width: number; height: number; scale: number; fps: number };
@@ -135,9 +140,13 @@ export function buildManifest(m: ManifestInput): Record<string, unknown> {
   return {
     manifestVersion: MANIFEST_VERSION,
     tool: m.tool,
-    argv: m.argv,
-    cwd: m.cwd,
-    input: { ...m.input, blueprintSha256: m.info.blueprintSha256 ?? null, layers: m.info.layers ?? null },
+    argv: m.argv.map(redactUrl),
+    input: {
+      ...m.input,
+      arg: redactUrl(m.input.arg),
+      blueprintSha256: m.info.blueprintSha256 ?? null,
+      layers: m.info.layers ?? null,
+    },
     video: {
       ...m.video,
       pixels: [Math.round(m.video.width * m.video.scale), Math.round(m.video.height * m.video.scale)],
@@ -153,7 +162,11 @@ export function buildManifest(m: ManifestInput): Record<string, unknown> {
       beatSync: true,
     },
     cues: m.cues.map(({ spec, at, frame, action }) => ({ spec, atMs: at, frame, action })),
-    programs: m.programs,
+    programs: {
+      ...m.programs,
+      browser: programName(m.programs.browser),
+      ffmpeg: m.programs.ffmpeg && programName(m.programs.ffmpeg),
+    },
     fonts: m.fonts ?? null,
     frames: {
       count: result.frames,
@@ -172,8 +185,40 @@ export function buildManifest(m: ManifestInput): Record<string, unknown> {
           soundLogSha256: sha256Hex(soundLogJson(m.events)),
         }
       : null,
-    outputs: m.outputs,
+    outputs: Object.fromEntries(
+      Object.entries(m.outputs).map(([name, out]) => [
+        name,
+        { ...out, path: relativePath(path.dirname(m.manifestFile), out.path) },
+      ]),
+    ),
   };
+}
+
+/**
+ * An http(s) URL without the parts that often carry secrets (user info, signed query strings, tokens
+ * in the fragment): each present part becomes "redacted". Anything else comes back unchanged.
+ */
+export function redactUrl(arg: string): string {
+  if (!isWebUrl(arg) || !URL.canParse(arg)) return arg;
+  const url = new URL(arg);
+  if (!url.username && !url.password && !url.search && !url.hash) return arg;
+  if (url.username || url.password) {
+    url.username = "redacted";
+    url.password = "";
+  }
+  if (url.search) url.search = "redacted";
+  if (url.hash) url.hash = "redacted";
+  return url.href;
+}
+
+function programName(program: { path: string; version: string }): { name: string; version: string } {
+  return { name: path.basename(program.path), version: program.version };
+}
+
+/** `file` relative to `dir` with "/" separators; the bare file name when there is none (another drive). */
+function relativePath(dir: string, file: string): string {
+  const relative = path.relative(dir, file);
+  return path.isAbsolute(relative) ? path.basename(file) : relative.split(path.sep).join("/");
 }
 
 /** Writes `text` next to its destination first, then renames it into place. */

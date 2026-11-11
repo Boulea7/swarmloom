@@ -36,10 +36,20 @@ jobs:
       # Same licence gate as the release pack and assets jobs (ubuntu), so a new dependency fails its PR, not the release.
       - if: matrix.os == 'ubuntu-latest'
         run: pnpm check:licenses
+      # Here and not in the path-filtered Extension workflow: these tests also read files outside its filter
+      # (.github/workflows/pages.yml, .github/release.yml, .changeset/), so a PR touching only those runs them too.
+      - if: matrix.os == 'ubuntu-latest'
+        run: pnpm test:release
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
+      # Build before the tests: apps/cli/test/render.test.ts drives the built render page
+      # (packages/export/dist/render, not in Git) and fails under CI when it is missing.
       - run: pnpm build
+      - run: pnpm test
+        env:
+          # The hosted runners have Chrome but no ffmpeg, so the CLI's real render tests skip here;
+          # the e2e job provides both and runs them, where a missing one fails.
+          SWARMLOOM_TEST_DEPS: optional
       # After the build, so the check also reads the bundlers' module paths in each dist/.
       - if: matrix.os == 'ubuntu-latest'
         run: pnpm check:notices
@@ -67,4 +77,11 @@ jobs:
           echo "::warning::apt mirrors unreachable, installing Chromium without its system packages"
           pnpm exec playwright install chromium
       - run: pnpm test:browser
+      # Builds the --e2e Chromium package and drives it in Playwright's Chromium (apps/extension/test/e2e).
       - run: pnpm test:e2e
+      # The CLI tests on a real browser and ffmpeg (apps/cli/test/render.test.ts, snapshot.test.ts):
+      # they drive the built render page, and under CI a missing browser, ffmpeg or page fails them.
+      - run: pnpm build
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      - run: pnpm exec vitest run --project unit apps/cli/test/render.test.ts apps/cli/test/snapshot.test.ts

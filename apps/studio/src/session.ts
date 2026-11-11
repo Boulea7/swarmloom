@@ -220,6 +220,16 @@ export class Session {
   }
 
   /**
+   * Plain-English quality notes of the adapter run: what it removed or approximated (the `notes`
+   * of the Lottie, DOCX, DOC and OpenDocument results). Empty when there are none.
+   */
+  get notes(): string[] {
+    const notes = (this.loaded as { notes?: unknown } | null)?.notes;
+    if (!Array.isArray(notes)) return [];
+    return notes.filter((note): note is string => typeof note === "string" && note.trim() !== "");
+  }
+
+  /**
    * Scrubber position between 0 and 1, on the same scale {@link seek} takes: player time over
    * plannedMs, 1 once the build has ended and at most 0.99 before. A player without `time` reports
    * the share of layers built instead.

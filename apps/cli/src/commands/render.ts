@@ -34,7 +34,7 @@ import {
   sourceDigest,
   writeAtomic,
 } from "../pipeline/evidence";
-import { outputStem, type RenderSource, resolveSource } from "../pipeline/input";
+import { inputFilePath, isWebUrl, outputStem, type RenderSource, resolveSource } from "../pipeline/input";
 import { formatClock } from "../pipeline/progress";
 import { type PlayerSettings, type RenderSummary, renderVideo } from "../pipeline/render";
 import { isMissingOrEmptyDir } from "../util/fs";
@@ -87,7 +87,9 @@ Capture evidence (for repeatable takes; see the README):
       --manifest-out <file>
                           Write a JSON manifest: arguments, input and blueprint SHA-256, player
                           settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256
-                          of every frame (frames are then captured as PNG) and of the sound log
+                          of every frame (frames are then captured as PNG) and of the sound log.
+                          Made to share: output paths relative to it, programs by name, no working
+                          directory, and URL user info, query and fragment redacted
 
 Programs:
       --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then
@@ -232,8 +234,10 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   if (evidence.audioOut && !settings.sound) {
     throw new UsageError("--audio-out needs sound: drop --no-sound and use mp4, webm or png-seq");
   }
-  const files = [output, evidence.audioOut, evidence.eventsOut, evidence.manifestOut].filter(Boolean);
-  if (new Set(files).size !== files.length) {
+  const files = [output, evidence.audioOut, evidence.eventsOut, evidence.manifestOut].filter(
+    (file): file is string => file !== undefined,
+  );
+  if (new Set(files.map(sameFileKey)).size !== files.length) {
     throw new UsageError("--output, --audio-out, --events-out and --manifest-out must be different files");
   }
 
@@ -258,6 +262,23 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     quiet: values.quiet ?? false,
     verbose: values.verbose ?? false,
   };
+}
+
+/**
+ * Comparison key for "is this the same file?": NTFS and default APFS volumes ignore case (APFS also
+ * Unicode normalization), so `take.mp4` and `TAKE.MP4` name one file there, and Win32 drops trailing
+ * dots and spaces from path segments, so `take.mp4.` and `take.mp4 ` open `take.mp4` (path.resolve
+ * keeps them). Folding on every platform rejects such twins where they are distinct files too, which
+ * is harmless next to overwriting the video.
+ */
+function sameFileKey(file: string): string {
+  return file.normalize("NFC").toLowerCase().split(path.sep).map(trimTrailingDotsAndSpaces).join(path.sep);
+}
+
+function trimTrailingDotsAndSpaces(segment: string): string {
+  let end = segment.length;
+  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " ")) end--;
+  return segment.slice(0, end);
 }
 
 const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish)$/;
@@ -335,6 +356,36 @@ async function checkOutputPath(opts: RenderOptions): Promise<void> {
   if (info?.isDirectory()) throw new UsageError(`Output is a directory: ${opts.output}`);
 }
 
+/**
+ * Refuses an output path that is the input file: the video and the evidence files replace whatever is
+ * at their path, so the source would be lost. Compares the names (see {@link sameFileKey}) and, for
+ * paths that exist, the file identity, which also catches links to the input.
+ * @throws UsageError naming the output.
+ */
+async function checkInputKept(opts: RenderOptions, cwd: string): Promise<void> {
+  if (isWebUrl(opts.input)) return;
+  const input = inputFilePath(opts.input, cwd);
+  const inputId = await fileId(input);
+  const outputs: [string, string | undefined][] = [
+    ["The output", opts.output],
+    ["--audio-out", opts.audioOut],
+    ["--events-out", opts.eventsOut],
+    ["--manifest-out", opts.manifestOut],
+  ];
+  for (const [label, file] of outputs) {
+    if (!file) continue;
+    if (sameFileKey(file) === sameFileKey(input) || (inputId !== null && (await fileId(file)) === inputId)) {
+      throw new UsageError(`${label} would overwrite the input ${input}`, "Write every output to another file.");
+    }
+  }
+}
+
+/** Device and inode of an existing file, or null (missing, or no stable inode on this file system). */
+async function fileId(file: string): Promise<string | null> {
+  const info = await stat(file, { bigint: true }).catch(() => null);
+  return info && info.ino !== 0n ? `${info.dev}:${info.ino}` : null;
+}
+
 /** Options for the ffmpeg-less fallback: png-seq into "<input>-frames", sound kept unless --no-sound. */
 function pngSequenceFallback(opts: RenderOptions, cwd: string): Partial<RenderOptions> {
   const { output } = resolveOutput(opts.input, undefined, "png-seq", cwd);
@@ -376,6 +427,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   }
   // Input problems are the user's to fix first; they are reported before missing programs.
   const source = await resolveSource(opts.input, { cwd: ctx.cwd, signal: ctx.signal });
+  await checkInputKept(opts, ctx.cwd);
   const host = ctx.host ?? systemHost(ctx.env);
   const browser = findBrowser(host, { flag: opts.chrome, playwright: installedPlaywright() });
   let ffmpeg: { path: string; caps: FfmpegCaps; version: FfmpegVersion } | undefined;
@@ -432,7 +484,6 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   );
   await writeEvidence(opts, summary, {
     argv: ["render", ...argv],
-    cwd: ctx.cwd,
     source,
     browserPath: browser.path,
     ffmpeg: ffmpeg ? { path: ffmpeg.path, version: formatFfmpegVersion(ffmpeg.version) } : null,
@@ -464,7 +515,6 @@ async function writeEvidence(
   summary: RenderSummary,
   run: {
     argv: string[];
-    cwd: string;
     source: RenderSource;
     browserPath: string;
     ffmpeg: { path: string; version: string } | null;
@@ -493,7 +543,7 @@ async function writeEvidence(
   const manifest = buildManifest({
     tool: { name: "swarmloom", version: pkg.version },
     argv: run.argv,
-    cwd: run.cwd,
+    manifestFile: opts.manifestOut,
     input: { ...input, format: run.source.kind === "page" ? "html" : run.source.format },
     info: summary.info,
     video: { format: opts.format, width: opts.width, height: opts.height, scale: opts.scale, fps: opts.fps },

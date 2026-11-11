@@ -34,6 +34,18 @@ export function timeOfIndex(index: number, t: PlaybackTiming): number {
   return (index * 1000) / t.fr;
 }
 
+/** Source frames played `elapsed` engine ms after playback started at `from` ms of the cycle. */
+function framesPlayed(elapsed: number, t: PlaybackTiming, from: number): number {
+  const ms = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0) * t.speed + Math.max(0, from);
+  // The epsilon absorbs float noise of accumulated clock steps landing exactly on a frame edge.
+  return Math.floor((ms * t.fr) / 1000 + 1e-6);
+}
+
+/** Frames a finite playback shows before it holds the last one. */
+function framesTotal(t: PlaybackTiming): number {
+  return frameCount(t) * (t.loop === false ? 1 : Math.max(1, Math.floor(Number(t.loop))));
+}
+
 /**
  * Frame index shown `elapsed` engine ms after playback started at `from` ms of the cycle.
  *
@@ -42,10 +54,12 @@ export function timeOfIndex(index: number, t: PlaybackTiming): number {
  */
 export function indexAt(elapsed: number, t: PlaybackTiming, from = 0): number {
   const n = frameCount(t);
-  const ms = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0) * t.speed + Math.max(0, from);
-  // The epsilon absorbs float noise of accumulated clock steps landing exactly on a frame edge.
-  const k = Math.floor((ms * t.fr) / 1000 + 1e-6);
+  const k = framesPlayed(elapsed, t, from);
   if (t.loop === true) return k % n;
-  const plays = t.loop === false ? 1 : Math.max(1, Math.floor(t.loop));
-  return k >= n * plays ? n - 1 : k % n;
+  return k >= framesTotal(t) ? n - 1 : k % n;
+}
+
+/** True while playback started at `from` still moves `elapsed` ms later (it loops, or plays are left). */
+export function playsOn(elapsed: number, t: PlaybackTiming, from = 0): boolean {
+  return t.loop === true || framesPlayed(elapsed, t, from) < framesTotal(t);
 }

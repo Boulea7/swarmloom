@@ -108,6 +108,9 @@
   overflow: hidden;
 }
 
+/* Scrolls when a card is taller than the stage (the unsupported-format error lists every format,
+   which outgrows a phone stage). The implicit row grows with the card, so an overflowing card
+   starts at the top and nothing is cut off above the scroll range. */
 .stage-overlay {
   position: absolute;
   inset: 0;
@@ -115,6 +118,8 @@
   display: grid;
   place-items: center;
   padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--surface-2);
   transition: opacity var(--slow) var(--ease);
 }
@@ -315,6 +320,17 @@
   justify-content: center;
   gap: 10px;
   margin-top: 8px;
+}
+
+/* Phones: less padding leaves the message more width, so it needs fewer lines (and less scrolling). */
+@media (max-width: 479px) {
+  .stage-overlay {
+    padding: 16px;
+  }
+
+  .stage-error {
+    padding: 22px 18px 18px;
+  }
 }
 
 /* Scrubber and status */

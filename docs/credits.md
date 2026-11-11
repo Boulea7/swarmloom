@@ -58,13 +58,13 @@ SwarmLoom 源码以 [MIT License](https://github.com/Boulea7/swarmloom/blob/main
 | docx-preview | DOCX 样式优先导入 | Apache-2.0 |
 | Mammoth | DOCX 语义导入 | BSD-2-Clause |
 | PDF.js | PDF 文本、绘制信息与页面位图 | Apache-2.0 |
-| three.js | glTF、OBJ、STL、PLY 与 WebGL 舞台 | MIT |
+| three.js | glTF、OBJ、STL、PLY 与 WebGL 舞台 | MIT；随附的 Draco 解码器为 Apache-2.0，meshoptimizer 解码器为 MIT |
 | SheetJS Community Edition | 工作簿读取 | Apache-2.0；不使用独立许可的 Pro |
 | Papa Parse | CSV / TSV | MIT |
 | cfb | 旧版 DOC 的 Compound File Binary 读取 | Apache-2.0 |
 | word-extractor | Node 旧版 DOC 文本提取 | MIT |
 | fflate | ZIP 与压缩数据 | MIT |
-| KaTeX | 数学排版，按需加载 | MIT |
+| KaTeX | 数学排版，按需加载 | MIT；随附的数学字体为 OFL-1.1 |
 | Mermaid | 图表编译，按需加载 | MIT |
 | highlight.js | 源码高亮 | BSD-3-Clause |
 | DOMPurify | 不受信 HTML 清洗 | 采用 Apache-2.0 分支 |
@@ -75,4 +75,4 @@ SwarmLoom 源码以 [MIT License](https://github.com/Boulea7/swarmloom/blob/main
 
 仓库示例应优先自行生成，或使用许可清晰的素材。新增第三方样例时，应记录作者、来源、许可证和必要署名；不提交来源不明的文档、字体、图片、音频或模型。
 
-发布产物需要保留完整的第三方许可与 NOTICE。打包了第三方代码或资源的 npm 包（例如 CLI、`@swarmloom/element` 的 CDN 构建、KaTeX 字体内联的 Markdown 适配器）在包根目录附带 `LICENSE.md`，其中先是 SwarmLoom 的 MIT 许可，再是每个被打包依赖的完整许可与 NOTICE；它由 `scripts/release/third-party-notices.mjs` 在打包发布时生成，不提交到仓库；CI 会检查每个被打包的依赖都有许可文本。官网随 Bricolage Grotesque 字体一起部署 `fonts/OFL.txt`。若发现遗漏，请通过 [GitHub Issue](https://github.com/Boulea7/swarmloom/issues/new/choose) 提供包名、版本和相关文件路径。
+发布产物需要保留完整的第三方许可与 NOTICE。打包了第三方代码或资源的 npm 包（例如 CLI、`@swarmloom/element` 的 CDN 构建、KaTeX 字体内联的 Markdown 适配器）在包根目录附带 `LICENSE.md`，其中先是 SwarmLoom 的 MIT 许可，再是每个被打包依赖的完整许可与 NOTICE；它由 `scripts/release/third-party-notices.mjs` 在打包发布时生成，不提交到仓库；CI 会检查每个被打包的依赖都有许可文本。官网随 Bricolage Grotesque 字体一起部署 `fonts/OFL.txt`；GitHub Pages 上的官网、文档和 Studio 目录各有一份同样格式的 `LICENSE.md`，列出该应用打包或内联的全部第三方包（如官网的 Phosphor 图标、文档站的 Vue、Inter 字体和 MiniSearch、Studio 的 lottie-web），由同一脚本在部署时生成。若发现遗漏，请通过 [GitHub Issue](https://github.com/Boulea7/swarmloom/issues/new/choose) 提供包名、版本和相关文件路径。

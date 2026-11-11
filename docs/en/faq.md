@@ -70,7 +70,7 @@ Export a PDF from Word when exact page positions matter.
 
 ### Why does legacy DOC contain only simplified text?
 
-The first DOC pipeline targets body text and paragraphs, not complex tables, floating images, exact fonts or pagination. Convert to DOCX for richer structure, or PDF for visual fidelity.
+DOC files open in text mode: paragraphs, headings, lists, tables, headers, footers and notes keep their structure, but pictures, character formatting (fonts, sizes, colours, emphasis), text boxes and floating shapes are left out, and Word's automatic page flow is not imitated. Convert to DOCX for richer structure, or PDF for visual fidelity.
 
 ### Why isn't a scanned PDF typed character by character?
 
@@ -112,7 +112,7 @@ swarmloom render ./demo.md -o demo.mp4 \
   --ffmpeg /path/to/ffmpeg
 ```
 
-`SWARMLOOM_CHROME` and `SWARMLOOM_FFMPEG` are also supported. CLI subcommands are still being implemented; the interface above is planned.
+`SWARMLOOM_CHROME` and `SWARMLOOM_FFMPEG` are also supported. Until the npm package is published, build the CLI from source and run it as `node apps/cli/dist/cli.js` (see [CLI](./cli)).
 
 ### Why do compressed bytes differ with the same seed?
 
@@ -122,7 +122,7 @@ Also fix the input, browser, fonts, viewport, DPR, adapters, plugins and CLI ver
 
 ### Can I install an extension or the full Studio on a watch?
 
-That is not promised. watchOS/Wear OS has no general SwarmLoom extension route. The planned alternatives are the `?watch=1` tiny player, or MP4, animated WebP and stills exported on another device.
+That is not promised. watchOS/Wear OS has no general SwarmLoom extension route. The alternatives are Studio's `?watch=1` tiny player (small screens switch to it on their own), or MP4, animated WebP and stills exported on another device.
 
 ## Safari
 

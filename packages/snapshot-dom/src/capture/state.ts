@@ -47,6 +47,8 @@ export interface ElInfo {
   fixedCb: boolean | undefined;
   before: PseudoInfo | null | undefined;
   after: PseudoInfo | null | undefined;
+  /** Computed styles of the generated ::before / ::after boxes, null when none (see pseudoStyleOf). */
+  pseudoStyles: { before?: CSSStyleDeclaration | null; after?: CSSStyleDeclaration | null } | undefined;
 }
 
 /** Walk context: how the current subtree maps to the world and what clips it. */
@@ -120,7 +122,7 @@ export interface Capture {
   readonly layers: Layer[];
   readonly keys: (readonly number[])[];
   readonly infos: Map<Element, ElInfo>;
-  /** CSS counter values per document or shadow root, built on first use. */
+  /** CSS counter passes per document or shadow root, advanced by the walk (see countersReady). */
   readonly counters: Map<Node, CounterIndex>;
   readonly nodes: NodeRec[];
   readonly rootNode: NodeRec;
@@ -153,6 +155,11 @@ export interface Capture {
   readonly hardLimit: number;
   /** Deadline of the current walk slice (set by the driver in snapshot.ts). */
   readonly slice: Slice;
+  /**
+   * Walk frontier, checked for reflows between slices: the element the walk resumes at (null while
+   * skimming) and the last in-flow element it entered outside fixed UI.
+   */
+  readonly frontier: { next: Element | null; flow: Element | null };
   svgSeq: number;
   fontRatios: Map<string, number>;
   measure: CanvasRenderingContext2D | null | undefined;
@@ -207,6 +214,7 @@ export function createCapture(
     overflow: 0,
     hardLimit: opts.maxLayers * 2 + 256,
     slice: { deadline: Number.POSITIVE_INFINITY },
+    frontier: { next: null, flow: null },
     svgSeq: 0,
     fontRatios: new Map(),
     measure: undefined,
@@ -235,6 +243,7 @@ export function infoOf(cap: Capture, el: Element): ElInfo {
     fixedCb: undefined,
     before: undefined,
     after: undefined,
+    pseudoStyles: undefined,
   };
   cap.infos.set(el, info);
   return info;

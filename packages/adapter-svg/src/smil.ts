@@ -12,6 +12,8 @@ import { SVG_NS } from "./units";
  * VirtualClock stay frame-exact; once the stage goes live (`data-live` on the world host, the same
  * switch that lets CSS animations run), the SVG runs on its own clock (`unpauseAnimations()`),
  * unless the playback was created with `liveClock: "player"` (see {@link SmilPlaybackOptions}).
+ * CSS animations and transitions of the drawing's own `<style>` share that timeline: the world's
+ * freeze rule does not reach the drawing's shadow root, so the replay pauses and seeks them too.
  */
 
 /** Custom layer task (and renderer key) of the live, animated copy of the drawing. */
@@ -55,6 +57,10 @@ interface Live {
   t0: number | null;
   /** The world went live: the SVG runs on its own clock. */
   live: boolean;
+  /** The drawing has a `<style>` or style attribute, so it may run CSS animations. */
+  readonly css: boolean;
+  /** Drawing time (s) at which each of its CSS animations was first seen. */
+  readonly born: WeakMap<Animation, number>;
 }
 
 function markupOf(layer: CustomLayer): string {
@@ -93,6 +99,44 @@ function seek(svg: SVGSVGElement, seconds: number): void {
   }
 }
 
+/** CSS animations and transitions running in the drawing (they start on wall-clock time). */
+function cssAnimations(state: Live): Animation[] {
+  if (!state.css) return [];
+  try {
+    return state.svg.getAnimations?.({ subtree: true }) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Pauses the drawing at `seconds` of its timeline: SMIL, and each CSS animation at the time since it
+ * was first seen (0 s for the ones there from the start), so frames never depend on wall-clock time.
+ */
+function seekDrawing(state: Live, seconds: number): void {
+  seek(state.svg, seconds);
+  for (const anim of cssAnimations(state)) {
+    const born = state.born.get(anim) ?? seconds;
+    state.born.set(anim, born);
+    try {
+      anim.pause();
+      anim.currentTime = (seconds - born) * 1000;
+    } catch {
+      // pause() refuses some reversed infinite animations; they keep their state.
+    }
+  }
+}
+
+/** Lets the drawing run on its own clock from its pose (a start time, unlike play(), never rewinds an ended one). */
+function resume(state: Live): void {
+  state.svg.unpauseAnimations?.();
+  for (const anim of cssAnimations(state)) {
+    const now = anim.timeline?.currentTime;
+    const at = anim.currentTime;
+    if (typeof now === "number" && typeof at === "number") anim.startTime = now - at;
+  }
+}
+
 /** The element whose `data-live` attribute marks a live stage world (the shadow host). */
 function worldHost(container: HTMLElement): Element | null {
   const root = container.getRootNode();
@@ -103,7 +147,8 @@ function worldHost(container: HTMLElement): Element | null {
 function applyLive(state: Live, live: boolean): void {
   state.live = live;
   if (!state.started) return;
-  if (live) state.svg.unpauseAnimations?.();
+  // Back on player time, the next frame pauses and seeks the CSS animations again.
+  if (live) resume(state);
   else pause(state.svg);
 }
 
@@ -112,8 +157,8 @@ function start(state: Live): void {
   if (state.started) return;
   state.started = true;
   state.t0 = null;
-  seek(state.svg, 0);
-  if (state.live) state.svg.unpauseAnimations?.();
+  seekDrawing(state, 0);
+  if (state.live) resume(state);
 }
 
 /** Options of {@link createSmilPlayback}. */
@@ -130,7 +175,7 @@ export interface SmilPlaybackOptions {
 export interface SmilPlayback {
   renderer: LayerRenderer<CustomLayer>;
   task: TaskFn<CustomLayer>;
-  /** Advances started animations to player time `now` (ms). */
+  /** Advances started animations to player time `now` (ms) and holds the others at 0 s. */
   frame(now: number): void;
 }
 
@@ -167,7 +212,16 @@ export function createSmilPlayback(options: SmilPlaybackOptions = {}): SmilPlayb
       const host = ownClock ? worldHost(container) : null;
       const View = doc.defaultView?.MutationObserver;
       const observer = host && View ? new View(() => applyLive(state, host.hasAttribute("data-live"))) : null;
-      const state: Live = { svg, wrapper, observer, started: false, t0: null, live: !!host?.hasAttribute("data-live") };
+      const state: Live = {
+        svg,
+        wrapper,
+        observer,
+        started: false,
+        t0: null,
+        live: !!host?.hasAttribute("data-live"),
+        css: !!svg.querySelector("style,[style]"),
+        born: new WeakMap(),
+      };
       if (host) observer?.observe(host, { attributes: true, attributeFilter: ["data-live"] });
       mounted.set(layer, state);
       return wrapper;
@@ -211,9 +265,14 @@ export function createSmilPlayback(options: SmilPlaybackOptions = {}): SmilPlayb
     task,
     frame(now) {
       for (const state of mounted.values()) {
-        if (!state.started || state.live) continue;
+        if (!state.started) {
+          // CSS animations start running once the wrapper is in the document: hold them at 0 s.
+          seekDrawing(state, 0);
+          continue;
+        }
+        if (state.live) continue;
         state.t0 ??= now;
-        seek(state.svg, Math.max(0, now - state.t0) / 1000);
+        seekDrawing(state, Math.max(0, now - state.t0) / 1000);
       }
     },
   };

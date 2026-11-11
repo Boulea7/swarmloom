@@ -369,9 +369,9 @@ export class SwarmStage implements Stage {
     return (g.scrollLeft - g.offsetX) / g.scale;
   }
 
-  scrollTo(y: number, opts?: { smooth?: boolean }): void {
+  scrollTo(y: number, opts?: { smooth?: boolean; defer?: boolean }): void {
     if (this.#destroyed || typeof y !== "number" || !Number.isFinite(y)) return;
-    this.#scroll.scrollTo(y, opts?.smooth === true);
+    this.#scroll.scrollTo(y, opts?.smooth === true, undefined, opts?.defer === true);
   }
 
   onUserScroll(fn: (y: number) => void): () => void {
@@ -430,8 +430,7 @@ export class SwarmStage implements Stage {
   render(now: number, agents: readonly AgentView[]): void {
     if (this.#destroyed) return;
     const t = typeof now === "number" && Number.isFinite(now) ? now : 0;
-    const frame = ++this.#frame;
-    this.#mounter.frame = frame;
+    const frame = this.#nextFrame();
     this.#scroll.step(t, frame);
 
     const o = this.#fade.step(t);
@@ -458,6 +457,16 @@ export class SwarmStage implements Stage {
     overlay.render(t, Array.isArray(agents) ? agents : NO_AGENTS);
   }
 
+  /**
+   * A frame the engine simulated without drawing (seek): task touches age and virtualization
+   * runs as in render(), so the layers a seek builds on its way down the page unmount again
+   * instead of all staying mounted until 120 frames after the seek.
+   */
+  skipFrame(): void {
+    if (this.#destroyed) return;
+    this.#maybePass(this.#nextFrame());
+  }
+
   enter(): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
     this.#phase++;
@@ -478,8 +487,10 @@ export class SwarmStage implements Stage {
     this.#guard.engage(dom.host);
     dom.host.removeAttribute("data-passive");
     try {
-      // Keyboard scrolling (arrows, Page Up/Down) goes to the stage while the page is inert.
-      dom.scroller.focus({ preventScroll: true });
+      // Keyboard scrolling (arrows, Page Up/Down) goes to the stage while the page is inert. Focus
+      // already on the stage stays put: a replay started from the toolbar (Replay, a key step back
+      // on the seek bar) must leave it on that control, or the next arrow key scrolls the stage.
+      if (!dom.root.activeElement) dom.scroller.focus({ preventScroll: true });
     } catch {
       // focus is best effort
     }
@@ -644,6 +655,13 @@ export class SwarmStage implements Stage {
       this.#originDirty = false;
     }
     return this.#origin;
+  }
+
+  /** Advances the frame counter that dates task touches (and expires them in the mounter). */
+  #nextFrame(): number {
+    const frame = ++this.#frame;
+    this.#mounter.frame = frame;
+    return frame;
   }
 
   #maybePass(frame: number): void {

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Performance benchmark (`pnpm bench`). Plays the demo page and a synthetic 4k-layer page in
 // headless Chromium (1280x800, DPR 1, sound off) and records snapshot time, build FPS, the
-// per-frame cost of rAF callbacks, frames over 33 ms, long tasks, mounted stage nodes and heap,
-// then checks them against the budgets in scripts/bench/lib.mjs. Exits 1 when a budget fails.
+// per-frame cost of rAF callbacks, frames over 33 ms, long tasks, mounted stage nodes, heap and
+// seeks from the start (follow "scroll" on the demo, "tour" on the 4k-layer page), then checks them
+// against the budgets in scripts/bench/lib.mjs. Exits 1 when a budget fails.
 //
 //   node scripts/bench.mjs [--write] [--json [<file>]] [--report-only] [--chrome <path>]
 //
@@ -39,6 +40,8 @@ const LARGE_WINDOW_MS = 8000;
 const FLOCK_AGENTS = 128;
 const FLOCK_WINDOW_MS = 3000;
 const SEEK_TO_MS = 10_000;
+/** Tour-mode seek on the synthetic page: deep enough that the camera has toured many screens. */
+const TOUR_SEEK_TO_MS = 60_000;
 const REPLAYS = 3;
 /** Upper bound for one full build of the demo page; a hang fails the run instead of blocking it. */
 const BUILD_TIMEOUT_MS = 120_000;
@@ -210,11 +213,20 @@ async function replayPhase(n) {
   player.setSpeed(1);
 }
 
-/** In the page: times a seek back to `t` ms, which replays the run from the start without drawing. */
-function seekPhase(t) {
+/**
+ * In the page: times a seek to `to` ms from the start of the run (optionally in another follow
+ * mode), then counts the stage nodes its render mounted. seek(0) goes first and is timed with it:
+ * a seek forward only fast-forwards the current run, so after the replays it would time the tail
+ * of a finished run instead of a replay from the start.
+ */
+function seekPhase({ to, follow }) {
+  const player = window.__player;
+  if (follow) player.setFollow(follow);
   const t0 = performance.now();
-  window.__player.seek(t);
-  return performance.now() - t0;
+  player.seek(0);
+  player.seek(to);
+  const ms = performance.now() - t0;
+  return { ms, nodes: window.__benchMetrics.countNodes() };
 }
 
 /** In the page: completes the build quickly so the flock finale runs, then returns its start time. */
@@ -282,14 +294,14 @@ async function benchDemo(browser, script) {
     const built = await heapMB(cdp);
     await page.evaluate(replayPhase, REPLAYS);
     const replays = await heapMB(cdp);
-    const seekMs = await page.evaluate(seekPhase, SEEK_TO_MS);
+    const seek = await page.evaluate(seekPhase, { to: SEEK_TO_MS });
     if (errors.length) throw new Error(`demo page errors: ${errors.join("; ")}`);
     return {
       ...snap,
       agents,
       build,
       heapMB: { base, built, replays, leak: replays - built },
-      seekMs,
+      seekMs: seek.ms,
     };
   } finally {
     await context.close();
@@ -312,6 +324,8 @@ async function benchLarge(browser, script) {
     const m = await metrics(page);
     const build = frameStats(m, m.longTasks, run.buildStart, run.buildEnd);
     const built = await heapMB(cdp);
+    // The tour camera scrolls through the whole page while a seek fast-forwards, unlike scroll mode.
+    const tourSeek = await page.evaluate(seekPhase, { to: TOUR_SEEK_TO_MS, follow: "tour" });
     if (errors.length) throw new Error(`synthetic page errors: ${errors.join("; ")}`);
     return {
       ...snap,
@@ -320,6 +334,7 @@ async function benchLarge(browser, script) {
       finishMs: run.finishMs,
       nodes: { peak: run.peak, finish: run.finishPeak },
       heapMB: { built },
+      tourSeek: { ms: tourSeek.ms, nodes: tourSeek.nodes },
     };
   } finally {
     await context.close();
@@ -371,7 +386,7 @@ function printResults(results, checks) {
   );
   log(line("demo", demo.build));
   log(
-    `demo       heap ${demo.heapMB.base.toFixed(1)} -> ${demo.heapMB.built.toFixed(1)} built -> ${demo.heapMB.replays.toFixed(1)} MB after ${REPLAYS} replays; seek(${SEEK_TO_MS}) ${demo.seekMs.toFixed(0)} ms`,
+    `demo       heap ${demo.heapMB.base.toFixed(1)} -> ${demo.heapMB.built.toFixed(1)} built -> ${demo.heapMB.replays.toFixed(1)} MB after ${REPLAYS} replays; seek(${SEEK_TO_MS}) from the start ${demo.seekMs.toFixed(0)} ms`,
   );
   log(
     `reference  fps ${REFERENCE.fps}  long tasks ${REFERENCE.longTasks} (${REFERENCE.longTaskMs} ms)  heap peak ${REFERENCE.heapPeakMB} MB (other page and machine, with screenshots; orientation only)`,
@@ -382,6 +397,9 @@ function printResults(results, checks) {
   log(line("large", large.build));
   log(
     `large      stage nodes peak ${large.nodes.peak} building, ${large.nodes.finish} while finish() completes it in ${large.finishMs.toFixed(0)} ms; heap ${large.heapMB.built.toFixed(1)} MB`,
+  );
+  log(
+    `large      tour seek(${TOUR_SEEK_TO_MS}) from the start ${large.tourSeek.ms.toFixed(0)} ms, ${large.tourSeek.nodes} stage nodes after it`,
   );
   log(line(`flock x${flock.agents}`, flock));
   log("");

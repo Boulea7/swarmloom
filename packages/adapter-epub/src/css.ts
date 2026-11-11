@@ -25,12 +25,18 @@ export interface ScopedSheet {
 const MAX_CSS_CHARS = 512 * 1024;
 const MAX_RULES = 5000;
 
-/** A closed url(): double-quoted, single-quoted (both may hold escapes) or bare. */
-const URL_RE = /url\(\s*(?:"((?:[^"\\]|\\[\s\S])*)"|'((?:[^'\\]|\\[\s\S])*)'|([^)\s]*))\s*\)/gi;
+/**
+ * Every `url(`: double-quoted, single-quoted (both may hold escapes) or bare, closed or not. A match
+ * covers at least the URL a browser reads there, so none stays in place; a quoted one is taken even
+ * with more before its `)` (Chromium fetches `url("x" cross-origin(anonymous))`). The bare form stops
+ * where CSS ends it (parentheses, quotes, whitespace) and takes an escape whole, so no other `url(`
+ * lies inside one run and the scan stays linear on a style attribute of megabytes.
+ */
+const URL_RE = /url\(\s*(?:"((?:[^"\\]|\\[\s\S])*)"|'((?:[^'\\]|\\[\s\S])*)'|((?:[^()\s"'\\]|\\[\s\S])*))(?:\s*\))?/gi;
 /** One CSS escape: up to six hex digits plus an optional whitespace, or any other character. */
 const ESCAPE_RE = /\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([\s\S]))/gi;
-/** A `url(` that no `)` closes: CSS still fetches it (the token ends at the end of the text). */
-const OPEN_URL_RE = /url\s*\((?![^)]*\))/gi;
+/** `url` and a `(` with whitespace between, which {@link URL_RE} does not take. */
+const SPACED_URL_RE = /url\s+\(/gi;
 /** Functions that load a URL written as a plain string. */
 const STRING_URL_FN_RE = /(?:-webkit-)?image-set\s*\(|\bsrc\s*\(/gi;
 
@@ -51,6 +57,15 @@ function revealEscapes(text: string): string {
     const c = unescapeOne(hex, ch);
     return /^[a-z-]$/i.test(c) ? c : m;
   });
+}
+
+/**
+ * Turns each `url (` that no `)` follows into `none(`, so it cannot become a URL that runs to the end
+ * of the text. Linear: one look for the last `)` instead of a scan ahead from every match.
+ */
+function closeSpacedUrls(text: string): string {
+  const lastParen = text.lastIndexOf(")");
+  return text.replace(SPACED_URL_RE, (m: string, at: number) => (at + m.length > lastParen ? "none(" : m));
 }
 
 /** Removes comments, repeatedly: removing one can join a `/` and a `*` into a new one. */
@@ -112,9 +127,9 @@ const FAMILY_RE = /(^|[;{\s])font-family\s*:\s*([^;}]+)/gi;
  *
  * Nothing outside `resolve` can be fetched afterwards: comments are removed and escaped letters
  * written out first, so the text is read the way a browser reads it and `\75 rl(` cannot hide a
- * url(); a `url(` left open and the functions that take a bare URL string (`image-set()`, `src()`)
- * become invalid functions; resolved URLs are re-quoted, so a quote inside a `data:` URL cannot end
- * the string.
+ * url(); every `url(`, closed or not, is rewritten; a `url (` left open and the functions that take
+ * a bare URL string (`image-set()`, `src()`) become invalid functions; resolved URLs are re-quoted,
+ * so a quote inside a `data:` URL cannot end the string.
  */
 export function cleanDeclarations(text: string, base: string, resolve: UrlResolver, family?: FamilyRewriter): string {
   const plain = revealEscapes(stripComments(text));
@@ -125,13 +140,13 @@ export function cleanDeclarations(text: string, base: string, resolve: UrlResolv
         return `${pre}font-family: ${stack}${important ? " !important" : ""}`;
       })
     : plain;
-  return families
-    .replace(URL_RE, (_m, a?: string, b?: string, c?: string) => {
+  return closeSpacedUrls(
+    families.replace(URL_RE, (_m, a?: string, b?: string, c?: string) => {
       const href = (a ?? b ?? c ?? "").replace(ESCAPE_RE, (_e, hex?: string, ch?: string) => unescapeOne(hex, ch));
       const url = resolve(href.trim(), base);
       return url ? `url(${quoteUrl(url)})` : "none";
-    })
-    .replace(OPEN_URL_RE, "none(")
+    }),
+  )
     .replace(STRING_URL_FN_RE, "invalid(")
     .replace(/position\s*:\s*fixed/gi, "position: absolute")
     .replace(/position\s*:\s*sticky/gi, "position: relative");

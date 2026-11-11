@@ -100,11 +100,7 @@ function boot(): void {
     readInbox: (id) => readInbox(id, new URL(import.meta.env.BASE_URL, window.location.href).href),
     onLaunch: queue
       ? (consumer) =>
-          queue.setConsumer((params) => {
-            void Promise.all(params.files.map((handle) => handle.getFile())).then(consumer, (error: unknown) =>
-              console.warn("[studio] launch files unreadable", error),
-            );
-          })
+          queue.setConsumer((params) => consumer(Promise.all(params.files.map((handle) => handle.getFile()))))
       : undefined,
     receiveHandoff: (signal) => receiveHandoff(window, signal),
     blockRemoteAssets: () => blockRemoteAssets(document),

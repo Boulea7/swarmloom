@@ -1,10 +1,10 @@
-import { resolveFontFamily } from "@swarmloom/core";
+import { missingFonts, resolveFontFamily } from "@swarmloom/core";
 
 /**
  * Office typefaces mapped to open stand-ins through the shared core table (decisions-v1 F01,
  * `FONT_FALLBACKS` in @swarmloom/core), so text keeps its line breaks on systems without the
  * Microsoft originals, plus a log of the faces a document actually used, so substitutions are
- * reported instead of silent.
+ * reported instead of silent, and only on devices that lack the original face.
  */
 
 /** CSS `font-family` list for the given typefaces (Latin first), with open fallbacks and a generic family. */
@@ -27,7 +27,7 @@ export function hasCjk(text: string): boolean {
 
 /**
  * Records the typefaces of visible text while a document is converted, and turns those with
- * an open substitute into one user-facing quality note.
+ * an open substitute that the device cannot draw into one user-facing quality note.
  */
 export class FontLog {
   private readonly faces = new Map<string, string>();
@@ -40,19 +40,24 @@ export class FontLog {
     if (!this.faces.has(key)) this.faces.set(key, name);
   }
 
-  /** "Calibri → Carlito" pairs in first-use order. */
-  substitutions(): string[] {
-    const out: string[] = [];
+  /**
+   * "Calibri → Carlito" pairs in first-use order, for the faces `doc` cannot draw (an installed
+   * original is shown as is). Empty when font availability cannot be measured.
+   */
+  substitutions(doc: Document): string[] {
+    const pairs: [string, string][] = [];
     for (const name of this.faces.values()) {
       const alt = fontSubstitute(name);
-      if (alt) out.push(`${name} → ${alt}`);
+      if (alt) pairs.push([name, alt]);
     }
-    return out;
+    const faces = pairs.map(([name]) => name);
+    const missing = new Set(missingFonts(doc, faces));
+    return pairs.filter(([name]) => missing.has(name)).map(([name, alt]) => `${name} → ${alt}`);
   }
 
-  /** Quality note listing the substitutions, or undefined when there are none. */
-  note(): string | undefined {
-    const pairs = this.substitutions();
+  /** Quality note listing the substitutions on `doc`, or undefined when there are none. */
+  note(doc: Document): string | undefined {
+    const pairs = this.substitutions(doc);
     if (pairs.length === 0) return undefined;
     return `Fonts that are not installed are shown with open substitutes: ${pairs.join(", ")}.`;
   }

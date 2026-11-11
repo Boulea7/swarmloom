@@ -5,7 +5,9 @@
  * `StageApi.el(data.target)`.
  *
  * Playback must be timed by the engine clock (`Plugin.frame`), never by the target's own
- * `requestAnimationFrame`, so exports stay frame-exact.
+ * `requestAnimationFrame`, so exports stay frame-exact. The one exception is a realtime player
+ * after go live: it stops its clock, and a target that plays on (as the page's own CSS and SMIL
+ * animations do) runs on wall time; it then reports its moves through `subscribe`.
  */
 export interface AnimTarget {
   /** Length of one cycle, ms (> 0). */
@@ -20,6 +22,11 @@ export interface AnimTarget {
   reset(): void;
   /** Time shown within the cycle, ms, or null while the static pose is shown. */
   time(): number | null;
+  /**
+   * Optional: calls `listener` whenever the time shown changes, including moves without engine
+   * frames (after go live). Returns the function that stops the calls.
+   */
+  subscribe?(listener: () => void): () => void;
 }
 
 const targets = new WeakMap<Element, AnimTarget>();

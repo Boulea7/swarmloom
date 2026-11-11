@@ -7,13 +7,15 @@ import {
   type StageApi,
   VirtualClock,
 } from "@swarmloom/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { strToU8, zipSync } from "fflate";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import shuttleJson from "../../../examples/lottie/shuttle-loop.json?raw";
 import shuttleUrl from "../../../examples/lottie/shuttle-loop.lottie?url";
 import {
   type AnimTimelineData,
   animTargetOf,
   collectKeyframes,
+  createLottieAdapter,
   type LottieLoadedSource,
   type LottiePlayerData,
   lottieAdapter,
@@ -23,6 +25,7 @@ import {
 
 const ctx = { document, width: 640, theme: "light" as const };
 const PLAYER_ID = "lottie-player";
+const TIMELINE_ID = "lottie-timeline";
 
 function byKind<K extends Layer["kind"]>(layers: readonly Layer[], kind: K): Extract<Layer, { kind: K }>[] {
   return layers.filter((l): l is Extract<Layer, { kind: K }> => l.kind === kind);
@@ -86,7 +89,7 @@ async function playToDone(loaded: LottieLoadedSource, { reducedMotion = false, f
     player.destroy();
     host.remove();
   };
-  return { stage: stage as StageApi, advance, close };
+  return { stage: stage as StageApi, player, advance, close };
 }
 
 afterEach(() => {
@@ -140,6 +143,60 @@ describe("lottieAdapter on the example", () => {
     expect(shapes(fromArchive.blueprint)).toEqual(shapes(fromJson.blueprint));
     expect(fromArchive.blueprint.layers).toHaveLength(12);
   });
+
+  it.each([
+    ["#000000", "rgb(0, 0, 0)", "dark"],
+    ["#00000080", "rgb(125, 125, 126)", "dark"],
+    ["#0000", "#FAFAFC", "light"],
+  ])("uses the .lottie manifest background %s when no solid fills the canvas", async (color, background, scheme) => {
+    // A white stroked square and no canvas solid: the manifest is the only source of the background.
+    const square = {
+      ty: "gr",
+      it: [
+        { ty: "rc", p: { a: 0, k: [50, 50] }, s: { a: 0, k: [40, 40] }, r: { a: 0, k: 0 } },
+        { ty: "st", c: { a: 0, k: [1, 1, 1, 1] }, o: { a: 0, k: 100 }, w: { a: 0, k: 4 } },
+        { ty: "tr", p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 } },
+      ],
+    };
+    const json = {
+      v: "5.12.0",
+      fr: 30,
+      ip: 0,
+      op: 30,
+      w: 100,
+      h: 100,
+      layers: [{ ty: 4, ind: 1, ks: {}, ip: 0, op: 30, st: 0, shapes: [square] }],
+    };
+    const bytes = zipSync({
+      "manifest.json": strToU8(JSON.stringify({ animations: [{ id: "a", background: color }] })),
+      "animations/a.json": strToU8(JSON.stringify(json)),
+    });
+    const { blueprint } = await lottieAdapter.load({ bytes, name: "a.lottie" }, ctx);
+    expect(blueprint).toMatchObject({ background, scheme });
+    expect((custom(blueprint, PLAYER_TASK).data as LottiePlayerData).background).toBe(background);
+  });
+
+  it("gives the host turns while it picks the pose, and stops there when aborted", async () => {
+    // A host task pings until it finds the off-screen render up, then aborts the load.
+    const controller = new AbortController();
+    const ping = new MessageChannel();
+    let sawRender = false;
+    ping.port1.onmessage = () => {
+      if (document.querySelector("[data-swarmloom-sandbox]")) {
+        sawRender = true;
+        controller.abort();
+      } else if (!controller.signal.aborted) ping.port2.postMessage(null);
+    };
+    ping.port2.postMessage(null);
+    const load = lottieAdapter.load({ text: shuttleJson, name: "x.json" }, { ...ctx, signal: controller.signal });
+    try {
+      await expect(load).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      controller.abort();
+      ping.port1.close();
+    }
+    expect(sawRender).toBe(true);
+  });
 });
 
 describe("lottie playback with the real player", () => {
@@ -160,6 +217,41 @@ describe("lottie playback with the real player", () => {
     // Real time without engine time moves nothing: lottie-web runs no clock of its own.
     await new Promise((r) => setTimeout(r, 120));
     expect(target?.time()).toBe(t1);
+    close();
+    loaded.dispose?.();
+  });
+
+  it.each([
+    ["own", true],
+    ["player", false],
+  ] as const)('after go live with liveClock "%s", plays on without player time: %s', async (liveClock, playsOn) => {
+    const adapter = createLottieAdapter({ liveClock });
+    const loaded = (await adapter.load({ text: shuttleJson, name: "shuttle-loop.json" }, ctx)) as LottieLoadedSource;
+    const { stage, player, advance, close } = await playToDone(loaded);
+    const el = stage.el(PLAYER_ID) as HTMLElement;
+    const target = animTargetOf(el);
+    const head = (): string | null | undefined => stage.el(TIMELINE_ID)?.querySelector("g")?.getAttribute("transform");
+    player.goLive();
+    await advance(1500);
+    expect((el.getRootNode() as ShadowRoot).host.hasAttribute("data-live")).toBe(true);
+    const t0 = target?.time() ?? Number.NaN;
+    const h0 = head();
+    if (playsOn) {
+      // A realtime player stops its clock once live: the animation and the playhead play on.
+      await vi.waitFor(
+        () => {
+          expect(target?.time()).not.toBe(t0);
+          expect(head()).not.toBe(h0);
+        },
+        { timeout: 3000 },
+      );
+    } else {
+      // Exports keep ticking their virtual clock after go live: player time only, every frame exact.
+      await new Promise((r) => setTimeout(r, 200));
+      expect(target?.time()).toBe(t0);
+      await advance(500);
+      expect(((target?.time() ?? Number.NaN) - t0 + 4000) % 4000).toBeCloseTo(500, 6);
+    }
     close();
     loaded.dispose?.();
   });

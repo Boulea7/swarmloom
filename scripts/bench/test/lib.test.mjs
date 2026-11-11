@@ -26,6 +26,8 @@ test("budgets fail on a regression or a metric that is no longer measured", () =
   const cases = [
     ["all within budget", () => {}, []],
     ["finish() mounts every layer", (r) => (r.large.nodes.finish = 4400), ["large.nodes.finish"]],
+    // Regression: the bench only seeked in follow "scroll", so a tour seek mounting the page never failed.
+    ["tour-mode seek mounts every layer", (r) => (r.large.tourSeek.nodes = 3935), ["large.tourSeek.nodes"]],
     ["snapshot runs as one long task", (r) => (r.large.snapshotLongestTaskMs = 300), ["large.snapshotLongestTaskMs"]],
     ["fps below the floor", (r) => (r.demo.build.fps = 30), ["demo.build.fps"]],
     ["heap leak metric missing", (r) => delete r.demo.heapMB.leak, ["demo.heapMB.leak"]],

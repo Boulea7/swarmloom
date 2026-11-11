@@ -126,10 +126,10 @@ export class RenderPageDriver implements FrameSource {
     return Buffer.from(shot.data, "base64");
   }
 
-  /** The soundtrack for the elapsed time as WAV bytes, or null when the page produced none. */
-  async audioWav(): Promise<Uint8Array | null> {
+  /** The soundtrack, `durationMs` long (the video's length), as WAV bytes, or null when the page produced none. */
+  async audioWav(durationMs: number): Promise<Uint8Array | null> {
     const base64 = await this.call("Rendering the soundtrack", AUDIO_MS, () =>
-      this.page.evaluate(() => (globalThis as unknown as SwarmWindow).__swarmloom.audioWav()),
+      this.page.evaluate((ms) => (globalThis as unknown as SwarmWindow).__swarmloom.audioWav(ms), durationMs),
     );
     return typeof base64 === "string" && base64.length > 0 ? Buffer.from(base64, "base64") : null;
   }

@@ -99,8 +99,8 @@
           const done = t >= BUILD_MS + (current.tail ?? 2500) - 1e-6;
           return { state: done ? "done" : t >= BUILD_MS ? "finale" : "building", built, total: 10, done };
         },
-        async audioWav() {
-          return current?.sound ? wavBase64(t) : "";
+        async audioWav(ms) {
+          return current?.sound ? wavBase64(ms ?? t) : "";
         },
         async soundLog() {
           if (!current?.sound) return [];

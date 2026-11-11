@@ -50,7 +50,10 @@ function emitImage(
   return emit<ImageLayer>(cap, ctx, draft);
 }
 
-/** Flags an image layer whose SVG carries SMIL animation (`meta.smil`), so the stage can replay it. */
+/**
+ * Flags an image layer whose SVG carries SMIL animation (`meta.smil`). The stage shows such an
+ * image still (core's stage/layers/still-svg.ts), so its frames never follow the browser clock.
+ */
 function markAnimated(cap: Capture, id: string): void {
   const layer = cap.layers[cap.layers.length - 1];
   if (layer?.id === id) layer.meta = { ...layer.meta, smil: true };

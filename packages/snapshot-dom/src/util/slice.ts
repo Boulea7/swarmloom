@@ -32,24 +32,34 @@ export function yieldToHost(): Promise<void> {
   });
 }
 
+/** Hooks around each host turn of a sliced run. */
+export interface SliceGuard {
+  /** Runs right before the host gets a turn. */
+  pause(): void;
+  /** Runs after the host's turn; returns false when the work must be abandoned. */
+  resume(): boolean;
+}
+
 /**
  * Drives `work` slice by slice: it runs until it yields (its slice deadline passed), then the host
- * gets a turn, an abort is honoured and `resume` repairs what may have changed in between.
+ * gets a turn and an abort is honoured. `guard` sees each turn and can stop the run.
+ * @returns true when the work finished, false when `guard.resume` stopped it.
  * @throws The signal's reason when it aborts, or whatever `work` throws.
  */
 export async function runSliced(
   work: Iterator<void, void, void>,
   slice: Slice,
   signal: AbortSignal | undefined,
-  resume?: () => void,
-): Promise<void> {
+  guard?: SliceGuard,
+): Promise<boolean> {
   try {
     for (;;) {
       slice.deadline = now() + SLICE_MS;
-      if (work.next().done) return;
+      if (work.next().done) return true;
+      guard?.pause();
       await yieldToHost();
       throwIfAborted(signal);
-      resume?.();
+      if (guard && !guard.resume()) return false;
     }
   } finally {
     // Runs the walk's pending finally blocks when it stops early; a no-op once it has finished.

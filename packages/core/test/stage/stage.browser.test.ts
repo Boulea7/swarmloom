@@ -4,10 +4,17 @@ import { createRng } from "../../src/rng";
 import { createStage, stageStats } from "../../src/stage";
 import { resolveTheme } from "../../src/theme";
 import type { Blueprint, CursorShape, Layer, Plugin, Size } from "../../src/types";
+import { harness } from "../engine/fakes";
 
 const SHAPES: CursorShape[] = ["arrow", "crosshair", "ibeam", "pen", "hand", "grab", "move", "copy", "resize"];
 const PNG_1PX =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+
+/**
+ * Same-origin SVG whose SMIL animation runs on the browser clock when shown as is. A served path:
+ * Vite would inline an imported asset this small as a data: URL.
+ */
+const SPIN_SVG = "/packages/core/test/stage/spin.svg";
 
 const cleanups: (() => void)[] = [];
 
@@ -284,6 +291,46 @@ describe("stage: reveal semantics per kind", () => {
     );
   });
 
+  it.each([
+    // Served from the page's own origin, as the CLI serves the files next to a document.
+    { name: "SMIL in a same-origin .svg file", src: new URL(SPIN_SVG, location.href).href, x: 19.5 },
+    {
+      name: "CSS keyframes in a data: URL",
+      src: `data:image/svg+xml,${encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>@keyframes m{to{transform:translateX(150px)}}' +
+          'rect{animation:m .83s linear infinite}</style><rect x="10" y="35" width="30" height="30" fill="#e33"/></svg>',
+      )}`,
+      x: 24.5,
+    },
+  ])("image: an animated SVG ($name) holds still once decoded, whatever the wall time", async ({ src, x }) => {
+    const { stage } = mount([{ id: "a", kind: "image", box: { x: 0, y: 0, w: 200, h: 100 }, src }]);
+    // Shown, since an image nobody paints does not advance its animation.
+    stage.reveal("a", 1);
+    await stage.ready();
+    const img = (stage.el("a") as HTMLElement).querySelector("img") as HTMLImageElement;
+    // An <img> draws its current animation frame into a canvas: the mean x of the red shape.
+    const redX = (): number => {
+      const g = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      if (!g) return Number.NaN;
+      g.canvas.width = 200;
+      g.canvas.height = 100;
+      g.drawImage(img, 0, 0, 200, 100);
+      const d = g.getImageData(0, 0, 200, 100).data;
+      let sum = 0;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if ((d[i] ?? 0) > 200 && (d[i + 1] ?? 255) < 100) {
+          sum += (i / 4) % 200;
+          n++;
+        }
+      }
+      return sum / n;
+    };
+    expect(redX()).toBeCloseTo(x, 0);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(redX()).toBeCloseTo(x, 0);
+  });
+
   it("media: labelled placeholder that fades in", () => {
     const { stage } = mount([{ id: "m", kind: "media", box: { x: 0, y: 0, w: 320, h: 180 }, label: "Video" }]);
     const el = stage.el("m") as HTMLElement;
@@ -451,6 +498,17 @@ describe("stage: virtualization", () => {
     expect(fill).toBeLessThan(1);
   });
 
+  it("a seek keeps virtualizing: layers built on the way unmount once the tour passes them", () => {
+    const { stage, stats } = tallPage();
+    const h = harness(stage.blueprint, { follow: "tour", intro: false, agents: 12 }, { stage });
+    void h.engine.play();
+    h.engine.seek(40_000);
+    // About 200 boxes (10,000 px of page) built; the view band itself holds about 50.
+    expect(h.engine.progress.built).toBeGreaterThan(150);
+    expect(stats().mounted).toBeLessThan(120);
+    h.engine.destroy();
+  });
+
   it("reports user scrolls but not programmatic ones", async () => {
     const layers: Layer[] = [{ id: "b", kind: "box", box: { x: 0, y: 0, w: 100, h: 100 }, style: {} }];
     const { stage } = mount(layers, { size: { w: 800, h: 5000 } });
@@ -466,6 +524,30 @@ describe("stage: virtualization", () => {
     expect(seen.length).toBeGreaterThan(0);
     expect(stage.scrollY).toBeGreaterThan(800);
     expect(seen.at(-1)).toBeCloseTo(stage.scrollY, 3);
+  });
+
+  it("a tour seek writes the scroller once, when it draws", () => {
+    const { stage } = tallPage();
+    const scroller = stage.root.querySelector(".scroller") as HTMLElement;
+    const h = harness(stage.blueprint, { follow: "tour", intro: false, agents: 12 }, { stage });
+    void h.engine.play();
+    const own = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop") as PropertyDescriptor;
+    let writes = 0;
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      get: () => own.get?.call(scroller),
+      set: (v: number) => {
+        writes++;
+        own.set?.call(scroller, v);
+      },
+    });
+    h.engine.seek(20_000);
+    expect(stage.scrollY).toBeGreaterThan(1000);
+    // A write per undrawn frame landed after that frame's task writes and forced a layout.
+    expect(writes).toBe(1);
+    const world = stage.root.querySelector(".world") as HTMLElement;
+    expect(world.getBoundingClientRect().top).toBeCloseTo(stage.toClient({ x: 0, y: 0 }).y, 0);
+    h.engine.destroy();
   });
 });
 
@@ -586,6 +668,33 @@ describe("stage: lifecycle", () => {
     expect(document.documentElement.getAttribute("style")).toBe(htmlStyleBefore);
     expect(Math.round(window.scrollY)).toBe(700);
     window.scrollTo(0, 0);
+  });
+
+  it("overlay: enter() focuses the scroller, but a replay leaves focus on the stage's toolbar", async () => {
+    const bp = blueprint([], { w: window.innerWidth, h: 2000 });
+    const stage = createStage({
+      blueprint: bp,
+      mode: "overlay",
+      host: document.body,
+      theme: resolveTheme("auto", bp, false),
+      plugins: [],
+      reducedMotion: false,
+      rng: createRng(3),
+      initialScroll: 0,
+    });
+    cleanups.push(() => stage.destroy());
+    const t = await drive(stage, stage.enter());
+    expect((stage.root.activeElement as HTMLElement | null)?.classList.contains("scroller")).toBe(true);
+    // Mounted like the toolbar's seek bar: its own shadow root on the UI layer.
+    const toolbar = document.createElement("div");
+    const control = document.createElement("input");
+    toolbar.attachShadow({ mode: "open" }).append(control);
+    stage.uiLayer.append(toolbar);
+    control.focus();
+    // A seek back replays the build: reset() then enter() again.
+    stage.reset();
+    await drive(stage, stage.enter(), t);
+    expect(toolbar.shadowRoot?.activeElement).toBe(control);
   });
 
   it("inline: go-live keeps content and hides the canvas layers; reset blanks it again", async () => {

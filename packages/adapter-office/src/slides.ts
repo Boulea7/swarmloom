@@ -96,7 +96,7 @@ export function createSlidesAdapter(options: SlidesAdapterOptions = {}): OfficeA
             dropped: emitted.droppedLayers,
           };
         }
-        const notes = slideNotes(pres, fonts);
+        const notes = slideNotes(pres, fonts, ctx.document);
         return { blueprint, ...(notes.length > 0 ? { notes } : {}), dispose: () => assets.dispose() };
       } catch (error) {
         assets.dispose();

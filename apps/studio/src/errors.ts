@@ -58,6 +58,18 @@ const SOURCE_CODES: Record<string, StudioErrorCode> = {
   "adapter-unavailable": "adapter",
 };
 
+/**
+ * `@swarmloom/adapter-lottie` LottieError codes mapped to Studio keys (duck-typed). The adapter's
+ * own messages are English only.
+ */
+const LOTTIE_KEYS: Record<string, StudioKey> = {
+  invalid: "error.lottieInvalid",
+  archive: "error.lottieInvalid",
+  "too-large": "error.tooComplex",
+  unsupported: "error.lottieExpressions",
+  render: "error.lottieRender",
+};
+
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
@@ -121,6 +133,10 @@ export function describeError(error: unknown, i18n: StudioI18n, ctx: ErrorContex
     // The formats package does not expose the measured size, so its own message is the most precise.
     if (code === "tooLarge") return error.message;
     if (code) return i18n.t(KEYS[code], base);
+  }
+  if (error instanceof Error && error.name === "LottieError") {
+    const key = LOTTIE_KEYS[(error as Error & { code?: string }).code ?? ""];
+    if (key) return i18n.t(key, base);
   }
   // Adapters report their own size and complexity limits (bytes, elements, pixels) as RangeError.
   if (error instanceof Error && error.name === "RangeError") return i18n.t("error.tooComplex", base);

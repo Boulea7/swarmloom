@@ -107,6 +107,9 @@ export function createControls(opts: ToolbarOptions): Controls {
   let progress = { built: 0, total: 0 };
   /** Pointer drag on the seek bar in progress (the value previews, the seek waits for release). */
   let scrubbing = false;
+  /** Pointer holding the seek bar and the bar value when it was pressed. */
+  let scrubPointer = -1;
+  let scrubFrom = "";
   /** Seek bar value (in SEEK_UNIT_MS steps) waiting for the next frame to be sought, or -1. */
   let seekTarget = -1;
   let seekFrame = 0;
@@ -330,10 +333,27 @@ export function createControls(opts: ToolbarOptions): Controls {
     scrubbing = false;
     autoHide.pin("scrub", false);
   };
-  listen<PointerEvent>(dom.seek, "pointerdown", () => {
+  listen<PointerEvent>(dom.seek, "pointerdown", (e) => {
     scrubbing = true;
+    scrubPointer = e.pointerId;
+    scrubFrom = dom.seek.value;
     autoHide.pin("scrub", true);
   });
+  // A release where the press began fires no `change` (a click on the thumb, a drag back to the
+  // start), so the release itself ends the scrub. Watched on the window: the pointer may be let go
+  // off the bar. A moved thumb seeks here; the `change` that follows lands in the same frame.
+  listen<PointerEvent>(
+    win,
+    "pointerup",
+    (e) => {
+      if (!scrubbing || e.pointerId !== scrubPointer) return;
+      const moved = dom.seek.value !== scrubFrom;
+      endScrub();
+      if (moved) commitSeek(Number(dom.seek.value));
+      else schedule();
+    },
+    { capture: true },
+  );
   listen(dom.seek, "pointercancel", () => {
     endScrub();
     render();

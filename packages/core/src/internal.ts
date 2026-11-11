@@ -109,7 +109,12 @@ export interface Stage extends StageApi {
   /** Current scroll offset of the visible viewport inside the world, stage px. */
   readonly scrollY: number;
   readonly scrollX: number;
-  scrollTo(y: number, opts?: { smooth?: boolean }): void;
+  /**
+   * `defer`: the position (scrollY, viewport()) changes at once, the scroller is written in the
+   * next render. A seek fast-forwards frames it does not draw, and a scroller write after the last
+   * frame's DOM writes would force a layout every frame.
+   */
+  scrollTo(y: number, opts?: { smooth?: boolean; defer?: boolean }): void;
   /** User-initiated scrolls only (wheel/touch/keys), not programmatic scrollTo. */
   onUserScroll(fn: (y: number) => void): () => void;
   /** Resize of the visible viewport. */
@@ -121,6 +126,12 @@ export interface Stage extends StageApi {
    * virtualization, transient overlays, cursor canvas. `now` is engine time (caret blink etc.).
    */
   render(now: number, agents: readonly AgentView[]): void;
+  /**
+   * Optional: a frame the engine simulated without drawing it (each seek step). The stage does
+   * the per-frame bookkeeping of render() without drawing: task touches age and virtualization
+   * runs, so a long seek keeps the mounted set as small as playback does.
+   */
+  skipFrame?(): void;
   /**
    * Optional read phase: the engine calls it at the start of every clock tick, before tasks write
    * to the DOM. The stage takes the layout reads it can do ahead of time (caret geometry of typed

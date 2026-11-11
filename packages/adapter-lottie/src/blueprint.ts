@@ -73,13 +73,34 @@ function canvasFill(layer: Layer | undefined, comp: Rect): string | null {
   return fill;
 }
 
+/** Channels of a #rgb, #rgba, #rrggbb or #rrggbbaa colour: r, g, b 0-255 and alpha 0-1, or null. */
+function hexChannels(color: string): [number, number, number, number] | null {
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(color)?.[1];
+  if (!hex) return null;
+  const full = hex.length <= 4 ? [...hex].map((c) => c + c).join("") : hex;
+  const [r, g, b] = [0, 2, 4].map((i) => Number.parseInt(full.slice(i, i + 2), 16)) as [number, number, number];
+  return [r, g, b, full.length === 8 ? Number.parseInt(full.slice(6), 16) / 255 : 1];
+}
+
+/**
+ * The dotLottie manifest background as an opaque stage colour: a translucent one is composited
+ * over the paper, a fully transparent or unreadable one gives null.
+ */
+function manifestBackground(color: string | undefined): string | null {
+  const rgba = color === undefined ? null : hexChannels(color);
+  const paper = hexChannels(NEUTRALS.paper);
+  if (!rgba || rgba[3] === 0 || !paper) return null;
+  const a = rgba[3];
+  const mix = (i: 0 | 1 | 2): number => Math.round(rgba[i] * a + paper[i] * (1 - a));
+  return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`;
+}
+
 /** Relative luminance of a hex or rgb() colour, or null. */
 export function luminance(color: string): number | null {
   let rgb: number[] | null = null;
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})/i.exec(color)?.[1];
+  const hex = hexChannels(color);
   if (hex) {
-    const full = hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex;
-    rgb = [0, 2, 4].map((i) => Number.parseInt(full.slice(i, i + 2), 16));
+    rgb = hex.slice(0, 3);
   } else {
     const m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(color);
     if (m) rgb = [m[1], m[2], m[3]].map(Number);
@@ -106,6 +127,8 @@ export interface AssembleInput {
   keyTimes: readonly number[];
   loop: boolean | number;
   speed: number;
+  /** Background colour from the dotLottie manifest (hex), painted under the whole animation. */
+  background?: string;
 }
 
 /** The blueprint layers and the background colour. */
@@ -117,9 +140,9 @@ export interface Assembled {
 
 /**
  * Builds the blueprint layers: the woven pose (clipped to the composition, its canvas solid
- * folded into the background), then the `lottie:player` layer over the composition, built
- * first and invisible until the timeline drives it, and the `anim:timeline` layer under it,
- * built last (after the last woven layer).
+ * folded into the background; without one the manifest background is used), then the
+ * `lottie:player` layer over the composition, built first and invisible until the timeline
+ * drives it, and the `anim:timeline` layer under it, built last (after the last woven layer).
  */
 export function assembleLayers(input: AssembleInput): Assembled {
   const { layout, info } = input;
@@ -128,7 +151,8 @@ export function assembleLayers(input: AssembleInput): Assembled {
   const firstDrawn = woven.findIndex((l) => l.kind !== "custom");
   const canvas = canvasFill(woven[firstDrawn], comp);
   if (canvas) woven.splice(firstDrawn, 1);
-  const background = canvas ?? NEUTRALS.paper;
+  // A canvas solid is drawn over the manifest background, so it wins.
+  const background = canvas ?? manifestBackground(input.background) ?? NEUTRALS.paper;
   const lum = luminance(background);
   const scheme = lum !== null && lum < 0.4 ? "dark" : "light";
 

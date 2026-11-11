@@ -5,6 +5,21 @@ import { ZipArchive } from "../src/shared/zip";
 import type { SheetModel, WorkbookModel } from "../src/sheet/model";
 import { sheetNotes } from "../src/sheet/notes";
 
+/** A document whose canvas draws the `installed` faces wider than the generic families. */
+function fakeDocument(...installed: string[]): Document {
+  const ctx = {
+    font: "",
+    measureText(): { width: number } {
+      const names = this.font
+        .replace(/^\d+px /, "")
+        .replace(/"/g, "")
+        .split(", ");
+      return { width: names.some((name) => installed.includes(name)) ? 120 : 100 };
+    },
+  };
+  return { createElement: () => ({ getContext: () => ctx }) } as unknown as Document;
+}
+
 describe("font substitutes (decisions F01)", () => {
   it.each([
     ["Calibri", /^Calibri, Carlito, .*, sans-serif$/],
@@ -15,11 +30,15 @@ describe("font substitutes (decisions F01)", () => {
     expect(fontStack(face)).toMatch(stack);
   });
 
-  it("reports each substituted face once, in first-use order, and skips faces without one", () => {
+  it("reports each missing substituted face once, in first-use order, and skips faces without one", () => {
     const log = new FontLog();
-    for (const face of ["Calibri", "Segoe UI", "Inter", "calibri", "微软雅黑", undefined, " "]) log.add(face);
-    expect(log.substitutions()).toEqual(["Calibri → Carlito", "微软雅黑 → Noto Sans SC"]);
-    expect(new FontLog().note()).toBeUndefined();
+    for (const face of ["Calibri", "Segoe UI", "Cambria", "Inter", "calibri", "微软雅黑", undefined, " "])
+      log.add(face);
+    // Cambria is installed, so it is shown as is and not reported.
+    expect(log.substitutions(fakeDocument("Cambria"))).toEqual(["Calibri → Carlito", "微软雅黑 → Noto Sans SC"]);
+    // 微软雅黑 counts as installed under its English name.
+    expect(log.note(fakeDocument("Calibri", "Cambria", "Microsoft YaHei"))).toBeUndefined();
+    expect(new FontLog().note(fakeDocument())).toBeUndefined();
   });
 });
 
@@ -57,7 +76,7 @@ describe("sheetNotes", () => {
     const zip = ZipArchive.open(
       zipSync({ "xl/workbook.xml": new Uint8Array(1), "xl/charts/chart1.xml": new Uint8Array(1) }),
     );
-    const notes = sheetNotes(wb, { zip });
+    const notes = sheetNotes(wb, { zip }, fakeDocument());
     expect(notes).toHaveLength(3);
     expect(notes[0]).toMatch(/^1 formula has no saved result/);
     expect(notes[1]).toMatch(/Charts, pictures/);
@@ -65,6 +84,6 @@ describe("sheetNotes", () => {
   });
 
   it("reports no fonts for delimited text", () => {
-    expect(sheetNotes(wb, {})).toEqual([expect.stringMatching(/formula/)]);
+    expect(sheetNotes(wb, {}, fakeDocument())).toEqual([expect.stringMatching(/formula/)]);
   });
 });

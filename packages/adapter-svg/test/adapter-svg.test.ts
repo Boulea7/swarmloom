@@ -4,7 +4,7 @@ import { extractAnchors } from "../src/path/anchors";
 import { pathBounds, serializePath, transformSegments } from "../src/path/geometry";
 import { parsePathData } from "../src/path/parse";
 import { parsePoints, rectSegments } from "../src/path/shapes";
-import { sanitizeCss } from "../src/sanitize";
+import { sanitizeCss, sanitizeSvgTree } from "../src/sanitize";
 import { looksLikeSvg } from "../src/source";
 import { stageSize } from "../src/units";
 
@@ -111,6 +111,38 @@ describe("sanitizing helpers", () => {
     expect(css).toContain("c{x:none}");
     expect(css).toContain("url(#g)");
     expect(css).toContain('url("data:image/png;base64,AA")');
+  });
+
+  it("drops href animations whatever prefix binds the xlink namespace", () => {
+    const svg = new DOMParser().parseFromString(
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:l="http://www.w3.org/1999/xlink">
+        <image><animate attributeName="l:href" values="https://evil.test/p.png" dur="1s"/></image>
+        <a><set attributeName=" L:HREF " to="https://evil.test/phish"/></a>
+        <rect><animate attributeName="opacity" values="0;1" dur="1s"/></rect></svg>`,
+      "image/svg+xml",
+    ).documentElement;
+    sanitizeSvgTree(svg);
+    expect(Array.from(svg.querySelectorAll("animate, set"), (a) => a.getAttribute("attributeName"))).toEqual([
+      "opacity",
+    ]);
+    expect(svg.outerHTML).not.toContain("evil.test");
+  });
+
+  it("drops escaped, unclosed and string-URL references from attributes and animation values", () => {
+    const svg = new DOMParser().parseFromString(
+      `<svg xmlns="http://www.w3.org/2000/svg">
+        <rect mask="image-set('https://evil.test/a.png' 1x)" cursor="image-set('https://evil.test/c.png' 1x), auto"/>
+        <rect fill="u\\72l(https://evil.test/b.svg#p) red" mask="url(#m), url(https://evil.test/o.png"/>
+        <rect fill="url(#g)"><set attributeName="mask" to="image-set('https://evil.test/s.png' 1x)"/>
+          <set attributeName="fill" to="url(#g)"/></rect></svg>`,
+      "image/svg+xml",
+    ).documentElement;
+    const report = sanitizeSvgTree(svg);
+    expect(svg.outerHTML).not.toContain("evil.test");
+    expect(report.removedAttributes).toBe(4);
+    expect(report.removed).toEqual({ set: 1 });
+    // Fragment references are untouched.
+    expect(svg.querySelector('rect[fill="url(#g)"] set')?.getAttribute("to")).toBe("url(#g)");
   });
 
   it("sniffs SVG through prologs, comments and doctypes", () => {

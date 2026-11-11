@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Audits built store packages: manifest and permission allowlist, CSP, no remote code, no test hook,
-// content script size budget, licence notices present, and that each zip is exactly (and
+// content script size budget, licence notices present (including code that dependencies ship
+// pre-bundled, such as core-js inside pdf.js), and that each zip is exactly (and
 // reproducibly) its folder.
 //
 // Usage: node scripts/audit.mjs [--target all|chrome,edge,firefox,safari] [--dist <dir>]
@@ -12,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { gzipSync } from "node:zlib";
 import { validateManifest } from "./manifest.mjs";
-import { LICENSE_COPY, NOTICES_FILE } from "./notices.mjs";
+import { EMBEDDED_PACKAGES, LICENSE_COPY, NOTICES_FILE } from "./notices.mjs";
 import { parseTargets } from "./targets.mjs";
 import { directoryEntries, unzipEntries, zipEntries } from "./zip.mjs";
 
@@ -81,6 +82,14 @@ export function auditPackage(dir, target, zipPath) {
 
   for (const name of [NOTICES_FILE, LICENSE_COPY]) {
     if (!files.some((f) => f.name === name && f.data.length > 0)) problems.push(`${name} is missing or empty`);
+  }
+  // Pre-bundled code has no package of its own; its marker in a shipped script means it needs a notice.
+  const noticesFile = files.find((f) => f.name === NOTICES_FILE);
+  const notices = noticesFile ? Buffer.from(noticesFile.data).toString("utf8") : "";
+  for (const embedded of EMBEDDED_PACKAGES) {
+    if (new RegExp(`^${embedded.name} \\S+$`, "m").test(notices)) continue;
+    const holder = files.find((f) => /\.m?js$/.test(f.name) && Buffer.from(f.data).includes(embedded.marker));
+    if (holder) problems.push(`${holder.name}: bundles ${embedded.name}, which ${NOTICES_FILE} does not list`);
   }
 
   const content = files.find((f) => f.name === "swarm.js");

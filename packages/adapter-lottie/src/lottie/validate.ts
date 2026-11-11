@@ -96,10 +96,26 @@ function sanitizeAssets(data: Json, state: SanitizeState): void {
   const kept: unknown[] = [];
   let external = 0;
   let footage = 0;
+  let repeated = 0;
   for (const asset of data.assets) {
     if (!isRecord(asset) || (typeof asset.id !== "string" && typeof asset.id !== "number")) continue;
     const id = String(asset.id);
+    // lottie-web resolves a layer's refId to the first asset whose id is strictly equal, so only
+    // that one is kept, with a string id: the asset checked here is the one lottie-web draws, and
+    // an image layer cannot pass on a checked image yet draw a precomposition that shares its id.
+    if (state.precomps.has(id) || state.images.has(id)) {
+      repeated++;
+      continue;
+    }
+    asset.id = id;
+    // lottie-web merges `slots[sid].p` into the asset an image layer points to when it draws the
+    // image, after this check.
+    delete asset.sid;
     if (Array.isArray(asset.layers)) {
+      // A precomposition is never drawn as an image: no image path of its own stays in the JSON.
+      delete asset.p;
+      delete asset.u;
+      delete asset.e;
       state.precomps.set(id, asset.layers);
       state.stats.precomps++;
       kept.push(asset);
@@ -137,28 +153,62 @@ function sanitizeAssets(data: Json, state: SanitizeState): void {
   data.assets = kept;
   if (external > 0) state.notes.add(`${external} image(s) are not embedded in the file and were left out.`);
   if (footage > 0) state.notes.add(`${footage} audio or data asset(s) were removed.`);
+  if (repeated > 0) state.notes.add(`${repeated} asset(s) that repeat an earlier asset's id were removed.`);
+}
+
+/** Asset keys lottie-web builds an image URL from; property and text slots never carry them. */
+const IMAGE_SLOT_KEYS = ["p", "u", "e"];
+
+/**
+ * lottie-web merges `slots[sid].p` into assets, properties and text documents that carry a `sid`.
+ * Assets lose theirs in sanitizeAssets; slots that carry image fields (of any type: lottie-web
+ * stringifies an array path too) are removed as well, so no unchecked path is left in the JSON.
+ * Value slots (properties, text) stay.
+ */
+function sanitizeSlots(data: Json, state: SanitizeState): void {
+  if (data.slots === undefined) return;
+  if (!isRecord(data.slots)) {
+    delete data.slots;
+    return;
+  }
+  let removed = 0;
+  for (const [sid, slot] of Object.entries(data.slots)) {
+    const value = isRecord(slot) ? slot.p : undefined;
+    if (isRecord(value) && IMAGE_SLOT_KEYS.some((key) => key in value)) {
+      delete data.slots[sid];
+      removed++;
+    }
+  }
+  if (removed > 0) state.notes.add(`${removed} image slot(s) were removed; the file's own images are shown.`);
 }
 
 function sanitizeFonts(data: Json, state: SanitizeState): void {
-  const list = isRecord(data.fonts) && Array.isArray(data.fonts.list) ? data.fonts.list : null;
-  if (!list) return;
+  if (data.fonts === undefined || data.fonts === null) return;
+  // lottie-web reads `fonts.list` by length and index, so an array-like object would work there
+  // too: anything but a real list is dropped rather than passed through unchecked.
+  if (!isRecord(data.fonts) || !Array.isArray(data.fonts.list)) {
+    data.fonts = { list: [] };
+    state.notes.add("A malformed font list was removed.");
+    return;
+  }
+  const kept: Json[] = [];
   let replaced = 0;
-  for (const font of list) {
+  for (const font of data.fonts.list) {
     if (!isRecord(font)) continue;
-    if (typeof font.fFamily === "string") font.fFamily = font.fFamily.replace(/[^\w\s,'"-]/g, "").slice(0, 200);
-    // Web fonts would be fetched from fPath (<link>, <script> or @font-face, even with an empty path);
-    // fall back to locally installed fonts.
+    font.fFamily = typeof font.fFamily === "string" ? font.fFamily.replace(/[^\w\s,'"-]/g, "").slice(0, 200) : "";
+    // lottie-web fetches any truthy fPath with a web origin (a <link> on document.body, a <link> in
+    // the SVG defs or an @font-face rule), so every font becomes a locally installed one.
     const remote =
-      (typeof font.fPath === "string" && font.fPath !== "") ||
+      Boolean(font.fPath) ||
       (font.origin !== undefined && font.origin !== 0) ||
       (font.fOrigin !== undefined && font.fOrigin !== "n");
-    if (remote) {
-      font.fPath = "";
-      font.origin = 0;
-      font.fOrigin = "n";
-      replaced++;
-    }
+    if (remote) replaced++;
+    font.fPath = "";
+    font.origin = 0;
+    font.fOrigin = "n";
+    kept.push(font);
   }
+  data.fonts = { list: kept };
   if (replaced > 0) state.notes.add(`${replaced} web font(s) were replaced by locally installed fonts.`);
 }
 
@@ -243,10 +293,12 @@ function resolveOptions(opts: ParseLottieOptions): ResolvedOptions {
  *
  *  - structure: version, frame rate, in/out points, size, layers with types, transforms and
  *    in/out points, resolvable precomposition and image references, no precomposition cycles;
+ *    an asset id that repeats is dropped, as lottie-web only ever resolves the first one;
  *  - limits: size, nesting depth, layer and keyframe counts, duration, embedded image size;
  *  - expressions are removed (the light player never evaluates them); an animation whose motion
  *    comes only from expressions is rejected, because it would not move at all;
- *  - images must be embedded (data:image/*); audio, data/footage layers and web fonts are removed;
+ *  - images must be embedded (data:image/*) and image slots are removed, so a slot cannot put a
+ *    remote path back; audio, data/footage layers and web fonts are removed;
  *  - text animators with a random letter order get the fixed order (lottie-web would shuffle with
  *    `Math.random`, so plays and exports would differ);
  *  - After Effects layer ids/classes (`ln`, `cl`) are dropped.
@@ -266,6 +318,7 @@ export function parseLottie(text: string, options: ParseLottieOptions = {}): Par
     precomps: new Map(),
   };
   sanitizeAssets(data, state);
+  sanitizeSlots(data, state);
   sanitizeFonts(data, state);
   for (const [id, layers] of state.precomps) {
     const kept = sanitizeLayers(layers, `precomposition "${id}"`, state);

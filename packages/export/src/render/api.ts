@@ -1,5 +1,6 @@
 import type {
   AdapterContext,
+  Blueprint,
   LoadedSource,
   Player,
   PlayerOptions,
@@ -88,11 +89,44 @@ function mountHost(doc: Document, width: number, height: number): HTMLElement {
   return host;
 }
 
-/** SHA-256 (hex) of the blueprint's JSON; empty when the page has no Web Crypto (not a secure context). */
-async function blueprintSha256(loaded: LoadedSource): Promise<string> {
+/** Directory `inputUrl` is served from when it is on the render page's own origin (the driver's server). */
+function servedDir(inputUrl: string | undefined, pageOrigin: string | undefined): string | undefined {
+  if (!inputUrl || !pageOrigin) return undefined;
+  try {
+    const dir = new URL(".", inputUrl);
+    return dir.origin === pageOrigin ? dir.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The blueprint's JSON without what changes from take to take: object URLs (random ids) become
+ * "blob:1", "blob:2", ... in order of first appearance, and the directory the driver serves the
+ * input from (random port and path, see {@link servedDir}) becomes "input:/". Remote URLs stay.
+ */
+function stableJson(blueprint: Blueprint, inputUrl: string | undefined, pageOrigin: string | undefined): string {
+  const blobs = new Map<string, string>();
+  const json = JSON.stringify(blueprint).replace(/blob:[^"\\\s)']+/g, (url) => {
+    const known = blobs.get(url);
+    if (known) return known;
+    const id = `blob:${blobs.size + 1}`;
+    blobs.set(url, id);
+    return id;
+  });
+  const dir = servedDir(inputUrl, pageOrigin);
+  return dir ? json.replaceAll(dir, "input:/") : json;
+}
+
+/**
+ * SHA-256 (hex) of the blueprint's {@link stableJson}, equal for takes of the same input and settings;
+ * empty when the page has no Web Crypto (not a secure context).
+ */
+async function blueprintSha256(blueprint: Blueprint, inputUrl: string | undefined, doc: Document): Promise<string> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return "";
-  const digest = await subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(loaded.blueprint)));
+  const json = stableJson(blueprint, inputUrl, doc.location?.origin);
+  const digest = await subtle.digest("SHA-256", new TextEncoder().encode(json));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -128,8 +162,8 @@ function playerOptions(
  * Implements the headless render protocol (`window.__swarmloom`) the CLI drives frame by frame.
  *
  * One render at a time: `init()` loads the input and creates a player on a VirtualClock with the
- * toolbar off, `step()` advances it, `audioWav()` renders the soundtrack for the elapsed time and
- * `dispose()` releases everything. Errors reject with messages meant for the CLI user.
+ * toolbar off, `step()` advances it, `audioWav()` renders the soundtrack (for the video's length when
+ * the driver passes it) and `dispose()` releases everything. Errors reject with messages meant for the CLI user.
  *
  * Unless `live` is off or `reducedMotion` is on, the player goes live once the finale settles; from
  * the moment the stage is live every step also seeks the page's animations to the frame time
@@ -205,7 +239,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         });
         session = started;
         await session.start();
-        const sha = await blueprintSha256(loaded);
+        const sha = await blueprintSha256(loaded.blueprint, init.input.url, doc);
         active = { init, loaded, session, live: stage, host };
         const eta = session.player.eta();
         return {
@@ -231,12 +265,13 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       return status;
     },
 
-    async audioWav(): Promise<string> {
+    async audioWav(durationMs?: number): Promise<string> {
       const { init, session } = activeRender();
       if (session.elapsed <= 0) throw new Error("Nothing rendered yet: call step() before audioWav()");
       const events = init.sound ? session.soundLog : [];
       const sound = { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: true };
-      const wav = await deps.renderAudioWav(events, session.elapsed, { sampleRate: SAMPLE_RATE, channels: 2, sound });
+      const length = durationMs ?? session.elapsed;
+      const wav = await deps.renderAudioWav(events, length, { sampleRate: SAMPLE_RATE, channels: 2, sound });
       return bytesToBase64(wav);
     },
 

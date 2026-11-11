@@ -24,13 +24,15 @@
  * package the notices do not cover):
  * - default: write the LICENSE.md files (and delete generated ones no longer needed);
  * - `--check`: write nothing; also fails when a generated LICENSE.md on disk is stale;
- * - `--clean`: delete the generated LICENSE.md files after a local release.
+ * - `--clean`: delete the generated LICENSE.md files after a local release;
+ * - `--pages <dir>`: write a LICENSE.md into each app folder of the assembled GitHub Pages artifact
+ *   instead (PAGES_APPS); the npm packages are left alone.
  *
- * Usage: node scripts/release/third-party-notices.mjs [--check | --clean]
+ * Usage: node scripts/release/third-party-notices.mjs [--check | --clean | --pages <dir>]
  */
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { readWorkspacePackages } from "./check-packages.mjs";
@@ -57,6 +59,11 @@ import {
  * @typedef {object} WholeTreeBuild
  * @property {string} where the outputs that bundle the tree
  * @property {readonly string[]} external third-party dependencies the build leaves to npm
+ * @property {readonly string[]} [inlined] third-party packages whose files the build reads from disk
+ *   (require.resolve, fs) instead of importing them, so the source scan cannot see them
+ * @property {Readonly<Record<string, readonly string[]>>} [frameworks] framework packages whose client code
+ *   the build emits, each with the dependencies that client uses at run time (added with their dependency
+ *   trees, as installed for the framework); the framework's other dependencies are build tools
  */
 
 /** @type {ReadonlyMap<string, WholeTreeBuild>} Public packages whose build bundles the whole runtime tree. */
@@ -77,29 +84,154 @@ export const BUNDLES_DEPENDENCIES = new Map([
 ]);
 
 /**
- * @typedef {object} EmbeddedPackage
- * @property {string} host installed package whose files contain this one, pre-bundled
- * @property {string} license
- * @property {string} source
- * @property {string} copyright the copyright line the embedded code carries
+ * @typedef {object} PagesApp
+ * @property {string} path folder of the Pages artifact the app's build is copied to ("" for the root)
+ * @property {WholeTreeBuild} build
+ * @property {string} [dir] source folder of an app that is not a workspace package (the key is then only
+ *   a label): it bundles the workspace packages its sources import and what `build` lists
  */
 
 /**
- * MIT packages that a dependency ships pre-bundled inside its own files, so they are never installed and
- * have no licence file to read. Listed whenever their host is bundled.
+ * Apps deployed to GitHub Pages (.github/workflows/pages.yml): the private Vite or esbuild app builds,
+ * which bundle their whole runtime tree, and the VitePress docs. Their LICENSE.md lands next to the
+ * app's index.html.
+ * @type {ReadonlyMap<string, PagesApp>}
+ */
+export const PAGES_APPS = new Map([
+  [
+    "@swarmloom/site",
+    {
+      path: "",
+      build: {
+        where: "the page inlines the Phosphor SVG icons and copies the Bricolage Grotesque font",
+        external: [],
+        inlined: ["@phosphor-icons/core", "@fontsource-variable/bricolage-grotesque"],
+      },
+    },
+  ],
+  ["@swarmloom/studio", { path: "studio", build: { where: "the Studio PWA with every adapter", external: [] } }],
+  ["@swarmloom/bookmarklet", { path: "bm", build: { where: "bm/swarm.js and its install page", external: [] } }],
+  [
+    // Built by the root devDependency vitepress. Its GitHub icon in vp-icons.css is from Simple Icons
+    // (CC0-1.0, no notice required); Shiki highlights at build time and leaves no code behind.
+    "swarmloom-docs",
+    {
+      path: "docs",
+      dir: "docs",
+      build: {
+        where: "the VitePress client: Vue, the default theme with its Inter font and DocSearch styles, local search",
+        external: [],
+        frameworks: {
+          vitepress: [
+            "vue",
+            "@vueuse/core",
+            "@vueuse/integrations",
+            "@docsearch/css",
+            "focus-trap",
+            "mark.js",
+            "minisearch",
+          ],
+        },
+      },
+    },
+  ],
+]);
+
+/**
+ * @typedef {object} EmbeddedPackage
+ * @property {string} host installed package whose files contain this one, pre-bundled
+ * @property {string} files where in the host the embedded code lives
+ * @property {"MIT" | "Apache-2.0" | "OFL-1.1"} license
+ * @property {string} source
+ * @property {string} copyright the copyright line of the embedded code (from its files or its upstream sources)
+ */
+
+/**
+ * Packages that a dependency ships pre-bundled inside its own files, so they are never installed and have
+ * no licence file to read. Listed whenever their host is bundled.
  * @type {ReadonlyMap<string, EmbeddedPackage>}
  */
 export const EMBEDDED_PACKAGES = new Map([
   [
     "core-js",
     {
-      host: "pdfjs-dist", // legacy/build/*.mjs; the copyright string is in the core-js shared-store code
+      host: "pdfjs-dist",
+      files: "legacy/build/*.mjs", // the copyright string is in the core-js shared-store code
       license: "MIT",
       source: "https://github.com/zloirock/core-js",
       copyright: "2013–2025 Denis Pushkarev (zloirock.ru), 2025–2026 CoreJS Company (core-js.io)",
     },
   ],
+  [
+    "draco3d",
+    {
+      host: "three",
+      files: "examples/jsm/libs/draco/", // DRACOLoader's decoders; Vite emits the .js and .wasm files
+      license: "Apache-2.0",
+      source: "https://github.com/google/draco",
+      copyright: "2016 The Draco Authors", // the line of the Draco sources; the repository has no NOTICE
+    },
+  ],
+  [
+    "meshoptimizer",
+    {
+      host: "three",
+      files: "examples/jsm/libs/meshopt_decoder.module.js", // GLTFLoader's EXT_meshopt_compression decoder
+      license: "MIT",
+      source: "https://github.com/zeux/meshoptimizer",
+      copyright: "2016-2026 Arseny Kapoulkine",
+    },
+  ],
+  [
+    "Inter",
+    {
+      host: "vitepress",
+      files: "dist/client/theme-default/fonts/", // the default theme's woff2 files; Vite emits them
+      license: "OFL-1.1",
+      source: "https://github.com/rsms/inter",
+      copyright: "2016 The Inter Project Authors (https://github.com/rsms/inter)", // the fonts' name table
+    },
+  ],
+  [
+    "KaTeX fonts",
+    {
+      host: "katex",
+      files: "dist/fonts/", // the woff2 files @swarmloom/adapter-markdown inlines (src/math/katex-assets.ts)
+      license: "OFL-1.1",
+      source: "https://github.com/KaTeX/katex-fonts",
+      // The fonts' name table (description, name ID 13), with the Reserved Font Name of every font.
+      copyright:
+        "(c) 2009-2010, Design Science, Inc. (<www.mathjax.org>)\n" +
+        "Copyright (c) 2014-2018 Khan Academy (<www.khanacademy.org>),\n" +
+        "with Reserved Font Names KaTeX_AMS, KaTeX_Caligraphic, KaTeX_Fraktur, KaTeX_Main, KaTeX_Math, " +
+        "KaTeX_SansSerif, KaTeX_Script, KaTeX_Size1, KaTeX_Size2, KaTeX_Size3, KaTeX_Size4, KaTeX_Typewriter.",
+    },
+  ],
 ]);
+
+/**
+ * Full licence texts for embedded packages that are not MIT: Apache-2.0 as in google/draco's LICENSE,
+ * OFL-1.1 as SIL publishes it (the copyright line goes above it).
+ */
+const LICENSE_TEXTS = {
+  "Apache-2.0": new URL("./licenses/Apache-2.0.txt", import.meta.url),
+  "OFL-1.1": new URL("./licenses/OFL-1.1.txt", import.meta.url),
+};
+
+/**
+ * Notice entry of a package pre-bundled inside another one.
+ * @param {string} name
+ * @param {EmbeddedPackage} embedded
+ * @returns {NoticeEntry}
+ */
+export function embeddedEntry(name, embedded) {
+  const note = `Pre-bundled inside ${embedded.host} (${embedded.files}), which ships no separate licence file for it.`;
+  const text =
+    embedded.license === "MIT"
+      ? mitLicense(embedded.copyright, note)
+      : `Copyright ${embedded.copyright}\n\n${readFileSync(LICENSE_TEXTS[embedded.license], "utf8").trimEnd()}\n\n(${note})`;
+  return { name, license: embedded.license, source: embedded.source, text };
+}
 
 export const LICENSE_FILE = "LICENSE.md";
 const SOURCE_FILE = /\.(?:[cm]?[jt]sx?|html|css)$/;
@@ -164,10 +296,10 @@ function resolvePackage(fromDir, name) {
  * @param {WorkspacePackage} pkg
  * @param {ReadonlyMap<string, WorkspacePackage>} workspace by package name
  * @param {string} root repository root
+ * @param {WholeTreeBuild} [wholeTree] how the package bundles its tree; default from BUNDLES_DEPENDENCIES
  * @returns {Map<string, string>} real package directory -> package name
  */
-export function bundledPackages(pkg, workspace, root) {
-  const wholeTree = BUNDLES_DEPENDENCIES.get(String(pkg.manifest.name));
+export function bundledPackages(pkg, workspace, root, wholeTree = BUNDLES_DEPENDENCIES.get(String(pkg.manifest.name))) {
   const external = wholeTree?.external ?? [];
   /** @type {Map<string, string>} */
   const found = new Map();
@@ -178,13 +310,14 @@ export function bundledPackages(pkg, workspace, root) {
    * @param {string} fromDir
    * @param {string} name
    * @param {boolean} withDependencies
+   * @returns {string | null} real package directory (null for @types packages)
    */
   const addThirdParty = (fromDir, name, withDependencies) => {
-    if (name.startsWith("@types/")) return; // declarations only, nothing reaches a bundle
+    if (name.startsWith("@types/")) return null; // declarations only, nothing reaches a bundle
     const dir = resolvePackage(fromDir, name);
     if (!dir) throw new Error(`${name} is not installed (needed from ${relative(root, fromDir) || "."})`);
     found.set(dir, name);
-    if (!withDependencies || expanded.has(dir)) return;
+    if (!withDependencies || expanded.has(dir)) return dir;
     expanded.add(dir);
     const manifest = readJson(join(dir, "package.json"));
     if (!isRecord(manifest)) throw new Error(`${dir}/package.json is not a JSON object`);
@@ -192,6 +325,7 @@ export function bundledPackages(pkg, workspace, root) {
     for (const dep of dependencyNames(manifest, ["dependencies"])) {
       addThirdParty(dir, dep, true);
     }
+    return dir;
   };
 
   /** @type {Set<string>} */
@@ -223,6 +357,11 @@ export function bundledPackages(pkg, workspace, root) {
 
   if (wholeTree) {
     addWholeTree(pkg);
+    for (const name of wholeTree.inlined ?? []) addThirdParty(join(root, pkg.dir), name, false);
+    for (const [framework, runtime] of Object.entries(wholeTree.frameworks ?? {})) {
+      const frameworkDir = addThirdParty(join(root, pkg.dir), framework, false);
+      if (frameworkDir) for (const name of runtime) addThirdParty(frameworkDir, name, true);
+    }
     return found;
   }
   const dir = join(root, pkg.dir);
@@ -266,39 +405,75 @@ export function noticeEntry(dir) {
 }
 
 /**
+ * @typedef {object} LicenseFile
+ * @property {WorkspacePackage} pkg
+ * @property {string} path where the LICENSE.md goes
+ * @property {string | null} contents null when the package bundles no third-party code
+ * @property {Set<string>} covered names of the packages the file covers
+ */
+
+/**
+ * LICENSE.md of one workspace package: the repository licence, then every bundled third-party package.
+ * @param {WorkspacePackage} pkg
+ * @param {ReadonlyMap<string, WorkspacePackage>} workspace by package name
+ * @param {string} root repository root
+ * @param {string} path where the file goes
+ * @param {WholeTreeBuild} [wholeTree] see bundledPackages
+ * @returns {LicenseFile}
+ */
+function licenseFile(pkg, workspace, root, path, wholeTree) {
+  /** @type {Map<string, NoticeEntry>} */
+  const entries = new Map();
+  for (const dir of bundledPackages(pkg, workspace, root, wholeTree).keys()) {
+    const entry = noticeEntry(dir);
+    entries.set(`${entry.name}\n${entry.text}`, entry);
+    for (const [name, embedded] of EMBEDDED_PACKAGES) {
+      if (embedded.host !== entry.name) continue;
+      const inner = embeddedEntry(name, embedded);
+      entries.set(`${name}\n${inner.text}`, inner);
+    }
+  }
+  const list = [...entries.values()];
+  const ownLicense = readFileSync(join(root, "LICENSE"), "utf8");
+  return {
+    pkg,
+    path,
+    contents: list.length ? renderLicenseFile(String(pkg.manifest.name), ownLicense, list) : null,
+    covered: new Set(list.map((entry) => entry.name)),
+  };
+}
+
+/** @param {string} root */
+function workspaceByName(root) {
+  const packages = readWorkspacePackages(root);
+  return { packages, workspace: new Map(packages.map((pkg) => [String(pkg.manifest.name), pkg])) };
+}
+
+/**
  * Expected LICENSE.md contents of every public workspace package (null: the package needs none).
  * @param {string} root
- * @returns {{ pkg: WorkspacePackage; path: string; contents: string | null; covered: Set<string> }[]}
+ * @returns {LicenseFile[]}
  */
 export function expectedLicenseFiles(root) {
-  const packages = readWorkspacePackages(root);
-  const workspace = new Map(packages.map((pkg) => [String(pkg.manifest.name), pkg]));
-  const ownLicense = readFileSync(join(root, "LICENSE"), "utf8");
+  const { packages, workspace } = workspaceByName(root);
   return packages
     .filter((pkg) => pkg.manifest.private !== true)
-    .map((pkg) => {
-      const dirs = [...bundledPackages(pkg, workspace, root).keys()];
-      /** @type {Map<string, NoticeEntry>} */
-      const entries = new Map();
-      for (const dir of dirs) {
-        const entry = noticeEntry(dir);
-        entries.set(`${entry.name}\n${entry.text}`, entry);
-        for (const [name, embedded] of EMBEDDED_PACKAGES) {
-          if (embedded.host !== entry.name) continue;
-          const note = `Pre-bundled inside ${embedded.host}, which ships no separate licence file for it.`;
-          const text = mitLicense(embedded.copyright, note);
-          entries.set(`${name}\n${text}`, { name, license: embedded.license, source: embedded.source, text });
-        }
-      }
-      const list = [...entries.values()];
-      const name = String(pkg.manifest.name);
-      return {
-        pkg,
-        path: join(root, pkg.dir, LICENSE_FILE),
-        contents: list.length ? renderLicenseFile(name, ownLicense, list) : null,
-        covered: new Set(list.map((entry) => entry.name)),
-      };
-    });
+    .map((pkg) => licenseFile(pkg, workspace, root, join(root, pkg.dir, LICENSE_FILE)));
+}
+
+/**
+ * LICENSE.md of every app in PAGES_APPS, placed in the app's folder of the Pages artifact.
+ * @param {string} root
+ * @param {string} siteDir the assembled artifact, absolute or relative to `root`
+ * @returns {LicenseFile[]}
+ */
+export function pagesLicenseFiles(root, siteDir) {
+  const { workspace } = workspaceByName(root);
+  return [...PAGES_APPS].map(([name, app]) => {
+    const pkg = app.dir === undefined ? workspace.get(name) : { dir: app.dir, manifest: { name, private: true } };
+    if (!pkg) throw new Error(`${name} (PAGES_APPS) is not a workspace package`);
+    return licenseFile(pkg, workspace, root, resolve(root, siteDir, app.path, LICENSE_FILE), app.build);
+  });
 }
 
 /**
@@ -317,6 +492,50 @@ export function uncoveredInDist(distDir, covered, workspaceNames) {
     }
   }
   return [...missing].sort(compareCodeUnits);
+}
+
+/**
+ * Problems for every third-party package a built dist/ bundles without a notice.
+ * @param {WorkspacePackage} pkg
+ * @param {string} root
+ * @param {ReadonlySet<string>} covered
+ * @param {ReadonlySet<string>} workspaceNames
+ * @returns {string[]}
+ */
+function uncoveredProblems(pkg, root, covered, workspaceNames) {
+  return uncoveredInDist(join(root, pkg.dir, "dist"), covered, workspaceNames).map(
+    (item) =>
+      `${pkg.dir}/dist bundles ${item}, which the notices do not cover; add it to the sources, ` +
+      "BUNDLES_DEPENDENCIES, PAGES_APPS or EMBEDDED_PACKAGES, or stop bundling it",
+  );
+}
+
+/**
+ * Writes the LICENSE.md of every PAGES_APPS app into the assembled Pages artifact.
+ * @param {string} root
+ * @param {string} siteDir
+ * @param {ReadonlySet<string>} workspaceNames
+ * @returns {string[]} problems
+ */
+function writePagesLicenseFiles(root, siteDir, workspaceNames) {
+  /** @type {string[]} */
+  const problems = [];
+  /** @param {string} path */
+  const shown = (path) => (relative(root, path).startsWith("..") ? path : relative(root, path) || ".");
+  for (const { pkg, path, contents, covered } of pagesLicenseFiles(root, siteDir)) {
+    if (!existsSync(dirname(path))) {
+      problems.push(`${shown(dirname(path))} does not exist; copy the ${pkg.dir} build into the Pages artifact first`);
+      continue;
+    }
+    problems.push(...uncoveredProblems(pkg, root, covered, workspaceNames));
+    if (contents === null) {
+      console.log(`third-party-notices: ${pkg.dir} bundles no third-party code, no ${LICENSE_FILE} needed`);
+      continue;
+    }
+    writeFileSync(path, contents);
+    console.log(`third-party-notices: wrote ${shown(path)} (${covered.size} packages)`);
+  }
+  return problems;
 }
 
 /**
@@ -339,17 +558,29 @@ export function cleanLicenseFiles(root) {
 
 function main() {
   const { values } = parseArgs({
-    options: { check: { type: "boolean", default: false }, clean: { type: "boolean", default: false } },
+    options: {
+      check: { type: "boolean", default: false },
+      clean: { type: "boolean", default: false },
+      pages: { type: "string" },
+    },
   });
-  if (values.check && values.clean) throw new Error("--check and --clean cannot be combined");
+  if ([values.check, values.clean, values.pages !== undefined].filter(Boolean).length > 1) {
+    throw new Error("--check, --clean and --pages cannot be combined");
+  }
   const root = fileURLToPath(new URL("../..", import.meta.url));
+  const workspaceNames = new Set(readWorkspacePackages(root).map((pkg) => String(pkg.manifest.name)));
+  if (values.pages !== undefined) {
+    if (!values.pages) throw new Error("--pages needs the folder of the assembled Pages artifact");
+    const problems = writePagesLicenseFiles(root, values.pages, workspaceNames);
+    for (const problem of problems) console.error(`error: ${problem}`);
+    return problems.length > 0 ? 1 : 0;
+  }
   if (values.clean) {
     const cleaned = cleanLicenseFiles(root);
     console.log(`third-party-notices: removed ${LICENSE_FILE} from ${cleaned.join(", ") || "no package"}`);
     return 0;
   }
   const expected = expectedLicenseFiles(root);
-  const workspaceNames = new Set(readWorkspacePackages(root).map((pkg) => String(pkg.manifest.name)));
   /** @type {string[]} */
   const problems = [];
   for (const { pkg, path, contents, covered } of expected) {
@@ -358,12 +589,7 @@ function main() {
       problems.push(`${pkg.dir}/${LICENSE_FILE} exists but was not generated; remove or rename it`);
       continue;
     }
-    for (const item of uncoveredInDist(join(root, pkg.dir, "dist"), covered, workspaceNames)) {
-      problems.push(
-        `${pkg.dir}/dist bundles ${item}, which the notices do not cover; add it to the sources, ` +
-          "BUNDLES_DEPENDENCIES or EMBEDDED_PACKAGES, or stop bundling it",
-      );
-    }
+    problems.push(...uncoveredProblems(pkg, root, covered, workspaceNames));
     if (values.check) {
       // Missing files are expected: they are written right before packing. A leftover one must be current.
       if (current !== null && current !== contents) {

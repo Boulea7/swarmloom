@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { createI18n } from "../../src/i18n/index";
 import type { Controls } from "../../src/internal";
 import { createControls } from "../../src/ui/index";
@@ -18,19 +18,23 @@ async function mount(opts: {
   soundLocked?: boolean;
   finish?: boolean;
   seekable?: boolean;
+  timeline?: () => { elapsed: number; duration: number };
   reducedMotion?: boolean;
+  /** Open stage root: Playwright cannot locate elements inside a closed one for real clicks. */
+  openStage?: boolean;
 }) {
   const fake = createFakePlayer(opts.state);
   if (opts.finish) Object.assign(fake.player, { finish: vi.fn() });
-  const seekable = opts.seekable ? { timeline: () => ({ elapsed: 4000, duration: 16_000 }) } : {};
-  if (opts.seekable) Object.assign(fake.player, { seek: vi.fn() });
+  const seekable = opts.seekable ? { timeline: opts.timeline ?? (() => ({ elapsed: 4000, duration: 16_000 })) } : {};
+  const seek = vi.fn();
+  if (opts.seekable) Object.assign(fake.player, { seek });
   fake.setProgress(opts.state === "done" ? 40 : 12, 40);
   const stageHost = document.createElement("div");
   stageHost.style.cssText = "position:fixed;inset:0";
   document.body.append(stageHost);
   const uiLayer = document.createElement("div");
   uiLayer.style.cssText = "position:absolute;inset:0;pointer-events:none";
-  stageHost.attachShadow({ mode: "closed" }).append(uiLayer);
+  stageHost.attachShadow({ mode: opts.openStage ? "open" : "closed" }).append(uiLayer);
   const controls = createControls({
     host: uiLayer,
     player: fake.player,
@@ -47,7 +51,7 @@ async function mount(opts: {
   const visibleButtons = [...root.querySelectorAll<HTMLElement>("button, [role=progressbar]")].filter(
     (el) => el.getClientRects().length > 0,
   );
-  return { controls, element, root, visibleButtons };
+  return { controls, element, root, visibleButtons, fake, seek };
 }
 
 describe("toolbar layout in Chromium", () => {
@@ -125,6 +129,35 @@ describe("toolbar layout in Chromium", () => {
     seek?.focus();
     expect(m.root.activeElement).toBe(seek);
     expect(seek?.getAttribute("aria-valuetext")).toBe("0:04 of 0:16");
+  });
+
+  it("lets the seek bar follow playback again after a press that does not move the thumb", async () => {
+    await page.viewport(1280, 800);
+    let elapsed = 8000;
+    const m = await mount({
+      locale: "en",
+      state: "building",
+      seekable: true,
+      timeline: () => ({ elapsed, duration: 16_000 }),
+      openStage: true,
+    });
+    controls = m.controls;
+    const seek = m.root.querySelector<HTMLInputElement>(".seek");
+    if (!seek) throw new Error("no seek bar");
+    expect(seek.value).toBe("80");
+    // The thumb sits at the centre: the click fires no change event.
+    await userEvent.click(seek);
+    elapsed = 12_000;
+    m.fake.setProgress(20, 40);
+    await expect.poll(() => seek.value).toBe("120");
+    expect(seek.getAttribute("aria-valuetext")).toBe("0:12 of 0:16");
+    expect(m.seek).not.toHaveBeenCalled();
+    // A click elsewhere on the track seeks there once (release and change land in one frame).
+    const { width, height } = seek.getBoundingClientRect();
+    await userEvent.click(seek, { position: { x: width / 4, y: height / 2 } });
+    await frames(2);
+    expect(m.seek).toHaveBeenCalledTimes(1);
+    expect(m.seek.mock.calls[0]?.[0]).toBeLessThan(8000);
   });
 
   it("drops its pulse, slides and transitions when the player asks for reduced motion and the OS does not", async () => {

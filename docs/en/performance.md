@@ -5,8 +5,8 @@ description: SwarmLoom rendering budgets, virtualisation, resource management an
 
 # Performance
 
-::: warning Measurement status
-`pnpm bench` is currently a placeholder. No reproducible FPS, long-task or memory benchmark has been published. Numbers on this page are design budgets, not measured claims.
+::: info Measurement status
+The numbers on this page are design budgets. `pnpm bench` measures snapshot time, frame rate, long tasks, stage nodes and heap on a demo page and a synthetic page of about 4,400 layers and checks looser regression budgets; the scenarios and the latest results are on [Benchmarks](./benchmarks.md). Those results come from one shared Linux machine and do not prove the targets on every device.
 :::
 
 ## Design budgets
@@ -27,7 +27,7 @@ Layers mount only within roughly 1.5 viewports of the visible area. Distant laye
 
 Snapshots default to at most 6000 layers and a world height of 60000 CSS px. Reaching a limit sets `Blueprint.truncated` and reports why; content is not dropped silently.
 
-The snapshot walk runs in slices of about 10 ms, so the page stays responsive and `signal` takes effect within one slice. Subtrees that start below `maxHeight`, and everything after about twice `maxLayers` layers, are only skimmed for fixed and absolutely positioned elements, without reading text or box styles. A long page therefore costs about as much as the part that is kept, not the whole DOM.
+The snapshot walk runs in slices of about 10 ms, so the page stays responsive and `signal` takes effect within one slice. If the page reflows content that was already walked between two slices (an image or font loads, a timer grows a banner), the walk starts over; after two torn walks the last one runs in a single task, so the result always reflects one layout. Subtrees that start below `maxHeight`, and everything after about twice `maxLayers` layers, are only skimmed for fixed and absolutely positioned elements, without reading text or box styles. A long page therefore costs about as much as the part that is kept, not the whole DOM.
 
 ### Batched reads and writes
 
@@ -87,10 +87,10 @@ A comparable report includes:
 
 Do not upload private source documents or full profiles. Create a minimal, redacted reproduction first.
 
-## Planned benchmark command
+## Benchmark command
 
 ```bash
 pnpm bench
 ```
 
-The finished benchmark will record FPS, long tasks and heap memory, with public samples, environments and raw results. Until then, the placeholder's successful exit is not evidence that performance passed.
+It runs the benchmark scenarios in headless Chromium and exits with status 1 when a regression budget fails. Run it alone on an idle machine; options, budgets and the latest results are on [Benchmarks](./benchmarks.md).
