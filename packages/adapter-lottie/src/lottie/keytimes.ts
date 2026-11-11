@@ -114,15 +114,3 @@ export function normalizeTimes(times: readonly number[], lo: number, hi: number)
   }
   return [...out].sort((a, b) => a - b);
 }
-
-/**
- * Picks at most `max` values from a sorted list, evenly spread and always keeping the first and
- * last, so a timeline never shows more diamonds than it can fit.
- */
-export function decimate(sorted: readonly number[], max: number): number[] {
-  if (sorted.length <= max) return [...sorted];
-  if (max <= 1) return sorted.slice(0, Math.max(0, max));
-  const out: number[] = [];
-  for (let i = 0; i < max; i++) out.push(sorted[Math.round((i * (sorted.length - 1)) / (max - 1))] as number);
-  return [...new Set(out)];
-}
