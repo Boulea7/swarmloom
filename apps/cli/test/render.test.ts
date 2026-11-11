@@ -1,7 +1,8 @@
 // @vitest-environment node
 /**
  * End-to-end render tests: bundle the CLI, run it as a real process against a real browser and ffmpeg,
- * and inspect the result with ffprobe. Skipped (with the reason) when the machine lacks Chrome or ffmpeg;
+ * and inspect the result with ffprobe, plus ffmpeg to decode a frame and the sound of the real page's clip.
+ * Skipped (with the reason) when the machine lacks Chrome or ffmpeg;
  * the tests on the real render page also skip while its build is missing or older than its inputs.
  * Under CI both fail instead (see ./real-deps), and a wrong SWARMLOOM_CHROME or SWARMLOOM_FFMPEG always does.
  */
@@ -113,6 +114,16 @@ function probe(file: string): Promise<Probe> {
   );
 }
 
+/** Decodes part of `file` with ffmpeg and returns the raw bytes; `args` pick the part and the raw format. */
+function decode(file: string, args: string[]): Promise<Buffer> {
+  const opts = { encoding: "buffer" as const, maxBuffer: 64 << 20 };
+  return new Promise((resolve, reject) =>
+    execFile(ffmpeg as string, ["-v", "error", "-i", file, ...args, "-"], opts, (error, stdout) =>
+      error ? reject(error) : resolve(stdout),
+    ),
+  );
+}
+
 async function leftovers(): Promise<string[]> {
   return (await readdir(work)).filter((name) => name.startsWith(".swarmloom-render-"));
 }
@@ -129,12 +140,21 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
       const { code, stderr } = await run.done;
       expect(stderr).toBe("");
       expect(code).toBe(0);
-      const info = await probe(path.join(work, "welcome.mp4"));
+      const file = path.join(work, "welcome.mp4");
+      const info = await probe(file);
       expect(info.streams).toEqual([
         expect.objectContaining({ codec_type: "video", codec_name: "h264", width: 640, height: 360 }),
         expect.objectContaining({ codec_type: "audio", codec_name: "aac" }),
       ]);
       expect(Number(info.format.duration)).toBeCloseTo(2, 1);
+      // A black or silent file has the same metadata, so decode a frame and the sound and look at them.
+      const frameArgs = ["-ss", "1", "-frames:v", "1", "-vf", "scale=64:36", "-pix_fmt", "gray", "-f", "rawvideo"];
+      const luma = await decode(file, frameArgs);
+      expect(Math.max(...luma) - Math.min(...luma), "luma range of the frame at 1 s").toBeGreaterThan(64);
+      const pcm = await decode(file, ["-vn", "-ac", "1", "-f", "s16le"]);
+      let peak = 0;
+      for (let i = 0; i + 1 < pcm.length; i += 2) peak = Math.max(peak, Math.abs(pcm.readInt16LE(i)));
+      expect(peak, "peak sample of the soundtrack").toBeGreaterThan(256);
     },
     TIMEOUT,
   );
