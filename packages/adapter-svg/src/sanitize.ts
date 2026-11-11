@@ -1,13 +1,24 @@
 import { SVG_NS } from "./units";
 
+/** SMIL animation elements (decision C04); their own `href`s are `#fragment`-only like everywhere else. */
+export const SMIL_ELEMENTS: ReadonlySet<string> = new Set([
+  "animate",
+  "animateTransform",
+  "animateMotion",
+  "set",
+  "mpath",
+]);
+
 /**
  * Allow-list sanitiser for untrusted SVG.
  *
  * Runs on an inert document (from DOMParser) before anything touches a live document. It keeps the
- * static drawing vocabulary and removes everything that can run script, navigate, load external
- * resources or animate: `script`, `foreignObject`, animation elements, event handler attributes,
- * non-fragment `href`s (except `data:` raster/SVG images), external `url()` references, `@import`
- * and legacy CSS script hooks. Elements outside the SVG namespace are dropped.
+ * drawing vocabulary and SMIL animation (decision C04: `animate`, `animateTransform`,
+ * `animateMotion`, `set`, `mpath`) and removes everything that can run script, navigate or load
+ * external resources: `script`, `foreignObject`, event handler attributes, non-fragment `href`s
+ * (except `data:` raster/SVG images), external `url()` references, `@import`, legacy CSS script
+ * hooks, and animations that target links or handlers or carry such values. Elements outside the
+ * SVG namespace are dropped.
  */
 
 /** SVG elements that survive sanitising (case-sensitive local names). */
@@ -66,6 +77,7 @@ const ALLOWED_ELEMENTS = new Set([
   "feSpotLight",
   "feTile",
   "feTurbulence",
+  ...SMIL_ELEMENTS,
 ]);
 
 /** Removed elements whose content would have been visible: reported to the user. */
@@ -163,6 +175,20 @@ export function sanitizeCss(css: string): string {
   return out;
 }
 
+/** Animation values may only reference local fragments and never carry script or data URLs. */
+const UNSAFE_ANIMATION_VALUE = /url\(\s*["']?(?!#)|(?:javascript|vbscript|data):/i;
+
+/** True for an animation that could navigate, run handlers or load resources once it plays. */
+function unsafeAnimation(el: Element): boolean {
+  const target = (el.getAttribute("attributeName") ?? "").trim().toLowerCase();
+  if (target === "href" || target === "xlink:href" || target.startsWith("on") || target === "style") return true;
+  for (const name of ["values", "from", "to", "by"]) {
+    const v = el.getAttribute(name);
+    if (v && UNSAFE_ANIMATION_VALUE.test(decodeCssEscapes(v))) return true;
+  }
+  return false;
+}
+
 function count(report: SanitizeReport, name: string): void {
   report.removed[name] = (report.removed[name] ?? 0) + 1;
 }
@@ -206,7 +232,11 @@ export function sanitizeSvgTree(root: Element, report: SanitizeReport = createRe
     for (const child of Array.from(el.childNodes)) {
       if (child.nodeType === 1) {
         const c = child as Element;
-        if (c.namespaceURI !== SVG_NS || !ALLOWED_ELEMENTS.has(c.localName)) {
+        if (
+          c.namespaceURI !== SVG_NS ||
+          !ALLOWED_ELEMENTS.has(c.localName) ||
+          (SMIL_ELEMENTS.has(c.localName) && c.localName !== "mpath" && unsafeAnimation(c))
+        ) {
           count(report, c.localName);
           if (c.localName === "foreignObject") report.droppedContent++;
           c.remove();

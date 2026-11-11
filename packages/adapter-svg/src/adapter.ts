@@ -5,17 +5,20 @@ import type {
   CustomLayer,
   Layer,
   LoadedSource,
+  Plugin,
   Rect,
   Size,
   SourceInput,
 } from "@swarmloom/core";
 import { convertSvg } from "./convert";
 import { formatNumber } from "./path/geometry";
-import { DEFS_TASK, SVG_PLUGIN, type SvgDefsData, svgPlugin } from "./plugin";
+import { createSvgPlugin, DEFS_TASK, type SvgDefsData, svgPlugin } from "./plugin";
 import { mountSandbox, type Sandbox } from "./sandbox";
 import { createReport, sanitizeSvgTree } from "./sanitize";
+import { hasSmil, SMIL_TASK, type SvgSmilData, stripSmil } from "./smil";
 import { looksLikeSvg, readSvgText } from "./source";
 import { computedStyle, isTransparent, luminance } from "./style";
+import { collectSmilTimeline, findTimelinePlugin, TIMELINE_BAND, timelineLayer } from "./timeline";
 import { intrinsicSize, parseViewBox, SVG_NS, XLINK_NS } from "./units";
 import { assignKeys, expandUses } from "./use";
 
@@ -31,6 +34,19 @@ export interface SvgAdapterOptions {
   anchorsPerPath?: number;
   /** Maximum time spent waiting for web fonts and embedded images, ms (default 1500). */
   assetTimeout?: number;
+}
+
+/**
+ * Adapter context plus the plugins the host registers with its player. Core's `AdapterContext`
+ * does not declare the member, so hosts pass it through `@swarmloom/formats` `load()` unchanged.
+ */
+export interface SvgLoadContext extends AdapterContext {
+  /**
+   * When one is named `anim:timeline` (from @swarmloom/adapter-lottie, looked up by name), an
+   * animated drawing also gets a keyframe timeline in a band under it before its animation plays;
+   * otherwise nothing changes.
+   */
+  plugins?: readonly Plugin[];
 }
 
 /** Size used by browsers for an SVG that declares neither a size nor a viewBox. */
@@ -142,6 +158,22 @@ async function resolveImageSizes(root: Element, doc: Document, timeout: number):
   if (pending.length > 0) await settle(Promise.allSettled(pending), timeout, doc.defaultView);
 }
 
+/** Serialises the animated copy of the drawing at the world size (the `svg:smil` layer markup). */
+function liveMarkup(live: Element, vb: Rect, world: Size): string {
+  live.setAttribute("viewBox", [vb.x, vb.y, vb.w, vb.h].map((v) => formatNumber(v, 6)).join(" "));
+  live.setAttribute("width", String(world.w));
+  live.setAttribute("height", String(world.h));
+  live.removeAttribute("x");
+  live.removeAttribute("y");
+  return new XMLSerializer().serializeToString(live);
+}
+
+function maxOf(layers: readonly Layer[], pick: (l: Layer) => number | undefined): number {
+  let max = 0;
+  for (const l of layers) max = Math.max(max, pick(l) ?? 0);
+  return max;
+}
+
 /** True when a layer references a definition (paint server, clip, mask, filter or marker) by fragment. */
 function usesDefinitions(layer: Layer): boolean {
   // Only path layers point into the definitions: text and images with effects become snapshots.
@@ -172,7 +204,10 @@ function takeBackground(layers: Layer[], world: Size): string | null {
  * - gradients, patterns, clip paths, masks, filters and markers are rewritten into stage space and
  *   rendered by the `svg:defs` custom layer of {@link svgPlugin} (returned in `plugins`);
  * - text becomes typed text layers, `<image>` becomes image layers;
- * - paint order is kept (`z` and `priority` follow the document).
+ * - paint order is kept (`z` and `priority` follow the document);
+ * - SMIL animation (decision C04) is woven in its authored pose; an `svg:smil` layer built last
+ *   fades in the sanitised animated drawing and plays it from 0 s, preceded by a keyframe
+ *   timeline when the host registers an `anim:timeline` plugin ({@link SvgLoadContext.plugins}).
  * Content left out because of limits or because it was unsafe is reported in `truncated`.
  */
 export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
@@ -193,12 +228,14 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
     sniff(head: Uint8Array): boolean {
       return looksLikeSvg(head);
     },
-    async load(input: SourceInput, ctx: AdapterContext): Promise<LoadedSource> {
+    async load(input: SourceInput, ctx: SvgLoadContext): Promise<LoadedSource> {
       if (!input || typeof input !== "object") throw new TypeError("SVG adapter: input must be an object");
       if (!ctx?.document) throw new TypeError("SVG adapter: ctx.document is required");
       if (!(Number.isFinite(ctx.width) && ctx.width > 0)) throw new RangeError("SVG adapter: ctx.width must be > 0");
       if (ctx.maxLayers !== undefined && !(ctx.maxLayers >= 1))
         throw new RangeError("SVG adapter: ctx.maxLayers must be >= 1");
+      if (ctx.plugins !== undefined && !Array.isArray(ctx.plugins))
+        throw new TypeError("SVG adapter: ctx.plugins must be an array");
       const { signal } = ctx;
       checkAbort(signal);
 
@@ -211,6 +248,9 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
       if (elements > maxElements) {
         throw new RangeError(`SVG has too many elements (${elements}, limit ${maxElements})`);
       }
+      // SMIL (C04): the weave uses the authored, un-animated drawing; an animated copy replays after it.
+      const live = hasSmil(parsed) ? (parsed.cloneNode(true) as Element) : null;
+      if (live) stripSmil(parsed);
       const serialized = new XMLSerializer().serializeToString(parsed);
       const icon =
         serialized.length <= MAX_ICON_CHARS
@@ -269,14 +309,20 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
         const lum = luminance(background);
         const scheme = lum !== null && lum < 0.4 ? "dark" : "light";
 
-        // Trim to the budget, keeping one slot for the definitions layer when kept layers use it.
+        // Trim to the budget, keeping slots for the replay, the timeline and the definitions layer.
+        const timelinePlugin = live && limit >= 3 ? findTimelinePlugin(ctx.plugins) : undefined;
+        const timeline = timelinePlugin && live ? collectSmilTimeline(live) : null;
+        const replay = live !== null && limit >= 2;
+        const room = limit - (replay ? 1 : 0) - (timeline ? 1 : 0);
         let dropped = result.dropped;
-        if (layers.length > limit) {
-          const room = result.defs.size > 0 && layers.slice(0, limit).some(usesDefinitions) ? limit - 1 : limit;
-          dropped += layers.length - room;
-          layers.length = room;
+        if (layers.length > room) {
+          const kept = result.defs.size > 0 && layers.slice(0, room).some(usesDefinitions) ? room - 1 : room;
+          dropped += layers.length - kept;
+          layers.length = kept;
         }
-        const plugins = [];
+        const plugins: Plugin[] = [];
+        const z = maxOf(layers, (l) => l.z);
+        const priority = maxOf(layers, (l) => l.priority);
         if (result.defs.size > 0 && layers.some(usesDefinitions)) {
           const data: SvgDefsData = { markup: result.defs.markup() };
           const defsLayer: CustomLayer = {
@@ -291,8 +337,30 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
             meta: { definitions: result.defs.size },
           };
           layers.unshift(defsLayer);
-          plugins.push(svgPlugin);
         }
+        if (timeline) {
+          const band = { x: 0, y: world.h, w: world.w, h: TIMELINE_BAND };
+          layers.push({ ...timelineLayer(`${idPrefix}-timeline`, { ...timeline, scheme }, band, priority), z: z + 2 });
+        }
+        if (replay && live) {
+          const data: SvgSmilData = { markup: liveMarkup(live, vb, world) };
+          // Last in the build (after the timeline when there is one), above every woven layer.
+          const smilLayer: CustomLayer = {
+            id: `${idPrefix}-smil`,
+            kind: "custom",
+            task: SMIL_TASK,
+            box: { x: 0, y: 0, w: world.w, h: world.h },
+            z: z + 1,
+            priority: priority + 2,
+            data,
+            meta: { smil: true },
+          };
+          if (timeline) smilLayer.parent = `${idPrefix}-timeline`;
+          layers.push(smilLayer);
+        }
+        const usesPlugin = layers.some((l) => l.kind === "custom" && (l.task === DEFS_TASK || l.task === SMIL_TASK));
+        if (usesPlugin) plugins.push(replay ? createSvgPlugin() : svgPlugin);
+        if (timeline && timelinePlugin) plugins.push(timelinePlugin);
 
         const reasons: string[] = [];
         if (dropped > 0) reasons.push(`layer limit of ${limit} reached`);
@@ -304,14 +372,15 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
         const blueprint: Blueprint = {
           version: 1,
           source: { type: "svg", name: input.name, url: input.url, title },
-          size: world,
+          // The timeline bar gets its own band under the drawing, so it never covers the animation.
+          size: timeline ? { w: world.w, h: world.h + TIMELINE_BAND } : world,
           background,
           scheme,
           layers,
         };
         if (css) blueprint.css = css;
         if (icon) blueprint.icon = icon;
-        if (plugins.length > 0) blueprint.plugins = [SVG_PLUGIN];
+        if (plugins.length > 0) blueprint.plugins = plugins.map((p) => p.name);
         if (reasons.length > 0) {
           blueprint.truncated = { reason: reasons.join("; "), dropped: total };
         }
