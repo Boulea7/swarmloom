@@ -144,7 +144,7 @@ after(async () => {
   if (profile) rmSync(profile, { recursive: true, force: true });
 });
 
-test("explains a restricted page with a badge and a notice tab offering three next steps", async () => {
+test("explains a restricted page with a badge and a notice tab offering the next steps", async () => {
   const { page, tabId } = await openTab("chrome://version/");
   const noticeOpened = context.waitForEvent("page", {
     predicate: (p) => p.url().includes("/notice.html"),
@@ -156,11 +156,13 @@ test("explains a restricted page with a badge and a notice tab offering three ne
   assert.equal(await inWorker((id) => globalThis.__swarmloomTest.badge(id), tabId), "!");
 
   await notice.waitForLoadState();
-  for (const id of ["open-studio", "import", "copy"]) {
+  for (const id of ["open-studio", "import"]) {
     const action = notice.locator(`#${id}`);
     assert.ok(await action.isVisible(), `#${id} is visible`);
     assert.notEqual((await action.textContent())?.trim(), "", `#${id} has a label`);
   }
+  // Studio refuses chrome:// links, so the notice must not suggest pasting this one there.
+  assert.equal(await notice.locator("#copy").isVisible(), false, "#copy is hidden for a chrome:// page");
   assert.notEqual((await notice.locator("#reason").textContent())?.trim(), "");
   await notice.close();
   await page.close();
