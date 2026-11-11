@@ -9,7 +9,7 @@ import { MAX_INPUT_BYTES } from "./errors";
 import { sanitizeManifest } from "./examples/manifest";
 import { receiveHandoff } from "./handoff";
 import type { CoreI18n } from "./i18n";
-import { readInbox, registerServiceWorker } from "./pwa";
+import { launchHandler, readInbox, registerServiceWorker } from "./pwa";
 import type { StoredInput, StudioServices } from "./services";
 
 /** Hosted Studio, linked from builds without examples (the extension). */
@@ -64,13 +64,6 @@ async function readStored(key: string): Promise<StoredInput | null> {
   return null;
 }
 
-type LaunchQueue = { setConsumer(fn: (params: { files: readonly FileSystemFileHandle[] }) => void): void };
-
-function launchQueue(): LaunchQueue | null {
-  const queue = (window as Window & { launchQueue?: LaunchQueue }).launchQueue;
-  return queue && typeof queue.setConsumer === "function" ? queue : null;
-}
-
 function localStore(): Storage | undefined {
   try {
     return window.localStorage;
@@ -82,7 +75,6 @@ function localStore(): Storage | undefined {
 /** Builds the services and mounts Studio into #app. */
 function boot(): void {
   const target = __STUDIO_TARGET__;
-  const queue = launchQueue();
 
   const services: StudioServices = {
     target,
@@ -98,10 +90,7 @@ function boot(): void {
     storage: localStore(),
     readStored: target === "extension" ? readStored : undefined,
     readInbox: (id) => readInbox(id, new URL(import.meta.env.BASE_URL, window.location.href).href),
-    onLaunch: queue
-      ? (consumer) =>
-          queue.setConsumer((params) => consumer(Promise.all(params.files.map((handle) => handle.getFile()))))
-      : undefined,
+    onLaunch: launchHandler(window),
     receiveHandoff: (signal) => receiveHandoff(window, signal),
     blockRemoteAssets: () => blockRemoteAssets(document),
   };
