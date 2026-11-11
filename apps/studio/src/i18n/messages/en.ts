@@ -63,6 +63,8 @@ export const en = {
     other: "Too much to build in full: {count} layers were left out.",
   },
   "player.notes": "Shown with some changes: {notes}",
+  "player.fonts": "Fonts missing on this device are shown with similar ones: {fonts}.",
+  "player.fonts.more": "{count} more",
   "player.dismiss": "Dismiss",
   "player.retry": "Try again",
   "player.home": "Back to Studio",

@@ -53,6 +53,8 @@ export const ja: StudioCatalog = {
   "player.settings": "設定",
   "player.truncated": { other: "内容が多すぎるため、{count} 個のレイヤーを省略しました。" },
   "player.notes": "一部を変更して表示しています：{notes}",
+  "player.fonts": "この端末にないフォントは近いフォントで表示しています：{fonts}。",
+  "player.fonts.more": "ほか {count} 件",
   "player.dismiss": "閉じる",
   "player.retry": "再試行",
   "player.home": "Studio に戻る",

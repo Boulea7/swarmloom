@@ -56,6 +56,8 @@ export const fr: StudioCatalog = {
     other: "Trop de contenu pour tout construire : {count} calques ont été omis.",
   },
   "player.notes": "Affiché avec quelques modifications : {notes}",
+  "player.fonts": "Les polices absentes de cet appareil sont remplacées par des polices proches : {fonts}.",
+  "player.fonts.more": { one: "{count} autre", other: "{count} autres" },
   "player.dismiss": "Fermer",
   "player.retry": "Réessayer",
   "player.home": "Retour à Studio",

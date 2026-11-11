@@ -56,6 +56,8 @@ export const de: StudioCatalog = {
     other: "Zu viel, um alles zu bauen: {count} Ebenen wurden ausgelassen.",
   },
   "player.notes": "Mit einigen Änderungen dargestellt: {notes}",
+  "player.fonts": "Auf diesem Gerät fehlende Schriften werden durch ähnliche ersetzt: {fonts}.",
+  "player.fonts.more": "{count} weitere",
   "player.dismiss": "Schließen",
   "player.retry": "Erneut versuchen",
   "player.home": "Zurück zu Studio",

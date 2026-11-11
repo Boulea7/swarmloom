@@ -52,6 +52,8 @@ export const zhTW: StudioCatalog = {
   "player.settings": "設定",
   "player.truncated": { other: "內容太多，無法完整建構，省略了 {count} 個圖層。" },
   "player.notes": "部分內容有調整：{notes}",
+  "player.fonts": "本機缺少的字型已換成相近字型：{fonts}。",
+  "player.fonts.more": "其他 {count} 種",
   "player.dismiss": "知道了",
   "player.retry": "重試",
   "player.home": "回到 Studio",

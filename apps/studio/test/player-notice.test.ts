@@ -12,8 +12,9 @@ afterEach(() => {
   history.replaceState(null, "", "/");
 });
 
-it("tells the user what the adapter removed or approximated", async () => {
-  history.replaceState(null, "", "/?lang=en&src=https://example.test/loop.lottie");
+/** The notice text shown for a source whose adapter returned `notes`, in UI language `lang`. */
+async function noticeFor(lang: string, notes: string[]): Promise<string | null | undefined> {
+  history.replaceState(null, "", `/?lang=${lang}&src=https://example.test/loop.lottie`);
   const root = document.createElement("div");
   document.body.append(root);
   const { services } = fakeServices({
@@ -22,8 +23,6 @@ it("tells the user what the adapter removed or approximated", async () => {
     fetch: async () => new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04])),
   });
   const load = services.load;
-  // Like the Lottie adapter's result: plain-English notes next to the blueprint.
-  const notes = ["1 expression(s) were ignored.", "1 audio or data asset(s) were removed."];
   services.load = async (input, ctx): Promise<LoadedSource> => ({ ...(await load(input, ctx)), notes }) as LoadedSource;
   app = await mountStudio(root, services);
 
@@ -37,7 +36,29 @@ it("tells the user what the adapter removed or approximated", async () => {
     };
     poll();
   });
-  expect(notice.querySelector(":scope > span")?.textContent).toBe(
+  return notice.querySelector(":scope > span")?.textContent;
+}
+
+it.each([
+  // Like the Lottie adapter's result: plain-English notes Studio passes on.
+  [
+    "en",
+    ["1 expression(s) were ignored.", "1 audio or data asset(s) were removed."],
     "Shown with some changes: 1 expression(s) were ignored. 1 audio or data asset(s) were removed.",
-  );
+  ],
+  // Font substitutions (Office and OpenDocument wordings) are reworded in the UI language.
+  [
+    "zh-CN",
+    ["Fonts that are not installed are shown with open substitutes: Calibri → Carlito, SimSun → Noto Serif SC."],
+    "部分内容有调整：本机缺少的字体已换成相近字体：Calibri → Carlito和SimSun → Noto Serif SC。",
+  ],
+  [
+    "de",
+    [
+      "Fonts not installed on this device are shown with look-alikes (or the closest installed font): Aptos → a sans-serif font, Calibri -> Carlito and 2 more.",
+    ],
+    "Mit einigen Änderungen dargestellt: Auf diesem Gerät fehlende Schriften werden durch ähnliche ersetzt: Aptos → sans-serif, Calibri → Carlito und 2 weitere.",
+  ],
+])("tells the user (%s) what the adapter removed or approximated", async (lang, notes, expected) => {
+  expect(await noticeFor(lang, notes)).toBe(expected);
 });

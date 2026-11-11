@@ -56,6 +56,8 @@ export const es: StudioCatalog = {
     other: "Hay demasiado para construirlo entero: se omitieron {count} capas.",
   },
   "player.notes": "Se muestra con algunos cambios: {notes}",
+  "player.fonts": "Las fuentes que faltan en este dispositivo se muestran con otras parecidas: {fonts}.",
+  "player.fonts.more": "{count} más",
   "player.dismiss": "Cerrar",
   "player.retry": "Reintentar",
   "player.home": "Volver a Studio",
