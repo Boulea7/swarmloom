@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { exportSettingsOf } from "../src/export/browser";
 import { buildCliCommand, type CliCommandOptions, shellArg } from "../src/export/cli";
 import { DEFAULT_SETTINGS } from "../src/settings";
 
@@ -53,5 +54,23 @@ describe("CLI command", () => {
     expect(command("https://example.com/a.md", false, "a.md")).toEqual({
       text: "npx swarmloom render https://example.com/a.md -o a.mp4 --seed 1",
     });
+  });
+
+  it("writes the export dialog's choices, and the in-page export uses the same settings", () => {
+    const settings = { ...DEFAULT_SETTINGS, follow: "scroll" as const, remoteAssets: false };
+    const choices = { sound: false, scheme: "dark" as const, locale: "zh-CN" };
+    const base = { target: "a.md", targetIsFile: false, name: "a.md", settings, format: "mp4" as const };
+    expect(buildCliCommand({ ...base, width: 1080, height: 1920, fps: 60, ...choices }).text).toBe(
+      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --seed 1 --theme dark --locale zh-CN --no-sound --no-remote",
+    );
+    expect(exportSettingsOf(settings, choices)).toMatchObject({
+      theme: "dark",
+      follow: "tour",
+      sound: false,
+      locale: "zh-CN",
+    });
+    // English, the light scheme and 30 fps are the CLI defaults.
+    const plain = { ...base, settings: DEFAULT_SETTINGS, width: 1280, height: 720, fps: 30, scheme: "light" as const };
+    expect(buildCliCommand({ ...plain, locale: "en-GB" }).text).toBe("npx swarmloom render a.md -o a.mp4 --seed 1");
   });
 });
