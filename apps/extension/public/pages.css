@@ -228,6 +228,14 @@ select {
   margin: 0 auto 24px;
   max-width: 520px;
 }
+/*
+ * Room under the sample card for the player's toolbar. It docks over the bottom of the inline stage
+ * and stays up once the build is done: one row of 44px targets plus padding and border, above the
+ * dock's bottom inset. Without it the toolbar covers the card's button on narrow screens.
+ */
+.toolbar-room {
+  padding-bottom: calc(58px + max(14px, env(safe-area-inset-bottom, 0px)));
+}
 .sample {
   display: grid;
   gap: 8px;

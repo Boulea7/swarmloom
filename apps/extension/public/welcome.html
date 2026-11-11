@@ -20,22 +20,24 @@
     </header>
 
     <section class="demo" aria-labelledby="demo-caption">
-      <swarm-loom autoplay loop inview labels="roles" speed="1.5" controls>
-        <article class="card sample">
-          <div class="sample-art" aria-hidden="true">
-            <svg viewBox="0 0 120 72" width="120" height="72" aria-hidden="true">
-              <rect x="4" y="10" width="52" height="52" rx="10" fill="#5B5BF7"/>
-              <circle cx="88" cy="36" r="26" fill="#FF4F7B"/>
-              <path d="M20 50 L44 22 L48 46 Z" fill="#FAFAFC"/>
-            </svg>
-          </div>
-          <h2>Lantern Notes</h2>
-          <p>A pocket notebook that turns your sketches into tidy pages, one stroke at a time.</p>
-          <ul class="chips">
-            <li>Offline</li><li>Shareable</li><li>Open source</li>
-          </ul>
-          <span class="button small">Get started</span>
-        </article>
+      <swarm-loom id="demo" autoplay loop inview labels="roles" speed="1.5" controls>
+        <div class="toolbar-room">
+          <article class="card sample">
+            <div class="sample-art" aria-hidden="true">
+              <svg viewBox="0 0 120 72" width="120" height="72" aria-hidden="true">
+                <rect x="4" y="10" width="52" height="52" rx="10" fill="#5B5BF7"/>
+                <circle cx="88" cy="36" r="26" fill="#FF4F7B"/>
+                <path d="M20 50 L44 22 L48 46 Z" fill="#FAFAFC"/>
+              </svg>
+            </div>
+            <h2>Lantern Notes</h2>
+            <p>A pocket notebook that turns your sketches into tidy pages, one stroke at a time.</p>
+            <ul class="chips">
+              <li>Offline</li><li>Shareable</li><li>Open source</li>
+            </ul>
+            <span class="button small">Get started</span>
+          </article>
+        </div>
       </swarm-loom>
       <p id="demo-caption" class="muted center" data-i18n="welcomeDemoCaption">This card is rebuilt live by SwarmLoom.</p>
     </section>
