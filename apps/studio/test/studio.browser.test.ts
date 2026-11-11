@@ -141,6 +141,26 @@ describe("Studio in a browser", () => {
     expect(iterations()).toBe("infinite");
   });
 
+  it("keeps a finished build and a paste draft across a language switch", async () => {
+    const { root, log } = await mount("?example=svg-chart&lang=en");
+    (await until(() => root.querySelector<HTMLButtonElement>(".play-big"))).click();
+    const player = await until(() => root.querySelector<HTMLElement>('.view-player[data-phase="done"]'));
+    app?.context.updateSettings({ locale: "de" });
+    await until(() => document.documentElement.lang === "de");
+    expect(root.querySelector(".view-player")).toBe(player);
+    expect([player.dataset.phase, log.players.length]).toEqual(["done", 1]);
+    expect(player.querySelector(".appbar")?.textContent).toContain("Exportieren");
+
+    app?.context.navigate({ source: null });
+    root.querySelector<HTMLButtonElement>(".dropzone-actions button[aria-controls]")?.click();
+    const area = root.querySelector<HTMLTextAreaElement>(".paste-area");
+    if (area) area.value = "# Draft";
+    app?.context.updateSettings({ locale: "en" });
+    await until(() => document.documentElement.lang === "en");
+    expect(root.querySelector<HTMLTextAreaElement>(".paste-area")?.value).toBe("# Draft");
+    expect(root.querySelector<HTMLElement>(".paste-panel")?.hidden).toBe(false);
+  });
+
   it("keeps the drop zone's cursors clear of a long German title on a 320px phone", async () => {
     await page.viewport(320, 568);
     try {

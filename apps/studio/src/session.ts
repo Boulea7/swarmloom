@@ -154,10 +154,12 @@ export class Session {
   /**
    * Applies new settings. Live ones go straight to the player; the returned impact tells the caller
    * whether a {@link rebuild} (new player) or {@link reload} (new adapter run) is still needed.
+   * The language setting is not one of them: the resolved locale arrives through {@link setLocale}
+   * once Studio's strings for it have loaded.
    */
   apply(next: StudioSettings): SettingsImpact {
     const prev = this.settings;
-    const impact = impactOf(prev, next);
+    const impact = impactOf({ ...prev, locale: next.locale }, next);
     this.settings = next;
     const player = this.player;
     if (player) {
@@ -168,6 +170,16 @@ export class Session {
       if (prev.speed !== next.speed || prev.follow !== next.follow) this.resetPlan(this.plannedMs);
     }
     return impact;
+  }
+
+  /**
+   * Locale for the next player and adapter run. Returns true when it changed, so the caller can
+   * {@link rebuild} for the current player to speak it too.
+   */
+  setLocale(locale: string): boolean {
+    if (locale === this.o.locale) return false;
+    this.o.locale = locale;
+    return true;
   }
 
   /** Colour scheme used by the next adapter run ({@link reload}). */

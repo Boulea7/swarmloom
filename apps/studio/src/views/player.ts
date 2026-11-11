@@ -43,10 +43,13 @@ function clock(ms: number): string {
  * Studio scrubber, share and export. Loading, ready and error states render over the stage.
  */
 export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
-  const { i18n } = ctx;
+  // Strings are read through ctx.i18n each time, so a language change (localeChanged) relabels
+  // the view without touching the session that is playing.
   let phase: SessionPhase = "opening";
   let scheme = ctx.scheme;
   let recTimer = 0;
+  /** Error behind the "error" phase, kept to render the card again in another language. */
+  let lastError: unknown;
   /** Autoplay links start the first time the player is ready, never again after a rebuild. */
   let autoplayPending = ctx.route.autoplay;
 
@@ -57,37 +60,41 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   const guess = formatOfName(name);
   if (guess) meta.textContent = formatLabel(ctx, guess.id);
 
-  // Actions
-  const shareButton = button({
-    label: i18n.t("player.share"),
-    icon: "share",
-    variant: "quiet",
-    class: "hide-narrow-label",
-    onClick: () => void share(),
-  });
-  const exportButton = button({
-    label: i18n.t("player.export"),
-    icon: "export",
-    variant: "secondary",
-    shortcut: "E",
-    class: "hide-narrow-label",
-    onClick: () => exporter.open(),
-  });
-  const theme = themeButton(ctx);
-  shareButton.disabled = true;
-  exportButton.disabled = true;
-  const back = button({
-    label: i18n.t("nav.back"),
-    icon: "back",
-    iconOnly: true,
-    variant: "quiet",
-    onClick: () => ctx.navigate({ source: null }),
-  });
-  const bar = appBar(ctx, {
-    lead: [back, h("div", { class: "player-heading" }, title, meta)],
-    actions: [shareButton, exportButton, theme, settingsButton(ctx)],
-  });
-  bar.classList.add("appbar-player");
+  /** The app bar: back, title, share, export, theme and settings. Rebuilt on a language change. */
+  const buildBar = (shareEnabled: boolean, exportEnabled: boolean) => {
+    const { i18n } = ctx;
+    const share = button({
+      label: i18n.t("player.share"),
+      icon: "share",
+      variant: "quiet",
+      class: "hide-narrow-label",
+      onClick: () => void shareSource(),
+    });
+    const exportButton = button({
+      label: i18n.t("player.export"),
+      icon: "export",
+      variant: "secondary",
+      shortcut: "E",
+      class: "hide-narrow-label",
+      onClick: () => exporter.open(),
+    });
+    share.disabled = !shareEnabled;
+    exportButton.disabled = !exportEnabled;
+    const back = button({
+      label: i18n.t("nav.back"),
+      icon: "back",
+      iconOnly: true,
+      variant: "quiet",
+      onClick: () => ctx.navigate({ source: null }),
+    });
+    const root = appBar(ctx, {
+      lead: [back, h("div", { class: "player-heading" }, title, meta)],
+      actions: [share, exportButton, themeButton(ctx), settingsButton(ctx)],
+    });
+    root.classList.add("appbar-player");
+    return { root, share, export: exportButton };
+  };
+  let bar = buildBar(false, false);
 
   // Stage and overlay
   const host = h("div", { class: "stage-host", data: { stageHost: "" } });
@@ -99,26 +106,36 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
 
   // Scrubber: a seek slider when the player can seek, a progress bar otherwise.
   const scrubber = createScrubber({
-    i18n,
+    i18n: ctx.i18n,
     seek: (fraction) => session.seek(fraction),
     position: () => session.position,
   });
   const recLabel = h("span", { class: "rec-time" });
-  const recPill = h(
-    "div",
-    { class: "rec-pill", attrs: { hidden: true, role: "status" } },
-    h("span", { class: "rec-dot", attrs: { "aria-hidden": "true" } }),
-    recLabel,
+  const recDot = h("span", { class: "rec-dot", attrs: { "aria-hidden": "true" } });
+  const stopButton = () =>
     button({
-      label: i18n.t("export.record.stop"),
+      label: ctx.i18n.t("export.record.stop"),
       icon: "stop",
       variant: "ghost",
       onClick: () => exporter.stopRecording(),
-    }),
+    });
+  const recPill = h(
+    "div",
+    { class: "rec-pill", attrs: { hidden: true, role: "status" } },
+    recDot,
+    recLabel,
+    stopButton(),
   );
   const foot = h("div", { class: "player-foot" }, scrubber.root, scrubber.count, recPill);
 
-  const root = h("main", { class: "view view-player", attrs: { id: "main", tabindex: -1 } }, bar, notice, frame, foot);
+  const root = h(
+    "main",
+    { class: "view view-player", attrs: { id: "main", tabindex: -1 } },
+    bar.root,
+    notice,
+    frame,
+    foot,
+  );
 
   const exporter = createExporter({
     ctx,
@@ -130,7 +147,9 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       recPill.hidden = !rec;
       if (!rec) return;
       const tick = () => {
-        recLabel.textContent = i18n.t("export.record.recording", { time: clock(performance.now() - rec.startedAt) });
+        recLabel.textContent = ctx.i18n.t("export.record.recording", {
+          time: clock(performance.now() - rec.startedAt),
+        });
       };
       tick();
       recTimer = window.setInterval(tick, 1000);
@@ -139,6 +158,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   root.append(exporter.panel.root);
 
   const renderOverlay = (error?: unknown) => {
+    const { i18n } = ctx;
     frame.dataset.phase = phase;
     overlay.replaceChildren();
     if (phase === "opening" || phase === "loading") {
@@ -223,11 +243,12 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     title.textContent = opened.title;
     const format = session.loaded?.blueprint.source.type ?? opened.format;
     if (format) meta.textContent = formatLabel(ctx, format);
-    document.title = `${opened.title} · ${i18n.t("app.name")}`;
-    shareButton.disabled = false;
+    document.title = `${opened.title} · ${ctx.i18n.t("app.name")}`;
+    bar.share.disabled = false;
   };
 
   const showTruncated = () => {
+    const { i18n } = ctx;
     const truncated = session.loaded?.blueprint.truncated;
     if (!truncated || truncated.dropped <= 0) {
       notice.hidden = true;
@@ -253,16 +274,17 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     ref,
     local: ctx.local,
     settings: ctx.settings,
-    locale: i18n.locale,
+    locale: ctx.i18n.locale,
     scheme,
     onPhase: (next, error) => {
       phase = next;
+      lastError = error;
       root.dataset.phase = next;
       if (next === "ready" || next === "error") showOpened();
       scrubber.setPhase(next);
       if (next === "ready") {
         showTruncated();
-        exportButton.disabled = false;
+        bar.export.disabled = false;
         scrubber.ready(session.canSeek);
         if (autoplayPending) {
           autoplayPending = false;
@@ -283,7 +305,8 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   renderOverlay();
   void session.open();
 
-  async function share(): Promise<void> {
+  async function shareSource(): Promise<void> {
+    const { i18n } = ctx;
     const opened = session.opened;
     if (!opened) return;
     const link = await buildShareLink(opened, ctx.settings, ctx.appUrl);
@@ -321,11 +344,42 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     void session.reload(phase === "playing" || phase === "done");
   };
 
+  /** A new player takes the change: right away before play, on the user's word once it runs. */
+  const rebuildWhenFree = () => {
+    if (phase === "ready") {
+      session.rebuild(false);
+      return;
+    }
+    if (phase === "playing" || phase === "done") {
+      ctx.toast.show(ctx.i18n.t("player.restartHint"), {
+        icon: "refresh",
+        action: { label: ctx.i18n.t("player.restart"), run: () => session.rebuild(true) },
+      });
+    }
+  };
+
+  /** Puts every Studio string of the view in the current language; the stage keeps playing. */
+  const relabel = () => {
+    const next = buildBar(!bar.share.disabled, !bar.export.disabled);
+    bar.root.replaceWith(next.root);
+    bar = next;
+    if (session.opened) showOpened();
+    else {
+      title.textContent = provisionalName(ctx, ref);
+      if (guess) meta.textContent = formatLabel(ctx, guess.id);
+    }
+    if (!notice.hidden) showTruncated();
+    renderOverlay(lastError);
+    scrubber.relabel(ctx.i18n);
+    recPill.replaceChildren(recDot, recLabel, stopButton());
+    exporter.relabel();
+  };
+
   return {
     root,
     onKey(event) {
       if (isTyping(event.target) || event.metaKey || event.ctrlKey || event.altKey) return false;
-      if ((event.key === "e" || event.key === "E") && !exportButton.disabled) {
+      if ((event.key === "e" || event.key === "E") && !bar.export.disabled) {
         exporter.open();
         return true;
       }
@@ -347,17 +401,12 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
         }
         return;
       }
-      if (impact !== "rebuild") return;
-      if (phase === "ready") {
-        session.rebuild(false);
-        return;
-      }
-      if (phase === "playing" || phase === "done") {
-        ctx.toast.show(i18n.t("player.restartHint"), {
-          icon: "refresh",
-          action: { label: i18n.t("player.restart"), run: () => session.rebuild(true) },
-        });
-      }
+      if (impact === "rebuild") rebuildWhenFree();
+    },
+    localeChanged() {
+      relabel();
+      // The core toolbar keeps the old language until the next player.
+      if (session.setLocale(ctx.i18n.locale)) rebuildWhenFree();
     },
     schemeChanged: applyScheme,
     destroy() {

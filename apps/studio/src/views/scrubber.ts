@@ -39,6 +39,8 @@ export interface Scrubber {
   setPhase(phase: SessionPhase): void;
   setProgress(built: number, total: number): void;
   setState(state: PlayerState): void;
+  /** The interface language changed: relabels the bar and the slider. */
+  relabel(i18n: StudioI18n): void;
   destroy(): void;
 }
 
@@ -51,7 +53,7 @@ export interface Scrubber {
  */
 export function createScrubber(options: ScrubberOptions): Scrubber {
   const { i18n } = options;
-  const percent = new Intl.NumberFormat(i18n.locale, { style: "percent" });
+  let percent = new Intl.NumberFormat(i18n.locale, { style: "percent" });
   let built = 0;
   let total = 0;
   let state: PlayerState = "idle";
@@ -167,6 +169,12 @@ export function createScrubber(options: ScrubberOptions): Scrubber {
     setState(next) {
       state = next;
       wake();
+    },
+    relabel(next) {
+      percent = new Intl.NumberFormat(next.locale, { style: "percent" });
+      bar.setAttribute("aria-label", next.t("player.progress"));
+      slider.setAttribute("aria-label", next.t("player.scrub"));
+      paintSlider();
     },
     destroy() {
       destroyed = true;

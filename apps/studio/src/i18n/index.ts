@@ -89,13 +89,23 @@ const LOADERS: Record<StudioLocale, () => Promise<StudioCatalog>> = {
   de: () => import("./messages/de").then((m) => m.de),
 };
 
-/** Loads a catalog; a failed chunk load (offline) falls back to English rather than breaking the UI. */
-export async function loadCatalog(locale: StudioLocale): Promise<StudioCatalog> {
+/** A loaded catalog and the locale it is for. */
+export interface LoadedCatalog {
+  /** The requested locale, or {@link FALLBACK_LOCALE} when its strings could not be loaded. */
+  locale: StudioLocale;
+  catalog: StudioCatalog;
+}
+
+/**
+ * Loads a catalog. A failed chunk load (offline) falls back to English rather than breaking the
+ * UI, and says so in `locale`, so the page and core strings switch to English with it.
+ */
+export async function loadCatalog(locale: StudioLocale): Promise<LoadedCatalog> {
   try {
-    return await LOADERS[locale]();
+    return { locale, catalog: await LOADERS[locale]() };
   } catch (error) {
     console.warn(`[studio] could not load the ${locale} strings, using English`, error);
-    return en;
+    return { locale: FALLBACK_LOCALE, catalog: en };
   }
 }
 
@@ -103,7 +113,7 @@ export async function loadCatalog(locale: StudioLocale): Promise<StudioCatalog> 
  * Creates the translator for a loaded catalog.
  *
  * @param locale Resolved Studio locale.
- * @param catalog Catalog for `locale` (from {@link loadCatalog}).
+ * @param catalog Catalog for `locale` (from {@link loadCatalog}, which may fall back to English).
  * @param core Core's i18n for the same locale, or null when core does not provide one yet.
  */
 export function createStudioI18n(locale: StudioLocale, catalog: StudioCatalog, core: CoreI18n | null): StudioI18n {

@@ -42,8 +42,9 @@ function resolveLocale(setting: StudioSettings["locale"], win: Window): StudioLo
   return setting === "auto" ? negotiateLocale(win.navigator.languages ?? [win.navigator.language]) : setting;
 }
 
-async function loadI18n(services: StudioServices, locale: StudioLocale): Promise<StudioI18n> {
-  const catalog = await loadCatalog(locale);
+/** Studio and core strings for a locale, or English for both when that locale's strings fail to load. */
+async function loadI18n(services: StudioServices, requested: StudioLocale): Promise<StudioI18n> {
+  const { locale, catalog } = await loadCatalog(requested);
   let core = null;
   try {
     core = services.coreI18n?.(locale) ?? null;
@@ -89,9 +90,12 @@ export async function mountStudio(
   };
   syncAssetPolicy();
   let i18n = await loadI18n(services, resolveLocale(settings.locale, win));
+  /** Bumped per language change, so only the latest one applies its strings. */
+  let localeRequest = 0;
   let local: LocalInput | null = null;
   let view: View | null = null;
   let navigated = false;
+  let destroyed = false;
 
   const systemDark = typeof win.matchMedia === "function" ? win.matchMedia("(prefers-color-scheme: dark)") : null;
   const schemeOf = (s: StudioSettings): "light" | "dark" =>
@@ -142,14 +146,16 @@ export async function mountStudio(
   const buildPanels = () => {
     settingsPanel?.destroy();
     shortcutsPanel?.destroy();
-    settingsPanel = createPanel({
+    const panel = createPanel({
       title: i18n.t("settings.title"),
       closeLabel: i18n.t("settings.close"),
       class: "panel-settings",
       onClose: () => {
-        html.dataset.drawer = "closed";
+        // A replaced panel closes asynchronously, possibly after its successor opened.
+        if (settingsPanel === panel) html.dataset.drawer = "closed";
       },
     });
+    settingsPanel = panel;
     shortcutsPanel = createShortcuts(i18n);
     html.dataset.drawer = "closed";
   };
@@ -175,12 +181,30 @@ export async function mountStudio(
     }
   };
 
-  const renderAll = () => {
+  const mountShell = () => {
     applyDocument();
     buildPanels();
     const { settings: drawer, shortcuts } = panels();
-    root.replaceChildren(skip, slot, drawer.root, shortcuts.root, toast.root);
+    // Once mounted, the slot stays connected: detaching it would reset a running stage.
+    if (slot.parentNode === root) slot.after(drawer.root, shortcuts.root, toast.root);
+    else root.replaceChildren(skip, slot, drawer.root, shortcuts.root, toast.root);
+  };
+
+  const renderAll = () => {
+    mountShell();
     renderView();
+  };
+
+  /** New strings are in: rebuild the shell, keep the view running when it can relabel itself. */
+  const relocalize = () => {
+    const reopen = panels().settings.isOpen;
+    mountShell();
+    // The player titles the tab after the document itself (and relabels it below).
+    if (html.dataset.view !== "player") doc.title = i18n.t("app.name");
+    // Reopened first, so anything the view announces lands above a modal sheet.
+    if (reopen) toggleSettings();
+    if (view?.localeChanged) view.localeChanged();
+    else renderView();
   };
 
   function navigate(patch: Partial<Route>, opts: NavigateOptions = {}): void {
@@ -226,21 +250,20 @@ export async function mountStudio(
         action: { label: i18n.t("update.reload"), run: () => win.location.reload() },
       });
     }
-    if (resolveLocale(prev.locale, win) !== resolveLocale(settings.locale, win)) {
-      void loadI18n(services, resolveLocale(settings.locale, win)).then((next) => {
-        i18n = next;
-        const reopen = panels().settings.isOpen;
-        renderAll();
-        if (reopen) toggleSettings();
-      });
-      return;
-    }
     const nextScheme = schemeOf(settings);
     const documentChanged = nextScheme !== scheme || prev.reducedMotion !== settings.reducedMotion;
     scheme = nextScheme;
     if (documentChanged) applyDocument();
     for (const el of doc.querySelectorAll<HTMLButtonElement>(".theme-button")) syncThemeButton(ctx, el);
     view?.settingsChanged?.(prev, settings);
+    const locale = resolveLocale(settings.locale, win);
+    if (locale === resolveLocale(prev.locale, win)) return;
+    const request = ++localeRequest;
+    void loadI18n(services, locale).then((next) => {
+      if (destroyed || request !== localeRequest) return;
+      i18n = next;
+      relocalize();
+    });
   }
 
   function toggleSettings(): void {
@@ -368,6 +391,7 @@ export async function mountStudio(
       return view?.root ?? null;
     },
     destroy() {
+      destroyed = true;
       win.clearTimeout(launchTimer);
       win.removeEventListener("keydown", onKey);
       win.removeEventListener("popstate", onPop);

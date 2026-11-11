@@ -54,5 +54,11 @@ export interface View {
   settingsChanged?(prev: StudioSettings, next: StudioSettings): void;
   /** The resolved colour scheme changed (theme setting, or the system theme while on "auto"). */
   schemeChanged?(scheme: "light" | "dark"): void;
+  /**
+   * The interface language changed and `ctx.i18n` is the new translator. A view that implements
+   * this updates its text in place and keeps its state (a running build, typed drafts); a view
+   * without it is built again.
+   */
+  localeChanged?(): void;
   destroy(): void;
 }
