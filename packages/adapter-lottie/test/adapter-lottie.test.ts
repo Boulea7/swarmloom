@@ -127,6 +127,13 @@ describe("parseLottie", () => {
     expect(parsed.info).toMatchObject({ fr: 30, frames: 60, duration: 2000 });
     expect(parsed.keyTimes).toEqual([0, 30]);
   });
+
+  it("drops a font list that is not a real list (lottie-web would still load it by index)", () => {
+    const web = { fName: "Evil", fFamily: "Evil", fOrigin: "g", fPath: "https://example.invalid/evil.css" };
+    const parsed = parseLottie(JSON.stringify(lottie({ fonts: { list: { 0: web, length: 1 } } })));
+    expect(JSON.parse(parsed.json).fonts).toEqual({ list: [] });
+    expect(parsed.notes).toContain("A malformed font list was removed.");
+  });
 });
 
 describe("unpackDotLottie", () => {

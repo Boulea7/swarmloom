@@ -140,25 +140,32 @@ function sanitizeAssets(data: Json, state: SanitizeState): void {
 }
 
 function sanitizeFonts(data: Json, state: SanitizeState): void {
-  const list = isRecord(data.fonts) && Array.isArray(data.fonts.list) ? data.fonts.list : null;
-  if (!list) return;
+  if (data.fonts === undefined || data.fonts === null) return;
+  // lottie-web reads `fonts.list` by length and index, so an array-like object would work there
+  // too: anything but a real list is dropped rather than passed through unchecked.
+  if (!isRecord(data.fonts) || !Array.isArray(data.fonts.list)) {
+    data.fonts = { list: [] };
+    state.notes.add("A malformed font list was removed.");
+    return;
+  }
+  const kept: Json[] = [];
   let replaced = 0;
-  for (const font of list) {
+  for (const font of data.fonts.list) {
     if (!isRecord(font)) continue;
-    if (typeof font.fFamily === "string") font.fFamily = font.fFamily.replace(/[^\w\s,'"-]/g, "").slice(0, 200);
-    // Web fonts would be fetched from fPath (<link>, <script> or @font-face, even with an empty path);
-    // fall back to locally installed fonts.
+    font.fFamily = typeof font.fFamily === "string" ? font.fFamily.replace(/[^\w\s,'"-]/g, "").slice(0, 200) : "";
+    // lottie-web fetches any truthy fPath with a web origin (a <link> on document.body, a <link> in
+    // the SVG defs or an @font-face rule), so every font becomes a locally installed one.
     const remote =
-      (typeof font.fPath === "string" && font.fPath !== "") ||
+      Boolean(font.fPath) ||
       (font.origin !== undefined && font.origin !== 0) ||
       (font.fOrigin !== undefined && font.fOrigin !== "n");
-    if (remote) {
-      font.fPath = "";
-      font.origin = 0;
-      font.fOrigin = "n";
-      replaced++;
-    }
+    if (remote) replaced++;
+    font.fPath = "";
+    font.origin = 0;
+    font.fOrigin = "n";
+    kept.push(font);
   }
+  data.fonts = { list: kept };
   if (replaced > 0) state.notes.add(`${replaced} web font(s) were replaced by locally installed fonts.`);
 }
 
