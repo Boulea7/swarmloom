@@ -14,7 +14,7 @@
     "dev:studio": "pnpm --filter @swarmloom/studio dev",
     "test": "vitest run --project unit",
     "test:browser": "vitest run --project browser",
-    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e": "pnpm -F @swarmloom/extension test:e2e",
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit -p . && pnpm -r --filter \"./packages/**\" --filter \"./apps/**\" typecheck",

@@ -22,6 +22,7 @@ Common commands:
 | `pnpm dev:studio`   | Start the Studio development server |
 | `pnpm test`         | Run unit tests                      |
 | `pnpm test:browser` | Run browser tests                   |
+| `pnpm test:e2e`     | Run end-to-end tests (extension)    |
 | `pnpm lint`         | Run lint checks                     |
 
 Browser tests require a working Chromium installation. Follow the repository test configuration to install or select the browser. Before submitting, run at least the tests directly related to your change and `pnpm lint`.

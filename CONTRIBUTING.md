@@ -22,6 +22,7 @@ pnpm install
 | `pnpm dev:studio`   | 启动 Studio 开发服务器 |
 | `pnpm test`         | 运行单元测试           |
 | `pnpm test:browser` | 运行浏览器测试         |
+| `pnpm test:e2e`     | 运行扩展端到端测试     |
 | `pnpm lint`         | 运行代码检查           |
 
 浏览器测试需要可用的 Chromium；按仓库测试配置中的提示安装或指定浏览器。提交前至少运行与改动直接相关的测试，以及 `pnpm lint`。

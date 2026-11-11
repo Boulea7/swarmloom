@@ -69,4 +69,5 @@ jobs:
           echo "::warning::apt mirrors unreachable, installing Chromium without its system packages"
           pnpm exec playwright install chromium
       - run: pnpm test:browser
+      # Builds the --e2e Chromium package and drives it in Playwright's Chromium (apps/extension/test/e2e).
       - run: pnpm test:e2e
