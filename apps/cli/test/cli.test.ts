@@ -103,6 +103,7 @@ describe("render options", () => {
     [["a.md", "--bpm", "300"], "--bpm must be a number"],
     [["a.md", "-o", "x.mp4", "--manifest-out", "x.mp4"], "must be different files"],
     [["a.md", "-o", "take.mp4", "--events-out", "TAKE.MP4"], "must be different files"],
+    [["a.md", "-o", "out/take.mp4", "--events-out", "out./take.mp4. "], "must be different files"],
   ])("rejects %j", (argv, message) => {
     expect(() => parseRenderOptions(argv, cwd)).toThrow(message);
   });

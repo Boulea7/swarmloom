@@ -264,11 +264,19 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
 
 /**
  * Comparison key for "is this the same file?": NTFS and default APFS volumes ignore case (APFS also
- * Unicode normalization), so `take.mp4` and `TAKE.MP4` name one file there. Folding on every platform
- * rejects case-only twins on case-sensitive volumes too, which is harmless next to overwriting the video.
+ * Unicode normalization), so `take.mp4` and `TAKE.MP4` name one file there, and Win32 drops trailing
+ * dots and spaces from path segments, so `take.mp4.` and `take.mp4 ` open `take.mp4` (path.resolve
+ * keeps them). Folding on every platform rejects such twins where they are distinct files too, which
+ * is harmless next to overwriting the video.
  */
 function sameFileKey(file: string): string {
-  return file.normalize("NFC").toLowerCase();
+  return file.normalize("NFC").toLowerCase().split(path.sep).map(trimTrailingDotsAndSpaces).join(path.sep);
+}
+
+function trimTrailingDotsAndSpaces(segment: string): string {
+  let end = segment.length;
+  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " ")) end--;
+  return segment.slice(0, end);
 }
 
 const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish)$/;
