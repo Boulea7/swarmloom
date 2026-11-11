@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { builtinPlugin, choreoHelpers } from "../../src/choreo/index";
 import { FINALE_SETTLE_MS } from "../../src/engine/constants";
 import type { EngineSettings } from "../../src/engine/engine";
 import { autoAgentCount } from "../../src/engine/options";
-import type { AgentApi, Layer, PlayerState, Plugin, StageApi, TaskGen } from "../../src/types";
+import type { AgentApi, Layer, PlayerState, Plugin, Rect, StageApi, TaskGen } from "../../src/types";
 import { blueprintOf, box, harness, samplePage, testPlugin, text } from "./fakes";
 
 /** Plays to the finale and returns the frame trace hash and a copy of the sound log. */
@@ -206,6 +207,20 @@ describe("Engine", () => {
     expect(h.engine.state).toBe("finale");
     expect(h.stage.finished).toEqual(expect.arrayContaining(["a", "b"]));
     expect(errors).toEqual(['layer "a": boom', 'layer "b": task yielded an unsupported value of type string']);
+  });
+
+  it("drags each copy from the nearest finished copy, starting over from the master on replay", () => {
+    const copies = [1, 2, 3, 4, 5].map((n) => box(`c${n}`, 20 + 130 * n, 20, 120, 60, { master: "m" }));
+    const bp = blueprintOf([box("m", 20, 20, 120, 60), ...copies]);
+    const h = harness(bp, { intro: false, agents: 1 }, { plugins: [builtinPlugin], estimate: choreoHelpers.estimate });
+    // The duplicate choreography measures from the source it dragged the copy from.
+    const sources = () => h.stage.overlays.filter((o) => o.kind === "measure").map((o) => (o.props.a as Rect).x);
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    expect(sources()).toEqual([20, 150, 280, 410, 540]);
+    h.engine.replay();
+    h.until(() => h.engine.state === "finale");
+    expect(sources()).toEqual([20, 150, 280, 410, 540, 20, 150, 280, 410, 540]);
   });
 
   it("ready() waits for the stage and for promises tasks wait on; eta() counts down", async () => {

@@ -174,6 +174,16 @@ export type CreateStageFn = (opts: StageOptions) => Stage;
 /** src/choreo/index.ts exports `builtinPlugin: Plugin`. */
 export type BuiltinPlugin = Plugin;
 
+/**
+ * The StageApi a task receives from the engine. The engine wraps the stage once per task, so the
+ * stage object is no key for state shared across tasks. Optional extra (not in the public StageApi):
+ * `build` is the same object for every task of one build and a new one after replay, so a
+ * choreography can keep per-build state (e.g. the copies already finished) in a WeakMap keyed by it.
+ */
+export interface TaskStage extends StageApi {
+  readonly build?: object;
+}
+
 /** Pure helpers the engine may reuse (exported from src/choreo/index.ts). */
 export interface ChoreoHelpers {
   /** Estimated duration of a layer's task at speed 1 (planner uses it for ETA and tour pacing). */
