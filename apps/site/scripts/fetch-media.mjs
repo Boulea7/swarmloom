@@ -5,9 +5,10 @@
  *
  * Release asset names are flat; they map to files under public/media/ like this:
  *   promo-zh.mp4, promo-en.mp4, promo-poster.avif, promo-zh.vtt, promo-en.vtt  -> same name
- *   clip-<format>.mp4 | clip-<format>.webm | clip-<format>.avif               -> clips/<format>.<ext>
+ *   clips-<format>.mp4 | clips-<format>.webm | clips-<format>.avif            -> clips/<format>.<ext>
  *
- * Unknown names are ignored. A missing release (404), a network failure or a rate limit is not an
+ * Release ids match the media source folders; doc/docx share the site's word slot (DOCX wins),
+ * sheet maps to sheets, and three maps to model. Unknown names are ignored. A missing release
  * error: the site falls back to its animated SVG scenes. Set SWARMLOOM_SKIP_MEDIA=1 to skip, and
  * GITHUB_TOKEN (or GH_TOKEN) to raise the API rate limit in CI.
  */
@@ -37,10 +38,12 @@ export const CLIP_FORMATS = [
   "model",
 ];
 
+const CLIP_SOURCE_ALIASES = { doc: "word", docx: "word", sheet: "sheets", three: "model" };
+
 const MB = 1024 * 1024;
 const PROMO = /^promo-(zh|en)\.mp4$/;
 const CAPTIONS = /^promo-(zh|en)\.vtt$/;
-const CLIP = /^clip-([a-z]+)\.(mp4|webm|avif)$/;
+const CLIP = /^clips-([a-z]+)\.(mp4|webm|avif)$/;
 
 /**
  * Maps a release asset name to its path under public/media/ and a size cap, or null when the
@@ -54,8 +57,9 @@ export function assetTarget(name) {
   if (CAPTIONS.test(name)) return { path: name, maxBytes: MB };
   if (name === "promo-poster.avif") return { path: name, maxBytes: 4 * MB };
   const clip = CLIP.exec(name);
-  if (clip && CLIP_FORMATS.includes(clip[1])) {
-    return { path: `clips/${clip[1]}.${clip[2]}`, maxBytes: clip[2] === "avif" ? 2 * MB : 20 * MB };
+  const id = clip && (CLIP_SOURCE_ALIASES[clip[1]] || clip[1]);
+  if (clip && CLIP_FORMATS.includes(id)) {
+    return { path: `clips/${id}.${clip[2]}`, maxBytes: clip[2] === "avif" ? 2 * MB : 20 * MB };
   }
   return null;
 }
@@ -68,16 +72,19 @@ export function assetTarget(name) {
 export function selectAssets(release) {
   const assets = release && typeof release === "object" ? /** @type {{ assets?: unknown }} */ (release).assets : null;
   if (!Array.isArray(assets)) return [];
-  const out = [];
+  const out = new Map();
   for (const asset of assets) {
     if (!asset || typeof asset !== "object") continue;
     const { name, size, browser_download_url: url } = asset;
     const target = assetTarget(name);
     if (!target || typeof url !== "string" || !url.startsWith("https://")) continue;
     if (typeof size !== "number" || !Number.isFinite(size) || size <= 0 || size > target.maxBytes) continue;
-    out.push({ name, url, size, path: target.path });
+    // DOC and DOCX share one display slot. Always prefer DOCX, independent of API ordering.
+    if (!out.has(target.path) || name.startsWith("clips-docx.")) {
+      out.set(target.path, { name, url, size, path: target.path });
+    }
   }
-  return out;
+  return [...out.values()];
 }
 
 function headers(accept) {
