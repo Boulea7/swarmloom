@@ -253,8 +253,10 @@ export class SwarmStage implements Stage {
     if (!slot.dom) return;
     const view = slot.view;
     if (!view) {
-      // Mounting restores the recorded state, reveal included.
-      if (v > 0) this.#mounter.ensure(slot);
+      // Mounting restores the recorded state, reveal included. Far layers keep only that state
+      // until virtualization reaches them: a cross-fade (finish now, reduced motion) reveals the
+      // whole page at once and must not mount all of it.
+      if (v > 0 && this.#nearView(slot)) this.#mounter.ensure(slot);
       return;
     }
     try {
@@ -596,13 +598,29 @@ export class SwarmStage implements Stage {
     }
   }
 
+  /** Top of the visible view, stage px. */
+  #viewTop(): number {
+    const g = this.#geo;
+    return (g.scrollTop - g.offsetY) / g.scale;
+  }
+
+  /** Height of the visible view, stage px (the whole world before the first measure). */
+  #viewHeight(): number {
+    const g = this.#geo;
+    return (g.clientH || g.worldH) / g.scale;
+  }
+
+  /** True when a virtualization pass for the current view would mount `slot`. */
+  #nearView(slot: Slot): boolean {
+    const top = this.#viewTop();
+    return this.#mounter.near(slot, top, top + this.#viewHeight());
+  }
+
   /** Virtualization pass for the current view. */
   #pass(): void {
     if (this.#destroyed) return;
-    const g = this.#geo;
-    const top = (g.scrollTop - g.offsetY) / g.scale;
-    const h = (g.clientH || g.worldH) / g.scale;
-    this.#mounter.pass(top, top + h);
+    const top = this.#viewTop();
+    this.#mounter.pass(top, top + this.#viewHeight());
     this.#lastPassTop = top;
     this.#lastPassFrame = this.#frame;
     this.#passDirty = false;
