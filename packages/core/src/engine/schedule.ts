@@ -20,7 +20,7 @@ const GUIDE_BONUS_VIEWPORTS = 2;
 
 /**
  * Runtime state of a {@link Plan}: dependency counts, the unlock boundary, the set of tasks an
- * idle agent may take, and aggregates for progress, ETA and the tour.
+ * idle agent may take, and aggregates for progress, ETA, the tour and crew sizing.
  *
  * A task whose dependencies are done is available when its `unlockY` is within the boundary,
  * otherwise it waits in a heap ordered by `unlockY`. Agents only pick available tasks in sight.
@@ -40,7 +40,6 @@ export class Schedule {
   #built = 0;
   #topCursor = 0;
   #remainingEstimate = 0;
-  #availableEstimate = 0;
 
   constructor(plan: Plan) {
     this.plan = plan;
@@ -64,7 +63,6 @@ export class Schedule {
     this.#built = 0;
     this.#topCursor = 0;
     this.#remainingEstimate = plan.totalEstimate;
-    this.#availableEstimate = 0;
     for (let v = 0; v < plan.nodeCount; v++) {
       if (plan.deps[v] === 0) this.#cascade(v, false);
     }
@@ -105,11 +103,6 @@ export class Schedule {
   /** Sum of estimates of tasks not completed (running ones included in full). */
   get remainingEstimate(): number {
     return this.#remainingEstimate;
-  }
-
-  /** Sum of estimates of available tasks (work an idle crew could start now). */
-  get availableEstimate(): number {
-    return Math.max(this.#availableEstimate, 0);
   }
 
   /** Moves the unlock boundary down (it never moves up) and releases tasks above it. */
@@ -174,6 +167,23 @@ export class Schedule {
   }
 
   /**
+   * Sum of estimates of the available tasks in sight of `vp`: the work an idle crew could start
+   * now (available work out of sight waits for the camera, so it calls no cursors). The pass stops
+   * once the sum reaches `cap`.
+   */
+  availableInSight(vp: Rect, cap = Number.POSITIVE_INFINITY): number {
+    const estimate = this.plan.estimate;
+    const top = vp.y;
+    const bottom = vp.y + vp.h;
+    let sum = 0;
+    for (let k = 0; k < this.#availCount && sum < cap; k++) {
+      const i = this.#avail[k] as number;
+      if (this.#inSight(i, top, bottom)) sum += estimate[i] as number;
+    }
+    return sum;
+  }
+
+  /**
    * Estimates of the unfinished tasks in sight of `vp`, and whether any unfinished task lies out
    * of sight. One pass over the tasks; meant for ETA polling, not for every frame.
    */
@@ -215,7 +225,6 @@ export class Schedule {
   finishAll(): void {
     const { plan } = this;
     this.#availCount = 0;
-    this.#availableEstimate = 0;
     this.#locked.clear();
     for (let v = 0; v < plan.nodeCount; v++) this.status[v] = DONE;
     this.#built = plan.taskCount;
@@ -283,13 +292,11 @@ export class Schedule {
 
   #addAvailable(v: number): void {
     this.status[v] = AVAILABLE;
-    this.#availableEstimate += this.plan.estimate[v] as number;
     this.#availPos[v] = this.#availCount;
     this.#avail[this.#availCount++] = v;
   }
 
   #removeAvailable(v: number): void {
-    this.#availableEstimate -= this.plan.estimate[v] as number;
     const at = this.#availPos[v] as number;
     const last = this.#avail[--this.#availCount] as number;
     this.#avail[at] = last;

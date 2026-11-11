@@ -95,7 +95,7 @@ export interface EngineDeps {
 const STEP_S = PHYSICS_STEP_MS / 1000;
 /** Gap between two cursors joining the intro orbit, ms. */
 const INTRO_JOIN_MS = 45;
-/** Backlog (sum of available estimates) that calls one more agent, task ms. */
+/** Backlog (sum of estimates of available tasks in sight) that calls one more agent, task ms. */
 const BACKLOG_PER_AGENT_MS = 2500;
 /** Share of the pool that takes part in the finale. */
 const FINALE_SHARE = 0.7;
@@ -364,6 +364,8 @@ export class Engine implements Player {
       else if (paused) this.resume();
       while (this.#pt + 1e-6 < target && !this.#ended()) {
         this.#frame(Math.min(SEEK_FRAME_MS, target - this.#pt), false);
+        // Undrawn, but the stage still ages task touches and virtualizes as in a drawn frame.
+        this.#guard(() => this.#stage.skipFrame?.());
       }
     } finally {
       this.#seeking = false;
@@ -784,7 +786,9 @@ export class Engine implements Player {
       this.#runAgents(tt, vp);
       this.#fadeOutOfSight(dtt, vp);
       const boost = this.#follow === "scroll" ? Math.ceil(this.#camera.scrollSpeed / SCROLL_PX_PER_AGENT) : 0;
-      const backlog = Math.ceil(schedule.availableEstimate / BACKLOG_PER_AGENT_MS);
+      // Only work in sight calls cursors: they may not pick anything else.
+      const room = Math.max(0, this.#count - this.#base - boost);
+      const backlog = Math.ceil(schedule.availableInSight(vp, room * BACKLOG_PER_AGENT_MS) / BACKLOG_PER_AGENT_MS);
       this.#roster.balance(clamp(this.#base + boost + backlog, this.#base, this.#count), vp, this.#sim);
     }
 
