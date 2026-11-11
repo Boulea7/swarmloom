@@ -22,12 +22,19 @@ export interface FormatMeta {
   /** Cheap to parse and play on small devices (watch mode cycles only these). */
   readonly light: boolean;
   /**
+   * The adapter's default input limit (bytes, or UTF-16 code units for text), set only when it is
+   * below Studio's own limit so Studio can explain the rejection before the adapter throws.
+   */
+  readonly maxBytes?: number;
+  /**
    * The adapter ships separately and may be missing from the registry Studio is built with. Such
    * formats stay hidden (picker, gallery, format list) until the registry has them, and are never
    * registered as OS file handlers.
    */
   readonly optional?: boolean;
 }
+
+const MIB = 1024 * 1024;
 
 export const FORMAT_META: readonly FormatMeta[] = [
   {
@@ -37,6 +44,7 @@ export const FORMAT_META: readonly FormatMeta[] = [
     handlers: { "text/markdown": [".md", ".markdown", ".mdown", ".mkd"] },
     textual: true,
     light: true,
+    maxBytes: 4 * MIB,
   },
   {
     id: "html",
@@ -45,6 +53,7 @@ export const FORMAT_META: readonly FormatMeta[] = [
     handlers: { "text/html": [".html", ".htm"], "application/xhtml+xml": [".xhtml"] },
     textual: true,
     light: true,
+    maxBytes: 8 * MIB,
   },
   {
     id: "docx",
@@ -77,6 +86,7 @@ export const FORMAT_META: readonly FormatMeta[] = [
     handlers: { "image/svg+xml": [".svg"] },
     textual: true,
     light: true,
+    maxBytes: 16 * MIB,
   },
   {
     id: "slides",
@@ -167,6 +177,7 @@ export const FORMAT_META: readonly FormatMeta[] = [
     },
     textual: true,
     light: true,
+    maxBytes: 2 * MIB,
   },
   {
     id: "image",

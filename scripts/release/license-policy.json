@@ -27,6 +27,41 @@
       "package": "mediabunny",
       "license": "MPL-2.0",
       "reason": "In-browser video export (product-spec A.4); shipped unmodified, source location in THIRD_PARTY_NOTICES.md"
+    },
+    {
+      "package": "web-ext",
+      "license": "MPL-2.0",
+      "reason": "Firefox add-on validator for `web-ext lint` (product-spec CI, decisions C01); apps/extension devDependency, run unmodified in CI and never bundled"
+    },
+    {
+      "package": "addons-linter",
+      "license": "MPL-2.0",
+      "reason": "Linter engine of web-ext lint (same terms as web-ext)"
+    },
+    {
+      "package": "addons-moz-compare",
+      "license": "MPL-2.0",
+      "reason": "Version comparison used by addons-linter (same terms as web-ext)"
+    },
+    {
+      "package": "addons-scanner-utils",
+      "license": "MPL-2.0",
+      "reason": "File scanning helpers of addons-linter (same terms as web-ext)"
+    },
+    {
+      "package": "eslint-plugin-no-unsanitized",
+      "license": "MPL-2.0",
+      "reason": "Security rules loaded by addons-linter (same terms as web-ext)"
+    },
+    {
+      "package": "fx-runner",
+      "license": "MPL-2.0",
+      "reason": "Firefox launcher of web-ext run; installed with web-ext, unused in CI (same terms as web-ext)"
+    },
+    {
+      "package": "@fontsource-variable/bricolage-grotesque",
+      "license": "OFL-1.1",
+      "reason": "Logotype display face; apps/site copies one latin woff2 from this package unmodified and self-hosts it (apps/site/src/render/head.ts); licence text in assets/brand/fonts/OFL.txt"
     }
   ]
 }

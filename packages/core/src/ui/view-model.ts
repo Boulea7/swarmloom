@@ -139,6 +139,7 @@ export function buildView(input: ViewInput, t: Translate): ToolbarView {
   const active = phase === "running" || phase === "paused";
   const { settings } = input;
   const soundHint = input.soundLocked && settings.sound && isAvailable("toggleSound", phase);
+  const finish = input.canFinish && isAvailable("finish", phase);
 
   return {
     phase,
@@ -158,10 +159,12 @@ export function buildView(input: ViewInput, t: Translate): ToolbarView {
       label: t(soundHint ? "toolbar.tapForSound" : "toolbar.sound"),
     },
     tour: { visible: isAvailable("toggleTour", phase), on: settings.follow === "tour" },
-    // While building, replay and go live are secondary: keyboard-only on narrow screens.
+    // Narrow (often touch-only) screens keep one way past a long build: finish now, which leads to
+    // the done toolbar with go live and replay. Go live stands in when the player cannot finish;
+    // replay while building stays keyboard-only there.
     replay: isAvailable("replay", phase) && !(active && input.compact),
-    goLive: { visible: isAvailable("goLive", phase) && !(active && input.compact), primary: phase === "done" },
-    finish: input.canFinish && isAvailable("finish", phase) && !input.compact,
+    goLive: { visible: isAvailable("goLive", phase) && !(input.compact && finish), primary: phase === "done" },
+    finish,
     record: input.canRecord && isAvailable("record", phase),
     close: isAvailable("close", phase),
     pinned: phase !== "running" || soundHint,

@@ -63,6 +63,7 @@ export const fr: StudioCatalog = {
   "error.title": "Impossible d’ouvrir",
   "error.unsupported": "Ce type de fichier n’est pas pris en charge. Studio ouvre : {formats}.",
   "error.tooLarge": "Ce fichier fait {size}. La limite est de {limit}.",
+  "error.tooLargeFormat": "Ce fichier fait {size}. La limite pour {format} est de {limit}.",
   "error.empty": "Ce fichier est vide.",
   "error.encrypted": "Ce document est protégé par un mot de passe. Retirez-le puis rouvrez le document.",
   "error.fetch":
@@ -70,6 +71,8 @@ export const fr: StudioCatalog = {
   "error.adapter": "Le lecteur de ce format n’a pas pu être chargé. Vérifiez la connexion et réessayez.",
   "error.player": "Le lecteur n’a pas pu démarrer : {message}",
   "error.generic": "Un problème est survenu : {message}",
+  "error.tooComplex":
+    "Ce fichier est trop volumineux ou trop complexe pour être ouvert. Essayez avec un fichier plus petit.",
   "error.share": "Ce lien de partage est endommagé ou incomplet.",
   "error.example": "Aucun exemple ne s’appelle « {id} ».",
   "error.file": "Un fichier local ne peut pas être rouvert depuis un lien. Ouvrez à nouveau le fichier.",
@@ -148,6 +151,8 @@ export const fr: StudioCatalog = {
   "export.cli.copy": "Copier la commande",
   "export.cli.copied": "Copié",
   "export.cli.save": "Enregistrez d’abord le contenu collé sous {name}.",
+  "export.cli.download":
+    "Ce lien ne peut pas être collé sans risque dans un terminal. Téléchargez-le d’abord sous {name}.",
 
   "watch.play": "Lire",
   "watch.pause": "Pause",

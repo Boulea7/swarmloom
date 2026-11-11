@@ -1,3 +1,4 @@
+import type { TaskStage } from "../internal";
 import type {
   Blueprint,
   CSSMap,
@@ -18,16 +19,19 @@ import { MAX_STEPS_PER_FRAME } from "./constants";
  * task created and whether it finished its own layer, so the engine can clean up after
  * failures, aborts and careless choreographies.
  */
-export class ScopedStage implements StageApi {
+export class ScopedStage implements TaskStage {
   readonly #stage: StageApi;
   readonly #own: string;
   #handles: Set<OverlayHandle> | null = null;
   /** True once the task called finish() on its own layer. */
   finishedOwn = false;
+  /** Identity of the build this task belongs to (see {@link TaskStage}). */
+  readonly build: object;
 
-  constructor(stage: StageApi, ownLayerId: string) {
+  constructor(stage: StageApi, ownLayerId: string, build: object = stage) {
     this.#stage = stage;
     this.#own = ownLayerId;
+    this.build = build;
   }
 
   get blueprint(): Blueprint {

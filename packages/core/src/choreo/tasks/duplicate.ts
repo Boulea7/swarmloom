@@ -5,7 +5,8 @@
  * differing styles.
  */
 
-import type { CSSMap, Layer, OverlayHandle, Rect, StageApi, TaskGen, Yield } from "../../types";
+import type { TaskStage } from "../../internal";
+import type { CSSMap, Layer, OverlayHandle, Rect, TaskGen, Yield } from "../../types";
 import { center, clampPoint, distance, isFiniteRect, layerRect, offsetRect, px, translateValue } from "../geometry";
 import { click, doubleClick, easeInOut, easeOut, linear, track, tween } from "../motion";
 import { playPlacementNote } from "../notes";
@@ -107,16 +108,19 @@ export function duplicateEdits(copy: Layer, master: Layer): DuplicateEdits {
 }
 
 /**
- * Copies already finished, per stage and master (layer id -> rect), so later copies can continue
- * from the nearest one. Seeing a layer id again means the build was replayed: start over.
+ * Copies already finished, per build and master (layer id -> rect), so later copies can continue
+ * from the nearest one. The engine wraps the stage per task, so the registry is keyed by the
+ * build it names (a replay starts a new one); a stage without one keys by itself, and there
+ * seeing a layer id again means the build was replayed: start over.
  */
-const finishedCopies = new WeakMap<StageApi, Map<string, Map<string, Rect>>>();
+const finishedCopies = new WeakMap<object, Map<string, Map<string, Rect>>>();
 
-function copiesOf(stage: StageApi, layerId: string): Map<string, Map<string, Rect>> {
-  let byMaster = finishedCopies.get(stage);
+function copiesOf(stage: TaskStage, layerId: string): Map<string, Map<string, Rect>> {
+  const key = stage.build ?? stage;
+  let byMaster = finishedCopies.get(key);
   if (!byMaster) {
     byMaster = new Map();
-    finishedCopies.set(stage, byMaster);
+    finishedCopies.set(key, byMaster);
   }
   for (const copies of byMaster.values()) {
     if (copies.has(layerId)) {

@@ -54,8 +54,16 @@ const FAKE_CSS = `
 .fake-stage .decor-cursor{position:absolute}
 `;
 
-/** A player double: it renders a static preview with a few cursors and walks through the states. */
-export function fakePlayer(options: PlayerOptions, log: FakeLog, input: SourceInput | undefined): Player {
+/**
+ * A player double: it renders a static preview with a few cursors and walks through the states.
+ * `seekable` adds a logging seek() (off by default so screenshots keep the plain progress bar).
+ */
+export function fakePlayer(
+  options: PlayerOptions,
+  log: FakeLog,
+  input: SourceInput | undefined,
+  seekable = false,
+): Player {
   const listeners = new Map<string, Set<Listener>>();
   const urls: string[] = [];
   let state: PlayerState = "idle";
@@ -125,6 +133,7 @@ export function fakePlayer(options: PlayerOptions, log: FakeLog, input: SourceIn
     },
     eta: () => 12_000,
     ready: async () => undefined,
+    ...(seekable ? { seek: (t: number) => call(`seek:${t}`) } : {}),
   };
 }
 
@@ -134,6 +143,8 @@ export interface FakeServicesOptions {
   target?: StudioServices["target"];
   /** Replaces the network; defaults to the real fetch (examples come from the dev server). */
   fetch?: typeof fetch;
+  /** Players support seek(). */
+  seekable?: boolean;
 }
 
 /** Studio services with a fake loader and player; everything they receive is logged. */
@@ -162,7 +173,7 @@ export function fakeServices(options: FakeServicesOptions): { services: StudioSe
     },
     createPlayer(playerOptions) {
       log.players.push(playerOptions);
-      return fakePlayer(playerOptions, log, lastInput);
+      return fakePlayer(playerOptions, log, lastInput, options.seekable);
     },
   };
   return { services, log };

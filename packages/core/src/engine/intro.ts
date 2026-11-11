@@ -37,6 +37,8 @@ export class IntroShuttle {
   duration = 0;
   #startedAt = 0;
   #fanoutAt = Number.POSITIVE_INFINITY;
+  /** Icon alpha at fan-out; the fade-out starts from it, so an early fan-out never brightens. */
+  #fadeFrom = 1;
   #icon: OverlayHandle | null = null;
   readonly #props: IconProps = { x: 0, y: 0, size: ICON_SIZE, alpha: 0 };
 
@@ -61,9 +63,10 @@ export class IntroShuttle {
 
   fanOut(pt: number): void {
     this.#fanoutAt = pt;
+    this.#fadeFrom = this.#props.alpha;
   }
 
-  /** Per-frame icon animation; removes the icon once it has faded out. */
+  /** Per-frame icon animation, called every engine frame; removes the icon once it has faded out. */
   frame(vp: Rect, pt: number): void {
     const icon = this.#icon;
     if (!icon) return;
@@ -74,7 +77,7 @@ export class IntroShuttle {
       props.alpha = clamp((pt - this.#startedAt) / ICON_FADE_IN_MS, 0, 1);
     } else {
       const out = clamp((pt - this.#fanoutAt) / ICON_FADE_OUT_MS, 0, 1);
-      props.alpha = 1 - out;
+      props.alpha = this.#fadeFrom * (1 - out);
       props.size = ICON_SIZE * (1 - 0.5 * out);
       if (out >= 1) {
         this.end();

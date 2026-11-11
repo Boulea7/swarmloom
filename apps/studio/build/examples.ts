@@ -8,6 +8,7 @@ import {
   groupOf,
   humanize,
   isHousekeeping,
+  isNotice,
   MAX_EXAMPLE_BYTES,
   planExamples,
   sortEntries,
@@ -144,7 +145,7 @@ export function readHead(file: string, bytes: number): string | null {
 
 export interface ScanResult {
   manifest: ExampleManifest;
-  /** Relative paths to copy into the build (examples, posters and their supporting assets). */
+  /** Relative paths to copy into the build (examples, posters, supporting assets and licence notes). */
   files: string[];
   /** Human-readable reasons for skipped files. */
   warnings: string[];
@@ -159,6 +160,8 @@ export function scanExamples(root: string): ScanResult {
   const warnings: string[] = [];
   const sizes = new Map(all.map((p) => [p, statSync(join(root, p)).size]));
   const shippable = all.filter((p) => {
+    // Licence notes ship (unlisted) so copied samples keep their copyright and licence text.
+    if (isNotice(p)) return true;
     if (isHousekeeping(p)) return false;
     const size = sizes.get(p) ?? 0;
     if (size > MAX_EXAMPLE_BYTES) {

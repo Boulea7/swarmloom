@@ -24,7 +24,11 @@ const ALLOWED_PERMISSIONS = new Set(["activeTab", "scripting", "storage", "conte
 /** Firefox requires an explicit statement even when nothing is collected. */
 const NO_DATA_COLLECTION = Object.freeze({ required: ["none"] });
 
-const MV2_CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
+/**
+ * Extension page CSP for every target. The bundled Studio decodes Draco meshes and PDFs with
+ * WebAssembly; the MV3 default (`script-src 'self'`) blocks WebAssembly compilation.
+ */
+const EXTENSION_PAGES_CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
 
 /** Script sources an extension page may allow: bundled files and WebAssembly, nothing remote. */
 const SAFE_SCRIPT_SOURCES = new Set(["'self'", "'wasm-unsafe-eval'", "'none'"]);
@@ -123,7 +127,8 @@ export function manifestFor(target, version, options = {}) {
       },
     };
   }
-  if (!mv3) manifest.content_security_policy = MV2_CSP;
+  // MV3 takes an object keyed by context; MV2 a plain string.
+  manifest.content_security_policy = mv3 ? { extension_pages: EXTENSION_PAGES_CSP } : EXTENSION_PAGES_CSP;
 
   switch (spec.engine) {
     case "chromium":
@@ -216,6 +221,11 @@ export function validateManifest(m, target, opts = {}) {
       if (typeof value === "string") problems.push(...cspProblems(value));
     }
   }
+  const pagesCsp = mv3 ? /** @type {any} */ (csp)?.extension_pages : csp;
+  expect(
+    typeof pagesCsp === "string" && /(?:^|;)\s*script-src\b[^;]*'wasm-unsafe-eval'/.test(pagesCsp),
+    `${mv3 ? "content_security_policy.extension_pages" : "content_security_policy"} must allow 'wasm-unsafe-eval' (Studio decodes with WebAssembly)`,
+  );
   expect(!("web_accessible_resources" in m), "no web accessible resources (avoids page fingerprinting)");
   expect("commands" in m === spec.commands, `commands must be ${spec.commands ? "declared" : "absent"}`);
 

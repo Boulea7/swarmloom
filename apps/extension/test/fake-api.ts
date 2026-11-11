@@ -27,6 +27,10 @@ export interface FakeOptions {
   sync?: boolean;
   /** `runtime.getPlatformInfo().os`; omitted means the API is absent. */
   platform?: string;
+  /** Declare `<all_urls>` as an optional host permission (default true; false like Safari). */
+  optionalHosts?: boolean;
+  /** Answer to `permissions.request` (default true). */
+  grantHosts?: boolean;
 }
 
 export interface Fake {
@@ -121,7 +125,11 @@ export function createFake(opts: FakeOptions = {}): Fake {
       id: "fake-id",
       lastError: null,
       getURL: (path: string) => `chrome-extension://fake/${path.replace(/^\//, "")}`,
-      getManifest: () => ({ manifest_version: 3, version: "0.1.0", optional_host_permissions: ["<all_urls>"] }),
+      getManifest: () => ({
+        manifest_version: 3,
+        version: "0.1.0",
+        ...(opts.optionalHosts === false ? {} : { optional_host_permissions: ["<all_urls>"] }),
+      }),
       openOptionsPage: async () => undefined,
       ...(opts.platform === undefined ? {} : { getPlatformInfo: async () => ({ os: opts.platform }) }),
       sendMessage: async (message: unknown) => void sentMessages.push(message),
@@ -139,7 +147,7 @@ export function createFake(opts: FakeOptions = {}): Fake {
     },
     action,
     storage: { local: area(local), ...(opts.sync === false ? {} : { sync: area(sync) }), onChanged: event() },
-    permissions: { request: async () => true },
+    permissions: { request: async () => opts.grantHosts !== false },
     extension: { isAllowedFileSchemeAccess: async () => false },
     i18n: { getMessage: (key: string) => key, getUILanguage: () => "en-US" },
     ...(opts.scripting === false ? {} : { scripting }),

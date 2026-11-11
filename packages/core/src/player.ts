@@ -30,7 +30,7 @@ const zones: PlayerZones = {
  *
  * @param options Blueprint plus playback, theme, sound and plugin settings.
  * @returns A {@link Player} controlling playback (it also implements the optional
- *   `finish`, `seek` and `setFinale` members).
+ *   `time`, `finish`, `seek` and `setFinale` members).
  * @throws TypeError for a malformed blueprint, host, clock or plugin list; RangeError for
  *   out-of-range options. Nothing stays mounted when it throws.
  */

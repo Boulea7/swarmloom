@@ -136,9 +136,11 @@ export function createWatch(ctx: AppContext): View {
   const safe = h("div", { class: "watch-safe" }, title, play, actions);
 
   const qrBox = h("div", { class: "watch-qr-code" });
+  // A native modal <dialog>: while open, the covered player and the rest of the page are inert,
+  // so Tab and screen readers stay inside it; Esc closes it like the Back button.
   const qr = h(
-    "div",
-    { class: "watch-qr", attrs: { hidden: true, role: "dialog", "aria-label": i18n.t("watch.scan") } },
+    "dialog",
+    { class: "watch-qr", attrs: { "aria-label": i18n.t("watch.scan") } },
     qrBox,
     h("p", { class: "watch-qr-caption", text: i18n.t("watch.scan") }),
     h(
@@ -212,7 +214,7 @@ export function createWatch(ctx: AppContext): View {
   };
 
   function wake(): void {
-    if (!qr.hidden) return;
+    if (qr.open) return;
     showControls(root.dataset.playing !== "true");
   }
 
@@ -299,17 +301,22 @@ export function createWatch(ctx: AppContext): View {
 
   function showQr(): void {
     qrBox.replaceChildren(qrCode(phoneUrl(), i18n.t("watch.scan")));
-    qr.hidden = false;
+    if (!qr.open) qr.showModal();
     root.dataset.qr = "true";
     session?.player?.pause();
     qr.querySelector("button")?.focus();
   }
 
   function hideQr(): void {
-    qr.hidden = true;
+    if (qr.open) qr.close();
     root.dataset.qr = "false";
-    phone.focus();
+    if (phone.isConnected) phone.focus();
   }
+
+  // The browser can close the dialog itself (Esc, Android back); sync the face when it does.
+  qr.addEventListener("close", () => {
+    if (root.dataset.qr === "true") hideQr();
+  });
 
   const first = items[0];
   if (first) load(first, engaged);
@@ -317,7 +324,8 @@ export function createWatch(ctx: AppContext): View {
   return {
     root,
     onKey(event) {
-      if (event.key === "Escape" && !qr.hidden) {
+      if (qr.open) {
+        if (event.key !== "Escape") return false;
         hideQr();
         return true;
       }

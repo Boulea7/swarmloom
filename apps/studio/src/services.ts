@@ -31,8 +31,8 @@ export type NetworkPolicy = "https" | "none";
 
 /**
  * Adapter context plus Studio's network policy. Core's `AdapterContext` does not carry `network`
- * (cross-zone seam): adapters that understand the member read it, the rest ignore it. "https"
- * allows https images and fonts without a referrer; "none" loads nothing remote.
+ * (cross-zone seam): adapters that understand the member (html, markdown) read it, the rest
+ * ignore it. "https" allows https images and fonts without a referrer; "none" loads nothing remote.
  */
 export interface StudioLoadContext extends AdapterContext {
   network: NetworkPolicy;

@@ -72,7 +72,7 @@ swarm-loom {
 | `inview` | 布尔属性 | 进入视口时通过 IntersectionObserver 开始 |
 | `reduced-motion` | `auto` / `true` / `false` | 减少动态效果；默认跟随系统 |
 
-布尔属性以元素上是否存在为准。需要关闭时移除属性，不要只写 `autoplay="false"` 并仍期待它关闭。
+布尔属性出现即开启，空值（如 `<swarm-loom autoplay>`）也算开启；值为 `false`、`off`、`no` 或 `0`（不区分大小写）时关闭，移除属性同样关闭。`loop` 按同一规则开关：不带值时等待 1500 毫秒，`loop="0"` 表示关闭循环，不是零延迟。
 
 ## 使用 Light DOM 内容
 

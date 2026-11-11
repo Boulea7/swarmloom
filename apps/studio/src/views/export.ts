@@ -63,16 +63,20 @@ export function createExporter(deps: ExportDeps): Exporter {
   const renderCommand = () => {
     const opened = deps.opened();
     if (!opened) return;
-    command.textContent = buildCliCommand({
+    const cli = buildCliCommand({
       target: opened.cliTarget,
+      targetIsFile: opened.cliNeedsFile,
       name: opened.name,
       settings: ctx.settings,
       format,
       width: preset.width,
       height: preset.height,
     });
-    saveHint.hidden = !opened.cliNeedsFile;
-    saveHint.textContent = i18n.t("export.cli.save", { name: opened.cliTarget });
+    command.textContent = cli.text;
+    saveHint.hidden = cli.saveAs === undefined;
+    saveHint.textContent = cli.saveAs
+      ? i18n.t(opened.cliNeedsFile ? "export.cli.save" : "export.cli.download", { name: cli.saveAs })
+      : "";
   };
   copyButton.addEventListener("click", async () => {
     try {

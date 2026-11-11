@@ -59,19 +59,35 @@ const LANG_SUFFIX = /\.(zh-cn|zh-tw|zh|en|ja|ko|es|fr|de)$/i;
 const POSTER = /\.poster\.(webp|avif|png|jpe?g|svg)$/i;
 /** Repository housekeeping that sits next to examples but is not one. */
 const SKIP_NAME =
-  /^(readme|sources|license|licence|notice|changelog|attribution|package)(\.|$)|^(generate|gen-|make-)/i;
+  /^(readme|sources|license|licence|notice|copying|changelog|attribution|package)(\.|$)|^(generate|gen-|make-)/i;
+/** Copyright and licence notes of copied samples; they ship with the samples they cover. */
+const NOTICE_NAME = /^(sources|license|licence|notice|copying|attribution)(\.|$)/i;
 const SKIP_DIR = /^(\.|_|node_modules$|scripts$|tools$|src$)/i;
 
 /** Largest example copied into the build; bigger files are skipped with a warning. */
 export const MAX_EXAMPLE_BYTES = 8 * 1024 * 1024;
 
-/** True for files that should never be listed or copied (scripts, docs, dotfiles). */
+/**
+ * True for files that are never listed (scripts, docs, dotfiles). None of them is copied into the
+ * build either, except licence notes (see `isNotice`).
+ */
 export function isHousekeeping(path: string): boolean {
   const parts = path.split("/");
   const name = parts.pop() ?? "";
   if (parts.some((dir) => SKIP_DIR.test(dir))) return true;
   if (name.startsWith(".")) return true;
   return SKIP_NAME.test(name);
+}
+
+/**
+ * True for copyright and licence notes (`SOURCES.md`, `LICENSE`, `NOTICE` ...): never listed, but
+ * copied into the build so that third-party samples keep their attribution.
+ */
+export function isNotice(path: string): boolean {
+  const parts = path.split("/");
+  const name = parts.pop() ?? "";
+  if (parts.some((dir) => SKIP_DIR.test(dir))) return false;
+  return NOTICE_NAME.test(name);
 }
 
 /** Folders whose files support another example (images of a Markdown file, textures of a model). */
@@ -172,8 +188,8 @@ export interface PlannedExample extends ClassifiedFile {
 
 /**
  * Picks the gallery entries among the files that ship (paths relative to the examples folder,
- * housekeeping and oversized files already removed): supporting assets and posters are not
- * listed, and each poster attaches to the example it is named after.
+ * housekeeping and oversized files already removed): supporting assets, posters and licence
+ * notes are not listed, and each poster attaches to the example it is named after.
  */
 export function planExamples(shippable: readonly string[]): PlannedExample[] {
   const pageDirs = pageDirsOf(shippable);

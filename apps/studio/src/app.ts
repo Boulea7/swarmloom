@@ -104,6 +104,8 @@ export async function mountStudio(
     html.lang = i18n.locale;
     html.dataset.theme = scheme;
     html.style.colorScheme = scheme;
+    // Studio's own animations follow the Motion setting too, not only the player (see base.css).
+    html.dataset.motion = settings.reducedMotion;
     let meta = doc.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     if (!meta) {
       meta = h("meta", { attrs: { name: "theme-color" } });
@@ -218,9 +220,9 @@ export async function mountStudio(
       return;
     }
     const nextScheme = schemeOf(settings);
-    const schemeChanged = nextScheme !== scheme;
+    const documentChanged = nextScheme !== scheme || prev.reducedMotion !== settings.reducedMotion;
     scheme = nextScheme;
-    if (schemeChanged) applyDocument();
+    if (documentChanged) applyDocument();
     for (const el of doc.querySelectorAll<HTMLButtonElement>(".theme-button")) syncThemeButton(ctx, el);
     view?.settingsChanged?.(prev, settings);
   }
