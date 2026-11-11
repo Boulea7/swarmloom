@@ -12,7 +12,7 @@ How it works:
 
 - `META-INF/container.xml` points to the package document (OPF). Its manifest and spine give the reading order, the cover image and the table of contents (the EPUB 3 navigation document, or the EPUB 2 NCX).
 - Books with encrypted content (`META-INF/encryption.xml` entries other than font obfuscation) are rejected with an `encrypted` error saying the book is DRM-protected. Obfuscated fonts are skipped and the fallback font is used.
-- Each chapter is parsed as XHTML (falling back to HTML) and sanitized with DOMPurify. Scripts, forms, iframes, event handlers and remote URLs are removed. Images, SVG and fonts from the book become blob URLs, which `dispose()` revokes.
+- Each chapter is parsed as XHTML (falling back to HTML) and sanitized with DOMPurify. Scripts, forms, iframes, event handlers and remote URLs are removed, including those in `background` attributes, SVG presentation attributes (`fill`, `mask`, `filter` and the like) and inline styles (escaped `url(`, `image-set()` and `src()` strings included). Images, SVG and fonts from the book become blob URLs, which `dispose()` revokes.
 - Book style sheets are scoped to their own chapter. `@import`, `@charset` and `@namespace` are dropped, and `@font-face` rules that point inside the book are registered with the FontFace API.
 - The table of contents is reported as an outline note (its first 20 entries).
 - The HTML is laid out with `@swarmloom/snapshot-dom`, and every chapter sheet gets the `page` role. Fixed-layout books (`rendition:layout` set to `pre-paginated`) keep their viewport size and are zoomed out when wider than 900 px.

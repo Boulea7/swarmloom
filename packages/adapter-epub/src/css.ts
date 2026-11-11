@@ -25,7 +25,43 @@ export interface ScopedSheet {
 const MAX_CSS_CHARS = 512 * 1024;
 const MAX_RULES = 5000;
 
-const URL_RE = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi;
+/** A closed url(): double-quoted, single-quoted (both may hold escapes) or bare. */
+const URL_RE = /url\(\s*(?:"((?:[^"\\]|\\[\s\S])*)"|'((?:[^'\\]|\\[\s\S])*)'|([^)\s]*))\s*\)/gi;
+/** One CSS escape: up to six hex digits plus an optional whitespace, or any other character. */
+const ESCAPE_RE = /\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([\s\S]))/gi;
+/** A `url(` that no `)` closes: CSS still fetches it (the token ends at the end of the text). */
+const OPEN_URL_RE = /url\s*\((?![^)]*\))/gi;
+/** Functions that load a URL written as a plain string. */
+const STRING_URL_FN_RE = /(?:-webkit-)?image-set\s*\(|\bsrc\s*\(/gi;
+
+/** The character one CSS escape stands for (U+FFFD for invalid code points, nothing for an escaped newline). */
+function unescapeOne(hex: string | undefined, ch: string | undefined): string {
+  if (hex === undefined) return ch === "\n" || ch === "\r" || ch === "\f" ? "" : (ch ?? "");
+  const cp = Number.parseInt(hex, 16);
+  return cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? "\ufffd" : String.fromCodePoint(cp);
+}
+
+/**
+ * Writes escaped ASCII letters and hyphens out (`\75 rl(` becomes `url(`), so an escape cannot hide a
+ * function name from the checks of {@link cleanDeclarations}. Such characters mean the same escaped
+ * or not; every other escape (quotes, CJK font names) is kept as written.
+ */
+function revealEscapes(text: string): string {
+  return text.replace(ESCAPE_RE, (m, hex?: string, ch?: string) => {
+    const c = unescapeOne(hex, ch);
+    return /^[a-z-]$/i.test(c) ? c : m;
+  });
+}
+
+/** Removes comments, repeatedly: removing one can join a `/` and a `*` into a new one. */
+function stripComments(text: string): string {
+  let out = text;
+  while (out.includes("/*")) out = out.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, "");
+  return out;
+}
+
+/** A URL as a double-quoted CSS string (a quote inside cannot end it). */
+const quoteUrl = (url: string): string => `"${url.replace(/[\\"]/g, "\\$&").replace(/[\n\r\f]/g, "")}"`;
 
 /** Splits a selector list at top-level commas (commas inside (), [] or quotes are kept). */
 export function splitSelectors(list: string): string[] {
@@ -70,22 +106,33 @@ export type FamilyRewriter = (value: string) => string;
 const FAMILY_RE = /(^|[;{\s])font-family\s*:\s*([^;}]+)/gi;
 
 /**
- * Rewrites url() references of a declaration block, neutralises fixed positioning and (when
- * `family` is given) extends font-family values with their fallback stacks.
+ * Rewrites the url() references of a declaration block (or of one CSS value) through `resolve`,
+ * neutralises fixed positioning and (when `family` is given) extends font-family values with their
+ * fallback stacks.
+ *
+ * Nothing outside `resolve` can be fetched afterwards: comments are removed and escaped letters
+ * written out first, so the text is read the way a browser reads it and `\75 rl(` cannot hide a
+ * url(); a `url(` left open and the functions that take a bare URL string (`image-set()`, `src()`)
+ * become invalid functions; resolved URLs are re-quoted, so a quote inside a `data:` URL cannot end
+ * the string.
  */
 export function cleanDeclarations(text: string, base: string, resolve: UrlResolver, family?: FamilyRewriter): string {
+  const plain = revealEscapes(stripComments(text));
   const families = family
-    ? text.replace(FAMILY_RE, (_m, pre: string, value: string) => {
+    ? plain.replace(FAMILY_RE, (_m, pre: string, value: string) => {
         const important = /!\s*important\s*$/i.test(value);
         const stack = family(value.replace(/!\s*important\s*$/i, "").trim());
         return `${pre}font-family: ${stack}${important ? " !important" : ""}`;
       })
-    : text;
+    : plain;
   return families
     .replace(URL_RE, (_m, a?: string, b?: string, c?: string) => {
-      const url = resolve((a ?? b ?? c ?? "").trim(), base);
-      return url ? `url("${url}")` : "none";
+      const href = (a ?? b ?? c ?? "").replace(ESCAPE_RE, (_e, hex?: string, ch?: string) => unescapeOne(hex, ch));
+      const url = resolve(href.trim(), base);
+      return url ? `url(${quoteUrl(url)})` : "none";
     })
+    .replace(OPEN_URL_RE, "none(")
+    .replace(STRING_URL_FN_RE, "invalid(")
     .replace(/position\s*:\s*fixed/gi, "position: absolute")
     .replace(/position\s*:\s*sticky/gi, "position: relative");
 }

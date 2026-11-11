@@ -2,11 +2,13 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ZipArchive } from "@swarmloom/adapter-odf/kit";
+import { type SnapshotHtml, ZipArchive } from "@swarmloom/adapter-odf/kit";
 import type { AdapterContext } from "@swarmloom/core";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
+import { cleanDeclarations } from "../src/css";
 import {
+  createEpubAdapter,
   DocumentError,
   epubAdapter,
   outlineNote,
@@ -24,12 +26,12 @@ const ctx: AdapterContext = { document, width: 900, theme: "light" };
 const CONTAINER = `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`;
 const OPF = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata/><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="f" href="f.otf" media-type="font/otf"/></manifest><spine><itemref idref="c1"/></spine></package>`;
 
-function book(encryption?: string): Uint8Array {
+function book(encryption?: string, chapter = "<p>Hi</p>"): Uint8Array {
   const files: Record<string, [Uint8Array, { level: 0 }] | Uint8Array> = {
     mimetype: [strToU8("application/epub+zip"), { level: 0 }],
     "META-INF/container.xml": strToU8(CONTAINER),
     "book.opf": strToU8(OPF),
-    "c1.xhtml": strToU8(`<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Hi</p></body></html>`),
+    "c1.xhtml": strToU8(`<html xmlns="http://www.w3.org/1999/xhtml"><body>${chapter}</body></html>`),
   };
   if (encryption) files["META-INF/encryption.xml"] = strToU8(encryption);
   return zipSync(files);
@@ -123,6 +125,32 @@ describe("book CSS scoping", () => {
     expect(out.css).toContain('url("blob:x")');
     expect(out.css).toMatch(/position: absolute/);
     expect(out.css).toContain(".epub-html.epub-s1 .a");
+  });
+
+  it("keeps chapter attributes and inline styles from fetching anything outside the archive", async () => {
+    let html = "";
+    const capture: SnapshotHtml = async (h, o) => {
+      html = h + (o.css ?? "");
+      return { version: 1, source: { type: "html" }, size: { w: o.width, h: 100 }, background: "#fff", layers: [] };
+    };
+    const chapter = [
+      `<table background="https://tracker.example/t.png"><tr><td>x</td></tr></table>`,
+      `<p style='background-image:image-set("https://tracker.example/s.png" 1x)'>y</p>`,
+      `<p style="background:\\75 rl(https://tracker.example/e.png)">z</p>`,
+      `<svg xmlns="http://www.w3.org/2000/svg"><rect mask="url(https://tracker.example/m.svg#a)" fill="url(#g)"/></svg>`,
+    ].join("");
+    await createEpubAdapter({ snapshotHtml: capture }).load({ name: "b.epub", bytes: book(undefined, chapter) }, ctx);
+    expect(html).toContain("<td>x</td>");
+    expect(html).toMatch(/fill="url\((?:&quot;)?#g(?:&quot;)?\)"/);
+    // The image-set() string survives only inside invalid(), which browsers drop with its declaration.
+    expect(html.replace(/invalid\([^)]*\)/g, "")).not.toContain("tracker.example");
+    // A quote inside an accepted data: URL must not end the CSS string and start a second url().
+    const quoted = cleanDeclarations(
+      `background:url('data:image/png,"),url(https://t.example/q.png')`,
+      "c.xhtml",
+      (h) => (h.startsWith("data:") ? h : null),
+    );
+    expect(quoted).toBe(String.raw`background:url("data:image/png,\"),url(https://t.example/q.png")`);
   });
 });
 
