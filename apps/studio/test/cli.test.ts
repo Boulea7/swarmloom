@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exportSettingsOf } from "../src/export/browser";
+import { EXPORT_MAX_SECONDS, exportSettingsOf } from "../src/export/browser";
 import { buildCliCommand, type CliCommandOptions, shellArg } from "../src/export/cli";
 import { DEFAULT_SETTINGS } from "../src/settings";
 
@@ -60,8 +60,10 @@ describe("CLI command", () => {
     const settings = { ...DEFAULT_SETTINGS, follow: "scroll" as const, remoteAssets: false };
     const choices = { sound: false, scheme: "dark" as const, locale: "zh-CN" };
     const base = { target: "a.md", targetIsFile: false, name: "a.md", settings, format: "mp4" as const };
-    expect(buildCliCommand({ ...base, width: 1080, height: 1920, fps: 60, ...choices }).text).toBe(
-      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --seed 1 --theme dark --locale zh-CN --no-sound --no-remote",
+    // The dialog's length limit is not the CLI default, so long builds stop at the same frame.
+    const dialog = { width: 1080, height: 1920, fps: 60, maxDuration: EXPORT_MAX_SECONDS, ...choices };
+    expect(buildCliCommand({ ...base, ...dialog }).text).toBe(
+      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --locale zh-CN --no-sound --no-remote",
     );
     expect(exportSettingsOf(settings, choices)).toMatchObject({
       theme: "dark",

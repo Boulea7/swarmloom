@@ -31,6 +31,8 @@ export interface CliCommandOptions {
   height: number;
   /** Frames per second. Default 30 (the CLI default). */
   fps?: number;
+  /** Longest video in seconds (`--max-duration`). Default 120 (the CLI default). */
+  maxDuration?: number;
   /** Overrides `settings.sound` (the export dialog's sound switch). */
   sound?: boolean;
   /** Colour scheme in effect; with theme "auto" a dark scheme is written as `--theme dark`. */
@@ -111,6 +113,7 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
   if (o.width !== 1280) args.push("--width", String(o.width));
   if (o.height !== 720) args.push("--height", String(o.height));
   if (o.fps !== undefined && o.fps !== 30) args.push("--fps", String(o.fps));
+  if (o.maxDuration !== undefined && o.maxDuration !== 120) args.push("--max-duration", String(o.maxDuration));
   args.push("--seed", String(s.seed));
   if (s.speed !== d.speed) args.push("--speed", String(s.speed));
   if (s.agents !== d.agents) args.push("--agents", String(s.agents));

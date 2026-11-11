@@ -100,7 +100,7 @@ Studio always has an ordinary responsive layout. Supported Chromium environments
 **Export** (shortcut `E`) opens one dialog for both ways to make a video. Pick the size (1280 × 720, 1920 × 1080, 1080 × 1920 or 1080 × 1080), 30 or 60 fps, and whether to include sound.
 
 - **Export in this browser** renders the video in the page, frame by frame. A hidden frame runs the same render page as `swarmloom render`, advances the same virtual clock by whole frames and keeps the same tail, so the frames match the CLI's for the same settings. Each frame is drawn from a snapshot of the page, encoded with WebCodecs (H.264 in MP4, or VP9 in WebM when H.264 is not available) and packed by [Mediabunny](https://github.com/Vanilagy/mediabunny). The sound is the run's sound log rendered offline, as AAC or Opus; when the browser cannot encode either, the video is silent and the dialog says so. A progress bar shows the frame count and the time left, **Cancel** stops at once, and **Download** saves the file. The page stays usable while it works; keep the tab open.
-- **Render with the command line** shows the `npx swarmloom render ...` command for the same file, with the chosen size, frame rate, theme, language, sound and web images setting. It also offers WebM, GIF and WebP.
+- **Render with the command line** shows the `npx swarmloom render ...` command for the same file, with the chosen size, frame rate, theme, language, sound and web images setting, and the same 10-minute length limit (`--max-duration 600`; the CLI's own default is 120 s). It also offers WebM, GIF and WebP.
 
 Browsers without WebCodecs (no `VideoEncoder`) show only the command. The exporter and Mediabunny load when the dialog first opens, so they add nothing to Studio's start-up.
 
