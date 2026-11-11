@@ -87,6 +87,14 @@ test("every app deployed to Pages gets the licences of what it bundles or inline
   assert.equal(byDir.get("apps/site")?.path, join(root, "_site", "LICENSE.md"));
   assert.match(byDir.get("apps/studio")?.contents ?? "", /Copyright \(c\) 2015 Bodymovin/);
   assert.equal(byDir.get("apps/studio")?.path, join(root, "_site", "studio", "LICENSE.md"));
+  // The docs are no workspace package: VitePress emits Vue, its theme's Inter font and MiniSearch/mark.js search.
+  const docs = byDir.get("docs");
+  assert.equal(docs?.path, join(root, "_site", "docs", "LICENSE.md"));
+  for (const name of ["vitepress", "@vue/runtime-core", "minisearch", "mark.js", "focus-trap", "Inter"]) {
+    assert.ok(docs?.covered.has(name), name);
+  }
+  const inter = /Copyright 2016 The Inter Project Authors[^\n]*\n\n[\s\S]{0,300}SIL OPEN FONT LICENSE Version 1\.1/;
+  assert.match(docs?.contents ?? "", inter);
   const workflow = readFileSync(join(root, ".github/workflows/pages.yml"), "utf8");
   assert.match(workflow, /third-party-notices\.mjs --pages _site\b/);
 });

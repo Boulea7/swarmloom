@@ -61,6 +61,9 @@ import {
  * @property {readonly string[]} external third-party dependencies the build leaves to npm
  * @property {readonly string[]} [inlined] third-party packages whose files the build reads from disk
  *   (require.resolve, fs) instead of importing them, so the source scan cannot see them
+ * @property {Readonly<Record<string, readonly string[]>>} [frameworks] framework packages whose client code
+ *   the build emits, each with the dependencies that client uses at run time (added with their dependency
+ *   trees, as installed for the framework); the framework's other dependencies are build tools
  */
 
 /** @type {ReadonlyMap<string, WholeTreeBuild>} Public packages whose build bundles the whole runtime tree. */
@@ -82,13 +85,16 @@ export const BUNDLES_DEPENDENCIES = new Map([
 
 /**
  * @typedef {object} PagesApp
- * @property {string} path folder of the Pages artifact the app's dist/ is copied to ("" for the root)
+ * @property {string} path folder of the Pages artifact the app's build is copied to ("" for the root)
  * @property {WholeTreeBuild} build
+ * @property {string} [dir] source folder of an app that is not a workspace package (the key is then only
+ *   a label): it bundles the workspace packages its sources import and what `build` lists
  */
 
 /**
- * Private apps deployed to GitHub Pages (.github/workflows/pages.yml). They are Vite or esbuild app
- * builds, so each bundles its whole runtime tree; their LICENSE.md lands next to the app's index.html.
+ * Apps deployed to GitHub Pages (.github/workflows/pages.yml): the private Vite or esbuild app builds,
+ * which bundle their whole runtime tree, and the VitePress docs. Their LICENSE.md lands next to the
+ * app's index.html.
  * @type {ReadonlyMap<string, PagesApp>}
  */
 export const PAGES_APPS = new Map([
@@ -105,13 +111,37 @@ export const PAGES_APPS = new Map([
   ],
   ["@swarmloom/studio", { path: "studio", build: { where: "the Studio PWA with every adapter", external: [] } }],
   ["@swarmloom/bookmarklet", { path: "bm", build: { where: "bm/swarm.js and its install page", external: [] } }],
+  [
+    // Built by the root devDependency vitepress. Its GitHub icon in vp-icons.css is from Simple Icons
+    // (CC0-1.0, no notice required); Shiki highlights at build time and leaves no code behind.
+    "swarmloom-docs",
+    {
+      path: "docs",
+      dir: "docs",
+      build: {
+        where: "the VitePress client: Vue, the default theme with its Inter font and DocSearch styles, local search",
+        external: [],
+        frameworks: {
+          vitepress: [
+            "vue",
+            "@vueuse/core",
+            "@vueuse/integrations",
+            "@docsearch/css",
+            "focus-trap",
+            "mark.js",
+            "minisearch",
+          ],
+        },
+      },
+    },
+  ],
 ]);
 
 /**
  * @typedef {object} EmbeddedPackage
  * @property {string} host installed package whose files contain this one, pre-bundled
  * @property {string} files where in the host the embedded code lives
- * @property {"MIT" | "Apache-2.0"} license
+ * @property {"MIT" | "Apache-2.0" | "OFL-1.1"} license
  * @property {string} source
  * @property {string} copyright the copyright line of the embedded code (from its files or its upstream sources)
  */
@@ -152,10 +182,26 @@ export const EMBEDDED_PACKAGES = new Map([
       copyright: "2016-2026 Arseny Kapoulkine",
     },
   ],
+  [
+    "Inter",
+    {
+      host: "vitepress",
+      files: "dist/client/theme-default/fonts/", // the default theme's woff2 files; Vite emits them
+      license: "OFL-1.1",
+      source: "https://github.com/rsms/inter",
+      copyright: "2016 The Inter Project Authors (https://github.com/rsms/inter)", // the fonts' name table
+    },
+  ],
 ]);
 
-/** Full Apache License 2.0 text (as in google/draco's LICENSE) for embedded Apache-2.0 packages. */
-const APACHE_2_0 = new URL("./licenses/Apache-2.0.txt", import.meta.url);
+/**
+ * Full licence texts for embedded packages that are not MIT: Apache-2.0 as in google/draco's LICENSE,
+ * OFL-1.1 as SIL publishes it (the copyright line goes above it).
+ */
+const LICENSE_TEXTS = {
+  "Apache-2.0": new URL("./licenses/Apache-2.0.txt", import.meta.url),
+  "OFL-1.1": new URL("./licenses/OFL-1.1.txt", import.meta.url),
+};
 
 /**
  * Notice entry of a package pre-bundled inside another one.
@@ -166,9 +212,9 @@ const APACHE_2_0 = new URL("./licenses/Apache-2.0.txt", import.meta.url);
 export function embeddedEntry(name, embedded) {
   const note = `Pre-bundled inside ${embedded.host} (${embedded.files}), which ships no separate licence file for it.`;
   const text =
-    embedded.license === "Apache-2.0"
-      ? `Copyright ${embedded.copyright}\n\n${readFileSync(APACHE_2_0, "utf8").trimEnd()}\n\n(${note})`
-      : mitLicense(embedded.copyright, note);
+    embedded.license === "MIT"
+      ? mitLicense(embedded.copyright, note)
+      : `Copyright ${embedded.copyright}\n\n${readFileSync(LICENSE_TEXTS[embedded.license], "utf8").trimEnd()}\n\n(${note})`;
   return { name, license: embedded.license, source: embedded.source, text };
 }
 
@@ -249,13 +295,14 @@ export function bundledPackages(pkg, workspace, root, wholeTree = BUNDLES_DEPEND
    * @param {string} fromDir
    * @param {string} name
    * @param {boolean} withDependencies
+   * @returns {string | null} real package directory (null for @types packages)
    */
   const addThirdParty = (fromDir, name, withDependencies) => {
-    if (name.startsWith("@types/")) return; // declarations only, nothing reaches a bundle
+    if (name.startsWith("@types/")) return null; // declarations only, nothing reaches a bundle
     const dir = resolvePackage(fromDir, name);
     if (!dir) throw new Error(`${name} is not installed (needed from ${relative(root, fromDir) || "."})`);
     found.set(dir, name);
-    if (!withDependencies || expanded.has(dir)) return;
+    if (!withDependencies || expanded.has(dir)) return dir;
     expanded.add(dir);
     const manifest = readJson(join(dir, "package.json"));
     if (!isRecord(manifest)) throw new Error(`${dir}/package.json is not a JSON object`);
@@ -263,6 +310,7 @@ export function bundledPackages(pkg, workspace, root, wholeTree = BUNDLES_DEPEND
     for (const dep of dependencyNames(manifest, ["dependencies"])) {
       addThirdParty(dir, dep, true);
     }
+    return dir;
   };
 
   /** @type {Set<string>} */
@@ -295,6 +343,10 @@ export function bundledPackages(pkg, workspace, root, wholeTree = BUNDLES_DEPEND
   if (wholeTree) {
     addWholeTree(pkg);
     for (const name of wholeTree.inlined ?? []) addThirdParty(join(root, pkg.dir), name, false);
+    for (const [framework, runtime] of Object.entries(wholeTree.frameworks ?? {})) {
+      const frameworkDir = addThirdParty(join(root, pkg.dir), framework, false);
+      if (frameworkDir) for (const name of runtime) addThirdParty(frameworkDir, name, true);
+    }
     return found;
   }
   const dir = join(root, pkg.dir);
@@ -403,7 +455,7 @@ export function expectedLicenseFiles(root) {
 export function pagesLicenseFiles(root, siteDir) {
   const { workspace } = workspaceByName(root);
   return [...PAGES_APPS].map(([name, app]) => {
-    const pkg = workspace.get(name);
+    const pkg = app.dir === undefined ? workspace.get(name) : { dir: app.dir, manifest: { name, private: true } };
     if (!pkg) throw new Error(`${name} (PAGES_APPS) is not a workspace package`);
     return licenseFile(pkg, workspace, root, resolve(root, siteDir, app.path, LICENSE_FILE), app.build);
   });
@@ -457,7 +509,7 @@ function writePagesLicenseFiles(root, siteDir, workspaceNames) {
   const shown = (path) => (relative(root, path).startsWith("..") ? path : relative(root, path) || ".");
   for (const { pkg, path, contents, covered } of pagesLicenseFiles(root, siteDir)) {
     if (!existsSync(dirname(path))) {
-      problems.push(`${shown(dirname(path))} does not exist; copy ${pkg.dir}/dist into the Pages artifact first`);
+      problems.push(`${shown(dirname(path))} does not exist; copy the ${pkg.dir} build into the Pages artifact first`);
       continue;
     }
     problems.push(...uncoveredProblems(pkg, root, covered, workspaceNames));
