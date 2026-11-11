@@ -58,4 +58,36 @@ describe.skipIf(missing)(`snapshot of a local file${missing ? ` (skipped: ${miss
       await rm(dir, { recursive: true, force: true });
     }
   }, 120_000);
+
+  it("captures animations in a pose that does not depend on when the capture ran", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "swarmloom-snapshot-"));
+    try {
+      // Body margin 8 px. A finite slide ends at +100 px; an endless one pauses half a cycle in, at +150 px.
+      await writeFile(
+        path.join(dir, "page.html"),
+        `<!doctype html><title>t</title><style>
+@keyframes a { from { transform: translateX(0) } to { transform: translateX(100px) } }
+@keyframes b { from { transform: translateX(0) } to { transform: translateX(300px) } }
+h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
+</style><h1>once</h1><p>loop</p>`,
+      );
+      const out: string[] = [];
+      const io = { out: (line: string) => out.push(line), err: () => {} };
+      const argv = [path.join(dir, "page.html"), "-o", "-", "--chrome", chrome as string, "--quiet"];
+      const code = await snapshotCommand.run(argv, {
+        io,
+        cwd: dir,
+        env: {},
+        assets: { snapshotBundle: SNAPSHOT_DOUBLE },
+      });
+      expect(code).toBe(0);
+      const { layers } = JSON.parse(out.join("\n")) as { layers: { text: string; box: { x: number } }[] };
+      expect(layers.map((l) => [l.text, Math.round(l.box.x)])).toEqual([
+        ["once", 108],
+        ["loop", 158],
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
 });

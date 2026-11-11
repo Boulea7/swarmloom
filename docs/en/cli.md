@@ -176,6 +176,8 @@ Local HTML files are treated as untrusted:
 
 Web page URLs run their scripts as usual.
 
+Before the capture, the page's CSS animations and transitions are stopped in a fixed pose: finite ones at their end, endless ones half a cycle in, so two captures of the same page match. `render` of a URL captures the same way. Animations that start later, for example on scroll, and animation done by scripts are captured as they are.
+
 | Option | Default | Description |
 | --- | --- | --- |
 | `<url\|file.html>` | Required | An `http(s)` URL, or a local `.html`, `.htm` or `.xhtml` file |
