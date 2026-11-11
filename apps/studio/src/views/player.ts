@@ -50,6 +50,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   let built = 0;
   let total = 0;
   let recTimer = 0;
+  let seekFrame = 0;
   /** Autoplay links start the first time the player is ready, never again after a rebuild. */
   let autoplayPending = ctx.route.autoplay;
 
@@ -127,8 +128,17 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       "aria-label": i18n.t("player.scrub"),
       hidden: true,
     },
-    on: { input: () => session.seek(Number(seeker.value) / SCRUB_STEPS) },
+    on: { input: () => scheduleSeek() },
   });
+  // A seek re-simulates the build synchronously, so dragging seeks once per frame to the latest
+  // value instead of once per input event.
+  const scheduleSeek = () => {
+    if (seekFrame !== 0) return;
+    seekFrame = window.requestAnimationFrame(() => {
+      seekFrame = 0;
+      session.seek(Number(seeker.value) / SCRUB_STEPS);
+    });
+  };
   const count = h("span", { class: "scrub-count", attrs: { "aria-hidden": "true" } });
   const recLabel = h("span", { class: "rec-time" });
   const recPill = h(
@@ -400,6 +410,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     schemeChanged: applyScheme,
     destroy() {
       window.clearInterval(recTimer);
+      window.cancelAnimationFrame(seekFrame);
       exporter.destroy();
       session.destroy();
     },

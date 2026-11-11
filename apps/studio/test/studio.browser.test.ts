@@ -30,11 +30,11 @@ const EXAMPLES_BASE = new URL("/examples/", location.origin).href;
 
 let app: StudioApp | null = null;
 
-async function mount(search = "") {
+async function mount(search = "", seekable = false) {
   history.replaceState(null, "", `${location.pathname}${search}`);
   const root = document.createElement("div");
   document.body.append(root);
-  const fake = fakeServices({ manifest: MANIFEST, examplesBase: EXAMPLES_BASE });
+  const fake = fakeServices({ manifest: MANIFEST, examplesBase: EXAMPLES_BASE, seekable });
   app = await mountStudio(root, fake.services);
   return { root, ...fake };
 }
@@ -87,6 +87,22 @@ describe("Studio in a browser", () => {
 
     root.querySelector<HTMLButtonElement>(".play-big")?.click();
     expect(log.calls).toContain("play");
+  });
+
+  it("seeks once per frame to the latest value while the scrubber is dragged", async () => {
+    const { root, log } = await mount("?example=svg-chart", true);
+    (await until(() => root.querySelector<HTMLButtonElement>(".play-big"))).click();
+    const seeker = root.querySelector<HTMLInputElement>(".scrub-range");
+    expect(seeker?.hidden).toBe(false);
+    for (const value of ["100", "200", "300"]) {
+      if (!seeker) break;
+      seeker.value = value;
+      seeker.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const seeks = () => log.calls.filter((c) => c.startsWith("seek:"));
+    expect(seeks()).toEqual([]);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(seeks()).toEqual(["seek:3600"]); // 300 / 1000 of the fake's 12 s plan
   });
 
   it("explains an unknown example instead of mounting a player", async () => {
