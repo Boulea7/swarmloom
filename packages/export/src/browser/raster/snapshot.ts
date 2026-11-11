@@ -1030,7 +1030,16 @@ function sheet(rules: readonly string[], fonts: string, shared: readonly string[
   // Only the clones inside the foreignObject: resetting the wrapping `<svg>` and `<foreignObject>`
   // would turn their width and height (geometry properties) to `auto`, and Firefox then draws
   // nothing of the foreignObject.
-  const css = [fonts, "foreignObject *{all:unset}", "style{display:none!important}", ...shared, ...rules].join("\n");
+  // The image is drawn in the host's forced colours (Windows high contrast) like a page; the clones
+  // inherit this opt-out and keep the colours they were given, as in the CLI's browser.
+  const css = [
+    fonts,
+    "foreignObject{forced-color-adjust:none}",
+    "foreignObject *{all:unset}",
+    "style{display:none!important}",
+    ...shared,
+    ...rules,
+  ].join("\n");
   return `<style><![CDATA[${css.replace(/]]>/g, "]]]]><![CDATA[>")}]]></style>`;
 }
 

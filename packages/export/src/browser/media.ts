@@ -6,14 +6,24 @@ import type { ShadowWatch } from "../render/live";
  */
 const FEATURE_TEST = /\(([^()]*)\)/g;
 /** Media query text that may test a pinned feature. */
-const MENTIONS_PINNED = /prefers-reduced-motion|prefers-color-scheme|resolution|device-pixel-ratio/i;
+const MENTIONS_PINNED =
+  /prefers-reduced-motion|prefers-color-scheme|forced-colors|prefers-contrast|resolution|device-pixel-ratio/i;
 /** Media conditions that never and always hold, valid wherever a media feature is. */
 const NEVER = "(width < 0px)";
 const ALWAYS = "(width >= 0px)";
 
 /** Device pixels per CSS px of the export: the video has one pixel per CSS px, as `--scale 1`. */
 const RESOLUTION = 1;
-const MOTION = /^prefers-reduced-motion(?:\s*:\s*([a-z-]+))?$/;
+/**
+ * Discrete features whose value in the CLI's browser context is the "no preference" one (Playwright's
+ * defaults): a bare test of these is false there, as is a test of any other value they can have.
+ */
+const NEUTRAL: ReadonlyMap<string, { neutral: string; others: readonly string[] }> = new Map([
+  ["prefers-reduced-motion", { neutral: "no-preference", others: ["reduce"] }],
+  ["forced-colors", { neutral: "none", others: ["active"] }],
+  ["prefers-contrast", { neutral: "no-preference", others: ["more", "less", "custom"] }],
+]);
+const DISCRETE = /^([a-z-]+)(?:\s*:\s*([a-z-]+))?$/;
 const SCHEME = /^prefers-color-scheme(?:\s*:\s*([a-z-]+))?$/;
 
 /** Color scheme of the export: the CLI's browser emulates dark for theme "dark" and light otherwise. */
@@ -68,10 +78,12 @@ function resolutionTest(test: string): boolean | null {
 
 /** Answer of one feature test in the CLI's browser, or null when it tests no pinned feature. */
 function pinnedAnswer(test: string, scheme: ColorScheme): boolean | null {
-  const motion = MOTION.exec(test);
-  if (motion) {
-    if (motion[1] === undefined || motion[1] === "reduce") return false;
-    return motion[1] === "no-preference" ? true : null;
+  const discrete = DISCRETE.exec(test);
+  const feature = discrete ? NEUTRAL.get(discrete[1]) : undefined;
+  if (discrete && feature) {
+    const value = discrete[2];
+    if (value === undefined || feature.others.includes(value)) return false;
+    return value === feature.neutral ? true : null;
   }
   const colors = SCHEME.exec(test);
   // A bare `(prefers-color-scheme)` holds for either scheme, so it is left alone.
@@ -81,9 +93,10 @@ function pinnedAnswer(test: string, scheme: ColorScheme): boolean | null {
 
 /**
  * `query` with every test of a pinned feature replaced by its answer in the CLI's browser context,
- * which emulates `prefers-reduced-motion: no-preference` and the export's color scheme, and renders
- * at one device pixel per CSS px: `(prefers-reduced-motion: no-preference)` and
- * `(min-resolution: 1dppx)` always hold, `(prefers-reduced-motion: reduce)` and
+ * which emulates `prefers-reduced-motion: no-preference`, `forced-colors: none`,
+ * `prefers-contrast: no-preference` and the export's color scheme, and renders at one device pixel
+ * per CSS px: `(prefers-reduced-motion: no-preference)` and `(min-resolution: 1dppx)` always hold,
+ * `(prefers-reduced-motion: reduce)`, `(forced-colors: active)`, `(prefers-contrast: more)` and
  * `(min-resolution: 2dppx)` never do, `(prefers-color-scheme: dark)` holds only for `scheme` dark.
  * Everything else in the query is left as it is.
  */
@@ -127,6 +140,13 @@ function pinRules(rules: CSSRuleList, scheme: ColorScheme): void {
   }
 }
 
+/**
+ * Opts a document or shadow tree out of the host's forced colours: every element keeps its authored
+ * colours. Each tree needs its own, since a shadow host's `all: initial !important` (the stage's)
+ * beats an outer tree's rule and would turn forced colours back on inside.
+ */
+const UNFORCED = ":host,*{forced-color-adjust:none!important}";
+
 /** Pins the export frame's host-dependent media features to the CLI's values. */
 export interface MediaPin {
   /** Rewrites the pinned tests of every style sheet the frame has now; run before each capture. */
@@ -137,34 +157,60 @@ export interface MediaPin {
 
 /**
  * Makes the export frame show what the CLI shows. Its browser context emulates
- * `prefers-reduced-motion: no-preference` and `scheme` (light unless the theme is dark) and renders at
- * one device pixel per CSS px, while a frame in the page follows the host (the frame element's
- * `color-scheme` does not change what the frame prefers): a reduced-motion or dark system setting or
- * a high-density screen would change pages with `@media (prefers-reduced-motion)`,
- * `@media (prefers-color-scheme: dark)` or `@media (min-resolution: 2dppx)` rules, the player's
- * `theme: "auto"`, and adapters that ask. Scripts get a `matchMedia` that answers with the pinned
- * values; while the host differs, the pinned tests of style sheets (the frame, the watched shadow
- * roots and same-origin child frames such as the HTML adapter's capture page, swept once that has
- * loaded) are rewritten to their answers.
+ * `prefers-reduced-motion: no-preference`, `forced-colors: none`, `prefers-contrast: no-preference`
+ * and `scheme` (light unless the theme is dark) and renders at one device pixel per CSS px, while a
+ * frame in the page follows the host (the frame element's `color-scheme` does not change what the
+ * frame prefers): a reduced-motion, high-contrast or dark system setting or a high-density screen
+ * would change pages with `@media (prefers-reduced-motion)`, `@media (forced-colors: active)`,
+ * `@media (prefers-contrast: more)`, `@media (prefers-color-scheme: dark)` or
+ * `@media (min-resolution: 2dppx)` rules, the player's `theme: "auto"`, and adapters that ask.
+ * Scripts get a `matchMedia` that answers with the pinned values; while the host differs, the pinned
+ * tests of style sheets (the frame, the watched shadow roots and same-origin child frames such as the
+ * HTML adapter's capture page, swept once that has loaded) are rewritten to their answers. Forced
+ * colours (Windows high contrast) also repaint every element in the host's palette, so while they
+ * are on, each of those documents and shadow roots also gets a sheet that opts it out.
  *
- * Not covered: `srcset` and `image-set()` still pick images for the host's pixel density, and the
+ * Not covered: `srcset` and `image-set()` still pick images for the host's pixel density; the
  * browser's own colours in child frames that opt into both schemes (`color-scheme: light dark`:
- * default text and background, form controls) follow the host's scheme.
+ * default text and background, form controls) follow the host's scheme; and with forced colours on,
+ * system colour keywords (`Canvas`, `CanvasText`) still give the host's palette.
  */
 export function pinMediaFeatures(win: Window & typeof globalThis, shadows: ShadowWatch, scheme: ColorScheme): MediaPin {
   const original = win.matchMedia;
   const pinned = (query: string): MediaQueryList => original.call(win, pinnedQuery(String(query), scheme));
   win.matchMedia = pinned;
+  const forced = (): boolean => original.call(win, "(forced-colors: active)").matches;
   const hostDiffers = (): boolean =>
-    original.call(win, "(prefers-reduced-motion: reduce)").matches ||
+    original.call(win, "(prefers-reduced-motion: reduce), (prefers-contrast)").matches ||
+    forced() ||
     original.call(win, "(prefers-color-scheme: dark)").matches !== (scheme === "dark") ||
     !original.call(win, `(resolution: ${RESOLUTION}dppx)`).matches;
 
+  const unforced = new WeakMap<Document, CSSStyleSheet>();
+  const unforce = (root: Document | ShadowRoot): void => {
+    const doc = root.nodeType === 9 ? (root as Document) : (root as ShadowRoot).ownerDocument;
+    let sheet = unforced.get(doc);
+    if (!sheet) {
+      const view = doc.defaultView as (Window & typeof globalThis) | null;
+      if (!view) return;
+      // Built in the document's own window: a sheet can only be adopted within the document it was made for.
+      sheet = new view.CSSStyleSheet();
+      sheet.replaceSync(UNFORCED);
+      unforced.set(doc, sheet);
+    }
+    // Kept last on every sweep, as a tree may replace or add adopted sheets: at equal specificity,
+    // the later sheet wins.
+    const adopted = root.adoptedStyleSheets;
+    if (adopted[adopted.length - 1] !== sheet) root.adoptedStyleSheets = [...adopted.filter((s) => s !== sheet), sheet];
+  };
+
   const sweep = (): void => {
     if (!hostDiffers()) return;
+    const unforcing = forced();
     const roots: (Document | ShadowRoot)[] = [win.document, ...shadows.roots()];
     for (let i = 0; i < roots.length; i++) {
       const root = roots[i];
+      if (unforcing) unforce(root);
       for (const sheet of [...Array.from(root.styleSheets), ...root.adoptedStyleSheets]) pinSheet(sheet, scheme);
       for (const frame of Array.from(root.querySelectorAll("iframe"))) {
         if (frame.contentDocument) roots.push(frame.contentDocument);

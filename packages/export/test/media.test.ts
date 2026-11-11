@@ -7,6 +7,8 @@ const ALWAYS = "(width >= 0px)";
 it.each<[string, string, ColorScheme?]>([
   ["(prefers-reduced-motion: reduce)", NEVER],
   ["(prefers-reduced-motion)", NEVER],
+  ["(forced-colors: active), (prefers-contrast: more)", `${NEVER}, ${NEVER}`],
+  ["(forced-colors: none) and (prefers-contrast: no-preference)", `${ALWAYS} and ${ALWAYS}`],
   ["not all and (prefers-reduced-motion: no-preference)", `not all and ${ALWAYS}`],
   ["only screen and (min-resolution: 2dppx), print", `only screen and ${NEVER}, print`],
   ["(-webkit-min-device-pixel-ratio: 1.5)", NEVER],

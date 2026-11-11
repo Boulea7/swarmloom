@@ -5,8 +5,8 @@ import { exportVideo } from "../src/browser/index";
 
 /**
  * A blue and a grey box; black in a dark color scheme, red with reduced motion, green on a
- * high-density screen (the CLI emulates a light scheme for `theme: "auto"`, no motion preference
- * and one device pixel per CSS px).
+ * high-density screen, recoloured in forced colors (the CLI emulates a light scheme for
+ * `theme: "auto"`, no motion preference, no forced colors and one device pixel per CSS px).
  */
 const PAGE =
   "<!doctype html><html><head><style>body{margin:0;background:#fff}" +
@@ -52,6 +52,13 @@ const HOSTS = [
     samePixels: true,
   },
   {
+    name: "forced colors",
+    query: "(forced-colors: active)",
+    set: () => cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] }),
+    reset: () => cdp().send("Emulation.setEmulatedMedia", { features: [] }),
+    samePixels: true,
+  },
+  {
     name: "a 2x screen",
     query: "(min-resolution: 2dppx)",
     set: () => metrics(2),
@@ -83,7 +90,8 @@ async function exportPage(): Promise<{ hashes: string[]; seen: string | null }> 
       const [box, dense] = Array.from(page?.querySelectorAll(".box") ?? []);
       if (seen !== null || !win || !page?.defaultView || !box || !dense) return;
       const color = (el: Element) => page.defaultView?.getComputedStyle(el).backgroundColor;
-      const pinned = "(prefers-color-scheme: dark), (prefers-reduced-motion: reduce), (min-resolution: 2dppx)";
+      const pinned =
+        "(prefers-color-scheme: dark), (prefers-reduced-motion: reduce), (forced-colors: active), (min-resolution: 2dppx)";
       const text = win.getComputedStyle(win.document.body).color;
       seen = `${win.matchMedia(pinned).matches} ${text} ${color(box)} ${color(dense)}`;
     },
