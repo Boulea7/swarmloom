@@ -624,6 +624,33 @@ describe("stage: lifecycle", () => {
     window.scrollTo(0, 0);
   });
 
+  it("overlay: enter() focuses the scroller, but a replay leaves focus on the stage's toolbar", async () => {
+    const bp = blueprint([], { w: window.innerWidth, h: 2000 });
+    const stage = createStage({
+      blueprint: bp,
+      mode: "overlay",
+      host: document.body,
+      theme: resolveTheme("auto", bp, false),
+      plugins: [],
+      reducedMotion: false,
+      rng: createRng(3),
+      initialScroll: 0,
+    });
+    cleanups.push(() => stage.destroy());
+    const t = await drive(stage, stage.enter());
+    expect((stage.root.activeElement as HTMLElement | null)?.classList.contains("scroller")).toBe(true);
+    // Mounted like the toolbar's seek bar: its own shadow root on the UI layer.
+    const toolbar = document.createElement("div");
+    const control = document.createElement("input");
+    toolbar.attachShadow({ mode: "open" }).append(control);
+    stage.uiLayer.append(toolbar);
+    control.focus();
+    // A seek back replays the build: reset() then enter() again.
+    stage.reset();
+    await drive(stage, stage.enter(), t);
+    expect(toolbar.shadowRoot?.activeElement).toBe(control);
+  });
+
   it("inline: go-live keeps content and hides the canvas layers; reset blanks it again", async () => {
     const { stage, host } = mount([
       { id: "b", kind: "box", box: { x: 0, y: 0, w: 100, h: 100 }, style: { background: "red" } },

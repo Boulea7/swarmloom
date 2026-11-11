@@ -487,8 +487,10 @@ export class SwarmStage implements Stage {
     this.#guard.engage(dom.host);
     dom.host.removeAttribute("data-passive");
     try {
-      // Keyboard scrolling (arrows, Page Up/Down) goes to the stage while the page is inert.
-      dom.scroller.focus({ preventScroll: true });
+      // Keyboard scrolling (arrows, Page Up/Down) goes to the stage while the page is inert. Focus
+      // already on the stage stays put: a replay started from the toolbar (Replay, a key step back
+      // on the seek bar) must leave it on that control, or the next arrow key scrolls the stage.
+      if (!dom.root.activeElement) dom.scroller.focus({ preventScroll: true });
     } catch {
       // focus is best effort
     }
