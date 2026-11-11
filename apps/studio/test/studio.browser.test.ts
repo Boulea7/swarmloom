@@ -141,6 +141,20 @@ describe("Studio in a browser", () => {
     expect(iterations()).toBe("infinite");
   });
 
+  it("plays each history entry's own local file after Back", async () => {
+    const { log } = await mount();
+    const open = (name: string, text: string) =>
+      app?.context.navigate({ source: { kind: "file", name } }, { local: { name, text } });
+    open("alpha.md", "ALPHA_UNIQUE");
+    await until(() => log.loads.length === 1);
+    app?.context.navigate({ source: null });
+    open("beta.md", "BETA_UNIQUE");
+    await until(() => log.loads.length === 2);
+    history.go(-2);
+    await until(() => log.loads.length === 3);
+    expect(log.loads[2]).toMatchObject({ name: "alpha.md", text: "ALPHA_UNIQUE" });
+  });
+
   it("keeps a finished build and a paste draft across a language switch", async () => {
     const { root, log } = await mount("?example=svg-chart&lang=en");
     (await until(() => root.querySelector<HTMLButtonElement>(".play-big"))).click();

@@ -37,6 +37,17 @@ const LAUNCH_WAIT_MS = 3000;
 
 const THEME_COLOR = { light: "#fafafc", dark: "#0b0b12" } as const;
 
+/** Local inputs kept for Back and Forward; an entry whose input was dropped asks to open it again. */
+const LOCAL_HISTORY_LIMIT = 8;
+/** `history.state` key naming the local input of an entry. */
+const LOCAL_STATE_KEY = "swarmloomLocal";
+
+/** A random hex id, so keys left in `history.state` by an earlier page load never match. */
+function randomKey(win: Window): string {
+  const bytes = win.crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** Studio locale for a setting: the explicit choice, or the browser's languages. */
 function resolveLocale(setting: StudioSettings["locale"], win: Window): StudioLocale {
   return setting === "auto" ? negotiateLocale(win.navigator.languages ?? [win.navigator.language]) : setting;
@@ -96,6 +107,26 @@ export async function mountStudio(
   let view: View | null = null;
   let navigated = false;
   let destroyed = false;
+
+  // Each local input is stored under its own key in the history entry that opened it, so Back and
+  // Forward play that entry's file, never the one opened last.
+  const locals = new Map<string, LocalInput>();
+  const pageKey = randomKey(win);
+  let localCount = 0;
+  const keepLocal = (input: LocalInput): Record<string, string> => {
+    localCount += 1;
+    const key = `${pageKey}:${localCount}`;
+    locals.set(key, input);
+    for (const oldest of locals.keys()) {
+      if (locals.size <= LOCAL_HISTORY_LIMIT) break;
+      locals.delete(oldest);
+    }
+    return { [LOCAL_STATE_KEY]: key };
+  };
+  const localOf = (state: unknown): LocalInput | null => {
+    const key = state && typeof state === "object" ? (state as Record<string, unknown>)[LOCAL_STATE_KEY] : undefined;
+    return typeof key === "string" ? (locals.get(key) ?? null) : null;
+  };
 
   const systemDark = typeof win.matchMedia === "function" ? win.matchMedia("(prefers-color-scheme: dark)") : null;
   const schemeOf = (s: StudioSettings): "light" | "dark" =>
@@ -217,11 +248,13 @@ export async function mountStudio(
       overrides: route.overrides,
       ...patch,
     };
-    if (opts.local) local = opts.local;
+    // A local input belongs to the entry this navigation creates; other entries carry none.
+    local = opts.local ?? null;
+    const state = opts.local ? keepLocal(opts.local) : null;
     const url = routeToUrl(next, appUrl);
     try {
-      if (opts.replace) win.history.replaceState(null, "", url);
-      else win.history.pushState(null, "", url);
+      if (opts.replace) win.history.replaceState(state, "", url);
+      else win.history.pushState(state, "", url);
     } catch (error) {
       // Sandboxed or opaque origins can refuse history changes; the view still switches.
       console.warn("[studio] history update failed", error);
@@ -341,8 +374,9 @@ export async function mountStudio(
       toggleSettings();
     }
   };
-  const onPop = () => {
+  const onPop = (event: PopStateEvent) => {
     route = parseRoute(win.location.href, routeOptions);
+    local = localOf(event.state);
     navigated = true;
     renderView();
   };
@@ -392,6 +426,7 @@ export async function mountStudio(
     },
     destroy() {
       destroyed = true;
+      locals.clear();
       win.clearTimeout(launchTimer);
       win.removeEventListener("keydown", onKey);
       win.removeEventListener("popstate", onPop);

@@ -26,7 +26,7 @@ The home screen offers four entry points:
 
 Adapters load on demand. The first use of a format may fetch its module; cached modules can work offline.
 
-Changing the interface language does not interrupt what is playing and keeps any URL or pasted text on the home screen that was not opened yet.
+Back and Forward in the browser reopen each step's own local file. A tab keeps the last 8 local files; older entries ask you to pick the file again. Changing the interface language does not interrupt what is playing and keeps any URL or pasted text on the home screen that was not opened yet.
 
 ## Player
 
