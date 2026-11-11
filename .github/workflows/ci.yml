@@ -40,6 +40,9 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # After the build, so the check also reads the bundlers' module paths in each dist/.
+      - if: matrix.os == 'ubuntu-latest'
+        run: pnpm check:notices
 
   e2e:
     name: browser + e2e (ubuntu)

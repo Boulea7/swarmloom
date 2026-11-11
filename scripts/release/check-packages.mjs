@@ -113,7 +113,8 @@ export function checkPackage({ dir, manifest }, { fileExists = () => true, defau
   if (manifest.exports === undefined && manifest.main === undefined && manifest.bin === undefined) {
     errors.push(`${label}: no entry point (exports, main or bin)`);
   }
-  // No LICENSE check: pnpm pack adds the workspace root LICENSE to packages that have none.
+  // No LICENSE check: pnpm pack adds the workspace root LICENSE to packages that have none, and packages that
+  // bundle third-party code get a LICENSE.md that third-party-notices.mjs writes right before packing.
   if (!fileExists("README.md")) warnings.push(`${label}: README.md missing; the npm page will be empty`);
   return { errors, warnings };
 }

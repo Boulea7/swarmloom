@@ -13,7 +13,7 @@ dev dependency and run locally. Nothing has been published to npm or to any exte
    - 有待处理的 changeset：`version` job 运行 `pnpm version-packages`，把版本号和 CHANGELOG 提交到
      `changeset-release/main` 分支，并打开或更新 “chore: version packages” PR。
    - 没有 changeset，但有尚未发布到 npm 的版本（Version PR 刚合并）：`pack` job 检查包元数据和依赖许可证、
-     构建并打包；`publish` job 在 `npm` environment 中用 Trusted Publishing（OIDC）发布，推送每个包的 git tag。
+     构建、生成第三方许可文件并打包；`publish` job 在 `npm` environment 中用 Trusted Publishing（OIDC）发布，推送每个包的 git tag。
    - 都没有：什么也不做。
 3. 发布包含 `@swarmloom/core` 时，`assets` job 创建产品 tag `vX.Y.Z` 和 GitHub Release，附上：
    - `swarmloom-chrome-X.Y.Z.zip`、`swarmloom-edge-X.Y.Z.zip`
@@ -67,12 +67,13 @@ npm
 如果仍是 `0.1.0`，结果会是 0.2.0。
 
 1. 确认 `node scripts/release/check-packages.mjs` 通过（作用域包必须以 public 发布：`changeset publish` 先取包内
-   `publishConfig.access`，没有时取 `.changeset/config.json` 的 `"access": "public"`），`node scripts/release/check-licenses.mjs` 通过。
+   `publishConfig.access`，没有时取 `.changeset/config.json` 的 `"access": "public"`），`node scripts/release/check-licenses.mjs`
+   和 `pnpm build && node scripts/release/third-party-notices.mjs --check` 通过。
 2. 合并 Version Packages PR。Release 运行会在 `publish` job 等待 `npm` environment 审批（先不要批准）。
 3. 在合并后的 `main` 提交上，由维护者在本地手动发布（`npm login`，按提示输入 2FA 验证码）：
    ```sh
    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile
-   pnpm release            # pnpm build && changeset publish
+   pnpm release            # pnpm build、生成第三方许可文件、changeset publish，最后删除生成的许可文件
    git push origin --tags  # changeset publish 创建的每包 tag
    git tag v0.1.0 && git push origin v0.1.0   # 触发 assets job，创建 GitHub Release
    ```
@@ -89,6 +90,7 @@ npm
 | `check-store.mjs` | 校验 `store/` 文案长度、与扩展 `_locales` 的名称和简介一致、每个权限都有说明、图片尺寸。`pnpm check:store` |
 | `check-licenses.mjs` | 依赖许可证门禁：SPDX 表达式必须符合 `license-policy.json` 的允许列表，MPL-2.0 / OFL-1.1 只允许列出的包；其他许可证（含 `BSD` 这类非 SPDX 写法）不加例外，用 `pnpm-workspace.yaml` 的 `overrides` 替换或去掉。CI 每个 PR 和 release 都会运行。`pnpm check:licenses` |
 | `check-packages.mjs` | 发布前检查包元数据（发布权限、license、repository、files 等）。`pnpm check:packages` |
+| `third-party-notices.mjs` | 为打包了第三方代码或资源的公开包生成根目录 `LICENSE.md`：先是本仓库的 MIT 许可，再是每个被打包依赖的完整许可和 NOTICE。npm 和 pnpm 打包时总会带上包根目录的 `LICENSE*`，`prepublishOnly` 清空 `dist/` 也不影响它。这些文件是构建产物，不提交：`pack` 和 `assets` job 以及 `pnpm release` 在打包前生成，`--clean` 删除。哪些包整体打包依赖树见脚本里的 `BUNDLES_DEPENDENCIES`；其余公开包是 tsup 库构建，只算源码引入但未声明为依赖的包和 `?raw` / `?inline` / `?url` 内联的文件。生成和 `--check`（`pnpm check:notices`，CI 构建后运行，不写文件）都会在被打包的依赖没有许可文本、已构建的 `dist/` 里出现未覆盖的包，或包根目录有手写的 `LICENSE.md` 时失败 |
 | `product-tag.mjs` | 从发布结果或 tag 得出产品版本 `vX.Y.Z`，并与 `packages/core/package.json` 核对 |
 | `checksums.mjs` | 为发布文件写 `SHA256SUMS.txt`（`sha256sum -c` 可读） |
 | `sync-labels.mjs` | 按 `labels.json` 创建或更新仓库标签（`gh label create --force`）；`--dry-run` 只打印 |
@@ -97,6 +99,7 @@ npm
 
 ```sh
 pnpm test:release        # node:test 单元测试
+pnpm check:notices       # 第三方许可能否生成（构建后还会检查 dist/ 里打包的包都有许可）
 pnpm typecheck:release   # 用 tsc 检查这些 .mjs 的 JSDoc 类型
 pnpm changeset status    # 下一次发版会包含什么
 ```

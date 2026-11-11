@@ -25,9 +25,11 @@
     "build:extension": "node scripts/release/build-extension.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish",
+    "release": "pnpm build && pnpm notices && changeset publish && pnpm notices --clean",
     "check:licenses": "node scripts/release/check-licenses.mjs",
     "check:packages": "node scripts/release/check-packages.mjs",
+    "check:notices": "node scripts/release/third-party-notices.mjs --check",
+    "notices": "node scripts/release/third-party-notices.mjs",
     "check:store": "node scripts/release/check-store.mjs",
     "test:release": "node --test \"scripts/release/test/*.test.mjs\"",
     "typecheck:release": "tsc -p scripts/release"

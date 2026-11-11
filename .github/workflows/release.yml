@@ -138,6 +138,10 @@ jobs:
       - name: Check dependency licences
         run: node scripts/release/check-licenses.mjs
       - run: pnpm build
+      # Generated, never committed: writes LICENSE.md into each package that bundles third-party code and
+      # fails when a built dist/ bundles a package the notices do not cover.
+      - name: Write the third-party licences of bundling packages
+        run: node scripts/release/third-party-notices.mjs
       - id: pack
         uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
@@ -224,6 +228,8 @@ jobs:
         run: |
           pnpm build:extension
           pnpm --filter "swarmloom..." build
+      - name: Write the third-party licences shipped in the CLI tarball
+        run: node scripts/release/third-party-notices.mjs
       - name: Lint the Firefox package (desktop and Android)
         run: pnpm -F @swarmloom/extension lint:firefox
       - name: Audit the store packages
