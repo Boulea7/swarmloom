@@ -41,7 +41,7 @@ Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `
 | `pnpm -F @swarmloom/studio build:web` | `dist/`: the PWA with examples, manifest, icons and `sw.js`. |
 | `pnpm -F @swarmloom/studio build:extension` (or `STUDIO_TARGET=extension`) | `dist-extension/studio.html`: relative paths, no service worker, no examples. Files arrive through `?src=` or `?key=`. |
 
-App icons are drawn from the mark in `src/ui/mark.ts` at build time; no image files are checked in. The gallery picks up new files in `examples/` automatically. A new format also needs an entry in `src/formats-meta.ts` (test/formats-meta.test.ts keeps it in step with the `@swarmloom/formats` registry), and a name in the Studio catalog until core translates it. Formats whose adapter ships separately are marked `optional` there: Lottie stays hidden until the registry provides it.
+App icons are drawn from the mark in `src/ui/mark.ts` at build time; no image files are checked in. The gallery picks up new files in `examples/` automatically. A new format also needs an entry in `src/formats-meta.ts` (test/formats-meta.test.ts keeps it in step with the `@swarmloom/formats` registry), and a name in the Studio catalog until core translates it. Formats whose adapter may be missing from a custom registry are marked `optional` there and stay hidden until the registry provides them. Lottie is one; the bundled registry includes it.
 
 ## Tests and screenshots
 

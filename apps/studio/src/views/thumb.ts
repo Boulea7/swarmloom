@@ -205,6 +205,25 @@ function mindmap(): HTMLElement {
   return h("div", { class: "thumb-map-wrap" }, svg);
 }
 
+/** An animation: a motion arc with a moving shape, over a keyframe timeline with its playhead. */
+function animation(): HTMLElement {
+  const keys = [14, 34, 58, 86];
+  const svg = s(
+    "svg",
+    { viewBox: "0 0 100 100", class: "thumb-anim", "aria-hidden": "true" },
+    s("path", { d: "M14 58 C30 18 70 18 86 58", class: "t-arc" }),
+    s("circle", { cx: 14, cy: 58, r: 3.2, class: "t-ghost" }),
+    s("circle", { cx: 34, cy: 34, r: 4.2, class: "t-ghost" }),
+    s("circle", { cx: 58, cy: 30, r: 7, class: "t-shape" }),
+    s("path", { d: "M10 82H90", class: "t-track" }),
+    ...keys.map((x) =>
+      s("rect", { x: x - 2.6, y: 79.4, width: 5.2, height: 5.2, class: "t-key", transform: `rotate(45 ${x} 82)` }),
+    ),
+    s("path", { d: "M58 74V90", class: "t-head" }),
+  );
+  return h("div", { class: "thumb-anim-wrap" }, svg);
+}
+
 function book(): HTMLElement {
   return h(
     "div",
@@ -229,6 +248,8 @@ function illustration(format: string, ext: string): HTMLElement {
       return terminal();
     case "mindmap":
       return mindmap();
+    case "lottie":
+      return animation();
     case "html":
       return h(
         "div",

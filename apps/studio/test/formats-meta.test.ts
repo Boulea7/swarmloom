@@ -27,6 +27,8 @@ describe("format metadata", () => {
     expect(ids()).not.toContain("lottie");
     expect(ids(["markdown"])).not.toContain("lottie");
     expect(ids(["lottie"])).toContain("lottie");
+    // The bundled registry has the Lottie adapter, so Studio offers it.
+    expect(ids(REGISTRY.map((f) => f.id))).toContain("lottie");
     expect(acceptAttribute(availableFormats()).split(",")).not.toContain(".lottie");
     expect(acceptAttribute(availableFormats()).split(",")).toEqual(expect.arrayContaining([".epub", ".odt", ".cast"]));
   });
@@ -39,6 +41,7 @@ describe("format metadata", () => {
     ],
     ['{"version": 2, "width": 80, "height": 24}\n[0.1, "o", "hi"]\n', "pasted.cast"],
     ['{"name": "swarmloom"}', "pasted.json"],
+    ['{"v":"5.12.0","fr":30,"ip":0,"op":120,"w":480,"h":300,"layers":[]}', "pasted.lottie"],
     ["# Notes\n\n- one\n- two\n", "pasted.md"],
   ])("names a paste by its content: %#", (text, name) => {
     expect(guessPasteName(text)).toBe(name);

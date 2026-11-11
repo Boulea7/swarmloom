@@ -495,6 +495,51 @@
   fill: var(--indigo);
 }
 
+/* An animation: a motion arc with fading ghosts, over a keyframe timeline. */
+.thumb-anim-wrap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, var(--surface), var(--surface-2) 75%);
+}
+
+.thumb-anim {
+  width: 78%;
+  height: 78%;
+}
+
+.thumb-anim .t-arc {
+  fill: none;
+  stroke: color-mix(in oklch, var(--indigo) 40%, transparent);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+}
+
+.thumb-anim .t-ghost {
+  fill: color-mix(in oklch, var(--accent) 30%, transparent);
+}
+
+.thumb-anim .t-shape {
+  fill: var(--accent);
+}
+
+.thumb-anim .t-track {
+  stroke: color-mix(in oklch, var(--indigo) 30%, var(--line));
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.thumb-anim .t-key {
+  fill: var(--indigo);
+}
+
+.thumb-anim .t-head {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
 /* An open book: two leaves around the spine. */
 .thumb-book {
   position: absolute;
