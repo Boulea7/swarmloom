@@ -123,7 +123,8 @@ export class Session {
     this.setPhase("playing");
     player.play().then(
       () => {
-        if (this.player === player && !this.destroyed) this.setPhase("done");
+        // The "done"/"live" state listener may have got there first (go live, finish).
+        if (this.player === player && !this.destroyed && this.phase === "playing") this.setPhase("done");
       },
       (error: unknown) => {
         if (this.player === player && !this.destroyed)
@@ -220,9 +221,10 @@ export class Session {
         if (e.state === "building" && this.plannedMs === 0) this.plannedMs = Math.max(0, player.eta());
         if ((e.state === "done" || e.state === "live") && this.phase === "playing") this.setPhase("done");
       }),
-      player.on("error", (e) =>
-        this.setPhase("error", new StudioError("player", { message: e.error.message }, { cause: e.error })),
-      ),
+      // Engine "error" events are non-fatal (blueprint diagnostics, failed layer tasks, plugin or
+      // sound faults): the build keeps going, so they must not replace the stage with the error card.
+      // Fatal failures arrive through createPlayer() throwing or play() rejecting.
+      player.on("error", (e) => console.warn("[studio] player reported", e.error)),
     );
     const { built, total } = player.progress;
     this.o.onProgress?.(built, total);
