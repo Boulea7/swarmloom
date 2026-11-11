@@ -133,6 +133,7 @@ export const zhCN: StudioCatalog = {
   "export.cli.copy": "复制命令",
   "export.cli.copied": "已复制",
   "export.cli.save": "请先把粘贴的内容保存为 {name}。",
+  "export.cli.download": "这个链接直接粘贴到终端不安全，请先把它下载为 {name}。",
 
   "watch.play": "播放",
   "watch.pause": "暂停",

@@ -142,6 +142,8 @@ export const de: StudioCatalog = {
   "export.cli.copy": "Befehl kopieren",
   "export.cli.copied": "Kopiert",
   "export.cli.save": "Speichere den eingefügten Inhalt zuerst als {name}.",
+  "export.cli.download":
+    "Dieser Link lässt sich nicht sicher in ein Terminal einfügen. Lade ihn zuerst als {name} herunter.",
 
   "watch.play": "Abspielen",
   "watch.pause": "Pause",

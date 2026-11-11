@@ -139,6 +139,8 @@ export const ja: StudioCatalog = {
   "export.cli.copy": "コマンドをコピー",
   "export.cli.copied": "コピーしました",
   "export.cli.save": "貼り付けた内容を先に {name} として保存してください。",
+  "export.cli.download":
+    "このリンクはそのままターミナルに貼り付けると安全ではありません。先に {name} としてダウンロードしてください。",
 
   "watch.play": "再生",
   "watch.pause": "一時停止",

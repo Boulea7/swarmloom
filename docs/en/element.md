@@ -72,7 +72,7 @@ swarm-loom {
 | `inview` | Boolean attribute | Start through IntersectionObserver when scrolled into view |
 | `reduced-motion` | `auto` / `true` / `false` | Reduced motion; defaults to the system preference |
 
-Boolean attributes depend on presence. Remove the attribute to disable it; `autoplay="false"` is still a present boolean attribute.
+A boolean attribute is on when present, including an empty value such as `<swarm-loom autoplay>`. The values `false`, `off`, `no` and `0` (case-insensitive) turn it off, as does removing the attribute. `loop` follows the same rule: a bare `loop` waits 1500 ms, and `loop="0"` turns looping off rather than meaning no delay.
 
 ## Use Light DOM content
 

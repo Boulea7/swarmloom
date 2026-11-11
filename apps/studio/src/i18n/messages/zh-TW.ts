@@ -133,6 +133,7 @@ export const zhTW: StudioCatalog = {
   "export.cli.copy": "複製指令",
   "export.cli.copied": "已複製",
   "export.cli.save": "請先把貼上的內容儲存為 {name}。",
+  "export.cli.download": "這個連結直接貼到終端機並不安全，請先把它下載為 {name}。",
 
   "watch.play": "播放",
   "watch.pause": "暫停",

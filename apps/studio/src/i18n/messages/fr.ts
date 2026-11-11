@@ -142,6 +142,8 @@ export const fr: StudioCatalog = {
   "export.cli.copy": "Copier la commande",
   "export.cli.copied": "Copié",
   "export.cli.save": "Enregistrez d’abord le contenu collé sous {name}.",
+  "export.cli.download":
+    "Ce lien ne peut pas être collé sans risque dans un terminal. Téléchargez-le d’abord sous {name}.",
 
   "watch.play": "Lire",
   "watch.pause": "Pause",

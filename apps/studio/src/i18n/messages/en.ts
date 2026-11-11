@@ -146,6 +146,7 @@ export const en = {
   "export.cli.copy": "Copy command",
   "export.cli.copied": "Copied",
   "export.cli.save": "Save the pasted content as {name} first.",
+  "export.cli.download": "This link isn't safe to paste into a terminal. Download it as {name} first.",
 
   "watch.play": "Play",
   "watch.pause": "Pause",

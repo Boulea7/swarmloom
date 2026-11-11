@@ -136,6 +136,7 @@ export const ko: StudioCatalog = {
   "export.cli.copy": "명령 복사",
   "export.cli.copied": "복사했습니다",
   "export.cli.save": "붙여넣은 내용을 먼저 {name}(으)로 저장하세요.",
+  "export.cli.download": "이 링크는 터미널에 그대로 붙여넣으면 안전하지 않습니다. 먼저 {name}(으)로 다운로드하세요.",
 
   "watch.play": "재생",
   "watch.pause": "일시중지",
