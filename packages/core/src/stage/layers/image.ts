@@ -2,6 +2,7 @@ import { createRng } from "../../rng";
 import type { ImageLayer, Rect, Size } from "../../types";
 import { applyLayerStyle, isSafeUrl } from "../sanitize";
 import { clamp01, contentDiv, hashString, type LayerView, type MountEnv, Shell, Transient } from "./common";
+import { stillImageSource } from "./still-svg";
 
 /*
  * Reveal geometry mirrors the image choreography (choreo/timing.ts) so the reveal follows the
@@ -67,7 +68,8 @@ function paintJitter(count: number, seed: number): Float32Array {
 /**
  * Raster/vector image, optionally a crop of a larger bitmap (rendered pages). Reveals:
  * "sweep" (default, top to bottom), "type" (line by line, left to right: PDF text regions),
- * "fade", "paint" (blocks laid along a zig-zag brush path).
+ * "fade", "paint" (blocks laid along a zig-zag brush path). An animated SVG source is swapped for
+ * a still copy (see still-svg.ts) before decode() settles, so no frame depends on the browser clock.
  */
 export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerView {
   const doc = env.doc;
@@ -99,7 +101,21 @@ export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerVi
     s.maxWidth = "none";
     s.objectFit = layer.fit === "contain" || layer.fit === "cover" ? layer.fit : "fill";
   }
-  if (typeof layer.src === "string" && isSafeUrl(layer.src)) img.src = layer.src;
+  let still: Promise<void> | null = null;
+  let gone = false;
+  if (typeof layer.src === "string" && isSafeUrl(layer.src)) {
+    const src = layer.src;
+    const source = stillImageSource(src, doc);
+    if (typeof source === "string") {
+      img.src = source;
+    } else {
+      // A same-origin .svg file: shown at once, swapped for its still copy once fetched.
+      img.src = src;
+      still = source.then((copy) => {
+        if (!gone && copy !== src) img.src = copy;
+      });
+    }
+  }
   content.append(img);
   shell.shell.append(content);
 
@@ -200,13 +216,17 @@ export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerVi
       transient.apply(content, css);
     },
     decode() {
-      if (!img.src) return Promise.resolve();
-      return img.decode().then(
-        () => undefined,
-        () => undefined,
-      );
+      const decoded = (): Promise<void> =>
+        img.src
+          ? img.decode().then(
+              () => undefined,
+              () => undefined,
+            )
+          : Promise.resolve();
+      return still ? still.then(decoded) : decoded();
     },
     destroy() {
+      gone = true;
       jitter = null;
     },
   };

@@ -10,6 +10,12 @@ const SHAPES: CursorShape[] = ["arrow", "crosshair", "ibeam", "pen", "hand", "gr
 const PNG_1PX =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
+/**
+ * Same-origin SVG whose SMIL animation runs on the browser clock when shown as is. A served path:
+ * Vite would inline an imported asset this small as a data: URL.
+ */
+const SPIN_SVG = "/packages/core/test/stage/spin.svg";
+
 const cleanups: (() => void)[] = [];
 
 afterEach(() => {
@@ -283,6 +289,46 @@ describe("stage: reveal semantics per kind", () => {
     expect(css(heading).clipPath.replaceAll(" ", "")).toBe(
       "polygon(0px0px,100px0px,100px0px,50px0px,50px60px,0px60px)",
     );
+  });
+
+  it.each([
+    // Served from the page's own origin, as the CLI serves the files next to a document.
+    { name: "SMIL in a same-origin .svg file", src: new URL(SPIN_SVG, location.href).href, x: 19.5 },
+    {
+      name: "CSS keyframes in a data: URL",
+      src: `data:image/svg+xml,${encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>@keyframes m{to{transform:translateX(150px)}}' +
+          'rect{animation:m .83s linear infinite}</style><rect x="10" y="35" width="30" height="30" fill="#e33"/></svg>',
+      )}`,
+      x: 24.5,
+    },
+  ])("image: an animated SVG ($name) holds still once decoded, whatever the wall time", async ({ src, x }) => {
+    const { stage } = mount([{ id: "a", kind: "image", box: { x: 0, y: 0, w: 200, h: 100 }, src }]);
+    // Shown, since an image nobody paints does not advance its animation.
+    stage.reveal("a", 1);
+    await stage.ready();
+    const img = (stage.el("a") as HTMLElement).querySelector("img") as HTMLImageElement;
+    // An <img> draws its current animation frame into a canvas: the mean x of the red shape.
+    const redX = (): number => {
+      const g = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      if (!g) return Number.NaN;
+      g.canvas.width = 200;
+      g.canvas.height = 100;
+      g.drawImage(img, 0, 0, 200, 100);
+      const d = g.getImageData(0, 0, 200, 100).data;
+      let sum = 0;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if ((d[i] ?? 0) > 200 && (d[i + 1] ?? 255) < 100) {
+          sum += (i / 4) % 200;
+          n++;
+        }
+      }
+      return sum / n;
+    };
+    expect(redX()).toBeCloseTo(x, 0);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(redX()).toBeCloseTo(x, 0);
   });
 
   it("media: labelled placeholder that fades in", () => {
