@@ -110,6 +110,7 @@ Studio 始终有普通响应式布局。在支持 Viewport Segments 的 Chromium
 - 画面来自页面的 SVG 快照，不是截图。自定义的 `::marker` 和 `::first-letter` 样式、`position: sticky`、WebGL canvas，以及不允许 CORS 的跨源图片（留空）可能与 CLI 不同。
 - 使用 Studio 里选的音效包；CLI 总是使用默认音效包。
 - 编码器不同：Chromium 把 H.264 标记为 BT.601，CLI 写 BT.709，解码后的颜色可能差几个色阶。Linux 上的 Chromium 没有 AAC 编码器，MP4 里的声音是 Opus，音轨可能比视频长不到 20 毫秒。
+- 同一输入和种子导出两次，每一帧的像素相同，但浏览器编码器每次写出的字节不完全相同，差别肉眼看不出。
 
 “分享”可把小型文本写进 `#d=`。大型内容请导出视频或分享原始文件。分享前检查内容是否敏感。
 

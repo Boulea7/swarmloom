@@ -110,6 +110,7 @@ Limits of the in-page export:
 - Frames are drawn from an SVG snapshot of the page, not a screenshot. Custom `::marker` and `::first-letter` styles, `position: sticky`, WebGL canvases and cross-origin images that do not allow CORS (left blank) can differ from the CLI.
 - It uses the sound pack chosen in Studio; the CLI always uses the default pack.
 - Encoders differ: Chromium tags its H.264 as BT.601, the CLI writes BT.709, so decoded colours can differ by a few levels. Chromium on Linux has no AAC encoder, so MP4 files there carry Opus sound, whose track runs up to 20 ms past the video.
+- Two exports of the same input and seed draw the same pixels in every frame, but the browser's encoder does not write the same bytes each time. The difference is too small to see.
 
 **Share** can put small text into `#d=`. Export a video or share the original file for large content. Check for sensitive material before sharing.
 
