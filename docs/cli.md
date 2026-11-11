@@ -51,7 +51,9 @@ swarmloom render <file|url> [-o out.mp4]
   [--width 1280] [--height 720] [--scale 1] [--fps 30]
   [--agents auto] [--speed 1] [--seed 1]
   [--theme auto] [--labels names] [--finale flock]
-  [--no-sound] [--tail 2500] [--max-duration 120]
+  [--no-sound] [--tail 2500] [--max-duration 120 | --duration <s>]
+  [--bpm 112] [--cue <at>:<action> ...]
+  [--audio-out <wav>] [--events-out <json>] [--manifest-out <json>]
   [--chrome <path>] [--ffmpeg <path>] [--quiet]
 ```
 
@@ -75,6 +77,12 @@ swarmloom render <file|url> [-o out.mp4]
 | `--no-sound` | 开启声音 | 禁用音轨与声音事件输出 |
 | `--tail <ms>` | `2500` | 构建完成后的结尾停留时间 |
 | `--max-duration <s>` | `120` | 最长引擎时长，单位秒；防止异常输入无限渲染 |
+| `--duration <s>` | 关闭 | 固定视频时长（0.1–3600 秒）：构建完成后继续录制收尾与完成页，未完成的构建在此截断；不能与 `--max-duration` 同用 |
+| `--bpm <number>` | `112` | 放置音符、散开音与完成和弦对齐的速度（八分音符网格，40–240） |
+| `--cue <at>:<action>` | 无 | 在固定视频时间执行播放器动作，可重复。`<at>` 为秒（`12.5`）、毫秒（`12500ms`）或按 `--bpm` 计的拍数（`26b`）；`<action>` 为 `pause`（全部光标停住）、`resume` 或 `finish`（快速完成构建）。在不早于 `<at>` 的第一帧生效，同一时间的动作按给出顺序执行 |
+| `--audio-out <file>` | 关闭 | 另写一份音轨 WAV（48 kHz 立体声，与视频等长） |
+| `--events-out <file>` | 关闭 | 另写一份声音事件日志 JSON：引擎毫秒、与帧同一时钟，并附每个事件的帧号 |
+| `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素 |
 | `--chrome <path>` | 自动探测 | 指定 Chrome/Chromium 可执行文件 |
 | `--ffmpeg <path>` | 自动探测 | 指定 ffmpeg 可执行文件 |
 | `--quiet` | 关闭 | 不显示帧数与 ETA 进度 |
@@ -197,8 +205,16 @@ swarmloom doctor
 | `2` | 缺少浏览器、ffmpeg 等依赖 |
 | `3` | 解析、渲染或编码失败 |
 
+固定 24 秒、在第 26 拍停住、第 28 拍完成，并留下可复核的录制证据：
+
+```bash
+swarmloom render ./logo.svg -o take.mp4 --duration 24 --bpm 90 \
+  --cue 26b:pause --cue 28b:resume --cue 28b:finish \
+  --audio-out take.wav --events-out events.json --manifest-out manifest.json
+```
+
 ## 确定性说明
 
 CLI 固定视口、DPR、种子和帧步长。确定性来自播放器自己的虚拟时钟：每帧推进 `1000 / fps` 毫秒，等待当前帧资源就绪后截图，不依赖浏览器的 BeginFrame。声音事件离线渲染为 WAV，再与视频合流；合流不使用 `-shortest`，音频和视频时长一致。
 
-确定性验收比较原始帧与 PCM，而不是 MP4/WebM 文件字节。编码器版本、线程和平台可能改变压缩字节，即使画面与声音一致。要复现结果，还应记录输入内容、CLI/适配器版本、浏览器、字体、ffmpeg 和导出参数。
+确定性验收比较原始帧与 PCM，而不是 MP4/WebM 文件字节；`--manifest-out` 记录的每帧 PNG 哈希与声音日志哈希可直接用来比较两次运行。编码器版本、线程和平台可能改变压缩字节，即使画面与声音一致。要复现结果，还应记录输入内容、CLI/适配器版本、浏览器、字体、ffmpeg 和导出参数。

@@ -19,11 +19,21 @@ export {
 } from "./record";
 export { createRenderApi, type RenderDeps } from "./render/api";
 export {
+  CUE_ACTIONS,
+  type CueAction,
   type ParsedInit,
   parseInit,
   type RenderApi,
+  type RenderCue,
+  type RenderInfo,
   type RenderInit,
   type RenderInput,
   type RenderStep,
 } from "./render/protocol";
-export { MAX_STEP_MS, RenderSession, type RenderSessionOptions, type SessionStatus } from "./session";
+export {
+  MAX_STEP_MS,
+  RenderSession,
+  type RenderSessionOptions,
+  type SessionCue,
+  type SessionStatus,
+} from "./session";

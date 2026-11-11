@@ -667,10 +667,13 @@ export class Engine implements Player {
           this.#stepIntro(dt, vp);
           break;
         case "building":
+          // The intro icon shrinks away after the fan-out, which already switched to building.
+          this.#intro.frame(vp, this.#pt);
           this.#stepBuilding(dt, vp);
           break;
         case "finale":
         case "done":
+          this.#intro.frame(vp, this.#pt);
           this.#stepFinale(dt, vp);
           break;
         case "live":

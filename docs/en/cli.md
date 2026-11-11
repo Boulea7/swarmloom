@@ -51,7 +51,9 @@ swarmloom render <file|url> [-o out.mp4]
   [--width 1280] [--height 720] [--scale 1] [--fps 30]
   [--agents auto] [--speed 1] [--seed 1]
   [--theme auto] [--labels names] [--finale flock]
-  [--no-sound] [--tail 2500] [--max-duration 120]
+  [--no-sound] [--tail 2500] [--max-duration 120 | --duration <s>]
+  [--bpm 112] [--cue <at>:<action> ...]
+  [--audio-out <wav>] [--events-out <json>] [--manifest-out <json>]
   [--chrome <path>] [--ffmpeg <path>] [--quiet]
 ```
 
@@ -75,6 +77,12 @@ swarmloom render <file|url> [-o out.mp4]
 | `--no-sound` | Sound enabled | Disable the soundtrack and sound-event output |
 | `--tail <ms>` | `2500` | Hold time after the build completes |
 | `--max-duration <s>` | `120` | Maximum engine duration in seconds; prevents endless renders |
+| `--duration <s>` | Off | Exact video length (0.1–3600 s): keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
+| `--bpm <number>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid, 40–240) |
+| `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`); `<action>` is `pause` (every cursor holds), `resume` or `finish` (complete the build quickly). Applied on the first frame at or after `<at>`; same-time cues run in the order given |
+| `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video) |
+| `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
+| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256, player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels |
 | `--chrome <path>` | Auto-discover | Chrome/Chromium executable |
 | `--ffmpeg <path>` | Auto-discover | ffmpeg executable |
 | `--quiet` | Off | Hide frame and ETA progress |
@@ -197,8 +205,16 @@ Normal progress, including frames and ETA, goes to stderr and does not contamina
 | `2` | Missing browser, ffmpeg or another dependency |
 | `3` | Parsing, rendering or encoding failure |
 
+Render exactly 24 seconds, hold on beat 26, finish on beat 28 and keep evidence that can be checked later:
+
+```bash
+swarmloom render ./logo.svg -o take.mp4 --duration 24 --bpm 90 \
+  --cue 26b:pause --cue 28b:resume --cue 28b:finish \
+  --audio-out take.wav --events-out events.json --manifest-out manifest.json
+```
+
 ## Determinism
 
 The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once its resources are ready, without relying on the browser's BeginFrame. Sound events render offline to WAV and are muxed with the video; muxing does not use `-shortest`, so audio and video have the same length.
 
-Deterministic validation compares raw frames and PCM, not MP4/WebM bytes. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.
+Deterministic validation compares raw frames and PCM, not MP4/WebM bytes; the per-frame PNG hashes and the sound log hash that `--manifest-out` records can be compared across two runs directly. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.
