@@ -122,7 +122,6 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
     "renders a 2 s clip of examples/markdown/welcome.en.md to MP4 with video and audio",
     async (ctx) => {
       requireRenderPage(ctx);
-      if (!existsSync(WELCOME)) ctx.skip("examples/markdown/welcome.en.md is not in this checkout yet");
       const args = ["render", WELCOME, "-o", "welcome.mp4", "--width", "640", "--height", "360"];
       const run = startCli([...args, "--fps", "15", "--max-duration", "2", "--quiet"], {
         SWARMLOOM_RENDER_DIR: EXPORT_RENDER_DIR,

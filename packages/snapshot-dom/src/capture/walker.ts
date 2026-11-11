@@ -260,9 +260,19 @@ function childContext(
   return kids;
 }
 
+/**
+ * True once the slice deadline has passed. Records `next`, the element the walk resumes at (null
+ * while skimming: nothing skimmed is placed), so the driver can check that it did not move.
+ */
+function sliceOver(cap: Capture, next: Element | null): boolean {
+  if (now() < cap.slice.deadline) return false;
+  cap.frontier.next = next;
+  return true;
+}
+
 /** Walks one element subtree. */
 export function* visit(cap: Capture, el: Element, ctx: Ctx): Walk {
-  if (now() >= cap.slice.deadline) yield;
+  if (sliceOver(cap, el)) yield;
   if (cap.visited >= cap.maxElements) {
     cap.elementCapHit = true;
     return;
@@ -274,6 +284,8 @@ export function* visit(cap: Capture, el: Element, ctx: Ctx): Walk {
   if (info.display === "none" || info.opacity <= 0.001 || isSrOnly(info)) return;
   const topLayer = info.position === "fixed" && ctx.frameDepth === 0 && isTopLayer(el);
   const own = ownContext(cap, ctx, info, ++cap.treeIndex, topLayer);
+  // In-flow content moves when anything walked before it changes size (see frontier).
+  if (!own.inFixed && (info.position === "static" || info.position === "relative")) cap.frontier.flow = el;
   if (topLayer && cap.mode === "document") emitBackdrop(cap, own, el);
   const place = placeElement(cap, own, info);
   const rec = openNode(cap, el, place.box);
@@ -378,7 +390,7 @@ function* visitDropped(
       if (ctx) yield* visit(cap, el, ctx);
       continue;
     }
-    if (now() >= cap.slice.deadline) yield;
+    if (sliceOver(cap, null)) yield;
     if (cap.skimmed >= cap.maxSkimmed) {
       cap.elementCapHit = true;
       return;
@@ -401,7 +413,7 @@ function* visitDropped(
 function* render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: boolean, topLayer: boolean): Walk {
   const el = info.el;
   // CSS counters in use are counted up to here within the slice, so reading one never blocks.
-  while (!countersReady(cap, el)) if (now() >= cap.slice.deadline) yield;
+  while (!countersReady(cap, el)) if (sliceOver(cap, el)) yield;
   const tag = el.localName;
   const visible = info.visibility === "visible";
   if (el.hasAttribute(MEDIA_ATTR) || MEDIA_TAGS.has(tag)) {

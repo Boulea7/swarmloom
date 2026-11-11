@@ -368,6 +368,33 @@ describe("long pages", () => {
       expect(pseudoReads).toBeLessThan(600);
     },
   );
+
+  const tall = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='300'/>";
+  it.each([
+    [
+      "an image above the rows loads",
+      (doc: Document) => setTimeout(() => doc.images[0]?.setAttribute("src", tall), 15),
+    ],
+    [
+      "a timer keeps growing a banner",
+      (doc: Document) => setInterval(() => doc.body.firstElementChild?.append("x "), 1),
+    ],
+  ])("keeps one layout when %s mid-walk", async (_, disturb) => {
+    const rows = Array.from({ length: 3000 }, (_, i) => `<p style="margin:0;height:20px">Row ${i}</p>`).join("");
+    const doc = await mountPage(`<body style="margin:0"><div style="width:40px"></div><img alt="">${rows}`, 1000, 700);
+    const timer = disturb(doc);
+    try {
+      const bp = await snapshot(doc, { maxLayers: 10000, maxHeight: 200000 });
+      const ys: number[] = [];
+      for (const t of texts(bp)) if (t.text.startsWith("Row ")) ys[Number(t.text.slice(4))] = t.box.y;
+      expect(ys).toHaveLength(3000);
+      // Rows read before and after a reflow would leave a gap (or an overlap) in the spacing.
+      expect(new Set(ys.slice(1).map((y, i) => Math.round(y - (ys[i] as number))))).toEqual(new Set([20]));
+    } finally {
+      clearTimeout(timer);
+      clearInterval(timer);
+    }
+  });
 });
 
 describe("snapshotHtml", () => {
