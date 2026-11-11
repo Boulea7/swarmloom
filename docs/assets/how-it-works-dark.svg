@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="500" viewBox="0 0 760 500" role="img" aria-labelledby="title desc">
+  <title id="title">How SwarmLoom works</title>
+  <desc id="desc">Read a web page or file, split it into layers, hand them to the cursors in reading order, then play live or export a video.</desc>
+  <rect width="760" height="500" rx="24" fill="#0B0B12"/>
+  <g font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+    <rect x="30" y="28" width="700" height="122" rx="18" fill="#15151F" stroke="#343444"/>
+    <rect x="30" y="178" width="700" height="122" rx="18" fill="#15151F" stroke="#343444"/>
+    <rect x="30" y="328" width="700" height="122" rx="18" fill="#15151F" stroke="#343444"/>
+    <g fill="none" stroke="#8B8BFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M380 151v18m-6-6 6 6 6-6"/>
+      <path d="M380 301v18m-6-6 6 6 6-6"/>
+    </g>
+    <g font-size="23" font-weight="700" fill="#FAFAFC">
+      <text x="126" y="70">CAPTURE</text>
+      <text x="126" y="220">CHOREOGRAPH</text>
+      <text x="126" y="370">BUILD &amp; EXPORT</text>
+    </g>
+    <g font-size="19" fill="#AAAABC">
+      <text x="126" y="103">web page · document · code · image · 3D model</text>
+      <text x="126" y="253">split into layers, built in reading order</text>
+      <text x="126" y="403">play live · export MP4 / WebM / GIF</text>
+    </g>
+    <g>
+      <rect x="54" y="52" width="48" height="48" rx="14" fill="#5B5BF7"/>
+      <text x="78" y="83" text-anchor="middle" font-size="20" font-weight="700" fill="#FFFFFF">01</text>
+      <rect x="54" y="202" width="48" height="48" rx="14" fill="#FF4F7B"/>
+      <text x="78" y="233" text-anchor="middle" font-size="20" font-weight="700" fill="#FFFFFF">02</text>
+      <rect x="54" y="352" width="48" height="48" rx="14" fill="#14B8A6"/>
+      <text x="78" y="383" text-anchor="middle" font-size="20" font-weight="700" fill="#FFFFFF">03</text>
+    </g>
+    <g transform="translate(610 51)" fill="none" stroke="#8B8BFF" stroke-width="2">
+      <rect width="76" height="66" rx="9"/>
+      <path d="M0 17h76M14 8h1m8 0h1m8 0h1"/>
+      <path d="M13 30h30m-30 11h45m-45 11h36" stroke="#AAAABC"/>
+      <path d="m58 25 12 8-6 2-3 6z" fill="#FF6B5B" stroke="#15151F" stroke-width="1.5"/>
+    </g>
+    <g transform="translate(607 202)" fill="none" stroke="#FF4F7B" stroke-width="2" stroke-linejoin="round">
+      <path d="m39 0 36 18-36 18L3 18z"/>
+      <path d="m3 31 36 18 36-18M3 44l36 18 36-18"/>
+      <circle cx="39" cy="18" r="4" fill="#8B8BFF" stroke="none"/>
+    </g>
+    <g transform="translate(606 352)">
+      <rect width="82" height="62" rx="10" fill="#FAFAFC"/>
+      <path d="m34 19 20 12-20 12z" fill="#0B0B12"/>
+      <path d="M8 73h66" stroke="#343444" stroke-width="4" stroke-linecap="round"/>
+      <path d="M8 73h41" stroke="#14B8A6" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="49" cy="73" r="5" fill="#8B8BFF"/>
+    </g>
+  </g>
+</svg>

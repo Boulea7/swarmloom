@@ -16,31 +16,51 @@ describe("release asset mapping", () => {
     expect(assetTarget("promo-zh.mp4")?.path).toBe("promo-zh.mp4");
     expect(assetTarget("promo-en.vtt")?.path).toBe("promo-en.vtt");
     expect(assetTarget("promo-poster.avif")?.path).toBe("promo-poster.avif");
-    expect(assetTarget("clip-model.webm")?.path).toBe("clips/model.webm");
-    expect(assetTarget("clip-pdf.avif")?.path).toBe("clips/pdf.avif");
+    expect(assetTarget("clips-three.webm")?.path).toBe("clips/model.webm");
+    expect(assetTarget("clips-doc.mp4")?.path).toBe("clips/word.mp4");
+    expect(assetTarget("clips-docx.mp4")?.path).toBe("clips/word.mp4");
+    expect(assetTarget("clips-sheet.avif")?.path).toBe("clips/sheets.avif");
+    expect(assetTarget("clips-pdf.avif")?.path).toBe("clips/pdf.avif");
   });
 
-  it.each(["clip-unknown.mp4", "clip-web.gif", "promo-fr.mp4", "../promo-zh.mp4", "x".repeat(80), 7, null])(
-    "ignores %s",
-    (name) => {
-      expect(assetTarget(name)).toBeNull();
-    },
-  );
+  it.each([
+    "clips-unknown.mp4",
+    "clip-web.mp4",
+    "clips-web.gif",
+    "promo-fr.mp4",
+    "../promo-zh.mp4",
+    "x".repeat(80),
+    7,
+    null,
+  ])("ignores %s", (name) => {
+    expect(assetTarget(name)).toBeNull();
+  });
 
   it("drops assets with bad URLs or sizes outside the cap", () => {
-    const ok = { name: "clip-web.mp4", size: 2 * MB, browser_download_url: "https://github.com/a/clip-web.mp4" };
+    const ok = { name: "clips-web.mp4", size: 2 * MB, browser_download_url: "https://github.com/a/clips-web.mp4" };
     const release = {
       assets: [
         ok,
-        { ...ok, name: "clip-svg.mp4", browser_download_url: "http://insecure/clip-svg.mp4" },
-        { ...ok, name: "clip-pdf.mp4", size: 21 * MB },
-        { ...ok, name: "clip-code.mp4", size: 0 },
+        { ...ok, name: "clips-svg.mp4", browser_download_url: "http://insecure/clips-svg.mp4" },
+        { ...ok, name: "clips-pdf.mp4", size: 21 * MB },
+        { ...ok, name: "clips-code.mp4", size: 0 },
         null,
       ],
     };
     expect(selectAssets(release)).toEqual([{ ...pick(ok), path: "clips/web.mp4" }]);
     expect(selectAssets({ assets: "nope" })).toEqual([]);
     expect(selectAssets(undefined)).toEqual([]);
+  });
+
+  it("prefers DOCX for the shared Word slot regardless of release order", () => {
+    const doc = { name: "clips-doc.mp4", size: MB, browser_download_url: "https://github.com/a/clips-doc.mp4" };
+    const docx = { name: "clips-docx.mp4", size: MB, browser_download_url: "https://github.com/a/clips-docx.mp4" };
+    for (const assets of [
+      [doc, docx],
+      [docx, doc],
+    ]) {
+      expect(selectAssets({ assets })).toEqual([{ ...pick(docx), path: "clips/word.mp4" }]);
+    }
   });
 });
 
