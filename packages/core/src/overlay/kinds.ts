@@ -443,6 +443,8 @@ const halo: Painter = (ctx, rec, v, env) => {
   const level = Math.max(0, Math.min(1, num(p, "level", 0)));
   const bands = numbers(p, "bands");
   const colors = strings(p, "colors");
+  const fade = Math.max(0, Math.min(1, num(p, "alpha", 1)));
+  if (fade <= 0) return;
   const rings = colors ? Math.min(6, colors.length) : 3;
   ctx.save();
   ctx.lineJoin = "round";
@@ -463,7 +465,7 @@ const halo: Painter = (ctx, rec, v, env) => {
       else ctx.lineTo(px, py);
     }
     ctx.closePath();
-    ctx.globalAlpha = Math.max(0.08, (0.78 - i * 0.14) * (0.45 + level * 0.55));
+    ctx.globalAlpha = fade * Math.max(0.08, (0.78 - i * 0.14) * (0.45 + level * 0.55));
     ctx.lineWidth = Math.max(1, 2.4 - i * 0.3);
     ctx.shadowBlur = (4 + 18 * level) * v.dpr;
     setStroke(ctx, env.tokens.select, color);

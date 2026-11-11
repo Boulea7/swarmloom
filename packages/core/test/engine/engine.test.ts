@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { builtinPlugin, choreoHelpers } from "../../src/choreo/index";
-import { FINALE_SETTLE_MS, IDLE_RUSH_MS } from "../../src/engine/constants";
+import { EXIT_MS, FINALE_SETTLE_MS, IDLE_RUSH_MS } from "../../src/engine/constants";
 import type { EngineSettings } from "../../src/engine/engine";
 import { autoAgentCount } from "../../src/engine/options";
 import type { AgentApi, Layer, PlayerState, Plugin, Rect, StageApi, TaskFn, TaskGen } from "../../src/types";
@@ -337,6 +337,23 @@ describe("Engine", () => {
     expect(h.engine.state).toBe("destroyed");
     expect(h.stage.calls.destroy).toBe(1);
     expect(h.sound.destroyed).toBe(true);
+  });
+
+  it("goLive() fades the halo out while the cursors leave instead of dropping it in one frame", async () => {
+    const h = harness(samplePage(), { intro: false, finale: "halo" });
+    void h.engine.play();
+    h.until(() => h.engine.state === "done");
+    h.engine.goLive();
+    h.run(1);
+    const alpha = () => h.stage.live("halo")[0]?.props.alpha as number;
+    const first = alpha();
+    h.run(10);
+    expect(first).toBeGreaterThan(alpha());
+    expect(alpha()).toBeGreaterThan(0);
+    h.run(Math.ceil(EXIT_MS / 16));
+    await Promise.resolve();
+    expect(h.stage.live("halo")).toHaveLength(0);
+    expect(h.stage.calls.goLive).toBe(1);
   });
 
   it("seek() fast-forwards the current run and replays only to go back or after finish()", () => {

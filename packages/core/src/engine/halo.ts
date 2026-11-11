@@ -41,6 +41,8 @@ interface HaloProps extends Record<string, unknown> {
   level: number;
   bands: number[];
   colors: string[];
+  /** Overlay opacity 0..1; below 1 only while the halo fades out. */
+  alpha: number;
 }
 
 /**
@@ -58,6 +60,9 @@ export class HaloFormation {
   #props: HaloProps | null = null;
   readonly levels: HaloLevels = { low: 0, mid: 0, high: 0 };
   #lastPt = 0;
+  /** Player time the fade-out started, or -1 while the halo is fully shown. */
+  #fadeFrom = -1;
+  #fadeMs = 0;
 
   /** Assigns ring slots to `count` agents and creates the halo overlay. */
   begin(stage: StageApi, count: number, colors: readonly string[], pt: number): void {
@@ -84,12 +89,40 @@ export class HaloFormation {
     this.levels.low = 0;
     this.levels.mid = 0;
     this.levels.high = 0;
-    this.#props = { x: 0, y: 0, r: 0, level: 0, bands: new Array<number>(HALO_BANDS).fill(0), colors: [...colors] };
+    this.#props = {
+      x: 0,
+      y: 0,
+      r: 0,
+      level: 0,
+      bands: new Array<number>(HALO_BANDS).fill(0),
+      colors: [...colors],
+      alpha: 1,
+    };
     this.#overlay = stage.overlay("halo", this.#props);
   }
 
   get active(): boolean {
     return this.#props !== null;
+  }
+
+  /** True while the overlay fades out after {@link fadeOut}. */
+  get fading(): boolean {
+    return this.#props !== null && this.#fadeFrom >= 0;
+  }
+
+  /**
+   * Fades the overlay out over `ms` from player time `pt`, then removes it; the rings keep turning
+   * meanwhile. Opacity follows player time only, so the same run fades the same way every time.
+   * Without a fade time the overlay goes at once.
+   */
+  fadeOut(pt: number, ms: number): void {
+    if (!this.#props) return;
+    if (!(ms > 0)) {
+      this.end();
+      return;
+    }
+    this.#fadeFrom = pt;
+    this.#fadeMs = ms;
   }
 
   /**
@@ -121,6 +154,13 @@ export class HaloFormation {
     }
     const props = this.#props;
     if (!props || !this.#overlay) return;
+    if (this.#fadeFrom >= 0) {
+      props.alpha = clamp(1 - (pt - this.#fadeFrom) / this.#fadeMs, 0, 1);
+      if (props.alpha <= 0) {
+        this.end();
+        return;
+      }
+    }
     props.x = vp.x + vp.w / 2;
     props.y = vp.y + vp.h / 2;
     props.r = this.#outer(vp, pt);
@@ -169,5 +209,6 @@ export class HaloFormation {
     this.#overlay?.remove();
     this.#overlay = null;
     this.#props = null;
+    this.#fadeFrom = -1;
   }
 }

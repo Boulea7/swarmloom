@@ -56,6 +56,11 @@ export class Finale {
     if (this.#mode === "halo") this.#halo.frame(vp, pt, levels);
   }
 
+  /** Per-frame work after the finale ended: the halo fades on and is removed when it is gone. */
+  fadeFrame(vp: Rect, pt: number, levels: HaloLevels | null): void {
+    if (this.#halo.fading) this.#halo.frame(vp, pt, levels);
+  }
+
   /** One physics step of `h` seconds for the swarm. */
   step(agents: readonly Agent[], vp: Rect, pointer: Point | null, pt: number, h: number): void {
     if (this.#mode === "flock") {
@@ -71,9 +76,18 @@ export class Finale {
     }
   }
 
-  /** Leaves the finale: removes the halo overlay, resets slots and scales. */
-  end(roster: Roster): void {
-    this.#halo.end();
+  /** True while the halo of a finale that ended fades out (see {@link end}). */
+  get fading(): boolean {
+    return this.#halo.fading;
+  }
+
+  /**
+   * Leaves the finale: resets slots and scales and removes the halo overlay, or, with `fade`, lets
+   * the halo fade out over `fade.ms` from player time `fade.pt` (driven by {@link fadeFrame}).
+   */
+  end(roster: Roster, fade?: { pt: number; ms: number }): void {
+    if (fade && this.#mode === "halo") this.#halo.fadeOut(fade.pt, fade.ms);
+    else this.#halo.end();
     this.#mode = null;
     this.#nextSlot = 0;
     for (const a of roster.agents) {

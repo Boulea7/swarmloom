@@ -150,6 +150,20 @@ describe("render page protocol", () => {
     expect(goLive).toHaveBeenCalledTimes(calls);
   });
 
+  it("goes live at a live cue instead of when the finale settles", async () => {
+    const { api, players } = setup();
+    await api.init({ ...base, tail: 2000, cues: [{ at: 1400, action: "live" }] });
+    const [player] = players as [ClockPlayer];
+    const goLive = vi.spyOn(player, "goLive");
+    for (let i = 0; i < 30; i++) await api.step(40);
+    player.state = "done";
+    await api.step(40);
+    await api.step(40);
+    expect(goLive).not.toHaveBeenCalled();
+    for (let i = 0; i < 3; i++) await api.step(40);
+    expect(goLive).toHaveBeenCalledOnce();
+  });
+
   it("resolves init and each step only after the page's next animation frame when it awaits paint", async () => {
     const { api } = setup({ awaitPaint: true });
     const frames: FrameRequestCallback[] = [];

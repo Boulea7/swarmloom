@@ -16,14 +16,18 @@ export interface RenderInput {
 }
 
 /** Player actions a render can schedule (see {@link RenderInit.cues}). */
-export const CUE_ACTIONS = ["pause", "resume", "finish"] as const;
+export const CUE_ACTIONS = ["pause", "resume", "finish", "live"] as const;
 export type CueAction = (typeof CUE_ACTIONS)[number];
 
 /** A player action applied at a fixed video time. */
 export interface RenderCue {
   /** Video time in ms (frame `n` shows `n * 1000 / fps`); applied on the first frame at or after it. */
   at: number;
-  /** "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly. */
+  /**
+   * "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly,
+   * "live" goes live now instead of when the finale settles (the cursors leave and the page plays; an
+   * unfinished build completes at once), also with `live: false`.
+   */
   action: CueAction;
 }
 

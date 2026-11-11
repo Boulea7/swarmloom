@@ -17,7 +17,7 @@ export interface RenderInput {
 /** A player action at a fixed video time, ms (applied on the first frame at or after it). */
 export interface RenderCue {
   at: number;
-  action: "pause" | "resume" | "finish";
+  action: "pause" | "resume" | "finish" | "live";
 }
 
 export interface RenderInit {
@@ -48,7 +48,7 @@ export interface RenderInit {
   bpm?: number;
   /** Sound pack id ("studio", "soft", "8bit", "silent-keys"). */
   pack?: string;
-  /** Player actions at fixed video times (pause, resume, finish). */
+  /** Player actions at fixed video times (pause, resume, finish, live). */
   cues?: RenderCue[];
   /**
    * Optional CLI extension: a blueprint captured from a live page by the CLI (http/https URLs).

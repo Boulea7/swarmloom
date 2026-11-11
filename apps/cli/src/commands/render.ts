@@ -77,7 +77,8 @@ Swarm:
                           notes, 40-240). Default: 112
       --cue <at>:<action> Player action at a fixed video time; repeatable. <at> is seconds (12.5),
                           milliseconds (12500ms) or beats from the start at --bpm (26b). <action> is
-                          pause (every cursor holds), resume, or finish (complete the build quickly).
+                          pause (every cursor holds), resume, finish (complete the build quickly) or
+                          live (go live then, not when the finale settles; also with --no-live).
                           Applied on the first frame at or after <at>; same-time cues in order given
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
@@ -265,7 +266,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   };
 }
 
-const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish)$/;
+const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish|live)$/;
 
 /**
  * Parses one --cue: "<time>[s|ms|b]:<action>"; beats ("b") count from the start of the video at `bpm`.

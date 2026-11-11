@@ -14,7 +14,12 @@ export interface SessionStatus {
 export interface SessionCue {
   /** Session time in ms; the cue applies at the end of the first step that reaches it. */
   at: number;
-  action: "pause" | "resume" | "finish";
+  /**
+   * "pause", "resume", "finish" (complete the build quickly) or "live": go live now, as the
+   * toolbar's go live does (an unfinished build completes at once). A "live" cue replaces the
+   * automatic go live of {@link RenderSessionOptions.live} and applies even when that is off.
+   */
+  action: "pause" | "resume" | "finish" | "live";
 }
 
 /** Options for {@link RenderSession}. */
@@ -90,8 +95,9 @@ export class RenderSession {
     const tail = options.tailMs ?? 0;
     if (!Number.isFinite(tail) || tail < 0) throw new RangeError(`tailMs must be a finite number >= 0, got ${tail}`);
     this.tailMs = tail;
-    this.#live = options.live ?? false;
     this.#cues = [...(options.cues ?? [])].sort((a, b) => a.at - b.at);
+    // A live cue sets the go-live time itself.
+    this.#live = (options.live ?? false) && !this.#cues.some((cue) => cue.action === "live");
     const bad = this.#cues.find((cue) => !Number.isFinite(cue.at) || cue.at < 0);
     if (bad) throw new RangeError(`cue time must be a finite number >= 0, got ${bad.at}`);
     this.#onWarning = options.onWarning;
@@ -198,6 +204,7 @@ export class RenderSession {
       this.#nextCue++;
       if (cue.action === "pause") this.player.pause();
       else if (cue.action === "resume") this.player.resume();
+      else if (cue.action === "live") this.#goLive();
       else this.player.finish?.();
       // The player ignores actions that do not fit its state, so follow what it actually did.
       const paused = this.player.state === "paused";
@@ -213,7 +220,11 @@ export class RenderSession {
 
   /** Goes live once, outside the engine's frame, when the finale has settled. */
   #goLiveWhenDone(): void {
-    if (!this.#live || this.#wentLive || this.player.state !== "done") return;
+    if (this.#live && this.player.state === "done") this.#goLive();
+  }
+
+  #goLive(): void {
+    if (this.#wentLive) return;
     this.#wentLive = true;
     this.player.goLive();
   }

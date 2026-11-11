@@ -414,7 +414,9 @@ export class Engine implements Player {
     this.#build.schedule.finishAll();
     this.#guard(() => this.#stage.finishAll());
     this.#intro.end();
-    this.#finale.end(this.#roster);
+    // The halo fades out while the cursors leave, instead of vanishing in one frame.
+    const fade = s !== "idle" && !this.#deps.settings.reducedMotion ? { pt: this.#pt, ms: EXIT_MS } : undefined;
+    this.#finale.end(this.#roster, fade);
     this.#setRulers(false);
     const vp = this.#readViewport();
     for (const a of this.#roster.agents) if (a.mode !== BENCHED) sendAway(a, vp, EXITING);
@@ -877,12 +879,14 @@ export class Engine implements Player {
   }
 
   #stepLive(dt: number, vp: Rect): void {
+    this.#finale.fadeFrame(vp, this.#pt, this.#haloLevels());
     const steps = this.#takeSteps(dt);
     for (let k = 0; k < steps; k++) {
       this.#sim += PHYSICS_STEP_MS;
       this.#roster.stepFree(vp, this.#sim, STEP_S);
     }
-    if (this.#pt - this.#liveAt >= EXIT_MS || this.#roster.agents.every((a) => a.mode !== EXITING)) {
+    const left = this.#finale.fading || this.#roster.agents.some((a) => a.mode === EXITING);
+    if (this.#pt - this.#liveAt >= EXIT_MS || !left) {
       this.#dissolve();
     }
   }

@@ -89,7 +89,7 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--no-live` | Go live | Keep the finale through the whole tail instead of going live |
 | `--locale <tag>` | `en-US` | Language of the toolbar strings and the page, a BCP 47 tag such as `zh-CN` |
 | `--bpm <n>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid), 40–240 |
-| `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume` or `finish` (complete the build quickly). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
+| `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume`, `finish` (complete the build quickly) or `live` (go live then instead of when the finale settles, also with `--no-live`; an unfinished build completes at once). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
 | `--no-sound` | Sound on | Leave out the soundtrack; GIF and WebP never have one |
 | `--no-remote` | Loaded | Do not load `https:` images and fonts the input links to. Scripts, style sheets, data requests and `http:` files from other sites are never loaded |
 

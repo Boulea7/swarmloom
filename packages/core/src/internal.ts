@@ -171,7 +171,7 @@ export type CreateStageFn = (opts: StageOptions) => Stage;
  *  selection    { x, y, w, h, color?, handles?: boolean, label?: string }
  *  caret        { x, y, h, color? }                                 blinking text caret (blink driven by `now` in render)
  *  icon         { x, y, size, src?: string, alpha?: number }        intro icon (blueprint.icon or a generic glyph)
- *  halo         { x, y, r, level: number, bands?: number[], colors?: string[] }  audio-reactive ring glow
+ *  halo         { x, y, r, level: number, bands?: number[], colors?: string[], alpha? }  audio-reactive ring glow (alpha 0..1, default 1)
  */
 
 /* ================================================================== */
