@@ -39,6 +39,18 @@ const SKIP_SVG = new Set([
   "style",
   "script",
 ]);
+/** SMIL elements that animate a target. */
+const SMIL_ANIMATIONS = "animate,set,animateMotion,animateTransform,animateColor";
+/** Animated attributes whose DOM property has another name, or is a pair written as "x y". */
+const ANIMATED_PROPS: ReadonlyMap<string, readonly string[]> = new Map([
+  ["points", ["animatedPoints"]],
+  ["in", ["in1"]],
+  ["stdDeviation", ["stdDeviationX", "stdDeviationY"]],
+  ["baseFrequency", ["baseFrequencyX", "baseFrequencyY"]],
+  ["radius", ["radiusX", "radiusY"]],
+]);
+/** Motion targets get their whole local transform as `transform`, written over these. */
+const MOTION_RESET = ["translate", "rotate", "scale", "offset-path"];
 /** Attributes that never reach the snapshot: styling is rewritten, loading hints do not apply. */
 const DROP_ATTRS = new Set([
   "style",
@@ -110,8 +122,18 @@ interface Box {
   bottom: number;
 }
 
+/**
+ * What SMIL animates beyond CSS properties (those reach the computed style): attribute names per
+ * target, and the targets of `animateMotion`, whose motion only shows in their CTM.
+ */
+interface SmilTargets {
+  attributes: Map<Element, Set<string>>;
+  moving: Set<Element>;
+}
+
 interface Walk {
   baseline: StyleBaseline;
+  smil: SmilTargets;
   resources: ResourceCache;
   shadowRootOf: (host: Element) => ShadowRoot | null;
   out: string[];
@@ -202,11 +224,101 @@ function imageFallback(img: HTMLImageElement): () => string | null {
   };
 }
 
+/** Records the targets of the SMIL animations in an outermost `<svg>` (and the svg itself). */
+function collectSmil(found: SmilTargets, svg: Element): void {
+  for (const anim of Array.from(svg.querySelectorAll(SMIL_ANIMATIONS))) {
+    if (anim.namespaceURI !== SVG_NS) continue;
+    const target = (anim as SVGAnimationElement).targetElement;
+    if (!target) continue;
+    if (anim.localName === "animateMotion") {
+      found.moving.add(target);
+      continue;
+    }
+    const attribute = anim.getAttribute("attributeName")?.trim();
+    if (!attribute || anim.getAttribute("attributeType") === "CSS") continue;
+    const name = attribute.replace(/^xlink:/, "");
+    const names = found.attributes.get(target) ?? new Set<string>();
+    names.add(name);
+    found.attributes.set(target, names);
+  }
+}
+
+/** Items of an SVG list as text. */
+function listText<T>(list: { numberOfItems: number; getItem(index: number): T }, text: (item: T) => string): string {
+  const out: string[] = [];
+  for (let i = 0; i < list.numberOfItems; i++) out.push(text(list.getItem(i)));
+  return out.join(" ");
+}
+
+/** Animated value of one SVG DOM property as attribute text, or null for keyword types. */
+function animatedText(owner: unknown): string | null {
+  if (!owner || typeof owner !== "object") return null;
+  const anim = (owner as { animVal?: unknown }).animVal;
+  // Type tags, not instanceof: the element may belong to another frame's realm.
+  switch (Object.prototype.toString.call(owner).slice(8, -1)) {
+    case "SVGAnimatedLength":
+      return (anim as SVGLength).valueAsString;
+    case "SVGAnimatedNumber":
+    case "SVGAnimatedInteger":
+    case "SVGAnimatedBoolean":
+    case "SVGAnimatedString":
+      return String(anim);
+    case "SVGAnimatedRect": {
+      const rect = anim as DOMRectReadOnly | null;
+      return rect ? `${rect.x} ${rect.y} ${rect.width} ${rect.height}` : null;
+    }
+    case "SVGAnimatedLengthList":
+      return listText(anim as SVGLengthList, (length) => length.valueAsString);
+    case "SVGAnimatedNumberList":
+      return listText(anim as SVGNumberList, (number) => String(number.value));
+    case "SVGAnimatedTransformList":
+      return listText(anim as SVGTransformList, ({ matrix: m }) => `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`);
+    case "SVGPointList":
+      return listText(owner as SVGPointList, (point) => `${point.x},${point.y}`);
+    default:
+      // Enumerations, preserveAspectRatio and angles keep their base value.
+      return null;
+  }
+}
+
+/**
+ * Animated values of the attributes SMIL animates on `el`: the attribute itself holds the base
+ * value, only the DOM property's `animVal` (or `animatedPoints`) has the current one.
+ */
+function animatedAttributes(walk: Walk, el: Element): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const name of walk.smil.attributes.get(el) ?? []) {
+    const parts = (ANIMATED_PROPS.get(name) ?? [name]).map((prop) => animatedText(Reflect.get(el, prop)));
+    if (parts.every((part) => part !== null)) values.set(name, parts.join(" "));
+  }
+  return values;
+}
+
+/** Local transform of an `animateMotion` target, motion included, as a CSS `matrix()`. */
+function motionMatrix(el: Element): string | null {
+  const self = el as Partial<SVGGraphicsElement>;
+  const parent = el.parentNode as Partial<SVGGraphicsElement> | null;
+  if (typeof self.getScreenCTM !== "function" || typeof parent?.getScreenCTM !== "function") return null;
+  try {
+    const inner = self.getScreenCTM.call(el);
+    const outer = parent.getScreenCTM.call(parent);
+    if (!inner || !outer) return null;
+    const m = outer.inverse().multiply(inner);
+    const values = [m.a, m.b, m.c, m.d, m.e, m.f];
+    if (!values.every(Number.isFinite)) return null;
+    return `matrix(${values.map((v) => Math.round(v * 1e6) / 1e6).join(",")})`;
+  } catch {
+    // A parent scaled to nothing has no inverse (some engines throw); it draws nothing either.
+    return null;
+  }
+}
+
 /** Attributes of a clone, with resource URLs embedded and live form state written back. */
 function attributes(walk: Walk, el: Element): string {
   const out: string[] = [];
   const svg = el.namespaceURI === SVG_NS;
   const local = el.localName;
+  const animated = svg ? animatedAttributes(walk, el) : null;
   const input = local === "input" && !svg ? (el as HTMLInputElement) : null;
   const liveValue = input !== null && input.type !== "file" && input.type !== "password";
   const option = local === "option" && !svg ? (el as HTMLOptionElement) : null;
@@ -219,9 +331,16 @@ function attributes(walk: Walk, el: Element): string {
     // Live form state is written below; the authored attribute too would be a duplicate, which
     // makes the SVG ill-formed.
     if ((liveValue && name === "value") || (input && name === "checked") || (option && name === "selected")) continue;
-    let value = attr.value;
+    let value = animated?.get(name) ?? attr.value;
+    animated?.delete(name);
     if (name === "src" && (local === "img" || local === "iframe" || local === "video")) continue;
     if (svg && name === "href" && local === "image") value = embedUrl(walk, value);
+    out.push(` ${name}="${escapeAttr(value)}"`);
+  }
+  // Attributes only an animation sets.
+  for (const [name, animatedValue] of animated ?? []) {
+    if (!XML_NAME.test(name) || DROP_ATTRS.has(name) || name.startsWith("on")) continue;
+    const value = name === "href" && local === "image" ? embedUrl(walk, animatedValue) : animatedValue;
     out.push(` ${name}="${escapeAttr(value)}"`);
   }
   if (liveValue) out.push(` value="${escapeAttr(input.value)}"`);
@@ -282,6 +401,8 @@ function emitElement(
   const svg = ns === SVG_NS;
   if (ns === XHTML_NS && SKIP_HTML.has(local)) return;
   if (svg && SKIP_SVG.has(local)) return;
+  // Before any of its elements is written: an animation may target the svg itself (its viewBox).
+  if (svg && parentNs !== SVG_NS) collectSmil(walk.smil, el);
   const cs = view.win.getComputedStyle(el);
   // SVG resources (gradients, symbols) count even inside display:none, so only HTML subtrees go.
   if (!svg && cs.getPropertyValue("display") === "none") return;
@@ -298,6 +419,13 @@ function emitElement(
   if (overflowX === "auto" || overflowX === "scroll") override["overflow-x"] = "hidden";
   if (overflowY === "auto" || overflowY === "scroll") override["overflow-y"] = "hidden";
   if (shift) override.translate = shiftedTranslate(cs.getPropertyValue("translate"), shift.x, shift.y);
+  const motion = svg && walk.smil.moving.has(el) ? motionMatrix(el) : null;
+  if (motion) {
+    for (const name of MOTION_RESET) override[name] = "none";
+    override.transform = motion;
+    override["transform-origin"] = "0px 0px";
+    override["transform-box"] = "view-box";
+  }
   const frame = local === "iframe" && !svg;
   if (frame) {
     // The frame's document is drawn into a box that must size and contain it like the frame did.
@@ -451,7 +579,9 @@ function sheet(rules: readonly string[], fonts: string): string {
  *
  * Known limits: pseudo-elements other than `::before`/`::after` (custom `::marker`,
  * `::first-letter`) fall back to defaults; cross-origin images without CORS are left blank;
- * WebGL canvases show what `toDataURL` returns at capture time; `position: sticky` does not stick.
+ * WebGL canvases show what `toDataURL` returns at capture time; `position: sticky` does not stick;
+ * SMIL animations of keyword attributes (enumerations, `preserveAspectRatio`, `orient`) show the
+ * base value.
  */
 export async function snapshotFrame(
   source: SnapshotSource,
@@ -463,6 +593,7 @@ export async function snapshotFrame(
   if (!win) throw new Error("The frame document has no window");
   const walk: Walk = {
     baseline,
+    smil: { attributes: new Map(), moving: new Set() },
     resources,
     shadowRootOf: source.shadowRootOf,
     out: [],
