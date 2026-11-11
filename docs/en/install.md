@@ -48,7 +48,7 @@ The release is planned for the Chrome Web Store. To load the development package
 4. Select `apps/extension/dist/chrome/`.
 5. Pin SwarmLoom, open a normal page and click its icon.
 
-In-place rebuilding is unavailable on `chrome://`, the Chrome Web Store, other extension pages and the built-in PDF viewer. Access to `file://` pages requires a separate **Allow access to file URLs** setting. Dropping a file into Studio does not need that permission.
+In-place rebuilding is unavailable on `chrome://`, the Chrome Web Store, other extension pages and the built-in PDF viewer. Access to `file://` pages requires a separate **Allow access to file URLs** setting. Dropping a file into Studio does not need that permission. Without it, clicking SwarmLoom on a local PDF opens Studio on its file picker; choose the same file there.
 
 ## Microsoft Edge <Badge type="warning" text="Development package" />
 
@@ -127,7 +127,7 @@ Recent Xcode uses `safari-web-extension-packager`; the older tool is `safari-web
 5. iOS / iPadOS: enable SwarmLoom in the system Safari extension settings and grant site access when prompted.
 6. visionOS: enable it in the corresponding Safari extension settings. iPadOS uses the iOS container flow; visionOS uses a visionOS target.
 
-Mobile Safari has no desktop context-menu or window-management APIs. Use file pickers, drag and drop, or system sharing for files. Safari's `storage.sync` should not be interpreted as cross-device synchronisation.
+Mobile Safari has no desktop context-menu or window-management APIs. Use file pickers, drag and drop, or system sharing for files. Safari extensions cannot read local files, so clicking SwarmLoom on a `file://` document opens Studio on its file picker. Safari's `storage.sync` should not be interpreted as cross-device synchronisation.
 
 ## Studio PWA <Badge type="warning" text="Planned" />
 

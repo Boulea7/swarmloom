@@ -1,6 +1,7 @@
 /**
- * Welcome page, opened once on install: a live `<swarm-loom>` demo of a small card, how to start,
- * how to pin the button in this browser, and links to the demo page, Studio and settings.
+ * Welcome page, opened once on install: a live `<swarm-loom>` demo of a small card (following the
+ * reduced-motion setting), how to start, how to pin the button in this browser, and links to the
+ * demo page, Studio and settings.
  */
 
 import { define } from "@swarmloom/element";
@@ -8,6 +9,7 @@ import { BUILD_TARGET, type TargetId } from "../shared/build-info";
 import { detectBackgroundCapabilities } from "../shared/capabilities";
 import type { MessageKey } from "../shared/i18n";
 import { studioUrl } from "../shared/links";
+import { motionAttribute } from "../shared/prefs";
 import { applyI18n, byId, displayShortcut, onReady, pageContext, toggleShortcut } from "./dom";
 
 /**
@@ -22,9 +24,11 @@ const PIN_KEYS: Readonly<Record<TargetId, readonly MessageKey[]>> = {
 };
 
 onReady(async () => {
-  const { api, tr } = await pageContext();
+  const { api, prefs, tr } = await pageContext();
   applyI18n(document, tr);
 
+  // Set before define() so the first player already honours the setting instead of rebuilding.
+  byId("demo").setAttribute("reduced-motion", motionAttribute(prefs.reducedMotion));
   try {
     define();
   } catch (e) {

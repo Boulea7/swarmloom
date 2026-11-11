@@ -85,6 +85,23 @@ describe("toolbar action", () => {
     expect(studio.searchParams.get("src")).toBe("https://example.com/paper.pdf");
   });
 
+  it("hands local documents to Studio's file picker unless the extension may read files", async () => {
+    const file = "file:///tmp/report.pdf";
+    const cases = [
+      { target: "safari", fileAccess: false, src: null },
+      { target: "chrome", fileAccess: false, src: null },
+      { target: "chrome", fileAccess: true, src: file },
+    ] as const;
+    for (const c of cases) {
+      const fake = createFake({ fileAccess: c.fileAccess });
+      await createBackground(fake.api, { target: c.target }).handleAction(tab(file));
+      const studio = new URL(fake.createdTabs[0]?.url ?? "");
+      const name = `${c.target} file access ${c.fileAccess}`;
+      expect(studio.searchParams.get("src"), name).toBe(c.src);
+      expect(studio.searchParams.get("import"), name).toBe("1");
+    }
+  });
+
   it("asks the bundled demo page to toggle itself (extension pages cannot be scripted)", async () => {
     const fake = createFake();
     const bg = createBackground(fake.api, { target: "firefox" });

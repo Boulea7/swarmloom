@@ -43,7 +43,9 @@ onReady(async () => {
   applyI18n(document, tr);
   const { reason, url } = noticeParams(location.search);
   const getURL = api ? (p: string) => api.runtime.getURL(p) : null;
-  const src = studioSource(url ?? undefined);
+  // A local page lands here because the extension may not read files, so Studio could not load
+  // its link either; the import card is the way in.
+  const src = url?.startsWith("file:") ? null : studioSource(url ?? undefined);
 
   byId("reason").textContent = tr.t(reasonMessageKey(reason));
   if (url) {

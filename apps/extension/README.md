@@ -5,11 +5,15 @@ cursors rebuilds the page you are on, then hands the real page back. Click again
 stop. There is no popup.
 
 - Context menu (where the browser has one): rebuild this page, rebuild this element, open a
-  linked PDF/DOCX/Markdown/SVG/image/3D file, or the current PDF, in Studio.
+  linked file in any format Studio reads (extensions from the `@swarmloom/formats` registry;
+  links to web pages and source code are left out), or the current PDF, in Studio.
 - Pages an extension cannot script (`chrome://`, `about:`, web stores, the PDF viewer, local files
   without access): a badge with the reason, plus a notice tab with the next steps: open in
   Studio, import a file, and copy the link when Studio can open it (not for `chrome://` or
-  `about:` addresses). Never a silent failure.
+  `about:` addresses, nor local files). Never a silent failure.
+- Local documents (a `file://` PDF or a local link) open Studio on its file picker: Studio can
+  read `file://` only where the browser gives the extension file access (Chromium's "Allow
+  access to file URLs"; never Safari or Firefox), and then it loads the file directly.
 - Leaving or changing the page (route change, back/forward, bfcache) ends the swarm and restores
   the page.
 - Options page: speed, cursors, labels, theme, sound and sound pack, volume, finale, reduced motion,
@@ -45,12 +49,20 @@ exists (`apps/studio/dist-extension`, `--studio <dir>` or `SWARMLOOM_STUDIO_DIR`
 as `studio/`; otherwise Studio links go to the hosted Studio. Brand icons come from
 `assets/brand/icon-<size>.png`, with generated placeholders until they exist.
 
+Every package carries `LICENSE.txt` (SwarmLoom, MIT) and `THIRD_PARTY_NOTICES.txt`, written by
+`scripts/notices.mjs`: the name, version, declared licence and shipped licence/NOTICE files of each
+third-party package in it. The extension's own scripts contribute what esbuild actually bundled;
+the copied Studio contributes the runtime dependency closure of `@swarmloom/studio` (type-only and
+platform-binary packages left out). A package with no licence file fails the build unless it is MIT,
+whose standard text is then used. The build log prints the entry count per package (one
+`License:` line per name@version in the file).
+
 ## Commands
 
 ```sh
 pnpm -F @swarmloom/extension build             # all targets + zips
 node scripts/build.mjs --target firefox        # one target (comma-separated list allowed)
-pnpm -F @swarmloom/extension check:package     # permissions, CSP, no remote code, zip = folder, size budget
+pnpm -F @swarmloom/extension check:package     # permissions, CSP, no remote code, notices, zip = folder, size budget
 pnpm -F @swarmloom/extension lint:firefox      # web-ext lint dist/firefox
 pnpm -F @swarmloom/extension build:amo-source  # dist/firefox-amo-source.zip for AMO review
 node scripts/amo-source.mjs --verify           # rebuild from that zip in a temp folder, compare hashes

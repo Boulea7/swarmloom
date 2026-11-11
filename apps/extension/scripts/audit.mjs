@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Audits built store packages: manifest and permission allowlist, CSP, no remote code, no test hook,
-// content script size budget, and that each zip is exactly (and reproducibly) its folder.
+// content script size budget, licence notices present, and that each zip is exactly (and
+// reproducibly) its folder.
 //
 // Usage: node scripts/audit.mjs [--target all|chrome,edge,firefox,safari] [--dist <dir>]
 // Exits 1 and lists every problem when a package fails. Runs on existing output; build first.
@@ -11,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { gzipSync } from "node:zlib";
 import { validateManifest } from "./manifest.mjs";
+import { LICENSE_COPY, NOTICES_FILE } from "./notices.mjs";
 import { parseTargets } from "./targets.mjs";
 import { directoryEntries, unzipEntries, zipEntries } from "./zip.mjs";
 
@@ -75,6 +77,10 @@ export function auditPackage(dir, target, zipPath) {
       }
     }
     if (text.includes(TEST_HOOK)) problems.push(`${name}: contains the e2e test hook`);
+  }
+
+  for (const name of [NOTICES_FILE, LICENSE_COPY]) {
+    if (!files.some((f) => f.name === name && f.data.length > 0)) problems.push(`${name} is missing or empty`);
   }
 
   const content = files.find((f) => f.name === "swarm.js");

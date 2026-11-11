@@ -138,6 +138,15 @@ export async function savePrefs(
   }
 }
 
+/**
+ * `reduced-motion` attribute value of `<swarm-loom>` for a stored motion preference, so the
+ * extension pages follow the same setting as the in-page swarm ("on" means always reduce).
+ */
+export function motionAttribute(pref: MotionPref): "auto" | "true" | "false" {
+  if (pref === "auto") return "auto";
+  return pref === "on" ? "true" : "false";
+}
+
 /** Small FNV-1a hash used to derive a stable per-page seed (no Math.random in playback paths). */
 export function seedFrom(text: string): number {
   let h = 0x811c9dc5;

@@ -31,6 +31,8 @@ export interface FakeOptions {
   optionalHosts?: boolean;
   /** Answer to `permissions.request` (default true). */
   grantHosts?: boolean;
+  /** Answer to `extension.isAllowedFileSchemeAccess` (default false, as after a store install). */
+  fileAccess?: boolean;
 }
 
 export interface Fake {
@@ -148,7 +150,7 @@ export function createFake(opts: FakeOptions = {}): Fake {
     action,
     storage: { local: area(local), ...(opts.sync === false ? {} : { sync: area(sync) }), onChanged: event() },
     permissions: { request: async () => opts.grantHosts !== false },
-    extension: { isAllowedFileSchemeAccess: async () => false },
+    extension: { isAllowedFileSchemeAccess: async () => opts.fileAccess === true },
     i18n: { getMessage: (key: string) => key, getUILanguage: () => "en-US" },
     ...(opts.scripting === false ? {} : { scripting }),
     ...(opts.menus === false ? {} : { contextMenus: menusApi }),

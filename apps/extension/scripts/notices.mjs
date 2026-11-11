@@ -1,0 +1,223 @@
+// Third-party licence notices for the extension packages (THIRD_PARTY_NOTICES.txt).
+//
+// Two sources feed the list: the node_modules files esbuild bundled into the extension's own
+// scripts (exact, from the metafile), and, when the Studio build is copied in, the production
+// dependency closure of @swarmloom/studio (Vite bundles from those packages). Workspace packages
+// are SwarmLoom's own code, covered by its MIT licence (LICENSE.txt in the package).
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
+
+/** File names the packages carry: the third-party notices and SwarmLoom's own licence. */
+export const NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
+export const LICENSE_COPY = "LICENSE.txt";
+
+/** Top-level files that carry a package's licence or NOTICE text (LICENSE, LICENSE-MPL, COPYING.txt ...). */
+const LICENSE_FILE = /^(?:licen[cs]e|copying|notice)(?:[-._][\w.-]*)?$/i;
+
+/** Standard MIT text, used when a package declares MIT in package.json but ships no licence file. */
+const MIT_TEXT = `Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.`;
+
+const RULE = "=".repeat(80);
+
+/**
+ * @typedef {object} Notice
+ * @property {string} name
+ * @property {string} version
+ * @property {string} license SPDX expression from package.json
+ * @property {string} source homepage or repository URL, "" when unknown
+ * @property {{ file: string; text: string }[]} texts licence files, or the standard MIT text
+ */
+
+/** @param {string} path @returns {any} */
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+/**
+ * Root folder of the installed package a bundled file belongs to, or null when the file is not
+ * inside node_modules (workspace sources, virtual modules).
+ * @param {string} file absolute path
+ * @returns {string | null}
+ */
+export function packageRootOf(file) {
+  const parts = file.split(/[\\/]/);
+  const at = parts.lastIndexOf("node_modules");
+  const name = parts[at + 1];
+  if (at < 0 || !name) return null;
+  const end = at + (name.startsWith("@") ? 3 : 2);
+  return end <= parts.length - 1 ? parts.slice(0, end).join(sep) : null;
+}
+
+/**
+ * Package roots of the third-party inputs listed in esbuild metafiles.
+ * @param {readonly { inputs: Record<string, unknown> }[]} metafiles
+ * @param {string} workingDir the build's absWorkingDir (input paths are relative to it)
+ * @returns {string[]}
+ */
+export function bundledPackages(metafiles, workingDir) {
+  /** @type {Set<string>} */
+  const roots = new Set();
+  for (const metafile of metafiles) {
+    for (const input of Object.keys(metafile.inputs)) {
+      // Plugin namespaces ("swarmloom-no-adapter:...") never point at files.
+      if (/^[\w-]+:/.test(input) && !/^[a-z]:[\\/]/i.test(input)) continue;
+      const root = packageRootOf(resolve(workingDir, input));
+      if (root) roots.add(root);
+    }
+  }
+  return [...roots];
+}
+
+/**
+ * Finds an installed dependency the way Node does: `node_modules/<name>` in `from` or an ancestor.
+ * @param {string} name
+ * @param {string} from
+ * @returns {string | null} real path of the package folder
+ */
+function resolvePackage(name, from) {
+  for (let dir = from; ; dir = dirname(dir)) {
+    const candidate = join(dir, "node_modules", name);
+    if (existsSync(join(candidate, "package.json"))) return realpathSync(candidate);
+    if (dirname(dir) === dir) return null;
+  }
+}
+
+/**
+ * Runtime dependency closure of a package: `dependencies` plus installed `optionalDependencies`,
+ * transitively. Type-only packages (`@types/*`) and platform binaries (packages with `os` or `cpu`
+ * constraints, which differ per machine and never run in a browser) are left out.
+ * @param {string} start package folder
+ * @returns {string[]} real paths, start included
+ * @throws Error when a required dependency is not installed
+ */
+export function dependencyClosure(start) {
+  /** @type {Set<string>} */
+  const seen = new Set();
+  const queue = [realpathSync(start)];
+  while (queue.length > 0) {
+    const dir = /** @type {string} */ (queue.pop());
+    if (seen.has(dir)) continue;
+    seen.add(dir);
+    const pkg = readJson(join(dir, "package.json"));
+    for (const [field, optional] of /** @type {const} */ ([
+      ["dependencies", false],
+      ["optionalDependencies", true],
+    ])) {
+      for (const name of Object.keys(pkg[field] ?? {})) {
+        if (name.startsWith("@types/")) continue;
+        const found = resolvePackage(name, dir);
+        if (!found) {
+          if (optional) continue;
+          throw new Error(`${pkg.name}: dependency ${name} is not installed`);
+        }
+        const dep = readJson(join(found, "package.json"));
+        if (dep.os === undefined && dep.cpu === undefined) queue.push(found);
+      }
+    }
+  }
+  return [...seen];
+}
+
+/** @param {any} pkg @returns {string} */
+function licenseOf(pkg) {
+  if (typeof pkg.license === "string") return pkg.license;
+  // Legacy `licenses: [{ type }]`: any of them may be chosen.
+  const legacy = Array.isArray(pkg.licenses) ? pkg.licenses.map((/** @type {any} */ l) => l?.type ?? l) : [];
+  return legacy.filter((/** @type {unknown} */ l) => typeof l === "string").join(" OR ");
+}
+
+/** @param {any} pkg @returns {string} */
+function sourceOf(pkg) {
+  const repo = typeof pkg.repository === "string" ? pkg.repository : pkg.repository?.url;
+  const url = typeof pkg.homepage === "string" ? pkg.homepage : repo;
+  return typeof url === "string" ? url.replace(/^git\+/, "") : "";
+}
+
+/** @param {any} pkg @returns {string} */
+function authorOf(pkg) {
+  const author = pkg.author;
+  if (typeof author === "string") return author;
+  return typeof author?.name === "string" ? author.name : "";
+}
+
+/**
+ * Reads the notice of every third-party package among `roots` (folders inside node_modules);
+ * workspace packages are skipped. Sorted by name and version, one entry per name@version.
+ * @param {Iterable<string>} roots
+ * @returns {Notice[]}
+ * @throws Error when a package ships no licence file and is not MIT (no text to reproduce)
+ */
+export function collectNotices(roots) {
+  /** @type {Map<string, Notice>} */
+  const byId = new Map();
+  for (const root of roots) {
+    const dir = realpathSync(root);
+    if (!dir.split(sep).includes("node_modules")) continue;
+    const pkg = readJson(join(dir, "package.json"));
+    const id = `${pkg.name}@${pkg.version}`;
+    if (byId.has(id)) continue;
+    const license = licenseOf(pkg);
+    const texts = readdirSync(dir)
+      .filter((file) => LICENSE_FILE.test(file) && statSync(join(dir, file)).isFile())
+      .sort()
+      .map((file) => ({ file, text: readFileSync(join(dir, file), "utf8").replace(/\r\n?/g, "\n").trim() }));
+    if (texts.length === 0) {
+      if (license !== "MIT") {
+        throw new Error(`${id}: no licence file in the package and no standard text for "${license}"`);
+      }
+      const author = authorOf(pkg);
+      const copyright = author ? `Copyright (c) ${author}\n\n` : "";
+      texts.push({ file: "(standard MIT text; the package ships no licence file)", text: `${copyright}${MIT_TEXT}` });
+    }
+    byId.set(id, { name: pkg.name, version: pkg.version, license, source: sourceOf(pkg), texts });
+  }
+  // Code-unit order, not localeCompare: the file must not depend on the ICU data of the machine.
+  return [...byId.keys()].sort().map((id) => /** @type {Notice} */ (byId.get(id)));
+}
+
+/**
+ * Renders THIRD_PARTY_NOTICES.txt. A licence text that already appeared (the Apache-2.0 text
+ * shipped by several packages, for example) is referenced instead of repeated.
+ * @param {readonly Notice[]} notices
+ * @returns {string}
+ */
+export function renderNotices(notices) {
+  const lines = [
+    "SwarmLoom browser extension: third-party notices",
+    "",
+    notices.length > 0
+      ? "This package includes the third-party software listed below, each under its own licence."
+      : "This package includes no third-party software.",
+    `SwarmLoom itself is released under the MIT License (${LICENSE_COPY}).`,
+  ];
+  /** @type {Map<string, string>} */
+  const firstSeen = new Map();
+  for (const notice of notices) {
+    const id = `${notice.name} ${notice.version}`;
+    lines.push("", RULE, id, `License: ${notice.license || "(not declared)"}`);
+    if (notice.source) lines.push(`Source: ${notice.source}`);
+    for (const { file, text } of notice.texts) {
+      const earlier = firstSeen.get(text);
+      if (earlier) {
+        lines.push("", `${file}: same text as ${earlier} above.`);
+        continue;
+      }
+      firstSeen.set(text, id);
+      lines.push("", `--- ${file} ---`, "", text);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}

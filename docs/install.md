@@ -48,7 +48,7 @@ pnpm --filter @swarmloom/extension build
 4. 选择 `apps/extension/dist/chrome/`。
 5. 固定 SwarmLoom 图标，打开普通网页后点击图标。
 
-`chrome://`、Chrome Web Store、其他扩展页和内建 PDF 查看器不支持原页重建。需要打开 `file://` 页面时，必须在扩展详情中单独允许“访问文件网址”；直接把文件拖入 Studio 不需要这项权限。
+`chrome://`、Chrome Web Store、其他扩展页和内建 PDF 查看器不支持原页重建。需要打开 `file://` 页面时，必须在扩展详情中单独允许“访问文件网址”；直接把文件拖入 Studio 不需要这项权限。未允许时，在本地 PDF 上点击 SwarmLoom 会打开 Studio 的文件选择器，选中同一个文件即可。
 
 ## Microsoft Edge <Badge type="warning" text="开发包" />
 
@@ -126,7 +126,7 @@ xcrun "$tool" apps/extension/dist/safari \
 5. iOS / iPadOS：在系统的 Safari 扩展设置中启用 SwarmLoom，并按提示授予当前网站权限。
 6. visionOS：在系统的 Safari 扩展设置中启用。iPadOS 使用 iOS 容器流程，visionOS 使用对应 visionOS target。
 
-移动 Safari 不支持桌面右键菜单和窗口管理。文件导入使用文件选择器、拖放或系统分享。Safari 的 `storage.sync` 不应被理解为跨设备同步。
+移动 Safari 不支持桌面右键菜单和窗口管理。文件导入使用文件选择器、拖放或系统分享。Safari 扩展不能读取本地文件，在 `file://` 文档上点击 SwarmLoom 会打开 Studio 的文件选择器。Safari 的 `storage.sync` 不应被理解为跨设备同步。
 
 ## Studio PWA <Badge type="warning" text="规划中" />
 

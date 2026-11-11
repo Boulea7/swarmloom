@@ -18,6 +18,7 @@
   "dependencies": {
     "@swarmloom/core": "workspace:*",
     "@swarmloom/element": "workspace:*",
+    "@swarmloom/formats": "workspace:*",
     "@swarmloom/snapshot-dom": "workspace:*"
   },
   "devDependencies": {

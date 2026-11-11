@@ -255,6 +255,9 @@ importers:
       '@swarmloom/element':
         specifier: workspace:*
         version: link:../../packages/element
+      '@swarmloom/formats':
+        specifier: workspace:*
+        version: link:../../packages/formats
       '@swarmloom/snapshot-dom':
         specifier: workspace:*
         version: link:../../packages/snapshot-dom
