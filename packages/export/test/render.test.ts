@@ -164,21 +164,27 @@ describe("render page protocol", () => {
     expect(goLive).toHaveBeenCalledOnce();
   });
 
-  it("resolves init and each step only after the page's next animation frame when it awaits paint", async () => {
+  it("resolves init and each step only after three animation frames when it awaits paint", async () => {
     const { api } = setup({ awaitPaint: true });
     const frames: FrameRequestCallback[] = [];
     const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
-    let stepped = false;
+    const runFrames = async (from: number, to: number) => {
+      for (let i = from; i < to; i++) {
+        await vi.waitFor(() => expect(frames).toHaveLength(i + 1));
+        frames[i]?.(i * 16);
+      }
+    };
     const init = api.init(base);
-    await vi.waitFor(() => expect(frames).toHaveLength(1));
-    frames[0]?.(0);
+    await runFrames(0, 3);
     await init;
+    let stepped = false;
     const step = api.step(40).then(() => {
       stepped = true;
     });
-    await vi.waitFor(() => expect(frames).toHaveLength(2));
+    await runFrames(3, 5);
+    await Promise.resolve();
     expect(stepped).toBe(false);
-    frames[1]?.(16);
+    await runFrames(5, 6);
     await step;
     expect(stepped).toBe(true);
     raf.mockRestore();

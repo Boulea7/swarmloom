@@ -33,16 +33,18 @@ export interface RenderDeps {
   /** Document the stage is mounted in. Default `globalThis.document`. */
   document?: Document;
   /**
-   * Resolve `init()` and each `step()` only in the page's next animation frame, so the browser paints
-   * the new state in its regular frame before the driver takes a screenshot (the CLI). Default false:
-   * a driver that draws the frames itself (Studio's in-page export) needs no paint.
+   * Resolve `init()` and each `step()` only after the page's next few animation frames, so the
+   * browser has painted, rastered and shown the new state before the driver takes a screenshot (the
+   * CLI). Default false: a driver that draws the frames itself (Studio's in-page export) needs no paint.
    */
   awaitPaint?: boolean;
 }
 
 const SAMPLE_RATE = 48_000;
 const HOST_ID = "swarmloom-render";
-/** Longest wait for the page's next animation frame (a hidden page gets none). */
+/** Animation frames init() and step() wait for with `awaitPaint` (see {@link paintFrames}). */
+const PAINT_FRAMES = 3;
+/** Longest wait for those frames (a hidden page gets none). */
 const FRAME_WAIT_MS = 1000;
 
 interface Active {
@@ -51,7 +53,7 @@ interface Active {
   session: RenderSession;
   live: LiveStage;
   host: HTMLElement;
-  /** Window whose animation frame init() and step() wait for, or null when they do not wait. */
+  /** Window whose animation frames init() and step() wait for, or null when they do not wait. */
   paint: Window | null;
 }
 
@@ -100,21 +102,27 @@ function mountHost(doc: Document, width: number, height: number): HTMLElement {
 }
 
 /**
- * Resolves in the page's next animation frame, after FRAME_WAIT_MS at the latest.
+ * Resolves after the page's next PAINT_FRAMES animation frames, after FRAME_WAIT_MS at the latest.
  *
- * The browser then paints the state a step left in its regular frame, before the driver asks for
- * a screenshot. A screenshot requested right after the DOM changed sometimes forces that frame
- * through a different raster path; at a deviceScaleFactor other than 1, 2 or 4 the anti-aliased
- * edges then came out a shade apart between two runs of the same render.
+ * The first frame paints the state a step left. Chromium rasters and activates that commit before
+ * it starts another main frame, so by the later frames the regular raster workers have drawn it.
+ * A screenshot requested before that forces the commit through a different raster path, and only
+ * sometimes, by timing: rounded corners and other anti-aliased edges then came out a shade apart
+ * between two runs of the same render (one frame in a few hundred at --scale 0.5, 2.5 or 3).
  */
-function nextFrame(view: Window | null): Promise<void> {
+function paintFrames(view: Window | null): Promise<void> {
   if (!view || typeof view.requestAnimationFrame !== "function") return Promise.resolve();
   return new Promise((resolve) => {
     const timer = view.setTimeout(resolve, FRAME_WAIT_MS);
-    view.requestAnimationFrame(() => {
+    const frame = (left: number): void => {
+      if (left > 0) {
+        view.requestAnimationFrame(() => frame(left - 1));
+        return;
+      }
       view.clearTimeout(timer);
       resolve();
-    });
+    };
+    frame(PAINT_FRAMES);
   });
 }
 
@@ -231,7 +239,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         const sha = await blueprintSha256(loaded.blueprint, init.input.url);
         const paint = deps.awaitPaint ? view : null;
         active = { init, loaded, session, live: stage, host, paint };
-        await nextFrame(paint);
+        await paintFrames(paint);
         const eta = session.player.eta();
         return {
           estimatedMs: Math.round((Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail),
@@ -253,7 +261,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       const { session, live, paint } = activeRender();
       const status = await session.step(ms);
       live.sync(session.elapsed);
-      await nextFrame(paint);
+      await paintFrames(paint);
       return status;
     },
 

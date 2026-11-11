@@ -5,6 +5,8 @@ import type { CliIo } from "../io";
 /**
  * Flags for stable, repeatable frames: sRGB output, grayscale text antialiasing, no hinting
  * differences, no throttling of the (hidden) page, and SwiftShader as WebGL fallback on GPU-less hosts.
+ * Frames are not paced to a 60 Hz display, so the few animation frames the render page waits for per
+ * video frame (until the browser has rastered it) cost no more than their work.
  */
 export const CHROME_ARGS = [
   "--hide-scrollbars",
@@ -16,6 +18,8 @@ export const CHROME_ARGS = [
   "--disable-renderer-backgrounding",
   "--disable-backgrounding-occluded-windows",
   "--enable-unsafe-swiftshader",
+  "--disable-frame-rate-limit",
+  "--disable-gpu-vsync",
 ];
 
 const LAUNCH_TIMEOUT_MS = 60_000;
