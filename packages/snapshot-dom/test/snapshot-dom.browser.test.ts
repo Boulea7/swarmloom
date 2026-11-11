@@ -202,10 +202,14 @@ describe("edge cases", () => {
         '.m li::before{content:counter(list-item) ") "}</style>' +
         '<ol class="s"><li>Pick</li><li>Plan</li></ol>' +
         '<div class="n"><p>Alpha</p><div style="counter-reset:sec"><p>Beta</p></div></div>' +
-        '<ol class="m" start="4"><li>Four</li><li>Five</li></ol>',
+        '<ol class="m" start="4"><li>Four</li><li>Five</li></ol>' +
+        '<ol class="m" reversed start="9"><li>Nine</li><li>Eight</li></ol>' +
+        '<ol class="m" reversed><li>Zero</li><li>Minus</li></ol>',
     );
     const bp = await snapshot(doc);
-    const expected = ["01. Pick", "02. Plan", "IV Alpha", "IV-I Beta", "4) Four", "5) Five"];
+    const expected = ["01. Pick", "02. Plan", "IV Alpha", "IV-I Beta", "4) Four", "5) Five", "9) Nine", "8) Eight"];
+    // Chromium counts a reversed list without a start attribute down from 0 for counter(list-item).
+    expected.push("0) Zero", "-1) Minus");
     for (const want of expected) expect(textWith(bp, want.split(" ").at(-1) as string)?.text).toContain(want);
   });
 

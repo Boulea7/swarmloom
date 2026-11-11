@@ -6,8 +6,10 @@ import { type Capture, type ElInfo, infoOf } from "./state";
  * CSS counters for ::before / ::after content. The computed `content` only says `counter(step)`, so
  * the values are replayed with one tree-order pass over the counter properties (reset, then increment,
  * then set; a sibling's reset replaces the counter, a descendant's nests it), including the implicit
- * `list-item` counter of HTML lists. The pass is resumable: the walk advances it under its slice
- * deadline (countersReady), so a page full of counters is never counted in one long task.
+ * `list-item` counter of HTML lists and reversed counters, which count down. The pass is resumable:
+ * the walk advances it under its slice deadline (countersReady), so a page full of counters is never
+ * counted in one long task. Only a reversed counter without a start value is read ahead to the end
+ * of its scope, which its start depends on.
  */
 
 /** Counter values in scope at one pseudo-element: name -> nested values, outermost first. */
@@ -20,9 +22,31 @@ interface Instance {
   value: number;
   /** The scope ends after this node's subtree (the parent of the element that created it). */
   owner: Node;
+  /** A reversed counter: list items step it down (reversed(), <ol reversed>). */
+  reversed: boolean;
+  /** A reversed counter created without a value: its start is summed until its scope is counted. */
+  tally?: Tally;
 }
 
-type Pairs = [string, number][];
+/**
+ * The start of a reversed counter created without a value (CSS Lists 4.4): the negated steps of its
+ * scope up to the first counter-set (plus that value), plus the last non-zero negated step. Values
+ * read before the start is known are relative to 0 and fixed when it is (`refs`).
+ */
+interface Tally {
+  num: number;
+  last: number;
+  refs: [number[], number][];
+}
+
+type Pairs<F = number> = [string, number | F][];
+
+/** One counter-reset entry; a null value is a reversed counter that counts its own start. */
+interface Reset {
+  name: string;
+  value: number | null;
+  reversed: boolean;
+}
 
 /** An open element of the pass (null info: the root) with its children and the next one to enter. */
 interface Frame {
@@ -42,6 +66,8 @@ export interface CounterIndex {
   readonly values: Map<Element, { before?: CounterValues; after?: CounterValues }>;
   readonly progress: Map<Element, number>;
   readonly stacks: Map<string, Instance[]>;
+  /** Reversed counters whose start is not known yet. */
+  open: number;
   /** Open elements, root first: empty before the pass starts and once it is finished. */
   readonly path: Frame[];
   started: boolean;
@@ -53,19 +79,40 @@ const LISTS: ReadonlySet<string> = new Set(["ol", "ul", "menu"]);
 const USES_COUNTER = /counters?\(/;
 
 /** Parses a computed `counter-*` value such as `step 1 item 0` (missing numbers default to `fallback`). */
-function pairs(value: string, fallback: number): Pairs {
-  const out: Pairs = [];
+function pairs<F>(value: string, fallback: F): Pairs<F> {
+  const out: Pairs<F> = [];
   if (!value || value === "none") return out;
   for (const token of value.trim().split(/\s+/)) {
     const n = Number(token);
     const last = out.at(-1);
     if (/^[+-]?\d+$/.test(token) && last) last[1] = n;
-    else out.push([token.replace(/^reversed\((.*)\)$/, "$1"), fallback]);
+    else out.push([token, fallback]);
   }
   return out;
 }
 
-const has = (list: Pairs, name: string) => list.some(([n]) => n === name);
+/** Parses a computed counter-reset such as `step reversed(list-item) 4`. */
+function resets(value: string): Reset[] {
+  return pairs(value, null).map(([token, v]) => {
+    const name = /^reversed\((.*)\)$/.exec(token)?.[1];
+    return name === undefined ? { name: token, value: v ?? 0, reversed: false } : { name, value: v, reversed: true };
+  });
+}
+
+/**
+ * The list-item reset of an HTML list whose computed counter-reset leaves it out, as Chromium draws
+ * counter(list-item): start - 1, or start + 1 counting down for <ol reversed>. Chromium (150, 156)
+ * starts a reversed list without a start attribute at 0 there rather than at its item count, and
+ * ignores <li value>, though its markers honour both. Engines that map these attributes to
+ * counter-reset and counter-set (Firefox) show them in the computed style instead.
+ */
+function listReset(el: Element): Reset {
+  const ol = el.localName === "ol";
+  const start = Number.parseInt(el.getAttribute("start") ?? "", 10);
+  const reversed = ol && el.hasAttribute("reversed");
+  const first = ol && Number.isFinite(start) ? start : reversed ? 0 : 1;
+  return { name: "list-item", value: reversed ? first + 1 : first - 1, reversed };
+}
 
 function stackOf(index: CounterIndex, name: string): Instance[] {
   let stack = index.stacks.get(name);
@@ -81,28 +128,55 @@ function current(index: CounterIndex, name: string, owner: Node): Instance {
   const stack = stackOf(index, name);
   const top = stack.at(-1);
   if (top) return top;
-  const created = { value: 0, owner };
+  const created = { value: 0, owner, reversed: false };
   stack.push(created);
   return created;
 }
 
+/** Fixes the start of a reversed counter whose tally is complete, in its value and the values read so far. */
+function settle(index: CounterIndex, c: Instance): void {
+  const t = c.tally;
+  if (!t) return;
+  const start = t.num + t.last;
+  c.value += start;
+  for (const [values, i] of t.refs) values[i] = (values[i] ?? 0) + start;
+  c.tally = undefined;
+  index.open--;
+}
+
 function apply(index: CounterIndex, cs: CSSStyleDeclaration, owner: Node, el: Element | null, listItem: boolean): void {
-  const reset = pairs(cs.counterReset, 0);
+  const reset = resets(cs.counterReset);
   const inc = pairs(cs.counterIncrement, 1);
   const set = pairs(cs.counterSet, 0);
-  if (el && LISTS.has(el.localName) && !has(reset, "list-item")) {
-    const start = Number.parseInt(el.getAttribute("start") ?? "", 10);
-    reset.push(["list-item", el.localName === "ol" && Number.isFinite(start) ? start - 1 : 0]);
-  }
-  if (listItem && !has(inc, "list-item")) inc.push(["list-item", 1]);
-  for (const [name, v] of reset) {
+  if (el && LISTS.has(el.localName) && !reset.some((r) => r.name === "list-item")) reset.push(listReset(el));
+  for (const { name, value, reversed } of reset) {
     const stack = stackOf(index, name);
-    const top = stack.at(-1);
-    if (top?.owner === owner) top.value = v;
-    else stack.push({ value: v, owner });
+    // A sibling's reset ends the earlier counter's scope.
+    if (stack.at(-1)?.owner === owner) settle(index, stack.pop() as Instance);
+    if (value === null) index.open++;
+    const tally = value === null ? { num: 0, last: 0, refs: [] } : undefined;
+    stack.push({ value: value ?? 0, owner, reversed, tally });
   }
-  for (const [name, v] of inc) current(index, name, owner).value += v;
-  for (const [name, v] of set) current(index, name, owner).value = v;
+  if (listItem && !inc.some(([n]) => n === "list-item")) {
+    inc.push(["list-item", current(index, "list-item", owner).reversed ? -1 : 1]);
+  }
+  for (const [name, v] of inc) {
+    const c = current(index, name, owner);
+    c.value += v;
+    if (c.tally) {
+      c.tally.num -= v;
+      if (v !== 0) c.tally.last = -v;
+    }
+  }
+  for (const [name, v] of set) {
+    const c = current(index, name, owner);
+    if (c.tally) {
+      // The first counter-set ends the tally; this element's own step is left out of the sum.
+      c.tally.num += (inc.find(([n]) => n === name)?.[1] ?? 0) + v;
+      settle(index, c);
+    }
+    c.value = v;
+  }
 }
 
 /** Counts one pseudo-element and records the values in scope when its content uses them. */
@@ -114,6 +188,7 @@ function countPseudo(index: CounterIndex, info: ElInfo, which: "before" | "after
   const values = new Map<string, number[]>();
   for (const [name, stack] of index.stacks) {
     const nested = stack.map((i) => i.value);
+    for (const [i, c] of stack.entries()) c.tally?.refs.push([nested, i]);
     if (nested.length > 0) values.set(name, nested);
   }
   const entry = index.values.get(info.el) ?? {};
@@ -140,7 +215,11 @@ function step(cap: Capture, index: CounterIndex): boolean {
     const done = top.info.el;
     countPseudo(index, top.info, "after");
     index.progress.set(done, AFTER);
-    for (const stack of index.stacks.values()) while (stack.at(-1)?.owner === done) stack.pop();
+    for (const stack of index.stacks.values()) {
+      while (stack.at(-1)?.owner === done) settle(index, stack.pop() as Instance);
+    }
+  } else {
+    for (const stack of index.stacks.values()) for (const c of stack) settle(index, c);
   }
   return true;
 }
@@ -192,7 +271,7 @@ function indexOf(cap: Capture, el: Element): CounterIndex {
   const root = el.getRootNode() as Document | ShadowRoot;
   let index = cap.counters.get(root);
   if (!index) {
-    index = { root, values: new Map(), progress: new Map(), stacks: new Map(), path: [], started: false };
+    index = { root, values: new Map(), progress: new Map(), stacks: new Map(), open: 0, path: [], started: false };
     if (sheetsUseCounters(root)) start(index);
     cap.counters.set(root, index);
   }
@@ -279,6 +358,8 @@ export function counterReader(cap: Capture, el: Element, which: "before" | "afte
   if (!index.started) start(index);
   const want = which === "before" ? BEFORE : AFTER;
   while ((index.progress.get(el) ?? 0) < want) if (!step(cap, index)) break;
+  // A reversed counter without a start value is known only once its whole scope is counted.
+  while (index.open > 0) if (!step(cap, index)) break;
   const values = index.values.get(el)?.[which];
   return (name, separator, style) => {
     const nested = values?.get(name) ?? [0];
