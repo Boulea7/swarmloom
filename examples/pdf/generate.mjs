@@ -2,6 +2,7 @@
 // Generates examples/pdf/brochure.pdf: a two-page A4 brochure written for this repository
 // (headings, paragraphs, a CJK line, a table, a vector chart with a rotated axis label,
 // a raster figure and two-column notes). Chromium prints our own HTML to PDF.
+// The chart values are invented for this fixture and labelled as such; they are not measurements.
 //
 // Usage: node examples/pdf/generate.mjs [--out path] [--chrome path]
 // Chromium: --chrome, $SWARMLOOM_CHROME, ~/bin/chromium, else Playwright's own build.
@@ -35,16 +36,17 @@ const formats = [
   ["3D model", "WebGL patches", "vertices, edges, faces"],
 ];
 
+// Invented example values (not benchmark results), labelled neutrally so the chart claims nothing.
 const bars = [
-  ["MD", 42],
-  ["DOCX", 58],
-  ["PDF", 71],
-  ["SVG", 36],
-  ["Slides", 64],
-  ["Code", 49],
+  ["A", 42],
+  ["B", 58],
+  ["C", 71],
+  ["D", 36],
+  ["E", 64],
+  ["F", 49],
 ];
 
-/** Vector bar chart with a trend line; printed by Chromium as PDF paths. */
+/** Illustrative vector bar chart with a dashed trend path; printed by Chromium as PDF paths. */
 function chart() {
   const w = 560;
   const h = 230;
@@ -86,7 +88,7 @@ function chart() {
     <line x1="${left}" x2="${w - 10}" y1="${bottom}" y2="${bottom}" stroke="#0b0b12" stroke-width="1.5"/>
     ${rects}
     <path d="${curve}" fill="none" stroke="#0b0b12" stroke-width="2" stroke-dasharray="6 4"/>
-    <text transform="translate(18 ${(top + bottom) / 2}) rotate(-90)" text-anchor="middle" font-size="12" fill="#333344">layers per second</text>
+    <text transform="translate(18 ${(top + bottom) / 2}) rotate(-90)" text-anchor="middle" font-size="12" fill="#333344">example value</text>
   </svg>`;
 }
 
@@ -138,11 +140,10 @@ const html = `<!doctype html>
   </figure>
 
   <section class="page2">
-    <h2>Build speed by format</h2>
-    <p>Median layers revealed per second on a mid-range laptop at speed 1. Text-heavy formats run slower
-    because every line is typed; vector formats are drawn stroke by stroke.</p>
+    <h2>Illustrative vector chart</h2>
+    <p>Grid, bars and a dashed trend path return as separate layers. Values are invented for this PDF fixture.</p>
     ${chart()}
-    <p class="caption">Figure 2. Bars show the median; the dashed line shows the trend at speed 2.</p>
+    <p class="caption">Figure 2. Illustrative values, not benchmark results.</p>
     <hr>
     <h2>Notes for authors</h2>
     <div class="cols">
