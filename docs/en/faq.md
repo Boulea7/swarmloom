@@ -80,9 +80,9 @@ A scanned page often contains only an image and no text items. SwarmLoom reveals
 
 SwarmLoom does not execute formulas; it displays expressions and cached values stored in the file. Recalculate and save in the relevant spreadsheet application before importing. Macros, external links and network queries do not run.
 
-### Why does OBJ or glTF report missing resources?
+### Why does OBJ or glTF lose materials or fail to open?
 
-OBJ may need MTL and textures, while `.gltf` may need external `.bin` files and textures. Preserve the original relative paths and provide those resources together. Prefer GLB for single-file distribution.
+SwarmLoom reads only the one file and never loads companion files: a `.gltf` that references external `.bin` files or textures is rejected, so export a GLB or a glTF with embedded data; OBJ MTL materials and textures are not read and a palette is used instead.
 
 ## Performance and export
 
