@@ -93,7 +93,7 @@ Programs:
       --ffmpeg <path>     ffmpeg 4+ executable. Default: SWARMLOOM_FFMPEG, then PATH
 
   -q, --quiet             Errors only: no progress, warnings or summary
-      --verbose           Echo the render page's console to stderr
+      --verbose           Echo the render page's console and blocked requests to stderr
   -h, --help              Show this help
 
 Examples:

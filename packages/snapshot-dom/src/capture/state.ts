@@ -2,6 +2,7 @@ import type { Layer, Rect } from "@swarmloom/core";
 import { isElement, isText, viewOf } from "../dom/env";
 import type { ResolvedOptions } from "../options";
 import { contains, intersect, type Linear, outwardRect, roundRect } from "../util/geom";
+import type { Slice } from "../util/slice";
 import type { CounterIndex } from "./counters";
 import type { BoxVisual } from "./styles";
 
@@ -136,13 +137,22 @@ export interface Capture {
   maxBottom: number;
   seq: number;
   treeIndex: number;
+  /** Elements walked in full, and the budget for them. */
   visited: number;
   readonly maxElements: number;
+  /** Elements only skimmed for fixed and out-of-flow content (see visitDropped), and their budget. */
+  skimmed: number;
+  readonly maxSkimmed: number;
   elementCapHit: boolean;
+  /**
+   * Layers dropped below maxHeight, and layers refused because the capture already holds far more
+   * than maxLayers. Skimmed subtrees count one per element: an estimate, since they are not read.
+   */
   droppedHeight: number;
-  /** Layers refused because the capture already holds far more than maxLayers. */
   overflow: number;
   readonly hardLimit: number;
+  /** Deadline of the current walk slice (set by the driver in snapshot.ts). */
+  readonly slice: Slice;
   svgSeq: number;
   fontRatios: Map<string, number>;
   measure: CanvasRenderingContext2D | null | undefined;
@@ -162,6 +172,7 @@ export function createCapture(
     end: 0,
     children: [],
   };
+  const maxElements = Math.max(20000, opts.maxLayers * 8);
   return {
     doc,
     root,
@@ -187,11 +198,15 @@ export function createCapture(
     seq: 0,
     treeIndex: 0,
     visited: 0,
-    maxElements: Math.max(20000, opts.maxLayers * 8),
+    maxElements,
+    skimmed: 0,
+    // Skimming reads a few style facts per element, a fraction of the cost of a full visit.
+    maxSkimmed: maxElements * 4,
     elementCapHit: false,
     droppedHeight: 0,
     overflow: 0,
     hardLimit: opts.maxLayers * 2 + 256,
+    slice: { deadline: Number.POSITIVE_INFINITY },
     svgSeq: 0,
     fontRatios: new Map(),
     measure: undefined,

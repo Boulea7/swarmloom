@@ -15,6 +15,7 @@ import { paintOrder, truncate } from "./post/order";
 import type { SnapshotOptions } from "./types";
 import { delay, throwIfAborted } from "./util/abort";
 import { round2 } from "./util/geom";
+import { runSliced, yieldToHost } from "./util/slice";
 
 /** Live pages wait at most this long for web fonts before capture. */
 const FONT_WAIT_MS = 1500;
@@ -61,6 +62,30 @@ function truncationReason(
   if (elementCap) reasons.push("element scan limit reached");
   if (reasons.length === 0) return undefined;
   return { reason: reasons.join("; "), dropped: layersDropped + heightDropped };
+}
+
+/**
+ * Returns a function that puts the window and app-shell scroll positions back when the user or
+ * the page moved them between walk slices: rects read after a yield must stay comparable with
+ * the offsets taken at the start.
+ */
+function scrollKeeper(view: Window, shell: Element | null): () => void {
+  const x = view.scrollX;
+  const y = view.scrollY;
+  const sx = shell?.scrollLeft ?? 0;
+  const sy = shell?.scrollTop ?? 0;
+  return () => {
+    if (view.scrollX !== x || view.scrollY !== y) view.scrollTo({ left: x, top: y, behavior: "instant" });
+    if (shell && (shell.scrollLeft !== sx || shell.scrollTop !== sy)) {
+      shell.scrollTo({ left: sx, top: sy, behavior: "instant" });
+    }
+  };
+}
+
+/** Gives the host a turn between post-processing passes and honours an abort. */
+async function pause(signal: AbortSignal | undefined): Promise<void> {
+  await yieldToHost();
+  throwIfAborted(signal);
 }
 
 /** Core capture shared by snapshot() and snapshotHtml(). */
@@ -112,12 +137,15 @@ export async function capture(
   const bg = overrides.background ?? (mode === "document" ? documentBackground(doc, height) : elementBackground(el));
   for (const s of bg.sources) cap.bgSources.add(s);
 
+  // Time-sliced walk (behavior-spec §3.8 step 6): the page stays responsive and an abort is
+  // honoured within one slice.
   const ctx = rootContext(dx, dy, null);
-  visit(cap, el, ctx);
-  throwIfAborted(o.signal);
+  await runSliced(visit(cap, el, ctx), cap.slice, o.signal, scrollKeeper(view, cap.shell?.el ?? null));
+  await pause(o.signal);
 
   if (o.detectDuplicates) detectDuplicates(cap.rootNode, cap.layers);
   if (o.screenshot) await applyScreenshot(doc, o.screenshot, cap.pendingShots, cap.layers);
+  await pause(o.signal);
 
   const ordered = paintOrder(cap.layers, cap.keys);
   const cut = truncate(ordered, o.maxLayers, cap.fixedIds, { x: dx, y: dy, w: vw, h: vh });
@@ -163,8 +191,10 @@ export async function capture(
  * duplicates of repeated siblings and alignment guides.
  *
  * Computed styles and geometry are read in one pass without writes, except for the optional
- * `prescroll` pass (which restores the scroll position). Rejects with a TypeError/RangeError for
- * invalid arguments and with the signal's reason when aborted.
+ * `prescroll` pass and scroll positions put back after a slice (both restore the original
+ * position). The walk runs in slices of about 10 ms, so the page stays responsive and `signal`
+ * aborts within one slice. Rejects with a TypeError/RangeError for invalid arguments and with the
+ * signal's reason when aborted.
  */
 export function snapshot(root: Element | Document, opts?: SnapshotOptions): Promise<Blueprint> {
   return capture(root, opts);
