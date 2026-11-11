@@ -149,6 +149,23 @@ describe("render input", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("refuses an evidence path that the ffmpeg-less fallback picks for its PNG frames", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "swarmloom-cli-"));
+    try {
+      await writeFile(path.join(dir, "take.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
+      const err: string[] = [];
+      // Any executable passes the browser lookup; the check must stop the run before a browser starts.
+      const tools = ["--ffmpeg", path.join(dir, "no-ffmpeg"), "--chrome", process.execPath];
+      const argv = ["render", "take.svg", "--events-out", "take-frames", ...tools];
+      const code = await run(argv, { io: { out: () => {}, err: (l) => err.push(l) }, cwd: dir, env: {} });
+      expect(err.join("\n")).toContain("which an evidence output also names");
+      expect(code).toBe(1);
+      expect(existsSync(path.join(dir, "take-frames"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("documented examples", () => {

@@ -234,10 +234,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   if (evidence.audioOut && !settings.sound) {
     throw new UsageError("--audio-out needs sound: drop --no-sound and use mp4, webm or png-seq");
   }
-  const files = [output, evidence.audioOut, evidence.eventsOut, evidence.manifestOut].filter(
-    (file): file is string => file !== undefined,
-  );
-  if (new Set(files.map(sameFileKey)).size !== files.length) {
+  if (hasSharedPath([output, evidence.audioOut, evidence.eventsOut, evidence.manifestOut])) {
     throw new UsageError("--output, --audio-out, --events-out and --manifest-out must be different files");
   }
 
@@ -262,6 +259,12 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     quiet: values.quiet ?? false,
     verbose: values.verbose ?? false,
   };
+}
+
+/** True when two of the given output paths name one file (see {@link sameFileKey}). */
+function hasSharedPath(files: (string | undefined)[]): boolean {
+  const present = files.filter((file): file is string => file !== undefined);
+  return new Set(present.map(sameFileKey)).size !== present.length;
 }
 
 /**
@@ -386,9 +389,21 @@ async function fileId(file: string): Promise<string | null> {
   return info && info.ino !== 0n ? `${info.dev}:${info.ino}` : null;
 }
 
-/** Options for the ffmpeg-less fallback: png-seq into "<input>-frames", sound kept unless --no-sound. */
-function pngSequenceFallback(opts: RenderOptions, cwd: string): Partial<RenderOptions> {
+/**
+ * Options for the ffmpeg-less fallback: png-seq into "<input>-frames", sound kept unless --no-sound.
+ * The frame directory replaces the default video path that parseRenderOptions checked, so it is
+ * checked against the evidence paths again here, before any frame is captured.
+ * @param reason Why ffmpeg cannot be used, shown when the fallback is refused.
+ * @throws UsageError when an evidence path names the frame directory.
+ */
+function pngSequenceFallback(opts: RenderOptions, cwd: string, reason: string): Partial<RenderOptions> {
   const { output } = resolveOutput(opts.input, undefined, "png-seq", cwd);
+  if (hasSharedPath([output, opts.audioOut, opts.eventsOut, opts.manifestOut])) {
+    throw new UsageError(
+      `${reason}; the PNG frames that replace the video would go to ${output}, which an evidence output also names`,
+      "Point --audio-out, --events-out and --manifest-out elsewhere, or install ffmpeg (see swarmloom doctor).",
+    );
+  }
   return { format: "png-seq", output, settings: { ...opts.settings, sound: !opts.noSound } };
 }
 
@@ -436,7 +451,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       ffmpeg = await prepareFfmpeg(opts, host);
     } catch (error) {
       if (!(error instanceof MissingDependencyError) || !opts.formatDefaulted) throw error;
-      Object.assign(opts, pngSequenceFallback(opts, ctx.cwd));
+      Object.assign(opts, pngSequenceFallback(opts, ctx.cwd, error.message));
       if (!opts.quiet) warn(io, `${error.message}; writing PNG frames and audio.wav instead (see swarmloom doctor)`);
     }
   }
