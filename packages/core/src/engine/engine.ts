@@ -682,7 +682,9 @@ export class Engine implements Player {
   /**
    * Clock tick: the stage's read phase, then the frame. Long deltas (coarse export frames) are
    * integrated in slices of at most MAX_TICK_MS so player time always equals the clock time
-   * delivered, then drawn once.
+   * delivered, then drawn once. Slicing stops early only when this tick ends the run (goes live
+   * or destroys the player); a player already live keeps the whole delta, since live plugins and
+   * the cursor exit follow player time.
    */
   #onTick(dt: number): void {
     const s = this.#state;
@@ -693,12 +695,18 @@ export class Engine implements Player {
     } catch (error) {
       this.#report(error);
     }
+    const wasLive = s === "live";
     let left = Number.isFinite(dt) ? clamp(dt, 0, MAX_TICK_TOTAL_MS) : 0;
     do {
       const slice = Math.min(left, MAX_TICK_MS);
       left -= slice;
       this.#frame(slice, left <= 0);
-    } while (left > 0 && !this.#ended());
+    } while (left > 0 && !this.#endedDuringTick(wasLive));
+  }
+
+  /** True once the player was destroyed, or went live during a tick that started before live. */
+  #endedDuringTick(wasLive: boolean): boolean {
+    return this.#state === "destroyed" || (!wasLive && this.#state === "live");
   }
 
   /** Advances every timeline by `dt` player ms; draws when `draw` (and not seeking). */

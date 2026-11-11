@@ -361,6 +361,16 @@ describe("Engine", () => {
     expect(h.sound.destroyed).toBe(true);
   });
 
+  it("keeps player time equal to clock time over long ticks after goLive() (low-fps export tail)", () => {
+    const h = harness(samplePage(), { intro: false });
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    h.engine.goLive();
+    const t0 = h.engine.time;
+    h.clock.advance(250);
+    expect(h.engine.time - t0).toBeCloseTo(250, 6);
+  });
+
   it("seek() fast-forwards the current run and replays only to go back or after finish()", () => {
     const page = blueprintOf(Array.from({ length: 40 }, (_, i) => box(`b${i}`, (i % 5) * 150, Math.floor(i / 5) * 90)));
     const h = harness(page, { intro: false });
