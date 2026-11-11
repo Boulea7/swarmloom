@@ -59,6 +59,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      - run: pnpm exec playwright install --with-deps chromium
+      # --with-deps goes through the Ubuntu apt mirrors, whose DNS has failed for hours at a time.
+      # The runner image already carries Chrome's shared libraries, so then install the browser alone.
+      - name: Install Chromium
+        run: |
+          timeout 180 pnpm exec playwright install --with-deps chromium && exit 0
+          echo "::warning::apt mirrors unreachable, installing Chromium without its system packages"
+          pnpm exec playwright install chromium
       - run: pnpm test:browser
       - run: pnpm test:e2e
