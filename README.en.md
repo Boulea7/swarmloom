@@ -22,6 +22,8 @@ Work in progress. **There is no installable release yet.** The first public rele
 
 Inspired by Joel Califa's Swarm site and Dhvanil Patel's Swarm Rebuild extension. SwarmLoom is an independent clean-room rewrite and reuses none of their code, cursor art or colours.
 
+Clawd, the conductor in the promo videos, is a fan-made rendition of the Claude Code mascot with no affiliation to Anthropic.
+
 ## License
 
 [MIT](LICENSE)

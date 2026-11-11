@@ -64,12 +64,13 @@ describe("planner", () => {
   });
 
   it("unlocks viewport work first and ancestors as early as their first descendant", () => {
-    const p = plan([
+    const layers = [
       box("top", 0, 0),
       box("tall", 0, 1500, 800, 2000),
       box("inner", 0, 1600, 100, 40, { parent: "tall" }),
       box("deep", 0, 3000),
-    ]);
+    ];
+    const p = buildPlan(blueprintOf(layers, { w: 800, h: 3600 }), { estimate: () => 100 });
     const at = (id: string): number => p.layers.findIndex((l) => l.id === id);
     const s = new Schedule(p);
     s.setBoundary(900);
@@ -82,6 +83,14 @@ describe("planner", () => {
     // The boundary only moves down.
     s.setBoundary(100);
     expect(s.boundary).toBe(1550);
+  });
+
+  it("caps unlock lines at the world's bottom edge, so a tour that stops there still unlocks layers below it", () => {
+    // World 1200 high, viewport 600: the camera stops at y 600, the boundary at 600 + 1.5 * 600.
+    const p = plan([box("in", 20, 20), box("below", 20, 3000)]);
+    const s = new Schedule(p);
+    s.setBoundary(1500);
+    expect(s.status[1]).toBe(AVAILABLE);
   });
 
   it("picks work in view (guides first) before work above, and above before below", () => {

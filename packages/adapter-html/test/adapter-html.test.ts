@@ -7,6 +7,7 @@ import {
   contentSecurityPolicy,
   createHtmlAdapter,
   decodeHtml,
+  type HtmlLoadContext,
   isFullDocument,
   prepareDocument,
   rewriteCssUrls,
@@ -109,6 +110,18 @@ describe("htmlAdapter.load (fragments)", () => {
     expect(opts).toMatchObject({ width: 900, scheme: "light" });
     expect(result.blueprint.source).toMatchObject({ type: "html", name: "card.html" });
     expect(result.warnings).toEqual(["html: 1 resource reference skipped (remote resources are off)"]);
+  });
+
+  it("turns remote loading off for one load when the host passes ctx.network none", async () => {
+    const snap = fake();
+    const adapter = createHtmlAdapter({ snapshot: snap });
+    const input = { text: '<p>Hi<img src="https://tracker.example/p.png"></p>' };
+    const off: HtmlLoadContext = { ...ctx, network: "none" };
+    const result = await adapter.load(input, off);
+    expect(snap.calls[0]?.[0]).not.toContain("tracker.example");
+    expect(result.warnings).toEqual(["html: 1 resource reference skipped (remote resources are off)"]);
+    const unknown = { ...ctx, network: "any" };
+    await expect(adapter.load(input, unknown)).rejects.toThrow(/unknown ctx.network policy/);
   });
 
   it.each([

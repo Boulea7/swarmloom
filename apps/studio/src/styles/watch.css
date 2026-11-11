@@ -1,7 +1,8 @@
 /*
  * Watch face. Square by default with a small margin; `?round=1` clips to a circle and keeps every
  * control inside the inscribed square (inset (1 - 1/sqrt(2)) / 2 = 14.6 %). `@media (shape: round)`
- * is not used: no browser ships it.
+ * is not used: no browser ships it. Sizes are in `cqmin` of the (square) face rather than percent so
+ * they also hold in the QR dialog, which sits in the top layer with the viewport as containing block.
  */
 :root[data-view="watch"],
 :root[data-view="watch"] body {
@@ -9,7 +10,7 @@
 }
 
 .view-watch {
-  --safe: 7%;
+  --safe: 7cqmin;
   /* The watch face is always dark (OLED friendly), whatever the theme: tinted, never pure black. */
   --watch-bg: oklch(8% 0.008 277);
   --watch-face: oklch(15% 0.012 277);
@@ -26,7 +27,7 @@
 }
 
 .view-watch[data-round="true"] {
-  --safe: 14.6%;
+  --safe: 14.6cqmin;
 }
 
 .watch-face {
@@ -228,17 +229,37 @@
   cursor: pointer;
 }
 
+/* A modal <dialog> in the top layer, laid exactly over the face it covers. */
 .watch-qr {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 2;
+  width: min(100vw, 100dvh);
+  height: min(100vw, 100dvh);
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  overflow: hidden;
+  padding: var(--safe);
+  border: 0;
+  background: var(--watch-face);
+  color: var(--watch-ink);
+}
+
+.watch-qr[open] {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4cqmin;
-  padding: var(--safe);
-  background: var(--watch-face);
+}
+
+.view-watch[data-round="true"] .watch-qr {
+  border-radius: 50%;
+}
+
+/* The face around it stays visible, as before; the page behind is inert, not dimmed. */
+.watch-qr::backdrop {
+  background: none;
 }
 
 .watch-qr-code {

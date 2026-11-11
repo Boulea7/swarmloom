@@ -20,6 +20,7 @@ export interface HtmlAdapterOptions {
   /**
    * Remote subresources: "https" (default) loads https: images and fonts without a referrer;
    * "none" loads nothing from the network. Scripts never run and nothing else is fetched.
+   * A host can narrow this per load with {@link HtmlLoadContext.network}.
    */
   network?: NetworkPolicy;
   /** Reject documents with more elements than this. Default 60 000. */
@@ -43,6 +44,14 @@ export interface HtmlAdapterOptions {
   baseUrl?: string;
   /** Snapshot implementation. Default: @swarmloom/snapshot-dom, imported on first use. */
   snapshot?: SnapshotDom;
+}
+
+/**
+ * Adapter context plus the host's network policy for this load (Studio sets it from its
+ * "Load web images and fonts" setting). Core's `AdapterContext` does not declare the member.
+ */
+export interface HtmlLoadContext extends AdapterContext {
+  network?: NetworkPolicy;
 }
 
 /** The live page behind a capture (see {@link HtmlAdapterOptions.keepLive}). */
@@ -70,12 +79,18 @@ const FRAGMENT_PAGE = {
   dark: { page: "#0E0E16", ink: "#E7E7F1" },
 };
 
-function checkContext(ctx: AdapterContext): void {
+function checkPolicy(network: unknown, where: string): asserts network is NetworkPolicy | undefined {
+  if (network !== undefined && network !== "https" && network !== "none")
+    throw new TypeError(`html: unknown ${where} ${JSON.stringify(network)}`);
+}
+
+function checkContext(ctx: HtmlLoadContext): void {
   if (!ctx || typeof ctx !== "object" || !ctx.document)
     throw new TypeError("html: AdapterContext with a document is required");
   if (!Number.isFinite(ctx.width) || ctx.width <= 0)
     throw new RangeError(`html: ctx.width must be positive, got ${ctx.width}`);
   if (ctx.theme !== "light" && ctx.theme !== "dark") throw new TypeError(`html: ctx.theme must be "light" or "dark"`);
+  checkPolicy(ctx.network, "ctx.network policy");
 }
 
 function positive(name: string, value: number | undefined, fallback: number): number {
@@ -123,16 +138,17 @@ function usableBase(url: string | undefined): string | undefined {
  * sanitized and laid out by snapshotHtml.
  */
 export function createHtmlAdapter(options: HtmlAdapterOptions = {}): TextAdapter<LoadedHtml> {
-  const network = options.network ?? "https";
-  if (network !== "https" && network !== "none")
-    throw new TypeError(`html: unknown network policy ${JSON.stringify(network)}`);
+  checkPolicy(options.network, "network policy");
+  const configured = options.network ?? "https";
   return {
     id: "html",
     label: "HTML",
     extensions: ["html", "htm", "xhtml"],
     mime: ["text/html", "application/xhtml+xml"],
-    async load(input: SourceInput, ctx: AdapterContext): Promise<LoadedHtml> {
+    async load(input: SourceInput, ctx: HtmlLoadContext): Promise<LoadedHtml> {
       checkContext(ctx);
+      // The stricter policy wins: a host's "none" turns remote loading off for this load.
+      const network: NetworkPolicy = ctx.network === "none" ? "none" : configured;
       ctx.signal?.throwIfAborted();
       const win = ctx.document.defaultView;
       if (!win) throw new Error("html: ctx.document must belong to a window");

@@ -54,6 +54,7 @@ export const es: StudioCatalog = {
   "error.title": "No se pudo abrir",
   "error.unsupported": "Este tipo de archivo no es compatible. Studio abre {formats}.",
   "error.tooLarge": "Este archivo ocupa {size}. El límite es {limit}.",
+  "error.tooLargeFormat": "Este archivo ocupa {size}. El límite para {format} es {limit}.",
   "error.empty": "Este archivo está vacío.",
   "error.encrypted": "Este documento está protegido con contraseña. Quítala y vuelve a abrirlo.",
   "error.fetch":
@@ -61,6 +62,7 @@ export const es: StudioCatalog = {
   "error.adapter": "No se pudo cargar el lector de este formato. Comprueba la conexión y vuelve a intentarlo.",
   "error.player": "El reproductor no pudo iniciarse: {message}",
   "error.generic": "Algo salió mal: {message}",
+  "error.tooComplex": "Este archivo es demasiado grande o complejo para abrirlo. Prueba con uno más pequeño.",
   "error.share": "Este enlace para compartir está dañado o incompleto.",
   "error.example": "No existe ningún ejemplo llamado «{id}».",
   "error.file": "Los archivos locales no se pueden volver a abrir desde un enlace. Abre el archivo de nuevo.",
@@ -139,6 +141,7 @@ export const es: StudioCatalog = {
   "export.cli.copy": "Copiar comando",
   "export.cli.copied": "Copiado",
   "export.cli.save": "Guarda primero el contenido pegado como {name}.",
+  "export.cli.download": "Este enlace no se puede pegar con seguridad en una terminal. Descárgalo primero como {name}.",
 
   "watch.play": "Reproducir",
   "watch.pause": "Pausa",

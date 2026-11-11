@@ -56,6 +56,8 @@ export class Build {
   readonly #runHost: RunHost;
   /** Running tasks that build or snap to a guide (the stage shows rulers while > 0). */
   #guideRuns = 0;
+  /** Identity of this build handed to every task's stage; a replay starts a new build. */
+  readonly #key: object = Object.freeze({});
 
   constructor(plan: Plan, tasks: ReadonlyMap<string, TaskFn>, host: BuildHost) {
     this.plan = plan;
@@ -94,7 +96,7 @@ export class Build {
     const { plan } = this;
     this.schedule.start(i);
     const layer = plan.layers[i] as Layer;
-    const scope = new ScopedStage(this.#host.stage, layer.id);
+    const scope = new ScopedStage(this.#host.stage, layer.id, this.#key);
     agent.mode = WORKING;
     agent.role = plan.roles[i] ?? null;
     agent.taskRng = streamRng(this.#host.seed, `task:${layer.id}`);

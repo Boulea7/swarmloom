@@ -7,8 +7,9 @@ stop. There is no popup.
 - Context menu (where the browser has one): rebuild this page, rebuild this element, open a
   linked PDF/DOCX/Markdown/SVG/image/3D file, or the current PDF, in Studio.
 - Pages an extension cannot script (`chrome://`, `about:`, web stores, the PDF viewer, local files
-  without access): a badge with the reason, plus a notice tab with three next steps: open in
-  Studio, import a file, copy the link. Never a silent failure.
+  without access): a badge with the reason, plus a notice tab with the next steps: open in
+  Studio, import a file, and copy the link when Studio can open it (not for `chrome://` or
+  `about:` addresses). Never a silent failure.
 - Leaving or changing the page (route change, back/forward, bfcache) ends the swarm and restores
   the page.
 - Options page: speed, cursors, labels, theme, sound and sound pack, volume, finale, reduced motion,

@@ -24,7 +24,10 @@ export interface MarkdownAdapterOptions {
   renderDiagram?: DiagramRenderer;
   /** Base URL for relative links and images. Default: the input URL. */
   baseUrl?: string;
-  /** Allow `https:` images, fetched without a referrer. Default true (a setting may turn it off). */
+  /**
+   * Allow `https:` images, fetched without a referrer. Default true. A host can turn them off per
+   * load with {@link MarkdownLoadContext.network} `"none"`.
+   */
   remoteImages?: boolean;
   /** Maps relative image paths to URLs, e.g. blob: URLs of files dropped with the document (folder or zip). */
   resolveAsset?: AssetResolver;
@@ -32,6 +35,15 @@ export interface MarkdownAdapterOptions {
   loadMath?: () => Promise<MathEngine>;
   /** Snapshot implementation. Default: @swarmloom/snapshot-dom, imported on first use. */
   snapshot?: SnapshotDom;
+}
+
+/**
+ * Adapter context plus the host's network policy for this load (Studio sets it from its
+ * "Load web images and fonts" setting): "none" turns remote images off, "https" keeps
+ * {@link MarkdownAdapterOptions.remoteImages}. Core's `AdapterContext` does not declare the member.
+ */
+export interface MarkdownLoadContext extends AdapterContext {
+  network?: "https" | "none";
 }
 
 const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
@@ -42,13 +54,15 @@ const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
 const MIN_WIDTH = 360;
 const MAX_WIDTH = 920;
 
-function checkContext(ctx: AdapterContext): void {
+function checkContext(ctx: MarkdownLoadContext): void {
   if (!ctx || typeof ctx !== "object" || !ctx.document)
     throw new TypeError("markdown: AdapterContext with a document is required");
   if (!Number.isFinite(ctx.width) || ctx.width <= 0)
     throw new RangeError(`markdown: ctx.width must be positive, got ${ctx.width}`);
   if (ctx.theme !== "light" && ctx.theme !== "dark")
     throw new TypeError(`markdown: ctx.theme must be "light" or "dark"`);
+  if (ctx.network !== undefined && ctx.network !== "https" && ctx.network !== "none")
+    throw new TypeError(`markdown: unknown ctx.network policy ${JSON.stringify(ctx.network)}`);
 }
 
 /** Our own intro icon: an indigo tile with a page and a heading mark. */
@@ -71,7 +85,7 @@ export function createMarkdownAdapter(options: MarkdownAdapterOptions = {}): Tex
     label: "Markdown",
     extensions: ["md", "markdown", "mdown", "mkd"],
     mime: ["text/markdown", "text/x-markdown"],
-    async load(input: SourceInput, ctx: AdapterContext): Promise<LoadedText> {
+    async load(input: SourceInput, ctx: MarkdownLoadContext): Promise<LoadedText> {
       checkContext(ctx);
       ctx.signal?.throwIfAborted();
       const src = await readSource(input, {
@@ -87,7 +101,7 @@ export function createMarkdownAdapter(options: MarkdownAdapterOptions = {}): Tex
         math: options.math,
         locale: ctx.locale,
         renderDiagram: options.renderDiagram,
-        remoteImages: options.remoteImages,
+        remoteImages: ctx.network === "none" ? false : options.remoteImages,
         resolveAsset: options.resolveAsset,
         loadMath: options.loadMath,
         window: ctx.document.defaultView ?? undefined,

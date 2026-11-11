@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTENT_FILES, createBackground, MENU } from "../src/background/controller";
 import { HOSTED_STUDIO } from "../src/shared/links";
 import { GLOBALS, MSG, parseLaunch } from "../src/shared/messages";
@@ -119,6 +119,36 @@ describe("context menus and messages", () => {
     const studio = new URL(fake.createdTabs[0]?.url ?? "");
     expect(studio.searchParams.get("src")).toBe("https://example.com/a.pdf");
     expect(studio.searchParams.get("import")).toBe("1");
+  });
+
+  it("adds the file picker fallback when the bundled Studio gets no access to the link's origin", async () => {
+    vi.resetModules();
+    vi.doMock("../src/shared/build-info", async (original) => ({
+      ...(await original<typeof import("../src/shared/build-info")>()),
+      BUNDLED_STUDIO: "studio/studio.html",
+    }));
+    try {
+      const bundled = await import("../src/background/controller");
+      const cases = [
+        { name: "granted", fake: {}, target: "chrome", picker: null },
+        { name: "declined", fake: { grantHosts: false }, target: "chrome", picker: "1" },
+        { name: "not requestable", fake: { optionalHosts: false }, target: "safari", picker: "1" },
+      ] as const;
+      for (const c of cases) {
+        const fake = createFake(c.fake);
+        const link = "https://b.example/file.pdf";
+        await bundled
+          .createBackground(fake.api, { target: c.target })
+          .handleMenu({ menuItemId: bundled.MENU.openLink, linkUrl: link }, tab("https://a.example/"));
+        const studio = new URL(fake.createdTabs[0]?.url ?? "");
+        expect(studio.pathname, c.name).toBe("/studio/studio.html");
+        expect(studio.searchParams.get("src"), c.name).toBe(link);
+        expect(studio.searchParams.get("import"), c.name).toBe(c.picker);
+      }
+    } finally {
+      vi.doUnmock("../src/shared/build-info");
+      vi.resetModules();
+    }
   });
 
   it("ignores other senders and rate limits captures per window", async () => {
