@@ -1,15 +1,24 @@
 {
   "name": "@swarmloom/export",
   "version": "0.1.0",
-  "description": "Frame-exact video export, offline WAV soundtrack rendering and in-browser recording for SwarmLoom.",
+  "description": "Frame-exact video export (CLI render page and in-browser WebCodecs), offline WAV soundtracks and live recording for SwarmLoom.",
   "license": "MIT",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/browser/frame.ts",
+    "./dist/browser/frame.js",
+    "./src/render/main.ts"
+  ],
   "exports": {
     ".": {
       "@swarmloom/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./browser": {
+      "@swarmloom/source": "./src/browser/index.ts",
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.js"
     },
     "./render/*": "./dist/render/*"
   },
@@ -24,13 +33,14 @@
     "directory": "packages/export"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean && vite build -c vite.render.config.ts",
+    "build": "tsup src/index.ts src/browser/index.ts src/browser/frame.ts --format esm --dts --clean && vite build -c vite.render.config.ts",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
     "@swarmloom/adapter-html": "workspace:*",
     "@swarmloom/adapter-svg": "workspace:*",
     "@swarmloom/core": "workspace:*",
-    "@swarmloom/formats": "workspace:*"
+    "@swarmloom/formats": "workspace:*",
+    "mediabunny": "1.65.2"
   }
 }

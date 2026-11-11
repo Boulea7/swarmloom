@@ -29,6 +29,14 @@ export interface CliCommandOptions {
   format: VideoFormat;
   width: number;
   height: number;
+  /** Frames per second. Default 30 (the CLI default). */
+  fps?: number;
+  /** Overrides `settings.sound` (the export dialog's sound switch). */
+  sound?: boolean;
+  /** Colour scheme in effect; with theme "auto" a dark scheme is written as `--theme dark`. */
+  scheme?: "light" | "dark";
+  /** Player language (role labels); written unless it is English. */
+  locale?: string;
 }
 
 export interface CliCommand {
@@ -68,7 +76,7 @@ export function shellArg(arg: string): string | null {
 }
 
 /** "report.final.pdf" -> "report.final" */
-function stem(name: string): string {
+export function stem(name: string): string {
   const ext = extensionOf(name);
   const base = (ext ? name.slice(0, -(ext.length + 1)) : name).replace(/[^\p{L}\p{M}\p{N}._-]+/gu, "-");
   return base.replace(/^-+|-+$/g, "") || "swarmloom";
@@ -102,12 +110,18 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
   if (o.format !== "mp4") args.push("--format", o.format);
   if (o.width !== 1280) args.push("--width", String(o.width));
   if (o.height !== 720) args.push("--height", String(o.height));
+  if (o.fps !== undefined && o.fps !== 30) args.push("--fps", String(o.fps));
   args.push("--seed", String(s.seed));
   if (s.speed !== d.speed) args.push("--speed", String(s.speed));
   if (s.agents !== d.agents) args.push("--agents", String(s.agents));
-  if (s.theme !== d.theme) args.push("--theme", s.theme);
+  const theme = s.theme === "auto" && o.scheme === "dark" ? "dark" : s.theme;
+  if (theme !== d.theme) args.push("--theme", theme);
   if (s.labels !== d.labels) args.push("--labels", s.labels);
   if (s.finale !== d.finale) args.push("--finale", s.finale);
-  if (!s.sound) args.push("--no-sound");
+  if (s.follow === "none") args.push("--follow", "none");
+  const locale = o.locale && !/^en(?:-|$)/i.test(o.locale) ? shellArg(o.locale) : null;
+  if (locale) args.push("--locale", locale);
+  if (!(o.sound ?? s.sound)) args.push("--no-sound");
+  if (!s.remoteAssets) args.push("--no-remote");
   return saveAs === undefined ? { text: args.join(" ") } : { text: args.join(" "), saveAs };
 }
