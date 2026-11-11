@@ -12,14 +12,14 @@ const source = await load(input, { document, width: 960, theme: "light" }, { max
 
 ## Detection
 
-`detect(input)` returns an adapter id (`dom`, `html`, `markdown`, `code`, `docx`, `doc`, `pdf`, `svg`, `image`, `slides`, `sheet`, `three`, `odf`, `epub`, `rtf`, `ofd`, `notebook`, `terminal`, `diff`, `mindmap`) or `null`. `inspect(input)` does the same synchronously and also reports `encrypted`. The checks run in this order, and the first match wins:
+`detect(input)` returns an adapter id (`dom`, `html`, `markdown`, `code`, `docx`, `doc`, `pdf`, `svg`, `image`, `slides`, `sheet`, `three`, `odf`, `epub`, `rtf`, `ofd`, `notebook`, `terminal`, `diff`, `mindmap`, `lottie`) or `null`. `inspect(input)` does the same synchronously and also reports `encrypted`. The checks run in this order, and the first match wins:
 
 1. `input.element`: `dom`.
-2. ZIP containers: a small central-directory reader (with a local-header fallback for truncated heads) looks at the entry names. `word/` gives `docx`, `ppt/` gives `slides`, `xl/` gives `sheet`, the `mimetype` entry gives `sheet` for ODS, `odf` for other OpenDocument types and `epub` for EPUB, a root `OFD.xml` gives `ofd`, and a root `content.json` or `content.xml` without a `mimetype` entry gives `mindmap` (XMind). An encrypted entry sets `encrypted`.
+2. ZIP containers: a small central-directory reader (with a local-header fallback for truncated heads) looks at the entry names. `word/` gives `docx`, `ppt/` gives `slides`, `xl/` gives `sheet`, the `mimetype` entry gives `sheet` for ODS, `odf` for other OpenDocument types and `epub` for EPUB, a root `OFD.xml` gives `ofd`, a root `manifest.json` with an `animations/<id>.json` or `a/<id>.json` entry gives `lottie` (dotLottie), and a root `content.json` or `content.xml` without a `mimetype` entry gives `mindmap` (XMind). An encrypted entry sets `encrypted`.
 3. Compound File Binary (legacy Office): the `WordDocument`, `Workbook` and `PowerPoint Document` streams. Legacy `.xls` and `.ppt` files reach the spreadsheet and presentation adapters this way only so they can explain that the file must be saved as `.xlsx` or `.pptx`; the registry does not list those extensions. `EncryptionInfo`, `EncryptedPackage` or the Word FIB encryption flag set `encrypted`.
 4. Magic bytes: PDF, RTF (so RTF saved as `.doc` opens as RTF), glTF binary, PLY, binary STL, PNG, JPEG, GIF, WebP, AVIF and BMP.
-5. Each registry entry's `sniff()`, then the file extension, then the MIME type (generic types such as `text/plain` are ignored).
-6. Text heuristics: SVG and HTML roots, Jupyter notebooks, asciicast recordings, patches, FreeMind maps, glTF JSON, OBJ and ASCII STL, CSV/TSV delimiter consistency, then weighted Markdown and code signals.
+5. Each registry entry's `sniff()` (Lottie JSON, so it opens as an animation under its usual `.json` name), then the file extension, then the MIME type (generic types such as `text/plain` are ignored).
+6. Text heuristics: SVG and HTML roots, Jupyter notebooks, asciicast recordings, patches, FreeMind maps, glTF JSON, OBJ and ASCII STL, Lottie JSON (before other JSON, which is code), CSV/TSV delimiter consistency, then weighted Markdown and code signals.
 
 Only ids present in the registry you pass are returned.
 
