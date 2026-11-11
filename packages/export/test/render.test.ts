@@ -151,7 +151,8 @@ describe("render page protocol", () => {
   });
 
   it("hashes the same blueprint across takes served under different random URLs", async () => {
-    // Adapters copy the input URL into the blueprint, resolve assets against it and mint object URLs.
+    // Adapters copy the input URL into the blueprint, resolve assets against it and mint object URLs;
+    // snapshots resolve in-page anchors (Markdown footnotes) against the render page's URL.
     const box = { x: 0, y: 0, w: 1, h: 1 };
     const { api } = setup((input) => ({
       ...blueprint,
@@ -159,17 +160,36 @@ describe("render page protocol", () => {
       layers: [
         { id: "a", kind: "image", box, src: new URL("logo.png", String(input.url)).href },
         { id: "b", kind: "image", box, src: `blob:${location.origin}/${Math.random()}` },
+        {
+          id: "c",
+          kind: "text",
+          box,
+          style: {},
+          text: "1",
+          html: `<a href="${new URL("#fn-1", document.baseURI)}">1</a>`,
+        },
       ],
     }));
-    const take = async (url: string) => {
-      const { blueprintSha256 } = await api.init({ ...base, input: { name: "a.svg", url } });
-      api.dispose();
-      return blueprintSha256;
+    // happy-dom's own API: moves the page to another URL.
+    const setPageUrl = (url: string) =>
+      (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(url);
+    const pageUrl = location.href;
+    // The driver serves the page and the input from a server on a random port.
+    const take = async (port: number | null, url?: string) => {
+      if (port !== null) setPageUrl(`http://127.0.0.1:${port}/index.html`);
+      try {
+        const input = { name: "a.svg", url: url ?? `${location.origin}/input/token${port}/a.svg` };
+        const { blueprintSha256 } = await api.init({ ...base, input });
+        api.dispose();
+        return blueprintSha256;
+      } finally {
+        setPageUrl(pageUrl);
+      }
     };
-    const first = await take(`${location.origin}/input/tokenA/a.svg`);
-    expect(await take(`${location.origin}/input/tokenB/a.svg`)).toBe(first);
+    const first = await take(4100);
+    expect(await take(41001)).toBe(first);
     // A remote input URL is part of what was played.
-    expect(await take("https://example.com/a.svg")).not.toBe(await take("https://example.org/a.svg"));
+    expect(await take(null, "https://example.com/a.svg")).not.toBe(await take(null, "https://example.org/a.svg"));
   });
 
   it("plays a driver-supplied blueprint instead of loading the input", async () => {
