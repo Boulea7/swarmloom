@@ -94,7 +94,7 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 
 ### Capture evidence
 
-For takes that can be checked and repeated. These files and `--output` must all be different.
+For takes that can be checked and repeated. These files and `--output` must all be different, and none of them may be the input file (also through a link).
 
 | Option | Default | Description |
 | --- | --- | --- |

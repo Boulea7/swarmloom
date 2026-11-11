@@ -34,7 +34,7 @@ import {
   sourceDigest,
   writeAtomic,
 } from "../pipeline/evidence";
-import { outputStem, type RenderSource, resolveSource } from "../pipeline/input";
+import { inputFilePath, isWebUrl, outputStem, type RenderSource, resolveSource } from "../pipeline/input";
 import { formatClock } from "../pipeline/progress";
 import { type PlayerSettings, type RenderSummary, renderVideo } from "../pipeline/render";
 import { isMissingOrEmptyDir } from "../util/fs";
@@ -354,6 +354,36 @@ async function checkOutputPath(opts: RenderOptions): Promise<void> {
   if (info?.isDirectory()) throw new UsageError(`Output is a directory: ${opts.output}`);
 }
 
+/**
+ * Refuses an output path that is the input file: the video and the evidence files replace whatever is
+ * at their path, so the source would be lost. Compares the names (see {@link sameFileKey}) and, for
+ * paths that exist, the file identity, which also catches links to the input.
+ * @throws UsageError naming the output.
+ */
+async function checkInputKept(opts: RenderOptions, cwd: string): Promise<void> {
+  if (isWebUrl(opts.input)) return;
+  const input = inputFilePath(opts.input, cwd);
+  const inputId = await fileId(input);
+  const outputs: [string, string | undefined][] = [
+    ["The output", opts.output],
+    ["--audio-out", opts.audioOut],
+    ["--events-out", opts.eventsOut],
+    ["--manifest-out", opts.manifestOut],
+  ];
+  for (const [label, file] of outputs) {
+    if (!file) continue;
+    if (sameFileKey(file) === sameFileKey(input) || (inputId !== null && (await fileId(file)) === inputId)) {
+      throw new UsageError(`${label} would overwrite the input ${input}`, "Write every output to another file.");
+    }
+  }
+}
+
+/** Device and inode of an existing file, or null (missing, or no stable inode on this file system). */
+async function fileId(file: string): Promise<string | null> {
+  const info = await stat(file, { bigint: true }).catch(() => null);
+  return info && info.ino !== 0n ? `${info.dev}:${info.ino}` : null;
+}
+
 /** Options for the ffmpeg-less fallback: png-seq into "<input>-frames", sound kept unless --no-sound. */
 function pngSequenceFallback(opts: RenderOptions, cwd: string): Partial<RenderOptions> {
   const { output } = resolveOutput(opts.input, undefined, "png-seq", cwd);
@@ -395,6 +425,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   }
   // Input problems are the user's to fix first; they are reported before missing programs.
   const source = await resolveSource(opts.input, { cwd: ctx.cwd, signal: ctx.signal });
+  await checkInputKept(opts, ctx.cwd);
   const host = ctx.host ?? systemHost(ctx.env);
   const browser = findBrowser(host, { flag: opts.chrome, playwright: installedPlaywright() });
   let ffmpeg: { path: string; caps: FfmpegCaps; version: FfmpegVersion } | undefined;

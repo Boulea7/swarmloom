@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
+import { link, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import pkg from "../package.json" with { type: "json" };
@@ -123,6 +125,29 @@ describe("render options", () => {
     expect(opts.cues[0]?.at).toBeCloseTo(17_333.333, 3);
     expect(opts.eventsOut).toBe(path.join(cwd, "ev/e.json"));
     expect(opts.manifestOut).toBe(path.join(cwd, "m.json"));
+  });
+});
+
+describe("render input", () => {
+  it.each([
+    ["--manifest-out", "take.svg"],
+    ["--events-out", "alias.svg"],
+  ])("refuses %s %s, which would overwrite the input (also through a hard link)", async (flag, file) => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "swarmloom-cli-"));
+    try {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>';
+      await writeFile(path.join(dir, "take.svg"), svg);
+      await link(path.join(dir, "take.svg"), path.join(dir, "alias.svg"));
+      const err: string[] = [];
+      // A missing --chrome would stop the render later with exit 2; the check must come first.
+      const argv = ["render", "take.svg", "-f", "png-seq", "-o", "frames", flag, file, "--chrome", "no-chrome"];
+      const code = await run(argv, { io: { out: () => {}, err: (l) => err.push(l) }, cwd: dir, env: {} });
+      expect(err.join("\n")).toContain(`${flag} would overwrite the input`);
+      expect(code).toBe(1);
+      expect(await readFile(path.join(dir, "take.svg"), "utf8")).toBe(svg);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
