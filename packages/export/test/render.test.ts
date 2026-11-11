@@ -200,6 +200,17 @@ describe("render page protocol", () => {
     expect(goLive).toHaveBeenCalledTimes(calls);
   });
 
+  it("keeps the player's realtime sound off and renders the soundtrack from its log", async () => {
+    const { api, players, audio } = setup();
+    await api.init({ ...base, pack: "soft" });
+    // An enabled player would play every note aloud in a page with user activation (Studio).
+    expect(players[0]?.options.sound).toBe(false);
+    await api.step(1000);
+    await api.audioWav();
+    expect(audio.mock.calls[0]?.[0]).toHaveLength(4);
+    expect(audio.mock.calls[0]?.[2]?.sound).toMatchObject({ enabled: true, pack: "soft" });
+  });
+
   it("renders silence when sound is off", async () => {
     const { api, audio } = setup();
     await api.init({ ...base, sound: false });
