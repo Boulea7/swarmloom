@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentView, Stage, StageOptions } from "../../src/internal";
 import { createRng } from "../../src/rng";
 import { createStage, stageStats } from "../../src/stage";
+import { animatedBitmapType } from "../../src/stage/layers/still-bitmap";
 import { resolveTheme } from "../../src/theme";
 import type { Blueprint, CursorShape, Layer, Plugin, Size } from "../../src/types";
 import { harness } from "../engine/fakes";
@@ -9,6 +10,10 @@ import { harness } from "../engine/fakes";
 const SHAPES: CursorShape[] = ["arrow", "crosshair", "ibeam", "pen", "hand", "grab", "move", "copy", "resize"];
 const PNG_1PX =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+
+/** 1x1 GIF, red then blue, looping: shown as is, it flips on the browser clock. */
+const GIF_RED_BLUE =
+  "data:image/gif;base64,R0lGODlhAQABAIABAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAQABAAACAkQBACH5BAAKAAAALAAAAAABAAEAAAICTAEAOw==";
 
 /**
  * Same-origin SVG whose SMIL animation runs on the browser clock when shown as is. A served path:
@@ -358,6 +363,28 @@ describe("stage: reveal semantics per kind", () => {
     expect(redX()).toBeCloseTo(x, 0);
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(redX()).toBeCloseTo(x, 0);
+  });
+
+  it.each([
+    { name: "data:", src: async () => GIF_RED_BLUE },
+    {
+      name: "blob:",
+      src: async () => {
+        const url = URL.createObjectURL(await (await fetch(GIF_RED_BLUE)).blob());
+        cleanups.push(() => URL.revokeObjectURL(url));
+        return url;
+      },
+    },
+  ])("image: an animated GIF ($name URL) shows its first frame as a still copy", async ({ src }) => {
+    const { stage } = mount([{ id: "g", kind: "image", box: { x: 0, y: 0, w: 40, h: 40 }, src: await src() }]);
+    stage.reveal("g", 1);
+    await stage.ready();
+    const img = (stage.el("g") as HTMLElement).querySelector("img") as HTMLImageElement;
+    // One frame: nothing left for the wall clock to play.
+    expect(animatedBitmapType(new Uint8Array(await (await fetch(img.src)).arrayBuffer()))).toBeNull();
+    const g = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    g?.drawImage(img, 0, 0);
+    expect(Array.from(g?.getImageData(0, 0, 1, 1).data ?? [])).toEqual([255, 0, 0, 255]);
   });
 
   it("media: labelled placeholder that fades in", () => {

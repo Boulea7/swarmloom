@@ -2,7 +2,7 @@ import { createRng } from "../../rng";
 import type { ImageLayer, Rect, Size } from "../../types";
 import { applyLayerStyle, isSafeUrl } from "../sanitize";
 import { clamp01, contentDiv, hashString, type LayerView, type MountEnv, Shell, Transient } from "./common";
-import { stillImageSource } from "./still-svg";
+import { stillImageSource } from "./still-image";
 
 /*
  * Reveal geometry mirrors the image choreography (choreo/timing.ts) so the reveal follows the
@@ -68,8 +68,9 @@ function paintJitter(count: number, seed: number): Float32Array {
 /**
  * Raster/vector image, optionally a crop of a larger bitmap (rendered pages). Reveals:
  * "sweep" (default, top to bottom), "type" (line by line, left to right: PDF text regions),
- * "fade", "paint" (blocks laid along a zig-zag brush path). An animated SVG source is swapped for
- * a still copy (see still-svg.ts) before decode() settles, so no frame depends on the browser clock.
+ * "fade", "paint" (blocks laid along a zig-zag brush path). An animated source (SVG, GIF, APNG,
+ * WebP, AVIF) is swapped for a still copy (see still-image.ts) before decode() settles, so no frame
+ * depends on the browser clock.
  */
 export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerView {
   const doc = env.doc;
@@ -109,7 +110,8 @@ export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerVi
     if (typeof source === "string") {
       img.src = source;
     } else {
-      // A same-origin .svg file or blob: URL: shown at once, swapped for its still copy once fetched.
+      // An animated bitmap data: URL, a same-origin file or a blob: URL: shown at once, swapped for
+      // its still copy once decoded or fetched.
       img.src = src;
       still = source.then((copy) => {
         if (!gone && copy !== src) img.src = copy;

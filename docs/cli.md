@@ -84,7 +84,7 @@ swarmloom render <file|url> [options]
 | `--labels <mode>` | `names` | `names`、`agents`、`roles` 或 `none` |
 | `--finale <finale>` | `flock` | `flock`、`halo` 或 `none` |
 | `--follow <mode>` | `tour` | `tour` 随构建滚动页面；`none` 不滚动 |
-| `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面 |
+| `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面，页面里的动图停在第一帧 |
 | `--no-live` | go live | 整个停留时间都保持收尾动画，不 go live |
 | `--locale <tag>` | `en-US` | 工具栏文字和页面的语言，BCP 47 标签，例如 `zh-CN` |
 | `--bpm <n>` | `112` | 放置音符、散开音与完成和弦对齐的速度（八分音符网格），范围 40–240 |

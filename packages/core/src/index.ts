@@ -17,4 +17,5 @@ export { definePlugin } from "./plugin";
 export { createRng } from "./rng";
 export type { RenderOfflineOptions } from "./sound/index";
 export { encodeWav, quantize, renderOffline } from "./sound/index";
+export { stillImageSource } from "./stage/layers/still-image";
 export type * from "./types";

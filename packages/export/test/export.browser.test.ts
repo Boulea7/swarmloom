@@ -88,6 +88,33 @@ describe("export in Chromium", () => {
     }
   });
 
+  it("shows an animated GIF on the live page as its first frame, at the same size", async () => {
+    // 1x1 GIF, red then blue, looping.
+    const gif =
+      "data:image/gif;base64,R0lGODlhAQABAIABAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAQABAAACAkQBACH5BAAKAAAALAAAAAABAAEAAAICTAEAOw==";
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc = `<body style="margin:0"><img src="${gif}">`;
+    document.body.append(frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument as Document;
+      const stage = new LiveStage({
+        document,
+        host: document.body,
+        shadows: { roots: () => [], stop() {} },
+        page: { frame, document: doc },
+      });
+      await stage.holdImages();
+      const img = doc.querySelector("img") as HTMLImageElement;
+      expect([img.src.slice(0, 15), img.complete, img.width]).toEqual(["data:image/png;", true, 1]);
+    } finally {
+      frame.remove();
+    }
+  });
+
   it("lines the live page up with a scrolled stage at once, despite a page-level smooth scroll", async () => {
     const frame = document.createElement("iframe");
     frame.setAttribute("sandbox", "allow-same-origin");
