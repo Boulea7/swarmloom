@@ -74,6 +74,28 @@ describe("Engine", () => {
     expect(h.stage.hash.value).toBe(first.hash);
   });
 
+  it("replay mid-build reproduces a tour run (no in-sight state leaks into the new run)", () => {
+    const page = blueprintOf(
+      Array.from({ length: 12 }, (_, i) => box(`b${i}`, 40, 40 + i * 260, 300, 200)),
+      { w: 800, h: 3160 },
+    );
+    const finish = (h: ReturnType<typeof harness>) => {
+      h.until(() => h.engine.state === "finale");
+      h.run(30);
+      return { hash: h.stage.hash.value, log: h.engine.soundLog.map((e) => ({ ...e })) };
+    };
+    const fresh = harness(page, { follow: "tour", seed: 5 });
+    void fresh.engine.play();
+    const expected = finish(fresh);
+    const h = harness(page, { follow: "tour", seed: 5 });
+    void h.engine.play();
+    h.run(200);
+    h.engine.replay();
+    const replayed = finish(h);
+    expect(replayed.log).toEqual(expected.log);
+    expect(replayed.hash).toBe(expected.hash);
+  });
+
   it("fades the intro icon out from its current alpha after fan-out, then removes it", () => {
     const h = harness(samplePage(), { seed: 7 });
     void h.engine.play();

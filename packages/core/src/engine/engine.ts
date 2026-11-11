@@ -584,6 +584,8 @@ export class Engine implements Player {
     this.#lastGuideAt = Number.NEGATIVE_INFINITY;
     this.#lastBuilt = -1;
     this.#errors = 0;
+    // Read by the first building frame's tour lead, so it must not carry over from the last run.
+    this.#nothingInSight = false;
     this.#userScrolled = false;
     this.#setRulers(false);
     if (this.#done.settled) this.#done = deferred();
