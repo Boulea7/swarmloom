@@ -6,7 +6,7 @@ export const zhCN: StudioCatalog = {
   "app.skip": "跳到主要内容",
 
   "home.lede":
-    "打开网页、文档、PDF、幻灯片、表格、代码、图片或 3D 模型，光标们会当着你的面把它重建出来，还能导出视频。",
+    "打开网页、文档、电子书、PDF、幻灯片、表格、代码、思维导图、图片或 3D 模型，光标们会当着你的面把它重建出来，还能导出视频。",
   "home.open": "打开文件",
   "home.paste": "粘贴",
   "home.url.label": "文件或网页地址",
@@ -32,6 +32,15 @@ export const zhCN: StudioCatalog = {
   "home.footer.source": "源代码",
 
   "format.other": "文件",
+  "format.odf": "OpenDocument 文档",
+  "format.epub": "EPUB 电子书",
+  "format.rtf": "RTF 富文本",
+  "format.ofd": "OFD 版式文档",
+  "format.notebook": "Jupyter 笔记本",
+  "format.terminal": "终端录制",
+  "format.diff": "补丁",
+  "format.mindmap": "思维导图",
+  "format.lottie": "Lottie 动画",
 
   "nav.back": "返回",
 
@@ -165,6 +174,7 @@ export const zhCN: StudioCatalog = {
 
   "settings.remote": "加载网络图片和字体",
   "settings.remote.hint": "页面可以加载 https 图片和字体，不发送来源信息。关闭后，所有内容只留在本机。",
+  "settings.remote.reload": "刷新页面后才会重新加载网络图片和字体。",
   "player.restartHint": "新设置会在下次构建时生效。",
   "player.restart": "重新开始",
   "player.progress": "构建进度",

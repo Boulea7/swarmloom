@@ -2,6 +2,7 @@ import type { AppContext, View } from "../context";
 import { describeError, MAX_INPUT_BYTES } from "../errors";
 import { type ExampleEntry, entriesForLocale } from "../examples/manifest";
 import { acceptAttribute, formatById } from "../formats-meta";
+import { formatName } from "../i18n";
 import { normalizeSourceUrl } from "../route";
 import { guessPasteName, readLocalFile } from "../source";
 import { CURSOR_PALETTE, decorCursor } from "../ui/brand";
@@ -16,10 +17,10 @@ const PASTE_FORMATS = ["md", "html", "svg", "csv", "json", "js", "ts", "py"] as 
 
 const DECOR_NAMES = ["Ada", "Lin", "Mo"] as const;
 
-/** Translated short name of a format, e.g. "PDF" or "Markdown". */
+/** Translated short name of a format, e.g. "PDF" or "Markdown"; "File" for unknown ids. */
 export function formatLabel(ctx: AppContext, id: string): string {
   const meta = formatById(id);
-  return meta ? ctx.i18n.core(`format.${id}`, meta.label) : ctx.i18n.t("format.other");
+  return meta ? formatName(ctx.i18n, meta) : ctx.i18n.t("format.other");
 }
 
 function exampleCard(ctx: AppContext, entry: ExampleEntry, onOpen: (entry: ExampleEntry) => void): HTMLLIElement {
@@ -60,7 +61,7 @@ function exampleCard(ctx: AppContext, entry: ExampleEntry, onOpen: (entry: Examp
 
 function gallery(ctx: AppContext, onOpen: (entry: ExampleEntry) => void): HTMLElement {
   const { i18n, services } = ctx;
-  const entries = entriesForLocale(services.manifest, i18n.locale);
+  const entries = entriesForLocale(services.manifest, i18n.locale, ctx.formats);
   const headingId = nextId("examples");
   const section = h(
     "section",
@@ -94,11 +95,48 @@ function gallery(ctx: AppContext, onOpen: (entry: ExampleEntry) => void): HTMLEl
   return section;
 }
 
+/** What the user typed on home but has not opened yet; it survives a language change. */
+interface HomeDraft {
+  url: string;
+  paste: string;
+  pasteFormat: string;
+  pasteOpen: boolean;
+}
+
+/** One build of the home page, in the language current when it was built. */
+interface HomePage {
+  nodes: Node[];
+  onKey(event: KeyboardEvent): boolean;
+  focusOpen(): void;
+  draft(): HomeDraft;
+  destroy(): void;
+}
+
 /**
  * Home: drop zone with open, paste and URL, then the example gallery. Files dropped or pasted
- * anywhere on the page open directly.
+ * anywhere on the page open directly. A language change rebuilds the page in place and carries
+ * over whatever was typed but not opened yet.
  */
 export function createHome(ctx: AppContext): View {
+  const root = h("div", { class: "view view-home" });
+  let page = buildHome(ctx, root, null);
+  root.replaceChildren(...page.nodes);
+  if (ctx.route.import) queueMicrotask(() => page.focusOpen());
+
+  return {
+    root,
+    onKey: (event) => page.onKey(event),
+    localeChanged() {
+      const draft = page.draft();
+      page.destroy();
+      page = buildHome(ctx, root, draft);
+      root.replaceChildren(...page.nodes);
+    },
+    destroy: () => page.destroy(),
+  };
+}
+
+function buildHome(ctx: AppContext, root: HTMLElement, draft: HomeDraft | null): HomePage {
   const { i18n, toast } = ctx;
   const doc = document;
   const cleanups: Array<() => void> = [];
@@ -118,7 +156,7 @@ export function createHome(ctx: AppContext): View {
 
   const picker = h("input", {
     class: "visually-hidden",
-    attrs: { type: "file", accept: acceptAttribute(), tabindex: -1, "aria-hidden": "true" },
+    attrs: { type: "file", accept: acceptAttribute(ctx.formats), tabindex: -1, "aria-hidden": "true" },
     on: {
       change: () => {
         const file = picker.files?.[0];
@@ -387,11 +425,16 @@ export function createHome(ctx: AppContext): View {
     ),
   );
 
-  const root = h("div", { class: "view view-home" }, appBar(ctx), main, picker);
-  if (ctx.route.import) queueMicrotask(() => openButton.focus());
+  if (draft) {
+    urlInput.value = draft.url;
+    pasteArea.value = draft.paste;
+    formatSelect.value = draft.pasteFormat;
+    pastePanel.hidden = !draft.pasteOpen;
+    pasteButton.setAttribute("aria-expanded", String(draft.pasteOpen));
+  }
 
   return {
-    root,
+    nodes: [appBar(ctx), main, picker],
     onKey(event) {
       if (isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey) return false;
       const key = event.key.toLowerCase();
@@ -409,6 +452,13 @@ export function createHome(ctx: AppContext): View {
       }
       return false;
     },
+    focusOpen: () => openButton.focus(),
+    draft: () => ({
+      url: urlInput.value,
+      paste: pasteArea.value,
+      pasteFormat: formatSelect.value,
+      pasteOpen: !pastePanel.hidden,
+    }),
     destroy() {
       for (const off of cleanups.splice(0)) off();
     },

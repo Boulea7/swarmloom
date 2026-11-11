@@ -159,4 +159,20 @@ describe("Session", () => {
     expect(player.time).toBe(15_000);
     session.destroy();
   });
+
+  it("places the scrubber on the player's clock, full only once the build has ended", () => {
+    const player = slowPlayer();
+    const session = sessionWith(player);
+    session.rebuild(false);
+    expect(session.position).toBe(0);
+
+    session.start();
+    session.seek(0.5); // 9 s of the early 18 s plan; at 9 s the plan reads 9 + 12.6 s
+    expect(player.progress.built).toBe(25); // the layer share would put the thumb at 0.25
+    expect(session.position).toBeCloseTo(9_000 / 21_600, 5);
+
+    session.seek(1);
+    expect(session.position).toBe(1);
+    session.destroy();
+  });
 });

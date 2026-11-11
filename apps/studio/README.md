@@ -4,13 +4,13 @@ SwarmLoom Studio is the installable web app (PWA). Open or drop a file, paste te
 
 ## What it does
 
-- **Home:** a drop zone, a file picker, paste (with a format choice), a URL field, and a gallery of every sample in the repository's `examples/` folder, copied in at build time with static thumbnails. Licence notes next to the samples (such as `examples/doc/SOURCES.md`) are copied too, without a tile.
-- **Player:** a full-bleed inline stage, a settings drawer (a bottom sheet on phones), export (record in the browser, or copy the `npx` command), and share links that carry small text files inside the URL hash.
+- **Home:** a drop zone, a file picker, paste (with a format choice; notebooks, asciicasts, patches, FreeMind maps and RTF are recognised by content), a URL field, and a gallery of every sample in the repository's `examples/` folder, copied in at build time with static thumbnails. Licence notes next to the samples (such as `examples/doc/SOURCES.md`) are copied too, without a tile.
+- **Player:** a full-bleed inline stage, a scrubber (a seek slider on the player's time line when the player has `seek(t)`, a progress bar otherwise), a settings drawer (a bottom sheet on phones), export (record in the browser, or copy the `npx` command), and share links that carry small text files inside the URL hash.
 - **Layouts:** desktop, tablet, phone, foldables (two panes via Viewport Segments, refined by Device Posture when available) and a watch face.
-- **PWA:** installable, a share target for files and text, an OS file handler, and a hand-written service worker. It caches the shell and the format chunks, so Studio opens offline.
+- **PWA:** installable, a share target for files and text, an OS file handler, and a hand-written service worker. At install it caches the shell and every format reader with the chunks it imports, so local files open offline. The worker's version hashes the content of every cached file, so a change to the page, the manifest or an icon alone still reaches installed copies.
 - **Languages:** zh-CN, zh-TW, en, ja, ko, es, fr and de. Studio picks the browser language, and the settings can change it.
 
-Files are read in the browser and never uploaded. Remote https images and fonts in documents load without a referrer; the "Load web images and fonts" setting turns them off.
+Files are read in the browser and never uploaded. Remote https images and fonts in documents load without a referrer; the "Load web images and fonts" setting turns them off. A Content-Security-Policy in `index.html` backs up the format readers: only Studio's own scripts run, and from the web only https images and fonts load, plus the file you open. With the setting off, `src/csp.ts` adds a stricter policy that also blocks web images and fonts; turning it back on asks for a page reload. Back and Forward reopen each entry's own local file while the tab keeps it (the last 8); older entries ask you to open the file again. Changing the language keeps a running build and anything typed on the home page.
 
 ## URL parameters
 
@@ -20,7 +20,7 @@ Files are read in the browser and never uploaded. Remote https images and fonts 
 | `?src=<url>` | Open a remote file or page (http and https only). |
 | `#d=<payload>` | Open a shared text file (base64url of deflate-raw JSON). |
 | `?autoplay=1` | Start without waiting for the play button. |
-| `?watch=1` | Watch face. Screens up to 320 x 400 switch to it on their own. |
+| `?watch=1` | Watch face. Watch-sized screens (up to 320 x 400) switch to it on their own; a narrow window on a bigger screen and `?import=1` links keep the normal Studio. |
 | `?round=1` | Round watch face: every control stays in the inscribed square. |
 | `?import=1` | Highlight the file picker (sent by the extension). |
 | `?key=<key>` | Read input the extension stored in `chrome.storage` (extension build). |
@@ -31,7 +31,7 @@ Files are read in the browser and never uploaded. Remote https images and fonts 
 
 ## Keyboard
 
-Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `S` settings, `E` export, `Esc` back. Playback keys (`Space`, `1` to `3`, `M`, `T`, `R`, `L`) belong to the core player toolbar.
+Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `S` settings, `E` export, `Esc` back. Playback keys (`Space`, `1` to `3`, `M`, `T`, `R`, `L`) belong to the core player toolbar. On the scrubber, arrows move 2%, `Page Up`/`Page Down` 10%, and `Home`/`End` jump to the ends.
 
 ## Build targets
 
@@ -41,7 +41,7 @@ Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `
 | `pnpm -F @swarmloom/studio build:web` | `dist/`: the PWA with examples, manifest, icons and `sw.js`. |
 | `pnpm -F @swarmloom/studio build:extension` (or `STUDIO_TARGET=extension`) | `dist-extension/studio.html`: relative paths, no service worker, no examples. Files arrive through `?src=` or `?key=`. |
 
-App icons are drawn from the mark in `src/ui/mark.ts` at build time; no image files are checked in. The gallery picks up new files in `examples/` automatically. A new format also needs an entry in `src/formats-meta.ts`.
+App icons are drawn from the mark in `src/ui/mark.ts` at build time; no image files are checked in. The gallery picks up new files in `examples/` automatically. A new format also needs an entry in `src/formats-meta.ts` (test/formats-meta.test.ts keeps it in step with the `@swarmloom/formats` registry), and a name in the Studio catalog until core translates it. Formats whose adapter ships separately are marked `optional` there: Lottie stays hidden until the registry provides it.
 
 ## Tests and screenshots
 

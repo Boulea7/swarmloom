@@ -1,10 +1,11 @@
 import type { ExampleEntry } from "../examples/manifest";
+import { extensionOf } from "../formats-meta";
 import { h, s } from "../ui/dom";
 
 /**
  * Static thumbnails for example cards, built at no runtime cost: a poster image when the example
  * ships one, the file itself for images and SVG (an `<img>` never runs SVG scripts), a CSS preview
- * of the first lines for Markdown, code and CSV, and a small format illustration otherwise.
+ * of the first lines for Markdown, code, patches and CSV, and a small format illustration otherwise.
  * Untrusted text only ever goes through `textContent`.
  */
 
@@ -56,7 +57,10 @@ function markdownPreview(snippet: string): HTMLElement {
     } else if (/^\s*([-*+]|\d+\.)\s+/.test(line)) {
       doc.append(h("div", { class: "t-li", text: plainMarkdown(line.replace(/^\s*([-*+]|\d+\.)\s+/, "")) }));
     } else if (line.startsWith(">")) {
-      doc.append(h("div", { class: "t-quote", text: plainMarkdown(line.replace(/^>\s?/, "")) }));
+      // GitHub alert markers ("> [!NOTE]") carry no text of their own.
+      const quote = plainMarkdown(line.replace(/^>\s?/, "").replace(/^\[!\w+\]\s*/, ""));
+      if (quote === "") continue;
+      doc.append(h("div", { class: "t-quote", text: quote }));
     } else if (line.trim() === "") {
       doc.append(h("div", { class: "t-gap" }));
     } else {
@@ -90,6 +94,24 @@ function codePreview(snippet: string): HTMLElement {
   return h("div", { class: "thumb-code" }, ...lines.map(codeLine));
 }
 
+/** Unified diff lines, tinted like a review: additions, deletions, hunk headers, file headers. */
+function diffPreview(snippet: string): HTMLElement {
+  const pane = h("div", { class: "thumb-diff" });
+  for (const line of snippet.split("\n").slice(0, MAX_LINES + 2)) {
+    const kind = /^(\+\+\+|---|diff |index )/.test(line)
+      ? "t-file"
+      : line.startsWith("@@")
+        ? "t-hunk"
+        : line.startsWith("+")
+          ? "t-add"
+          : line.startsWith("-")
+            ? "t-del"
+            : "t-ctx";
+    pane.append(h("div", { class: `t-line ${kind}`, text: line || " " }));
+  }
+  return pane;
+}
+
 function sheetPreview(snippet: string): HTMLElement {
   const rows = snippet
     .split("\n")
@@ -111,16 +133,102 @@ function lines(count: number, className = "t-bar"): HTMLElement[] {
   return Array.from({ length: count }, (_, i) => h("span", { class: className, data: { i } }));
 }
 
-/** Format illustrations for binary formats without a poster. */
-function illustration(format: string): HTMLElement {
+function slide(): HTMLElement {
+  return h(
+    "div",
+    { class: "thumb-slide" },
+    h("span", { class: "t-title" }),
+    h("div", { class: "t-cols" }, h("div", { class: "t-stack" }, ...lines(4)), h("span", { class: "t-figure" })),
+  );
+}
+
+function page(): HTMLElement {
+  return h(
+    "div",
+    { class: "thumb-page" },
+    h("span", { class: "t-title" }),
+    h("div", { class: "t-stack" }, ...lines(7)),
+    h("div", { class: "t-cols" }, h("span", { class: "t-figure" }), h("div", { class: "t-stack" }, ...lines(3))),
+  );
+}
+
+/** Prompt, output and success rows of a terminal window (widths come from the stylesheet). */
+const TERMINAL_ROWS = ["t-prompt", "t-out", "t-out", "t-ok", "t-out", "t-prompt"] as const;
+
+function terminal(): HTMLElement {
+  const rows = TERMINAL_ROWS.map((kind) => h("span", { class: `t-row ${kind}` }));
+  return h(
+    "div",
+    { class: "thumb-terminal" },
+    h("div", { class: "t-chrome" }, h("i"), h("i"), h("i")),
+    h("div", { class: "t-stack" }, ...rows, h("span", { class: "t-caret" })),
+  );
+}
+
+function notebook(): HTMLElement {
+  const cell = (kind: string, count: number) =>
+    h(
+      "div",
+      { class: `t-cell-row ${kind}` },
+      h("span", { class: "t-gutter" }),
+      h("div", { class: "t-stack" }, ...lines(count)),
+    );
+  return h(
+    "div",
+    { class: "thumb-notebook" },
+    h("span", { class: "t-title" }),
+    cell("t-md", 2),
+    cell("t-in", 3),
+    cell("t-out", 2),
+    cell("t-in", 2),
+  );
+}
+
+function mindmap(): HTMLElement {
+  const branches: readonly (readonly [number, number])[] = [
+    [18, 22],
+    [16, 50],
+    [20, 78],
+    [82, 26],
+    [84, 56],
+    [80, 80],
+  ];
+  const svg = s(
+    "svg",
+    { viewBox: "0 0 100 100", class: "thumb-map", "aria-hidden": "true" },
+    ...branches.map(([x, y]) =>
+      s("path", { d: `M50 50 C${(50 + x) / 2} 50 ${(50 + x) / 2} ${y} ${x} ${y}`, class: "t-link" }),
+    ),
+    ...branches.map(([x, y]) => s("rect", { x: x - 11, y: y - 4.5, width: 22, height: 9, rx: 4.5, class: "t-node" })),
+    s("rect", { x: 33, y: 43, width: 34, height: 14, rx: 7, class: "t-root" }),
+  );
+  return h("div", { class: "thumb-map-wrap" }, svg);
+}
+
+function book(): HTMLElement {
+  return h(
+    "div",
+    { class: "thumb-book" },
+    h("div", { class: "t-leaf" }, h("span", { class: "t-title" }), h("div", { class: "t-stack" }, ...lines(6))),
+    h("div", { class: "t-leaf" }, h("div", { class: "t-stack" }, ...lines(8))),
+  );
+}
+
+/** Format illustrations for binary formats without a poster; `ext` picks the OpenDocument kind. */
+function illustration(format: string, ext: string): HTMLElement {
   switch (format) {
     case "slides":
-      return h(
-        "div",
-        { class: "thumb-slide" },
-        h("span", { class: "t-title" }),
-        h("div", { class: "t-cols" }, h("div", { class: "t-stack" }, ...lines(4)), h("span", { class: "t-figure" })),
-      );
+      return slide();
+    case "odf":
+      return /^(f?odp|otp)$/.test(ext) ? slide() : page();
+    case "epub":
+      return book();
+    case "notebook":
+      return notebook();
+    case "terminal":
+      return terminal();
+    case "mindmap":
+      return mindmap();
     case "html":
       return h(
         "div",
@@ -142,13 +250,7 @@ function illustration(format: string): HTMLElement {
     case "sheet":
       return sheetPreview("A,B,C,D,E\n,,,,\n,,,,\n,,,,\n,,,,");
     default:
-      return h(
-        "div",
-        { class: "thumb-page" },
-        h("span", { class: "t-title" }),
-        h("div", { class: "t-stack" }, ...lines(7)),
-        h("div", { class: "t-cols" }, h("span", { class: "t-figure" }), h("div", { class: "t-stack" }, ...lines(3))),
-      );
+      return page();
   }
 }
 
@@ -167,8 +269,10 @@ export function thumbnail(entry: ExampleEntry, examplesBase: string): HTMLElemen
     frame.append(codePreview(entry.snippet));
   } else if (entry.snippet && entry.format === "sheet") {
     frame.append(sheetPreview(entry.snippet));
+  } else if (entry.snippet && entry.format === "diff") {
+    frame.append(diffPreview(entry.snippet));
   } else {
-    frame.append(illustration(entry.format));
+    frame.append(illustration(entry.format, extensionOf(entry.path)));
   }
   return frame;
 }

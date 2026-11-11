@@ -28,7 +28,9 @@ type Item = { ref: SourceRef; title: string; entry?: ExampleEntry };
 
 /** What the watch cycles through: the requested source first, then the light examples. */
 function playlist(ctx: AppContext): Item[] {
-  const examples = entriesForLocale(ctx.services.manifest, ctx.i18n.locale).filter((e) => formatById(e.format)?.light);
+  const examples = entriesForLocale(ctx.services.manifest, ctx.i18n.locale, ctx.formats).filter(
+    (e) => formatById(e.format)?.light,
+  );
   const items: Item[] = examples.map((entry) => ({
     ref: { kind: "example", id: entry.id },
     title: entry.title,
@@ -47,7 +49,7 @@ function playlist(ctx: AppContext): Item[] {
 }
 
 /**
- * Watch face (`?watch=1`, or a screen no larger than 320 × 400): a static poster first, one big
+ * Watch face (`?watch=1`, or a watch-sized screen): a static poster first, one big
  * play button, a progress ring, muted playback that cycles through the light examples, and a QR
  * code to continue on a phone. `?round=1` keeps everything inside the inscribed square of a
  * circular display.
@@ -131,7 +133,14 @@ export function createWatch(ctx: AppContext): View {
     icon("phone", 18),
   );
   const actions = h("div", { class: "watch-actions" }, items.length > 1 ? next : null, phone);
-  const safe = h("div", { class: "watch-safe" }, title, play, actions);
+  // Keyboard users bring the faded controls back: a control with focus is never left hidden.
+  const safe = h(
+    "div",
+    { class: "watch-safe", on: { focusin: () => wake(), focusout: () => wake(), keydown: () => wake() } },
+    title,
+    play,
+    actions,
+  );
 
   const qrBox = h("div", { class: "watch-qr-code" });
   // A native modal <dialog>: while open, the covered player and the rest of the page are inert,
@@ -202,12 +211,22 @@ export function createWatch(ctx: AppContext): View {
     poster.hidden = phase === "playing" || phase === "done";
   };
 
+  /** A control shows a keyboard focus ring: fading the controls would hide where focus is. */
+  const keyboardFocus = () => {
+    try {
+      return safe.querySelector(":focus-visible") !== null;
+    } catch {
+      // No `:focus-visible` (old engines): fade as before.
+      return false;
+    }
+  };
+
   const showControls = (hold: boolean) => {
     root.dataset.controls = "shown";
     window.clearTimeout(idleTimer);
     if (hold) return;
     idleTimer = window.setTimeout(() => {
-      if (root.dataset.playing === "true") root.dataset.controls = "hidden";
+      if (root.dataset.playing === "true" && !keyboardFocus()) root.dataset.controls = "hidden";
     }, CONTROLS_IDLE_MS);
   };
 

@@ -1,5 +1,5 @@
 import type { AppContext, NavigateOptions, View } from "./context";
-import { FORMAT_META } from "./formats-meta";
+import { availableFormats } from "./formats-meta";
 import { createStudioI18n, loadCatalog, negotiateLocale, type StudioI18n } from "./i18n";
 import { watchViewport } from "./layout/viewport";
 import { parseRoute, type Route, routeToUrl } from "./route";
@@ -37,13 +37,25 @@ const LAUNCH_WAIT_MS = 3000;
 
 const THEME_COLOR = { light: "#fafafc", dark: "#0b0b12" } as const;
 
+/** Local inputs kept for Back and Forward; an entry whose input was dropped asks to open it again. */
+const LOCAL_HISTORY_LIMIT = 8;
+/** `history.state` key naming the local input of an entry. */
+const LOCAL_STATE_KEY = "swarmloomLocal";
+
+/** A random hex id, so keys left in `history.state` by an earlier page load never match. */
+function randomKey(win: Window): string {
+  const bytes = win.crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** Studio locale for a setting: the explicit choice, or the browser's languages. */
 function resolveLocale(setting: StudioSettings["locale"], win: Window): StudioLocale {
   return setting === "auto" ? negotiateLocale(win.navigator.languages ?? [win.navigator.language]) : setting;
 }
 
-async function loadI18n(services: StudioServices, locale: StudioLocale): Promise<StudioI18n> {
-  const catalog = await loadCatalog(locale);
+/** Studio and core strings for a locale, or English for both when that locale's strings fail to load. */
+async function loadI18n(services: StudioServices, requested: StudioLocale): Promise<StudioI18n> {
+  const { locale, catalog } = await loadCatalog(requested);
   let core = null;
   try {
     core = services.coreI18n?.(locale) ?? null;
@@ -79,10 +91,42 @@ export async function mountStudio(
   let route: Route = parseRoute(win.location.href, routeOptions);
   let stored = loadSettings(services.storage);
   let settings: StudioSettings = { ...stored, ...route.overrides };
+  // The page CSP backs up the adapters' own network checks (decisions-v1 C03). It only tightens:
+  // with remote assets off from the start, before anything loads.
+  let assetsBlocked = false;
+  const syncAssetPolicy = () => {
+    if (settings.remoteAssets || assetsBlocked || !services.blockRemoteAssets) return;
+    services.blockRemoteAssets();
+    assetsBlocked = true;
+  };
+  syncAssetPolicy();
   let i18n = await loadI18n(services, resolveLocale(settings.locale, win));
+  /** Bumped per language change, so only the latest one applies its strings. */
+  let localeRequest = 0;
   let local: LocalInput | null = null;
   let view: View | null = null;
   let navigated = false;
+  let destroyed = false;
+
+  // Each local input is stored under its own key in the history entry that opened it, so Back and
+  // Forward play that entry's file, never the one opened last.
+  const locals = new Map<string, LocalInput>();
+  const pageKey = randomKey(win);
+  let localCount = 0;
+  const keepLocal = (input: LocalInput): Record<string, string> => {
+    localCount += 1;
+    const key = `${pageKey}:${localCount}`;
+    locals.set(key, input);
+    for (const oldest of locals.keys()) {
+      if (locals.size <= LOCAL_HISTORY_LIMIT) break;
+      locals.delete(oldest);
+    }
+    return { [LOCAL_STATE_KEY]: key };
+  };
+  const localOf = (state: unknown): LocalInput | null => {
+    const key = state && typeof state === "object" ? (state as Record<string, unknown>)[LOCAL_STATE_KEY] : undefined;
+    return typeof key === "string" ? (locals.get(key) ?? null) : null;
+  };
 
   const systemDark = typeof win.matchMedia === "function" ? win.matchMedia("(prefers-color-scheme: dark)") : null;
   const schemeOf = (s: StudioSettings): "light" | "dark" =>
@@ -133,19 +177,22 @@ export async function mountStudio(
   const buildPanels = () => {
     settingsPanel?.destroy();
     shortcutsPanel?.destroy();
-    settingsPanel = createPanel({
+    const panel = createPanel({
       title: i18n.t("settings.title"),
       closeLabel: i18n.t("settings.close"),
       class: "panel-settings",
       onClose: () => {
-        html.dataset.drawer = "closed";
+        // A replaced panel closes asynchronously, possibly after its successor opened.
+        if (settingsPanel === panel) html.dataset.drawer = "closed";
       },
     });
+    settingsPanel = panel;
     shortcutsPanel = createShortcuts(i18n);
     html.dataset.drawer = "closed";
   };
 
-  const isWatch = () => route.watch || viewport.state.watch;
+  // A watch-sized screen gets the watch face unless the link asks for the file picker (`?import=1`).
+  const isWatch = () => route.watch || (viewport.state.watch && !route.import);
 
   const renderView = () => {
     view?.destroy();
@@ -166,12 +213,30 @@ export async function mountStudio(
     }
   };
 
-  const renderAll = () => {
+  const mountShell = () => {
     applyDocument();
     buildPanels();
     const { settings: drawer, shortcuts } = panels();
-    root.replaceChildren(skip, slot, drawer.root, shortcuts.root, toast.root);
+    // Once mounted, the slot stays connected: detaching it would reset a running stage.
+    if (slot.parentNode === root) slot.after(drawer.root, shortcuts.root, toast.root);
+    else root.replaceChildren(skip, slot, drawer.root, shortcuts.root, toast.root);
+  };
+
+  const renderAll = () => {
+    mountShell();
     renderView();
+  };
+
+  /** New strings are in: rebuild the shell, keep the view running when it can relabel itself. */
+  const relocalize = () => {
+    const reopen = panels().settings.isOpen;
+    mountShell();
+    // The player titles the tab after the document itself (and relabels it below).
+    if (html.dataset.view !== "player") doc.title = i18n.t("app.name");
+    // Reopened first, so anything the view announces lands above a modal sheet.
+    if (reopen) toggleSettings();
+    if (view?.localeChanged) view.localeChanged();
+    else renderView();
   };
 
   function navigate(patch: Partial<Route>, opts: NavigateOptions = {}): void {
@@ -184,11 +249,13 @@ export async function mountStudio(
       overrides: route.overrides,
       ...patch,
     };
-    if (opts.local) local = opts.local;
+    // A local input belongs to the entry this navigation creates; other entries carry none.
+    local = opts.local ?? null;
+    const state = opts.local ? keepLocal(opts.local) : null;
     const url = routeToUrl(next, appUrl);
     try {
-      if (opts.replace) win.history.replaceState(null, "", url);
-      else win.history.pushState(null, "", url);
+      if (opts.replace) win.history.replaceState(state, "", url);
+      else win.history.pushState(state, "", url);
     } catch (error) {
       // Sandboxed or opaque origins can refuse history changes; the view still switches.
       console.warn("[studio] history update failed", error);
@@ -210,14 +277,12 @@ export async function mountStudio(
     for (const key of keys) delete overrides[key];
     route = { ...route, overrides };
     settings = { ...prev, ...clean };
-    if (resolveLocale(prev.locale, win) !== resolveLocale(settings.locale, win)) {
-      void loadI18n(services, resolveLocale(settings.locale, win)).then((next) => {
-        i18n = next;
-        const reopen = panels().settings.isOpen;
-        renderAll();
-        if (reopen) toggleSettings();
+    syncAssetPolicy();
+    if (settings.remoteAssets && !prev.remoteAssets && assetsBlocked) {
+      toast.show(i18n.t("settings.remote.reload"), {
+        icon: "refresh",
+        action: { label: i18n.t("update.reload"), run: () => win.location.reload() },
       });
-      return;
     }
     const nextScheme = schemeOf(settings);
     const documentChanged = nextScheme !== scheme || prev.reducedMotion !== settings.reducedMotion;
@@ -225,6 +290,14 @@ export async function mountStudio(
     if (documentChanged) applyDocument();
     for (const el of doc.querySelectorAll<HTMLButtonElement>(".theme-button")) syncThemeButton(ctx, el);
     view?.settingsChanged?.(prev, settings);
+    const locale = resolveLocale(settings.locale, win);
+    if (locale === resolveLocale(prev.locale, win)) return;
+    const request = ++localeRequest;
+    void loadI18n(services, locale).then((next) => {
+      if (destroyed || request !== localeRequest) return;
+      i18n = next;
+      relocalize();
+    });
   }
 
   function toggleSettings(): void {
@@ -241,6 +314,7 @@ export async function mountStudio(
     drawer.open(modal);
   }
 
+  const formats = availableFormats(services.formats);
   const listFormat = (items: string[]): string => {
     try {
       return new Intl.ListFormat(i18n.locale, { type: "conjunction" }).format(items);
@@ -274,7 +348,8 @@ export async function mountStudio(
     toggleSettings,
     settingsOpen: () => panels().settings.isOpen,
     openShortcuts: () => panels().shortcuts.open(true),
-    formatList: () => listFormat([...new Set(FORMAT_META.map((m) => formatLabel(ctx, m.id)))]),
+    formats,
+    formatList: () => listFormat([...new Set(formats.map((m) => formatLabel(ctx, m.id)))]),
   };
 
   // Global listeners
@@ -300,8 +375,9 @@ export async function mountStudio(
       toggleSettings();
     }
   };
-  const onPop = () => {
+  const onPop = (event: PopStateEvent) => {
     route = parseRoute(win.location.href, routeOptions);
+    local = localOf(event.state);
     navigated = true;
     renderView();
   };
@@ -350,6 +426,8 @@ export async function mountStudio(
       return view?.root ?? null;
     },
     destroy() {
+      destroyed = true;
+      locals.clear();
       win.clearTimeout(launchTimer);
       win.removeEventListener("keydown", onKey);
       win.removeEventListener("popstate", onPop);

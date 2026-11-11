@@ -2,8 +2,9 @@ import "./styles/studio.css";
 import rawManifest from "virtual:studio-examples";
 import * as core from "@swarmloom/core";
 import { canRecordElement, recordElement } from "@swarmloom/export";
-import { load } from "@swarmloom/formats";
+import { formats, load } from "@swarmloom/formats";
 import { mountStudio } from "./app";
+import { blockRemoteAssets } from "./csp";
 import { MAX_INPUT_BYTES } from "./errors";
 import { sanitizeManifest } from "./examples/manifest";
 import { receiveHandoff } from "./handoff";
@@ -87,6 +88,7 @@ const services: StudioServices = {
   examplesBase: new URL(`${import.meta.env.BASE_URL}examples/`, window.location.href).href,
   onlineGallery: target === "extension" ? HOSTED_STUDIO : undefined,
   load: (input, ctx) => load(input, ctx, { maxBytes: MAX_INPUT_BYTES }),
+  formats: formats.map((entry) => entry.id),
   createPlayer: (options) => core.createPlayer(options),
   recordElement,
   canRecord: () => canRecordElement(),
@@ -104,6 +106,7 @@ const services: StudioServices = {
         })
     : undefined,
   receiveHandoff: (signal) => receiveHandoff(window, signal),
+  blockRemoteAssets: () => blockRemoteAssets(document),
 };
 
 const root = document.getElementById("app");

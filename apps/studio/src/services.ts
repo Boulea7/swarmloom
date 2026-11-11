@@ -39,15 +39,6 @@ export interface StudioLoadContext extends AdapterContext {
 }
 
 /**
- * Player methods newer engines may offer beyond the contract. Studio feature-detects them:
- * `seek` drives the scrubber (decisions-v1 S05).
- */
-export interface PlayerExtras {
-  /** Jump to engine time `t` (ms from the start of the build). */
-  seek?(t: number): void;
-}
-
-/**
  * Everything Studio needs from the outside world. `main.ts` wires the real packages; tests pass
  * fakes, so the UI can be exercised while core, formats or export are still stubs.
  */
@@ -63,7 +54,13 @@ export interface StudioServices {
    * (decisions-v1 C03) so document adapters know whether https images and fonts may load.
    */
   load(input: SourceInput, ctx: StudioLoadContext): Promise<LoadedSource>;
-  createPlayer(options: PlayerOptions): Player & PlayerExtras;
+  /**
+   * Adapter ids of the `@swarmloom/formats` registry. Optional formats (`FormatMeta.optional`, such
+   * as Lottie) are offered only when listed here.
+   */
+  formats?: readonly string[];
+  /** Core's createPlayer. The scrubber becomes a seek slider when the player has the optional `seek(t)`. */
+  createPlayer(options: PlayerOptions): Player;
   /** `@swarmloom/export` recordElement; absent hides in-browser recording. */
   recordElement?: (target: Element, opts?: RecordOptions) => Promise<Recording>;
   /** True when {@link recordElement} can work in this browser. */
@@ -80,4 +77,9 @@ export interface StudioServices {
   onLaunch?: (consumer: (files: File[]) => void) => void;
   /** Bookmarklet handoff (`?from=bookmarklet`): the page copy posted by `window.opener`. */
   receiveHandoff?: (signal?: AbortSignal) => Promise<HandoffPage>;
+  /**
+   * Narrows the page CSP to local images and fonts while remote assets are off (src/csp.ts). The
+   * policy cannot be lifted again; turning remote assets back on needs a page reload.
+   */
+  blockRemoteAssets?: () => void;
 }

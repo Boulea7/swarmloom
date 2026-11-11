@@ -6,7 +6,7 @@ export const de: StudioCatalog = {
   "app.skip": "Zum Inhalt springen",
 
   "home.lede":
-    "Öffne eine Webseite, ein Dokument, ein PDF, eine Präsentation, eine Tabelle, Code, ein Bild oder ein 3D-Modell. Die Cursor bauen es vor dir nach, danach kannst du das Video exportieren.",
+    "Öffne eine Webseite, ein Dokument, ein E-Book, ein PDF, eine Präsentation, eine Tabelle, Code, eine Mindmap, ein Bild oder ein 3D-Modell. Die Cursor bauen es vor dir nach, danach kannst du das Video exportieren.",
   "home.open": "Datei öffnen",
   "home.paste": "Einfügen",
   "home.url.label": "URL der Datei oder Seite",
@@ -33,6 +33,15 @@ export const de: StudioCatalog = {
   "home.footer.source": "Quellcode",
 
   "format.other": "Datei",
+  "format.odf": "OpenDocument",
+  "format.epub": "EPUB-E-Book",
+  "format.rtf": "Rich Text (RTF)",
+  "format.ofd": "OFD-Dokument",
+  "format.notebook": "Jupyter-Notebook",
+  "format.terminal": "Terminalaufzeichnung",
+  "format.diff": "Patch",
+  "format.mindmap": "Mindmap",
+  "format.lottie": "Lottie-Animation",
 
   "nav.back": "Zurück",
 
@@ -176,6 +185,7 @@ export const de: StudioCatalog = {
   "settings.remote": "Bilder und Schriften aus dem Web laden",
   "settings.remote.hint":
     "Seiten dürfen https-Bilder und -Schriften ohne Referrer laden. Ausschalten, damit alles auf diesem Gerät bleibt.",
+  "settings.remote.reload": "Seite neu laden, um Bilder und Schriften aus dem Web wieder zu laden.",
   "player.restartHint": "Neue Einstellungen gelten ab dem nächsten Aufbau.",
   "player.restart": "Neu starten",
   "player.progress": "Aufbaufortschritt",

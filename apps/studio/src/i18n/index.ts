@@ -19,6 +19,15 @@ export interface StudioI18n {
   core(key: string, fallback: string, vars?: Vars): string;
 }
 
+/**
+ * Translated short name of a format, e.g. "PDF" or "Markdown". Studio's catalog names the formats
+ * core does not translate yet; core names the rest, falling back to `meta.label`.
+ */
+export function formatName(i18n: StudioI18n, meta: { readonly id: string; readonly label: string }): string {
+  const key = `format.${meta.id}`;
+  return Object.hasOwn(en, key) ? i18n.t(key as StudioKey) : i18n.core(key, meta.label);
+}
+
 /** Used when nothing is known about the user's languages. */
 export const DEFAULT_LOCALE: StudioLocale = "zh-CN";
 /** Used when the user's languages are known but none is supported. */
@@ -80,13 +89,23 @@ const LOADERS: Record<StudioLocale, () => Promise<StudioCatalog>> = {
   de: () => import("./messages/de").then((m) => m.de),
 };
 
-/** Loads a catalog; a failed chunk load (offline) falls back to English rather than breaking the UI. */
-export async function loadCatalog(locale: StudioLocale): Promise<StudioCatalog> {
+/** A loaded catalog and the locale it is for. */
+export interface LoadedCatalog {
+  /** The requested locale, or {@link FALLBACK_LOCALE} when its strings could not be loaded. */
+  locale: StudioLocale;
+  catalog: StudioCatalog;
+}
+
+/**
+ * Loads a catalog. A failed chunk load (offline) falls back to English rather than breaking the
+ * UI, and says so in `locale`, so the page and core strings switch to English with it.
+ */
+export async function loadCatalog(locale: StudioLocale): Promise<LoadedCatalog> {
   try {
-    return await LOADERS[locale]();
+    return { locale, catalog: await LOADERS[locale]() };
   } catch (error) {
     console.warn(`[studio] could not load the ${locale} strings, using English`, error);
-    return en;
+    return { locale: FALLBACK_LOCALE, catalog: en };
   }
 }
 
@@ -94,7 +113,7 @@ export async function loadCatalog(locale: StudioLocale): Promise<StudioCatalog> 
  * Creates the translator for a loaded catalog.
  *
  * @param locale Resolved Studio locale.
- * @param catalog Catalog for `locale` (from {@link loadCatalog}).
+ * @param catalog Catalog for `locale` (from {@link loadCatalog}, which may fall back to English).
  * @param core Core's i18n for the same locale, or null when core does not provide one yet.
  */
 export function createStudioI18n(locale: StudioLocale, catalog: StudioCatalog, core: CoreI18n | null): StudioI18n {

@@ -10,18 +10,46 @@ export interface Toaster {
 
 const DEFAULT_MS = 3600;
 
-/** Creates the toast region; append `root` once per document. */
+/** The topmost open modal dialog, or null. Everything outside it is inert and covered. */
+function topModal(doc: Document): HTMLDialogElement | null {
+  try {
+    const open = doc.querySelectorAll<HTMLDialogElement>("dialog:modal");
+    return open[open.length - 1] ?? null;
+  } catch {
+    // `:modal` is unknown to the selector engine: there is nothing to route around.
+    return null;
+  }
+}
+
+/**
+ * Creates the toast region; append `root` once per document. While a modal dialog is open (the
+ * phone settings sheet, the export dialog) the region moves into it, since the rest of the page is
+ * inert and covered there, and moves back when that dialog closes.
+ */
 export function createToaster(): Toaster {
   const root = h("div", { class: "toasts", attrs: { role: "status", "aria-live": "polite" } });
   let timer = 0;
+  /** Where the region lives while no modal dialog is open (its page parent, kept on the first move). */
+  let home: ParentNode | null = null;
   const clear = () => {
     window.clearTimeout(timer);
     root.replaceChildren();
+  };
+  /** Moves the region into the topmost modal dialog, or back to the page once none is open. */
+  const place = () => {
+    const target = topModal(root.ownerDocument) ?? home;
+    if (!target || root.parentNode === target) return;
+    if (root.parentNode && !root.parentElement?.closest("dialog")) home = root.parentNode;
+    target.append(root);
+    if (target instanceof HTMLDialogElement) {
+      target.addEventListener("close", () => root.parentNode === target && place(), { once: true });
+    }
   };
   return {
     root,
     show(message, opts = {}) {
       clear();
+      place();
       const action = opts.action;
       const toast = h(
         "div",
@@ -48,6 +76,7 @@ export function createToaster(): Toaster {
     },
     destroy() {
       clear();
+      home = null;
       root.remove();
     },
   };

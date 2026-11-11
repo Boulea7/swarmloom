@@ -22,6 +22,8 @@ async function openLocal(name: string, chars: number): Promise<string> {
 describe("describeError", () => {
   it("explains format-specific size limits in the user's language", async () => {
     expect(await openLocal("big.py", 3 * 1024 * 1024)).toBe("这个文件有 3 MB，这种格式（源代码）最大 2 MB。");
+    // Second-wave formats: the adapter's own limit, and the name from Studio's catalog.
+    expect(await openLocal("big.patch", 17 * 1024 * 1024)).toBe("这个文件有 17 MB，这种格式（补丁）最大 16 MB。");
     // Under the format's own limit, nothing is rejected early.
     expect(await openLocal("small.py", 1024)).toBe("");
   });

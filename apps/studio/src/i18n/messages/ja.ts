@@ -6,7 +6,7 @@ export const ja: StudioCatalog = {
   "app.skip": "本文へ移動",
 
   "home.lede":
-    "Web ページ、文書、PDF、スライド、表、コード、画像、3D モデルを開くと、カーソルたちが目の前で組み立て直します。動画として書き出すこともできます。",
+    "Web ページ、文書、電子書籍、PDF、スライド、表、コード、マインドマップ、画像、3D モデルを開くと、カーソルたちが目の前で組み立て直します。動画として書き出すこともできます。",
   "home.open": "ファイルを開く",
   "home.paste": "貼り付け",
   "home.url.label": "ファイルまたはページの URL",
@@ -33,6 +33,15 @@ export const ja: StudioCatalog = {
   "home.footer.source": "ソース",
 
   "format.other": "ファイル",
+  "format.odf": "OpenDocument",
+  "format.epub": "EPUB 電子書籍",
+  "format.rtf": "リッチテキスト（RTF）",
+  "format.ofd": "OFD 文書",
+  "format.notebook": "Jupyter ノートブック",
+  "format.terminal": "ターミナル記録",
+  "format.diff": "パッチ",
+  "format.mindmap": "マインドマップ",
+  "format.lottie": "Lottie アニメーション",
 
   "nav.back": "戻る",
 
@@ -173,6 +182,7 @@ export const ja: StudioCatalog = {
   "settings.remote": "Web の画像とフォントを読み込む",
   "settings.remote.hint":
     "ページは https の画像とフォントをリファラーなしで読み込めます。オフにすると、すべてこのデバイス内で処理します。",
+  "settings.remote.reload": "Web の画像とフォントは、ページを再読み込みすると読み込まれます。",
   "player.restartHint": "新しい設定は次の構築から反映されます。",
   "player.restart": "やり直す",
   "player.progress": "構築の進行状況",

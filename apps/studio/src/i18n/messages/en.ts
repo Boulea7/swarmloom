@@ -12,7 +12,7 @@ export const en = {
   "app.skip": "Skip to content",
 
   "home.lede":
-    "Open a web page, document, PDF, slide deck, spreadsheet, code, image or 3D model. Cursors rebuild it in front of you, then you can export the video.",
+    "Open a web page, document, e-book, PDF, slide deck, spreadsheet, code, mind map, image or 3D model. Cursors rebuild it in front of you, then you can export the video.",
   "home.open": "Open file",
   "home.paste": "Paste",
   "home.url.label": "File or page URL",
@@ -39,6 +39,16 @@ export const en = {
   "home.footer.source": "Source",
 
   "format.other": "File",
+  // Format names core does not translate yet (second-wave adapters); core names the rest.
+  "format.odf": "OpenDocument",
+  "format.epub": "EPUB e-book",
+  "format.rtf": "Rich Text (RTF)",
+  "format.ofd": "OFD document",
+  "format.notebook": "Jupyter notebook",
+  "format.terminal": "Terminal recording",
+  "format.diff": "Patch",
+  "format.mindmap": "Mind map",
+  "format.lottie": "Lottie animation",
 
   "nav.back": "Back",
 
@@ -179,6 +189,7 @@ export const en = {
   "settings.remote": "Load web images and fonts",
   "settings.remote.hint":
     "Pages may load https images and fonts, without sending a referrer. Turn this off to keep everything on this device.",
+  "settings.remote.reload": "Reload the page to load web images and fonts again.",
   "player.restartHint": "New settings apply from the next build.",
   "player.restart": "Restart",
   "player.progress": "Build progress",

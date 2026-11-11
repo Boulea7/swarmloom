@@ -1,6 +1,7 @@
 /**
  * Viewport classes the layout reacts to, kept in one place:
- *  - watch: tiny screens (`?watch=1`, or at most 320 x 400 CSS px), the round-safe player;
+ *  - watch: a watch-sized screen, at most 320 x 400 CSS px. The window alone is not enough: a
+ *    narrow window on a phone or desktop screen (split screen, side panel) is no watch;
  *  - compact: phones, where panels become bottom sheets;
  *  - dual: a foldable whose viewport is split by a hinge (Viewport Segments), "columns" when the
  *    segments sit side by side, "rows" when they are stacked;
@@ -28,12 +29,22 @@ export interface Viewport {
 }
 
 export const WATCH_QUERY = "(max-width: 320px) and (max-height: 400px)";
+/** Largest screen still taken for a watch, in CSS px, short and long side. */
+const WATCH_SCREEN = { short: 320, long: 400 } as const;
 export const COMPACT_QUERY = "(max-width: 719px)";
 const COLUMNS_QUERY = "(horizontal-viewport-segments: 2)";
 const ROWS_QUERY = "(vertical-viewport-segments: 2)";
 
 interface PostureLike extends EventTarget {
   readonly type: string;
+}
+
+/** True when the device screen itself is watch-sized (unknown sizes are not). */
+function watchScreen(win: Window): boolean {
+  const width = win.screen?.width ?? 0;
+  const height = win.screen?.height ?? 0;
+  if (width <= 0 || height <= 0) return false;
+  return Math.min(width, height) <= WATCH_SCREEN.short && Math.max(width, height) <= WATCH_SCREEN.long;
 }
 
 function postureOf(win: Window): PostureLike | null {
@@ -56,7 +67,7 @@ export function watchViewport(win: Window, root: HTMLElement): Viewport {
   const listeners = new Set<(state: ViewportState) => void>();
 
   const read = (): ViewportState => ({
-    watch: watch?.matches ?? false,
+    watch: (watch?.matches ?? false) && watchScreen(win),
     compact: compact?.matches ?? false,
     dual: columns?.matches ? "columns" : rows?.matches ? "rows" : "none",
     posture: posture ? (posture.type === "folded" ? "folded" : "continuous") : "unknown",

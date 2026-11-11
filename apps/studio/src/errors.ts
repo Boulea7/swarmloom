@@ -1,5 +1,5 @@
 import { formatById } from "./formats-meta";
-import type { StudioI18n, StudioKey } from "./i18n";
+import { formatName, type StudioI18n, type StudioKey } from "./i18n";
 import { formatSize } from "./ui/dom";
 
 /** Reasons Studio reports itself; each maps to an `error.*` message. */
@@ -111,7 +111,7 @@ export function describeError(error: unknown, i18n: StudioI18n, ctx: ErrorContex
     if (typeof vars.limit === "number") vars.limit = formatSize(vars.limit, i18n.locale);
     const format = typeof error.vars.format === "string" ? formatById(error.vars.format) : undefined;
     if (error.code === "tooLarge" && format) {
-      vars.format = i18n.core(`format.${format.id}`, format.label);
+      vars.format = formatName(i18n, format);
       return i18n.t("error.tooLargeFormat", vars);
     }
     return i18n.t(KEYS[error.code], vars);

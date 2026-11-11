@@ -300,3 +300,224 @@
   stroke-width: 0.8;
   stroke-dasharray: 2 2;
 }
+
+/* A patch: file headers, hunk headers and tinted additions and deletions. */
+.thumb-diff {
+  position: absolute;
+  inset: 12px 14px -8px;
+  padding: 10px 0;
+  overflow: hidden;
+  border-radius: 6px 6px 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 1.6;
+}
+
+.thumb-diff .t-line {
+  padding: 0 12px;
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: clip;
+}
+
+.thumb-diff .t-file {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.thumb-diff .t-hunk {
+  background: var(--indigo-soft);
+  color: var(--indigo-text);
+}
+
+/* Mixed in oklab: oklch would blend the hue toward the indigo-tinted surface (red reads lavender). */
+.thumb-diff .t-add {
+  background: color-mix(in oklab, oklch(70% 0.15 155) 16%, var(--surface));
+  color: var(--ink);
+}
+
+.thumb-diff .t-del {
+  background: color-mix(in oklab, oklch(64% 0.19 22) 14%, var(--surface));
+  color: var(--ink);
+}
+
+/* A terminal window: prompt, output and a caret. */
+.thumb-terminal {
+  position: absolute;
+  inset: 12px 14px -8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 7px 7px 0 0;
+  background: var(--code-bg);
+  box-shadow: var(--shadow-md);
+}
+
+.thumb-terminal .t-chrome {
+  border-bottom-color: oklch(30% 0.02 277);
+  background: oklch(24% 0.02 277);
+}
+
+.thumb-terminal .t-chrome i {
+  background: oklch(42% 0.02 277);
+}
+
+.thumb-terminal .t-stack {
+  gap: 7px;
+  padding: 12px;
+}
+
+.thumb-terminal .t-row {
+  height: 4px;
+  border-radius: 2px;
+  background: oklch(52% 0.02 277);
+}
+
+.thumb-terminal .t-prompt {
+  background: linear-gradient(90deg, oklch(72% 0.13 277) 0 28%, transparent 28% 34%, var(--code-ink) 34%);
+  opacity: 0.9;
+}
+
+.thumb-terminal .t-ok {
+  background: oklch(74% 0.14 155);
+}
+
+.thumb-terminal .t-row:nth-child(1) {
+  width: 46%;
+}
+
+.thumb-terminal .t-row:nth-child(2) {
+  width: 82%;
+}
+
+.thumb-terminal .t-row:nth-child(3) {
+  width: 64%;
+}
+
+.thumb-terminal .t-row:nth-child(4) {
+  width: 38%;
+}
+
+.thumb-terminal .t-row:nth-child(5) {
+  width: 74%;
+}
+
+.thumb-terminal .t-row:nth-child(6) {
+  width: 30%;
+}
+
+.thumb-terminal .t-caret {
+  width: 5px;
+  height: 8px;
+  margin-top: -9px;
+  margin-left: calc(30% + 4px);
+  background: var(--accent);
+}
+
+/* A notebook: Markdown, input and output cells beside a gutter. */
+.thumb-notebook {
+  position: absolute;
+  inset: 12px 14px -8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px;
+  overflow: hidden;
+  border-radius: 6px 6px 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.thumb-notebook .t-cell-row {
+  display: flex;
+  gap: 6px;
+}
+
+.thumb-notebook .t-gutter {
+  flex: 0 0 12px;
+  align-self: start;
+  height: 6px;
+  border-radius: 2px;
+}
+
+.thumb-notebook .t-stack {
+  padding: 5px 6px;
+  border-radius: 4px;
+}
+
+.thumb-notebook .t-in .t-gutter {
+  background: color-mix(in oklch, var(--indigo) 45%, transparent);
+}
+
+.thumb-notebook .t-in .t-stack {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.thumb-notebook .t-out .t-gutter {
+  background: color-mix(in oklch, var(--accent) 45%, transparent);
+}
+
+.thumb-notebook .t-out .t-bar {
+  background: color-mix(in oklch, var(--indigo) 22%, var(--surface-3));
+}
+
+/* A mind map: a root, its branches and their links. */
+.thumb-map-wrap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 50%, var(--surface), var(--surface-2) 75%);
+}
+
+.thumb-map {
+  width: 86%;
+  height: 86%;
+}
+
+.thumb-map .t-link {
+  fill: none;
+  stroke: color-mix(in oklch, var(--indigo) 45%, transparent);
+  stroke-width: 1.2;
+}
+
+.thumb-map .t-node {
+  fill: var(--surface);
+  stroke: color-mix(in oklch, var(--indigo) 40%, var(--line));
+  stroke-width: 0.9;
+}
+
+.thumb-map .t-root {
+  fill: var(--indigo);
+}
+
+/* An open book: two leaves around the spine. */
+.thumb-book {
+  position: absolute;
+  inset: 16% 10% 12%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow: var(--shadow-md);
+}
+
+.thumb-book .t-leaf {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12% 12%;
+  background: var(--surface);
+}
+
+.thumb-book .t-leaf:first-child {
+  background: linear-gradient(90deg, var(--surface) 82%, color-mix(in oklch, var(--ink) 7%, var(--surface)));
+}
+
+.thumb-book .t-leaf:last-child {
+  background: linear-gradient(270deg, var(--surface) 86%, color-mix(in oklch, var(--ink) 9%, var(--surface)));
+}

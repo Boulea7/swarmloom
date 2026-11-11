@@ -1,7 +1,9 @@
 /**
  * Static format metadata Studio needs before any adapter loads: the PWA manifest (file handlers,
- * share target), the example scanner and the file picker. It mirrors the extension and MIME lists of
- * the `@swarmloom/formats` registry; test/formats-meta.test.ts fails when the two drift apart.
+ * share target), the example scanner and the file picker. It mirrors the ids and extensions of the
+ * `@swarmloom/formats` registry, including its order (the first entry that lists an extension
+ * wins, so `.ods` stays with the spreadsheet reader); test/formats-meta.test.ts fails when the
+ * two drift apart.
  *
  * This module has no imports so the Node-side build plugins can use it as well.
  */
@@ -24,6 +26,12 @@ export interface FormatMeta {
    * below Studio's own limit so Studio can explain the rejection before the adapter throws.
    */
   readonly maxBytes?: number;
+  /**
+   * The adapter ships separately and may be missing from the registry Studio is built with. Such
+   * formats stay hidden (picker, gallery, format list) until the registry has them, and are never
+   * registered as OS file handlers.
+   */
+  readonly optional?: boolean;
 }
 
 const MIB = 1024 * 1024;
@@ -83,11 +91,10 @@ export const FORMAT_META: readonly FormatMeta[] = [
   {
     id: "slides",
     label: "Presentation",
-    extensions: ["pptx", "ppt", "odp"],
+    extensions: ["pptx", "ppt"],
     handlers: {
       "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
       "application/vnd.ms-powerpoint": [".ppt"],
-      "application/vnd.oasis.opendocument.presentation": [".odp"],
     },
     textual: false,
     light: false,
@@ -175,10 +182,11 @@ export const FORMAT_META: readonly FormatMeta[] = [
   {
     id: "image",
     label: "Image",
-    extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp"],
+    extensions: ["png", "apng", "jpg", "jpeg", "jfif", "gif", "webp", "avif", "bmp"],
     handlers: {
       "image/png": [".png"],
-      "image/jpeg": [".jpg", ".jpeg"],
+      "image/apng": [".apng"],
+      "image/jpeg": [".jpg", ".jpeg", ".jfif"],
       "image/gif": [".gif"],
       "image/webp": [".webp"],
       "image/avif": [".avif"],
@@ -201,11 +209,100 @@ export const FORMAT_META: readonly FormatMeta[] = [
     textual: false,
     light: false,
   },
+  {
+    // After "sheet", as in the registry: .ods (and .fods) open with the spreadsheet reader.
+    id: "odf",
+    label: "OpenDocument",
+    extensions: ["odt", "ott", "fodt", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "fodg"],
+    handlers: {
+      "application/vnd.oasis.opendocument.text": [".odt", ".fodt"],
+      "application/vnd.oasis.opendocument.text-template": [".ott"],
+      "application/vnd.oasis.opendocument.spreadsheet-template": [".ots"],
+      "application/vnd.oasis.opendocument.presentation": [".odp", ".fodp"],
+      "application/vnd.oasis.opendocument.presentation-template": [".otp"],
+      "application/vnd.oasis.opendocument.graphics": [".odg", ".fodg"],
+    },
+    textual: false,
+    light: false,
+  },
+  {
+    id: "epub",
+    label: "EPUB e-book",
+    extensions: ["epub"],
+    handlers: { "application/epub+zip": [".epub"] },
+    textual: false,
+    light: false,
+  },
+  {
+    id: "rtf",
+    label: "Rich Text (RTF)",
+    extensions: ["rtf"],
+    handlers: { "application/rtf": [".rtf"] },
+    textual: true,
+    light: false,
+  },
+  {
+    id: "ofd",
+    label: "OFD document",
+    extensions: ["ofd"],
+    handlers: { "application/ofd": [".ofd"] },
+    textual: false,
+    light: false,
+  },
+  {
+    id: "notebook",
+    label: "Jupyter notebook",
+    extensions: ["ipynb"],
+    handlers: { "application/x-ipynb+json": [".ipynb"] },
+    textual: true,
+    light: false,
+  },
+  {
+    id: "terminal",
+    label: "Terminal recording",
+    extensions: ["cast"],
+    handlers: { "application/x-asciicast": [".cast"] },
+    textual: true,
+    light: true,
+    maxBytes: 32 * MIB,
+  },
+  {
+    id: "diff",
+    label: "Patch",
+    extensions: ["diff", "patch"],
+    handlers: { "text/x-diff": [".diff", ".patch"] },
+    textual: true,
+    light: true,
+    maxBytes: 16 * MIB,
+  },
+  {
+    // .mm is XML text but .xmind is a ZIP package; both travel as bytes.
+    id: "mindmap",
+    label: "Mind map",
+    extensions: ["xmind", "mm"],
+    handlers: { "application/vnd.xmind.workbook": [".xmind"], "application/x-freemind": [".mm"] },
+    textual: false,
+    light: true,
+    maxBytes: 32 * MIB,
+  },
+  {
+    // dotLottie archives. Lottie JSON keeps the .json extension and is detected by content.
+    id: "lottie",
+    label: "Lottie animation",
+    extensions: ["lottie"],
+    handlers: {},
+    textual: false,
+    light: false,
+    optional: true,
+  },
 ];
 
-const BY_EXTENSION: ReadonlyMap<string, FormatMeta> = new Map(
-  FORMAT_META.flatMap((meta) => meta.extensions.map((ext) => [ext, meta] as const)),
-);
+const BY_EXTENSION: ReadonlyMap<string, FormatMeta> = (() => {
+  // The first entry that lists an extension wins, like the registry's own lookup.
+  const map = new Map<string, FormatMeta>();
+  for (const meta of FORMAT_META) for (const ext of meta.extensions) if (!map.has(ext)) map.set(ext, meta);
+  return map;
+})();
 
 const BY_ID: ReadonlyMap<string, FormatMeta> = new Map(FORMAT_META.map((meta) => [meta.id, meta]));
 
@@ -226,7 +323,17 @@ export function formatById(id: string): FormatMeta | undefined {
   return BY_ID.get(id);
 }
 
-/** `accept` attribute value for a file input covering every supported extension. */
-export function acceptAttribute(): string {
-  return FORMAT_META.flatMap((meta) => meta.extensions.map((ext) => `.${ext}`)).join(",");
+/**
+ * The formats this build can open: every entry, minus optional ones the registry does not provide.
+ *
+ * @param registryIds Adapter ids of the `@swarmloom/formats` registry; without it, optional formats are hidden.
+ */
+export function availableFormats(registryIds?: Iterable<string>): readonly FormatMeta[] {
+  const present = new Set(registryIds ?? []);
+  return FORMAT_META.filter((meta) => !meta.optional || present.has(meta.id));
+}
+
+/** `accept` attribute value for a file input covering every extension of `formats`. */
+export function acceptAttribute(formats: readonly FormatMeta[] = FORMAT_META): string {
+  return [...new Set(formats.flatMap((meta) => meta.extensions.map((ext) => `.${ext}`)))].join(",");
 }

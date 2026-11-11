@@ -1,3 +1,4 @@
+import type { FormatMeta } from "./formats-meta";
 import type { StudioI18n } from "./i18n";
 import type { Viewport } from "./layout/viewport";
 import type { Route } from "./route";
@@ -9,7 +10,10 @@ import type { Toaster } from "./ui/toast";
 export interface NavigateOptions {
   /** Replace the current history entry instead of pushing one. */
   replace?: boolean;
-  /** Session-local content for `file` and `launch` routes. */
+  /**
+   * Session-local content for `file` and `launch` routes. It belongs to the history entry this
+   * navigation creates; Back and Forward bring each entry's own input back.
+   */
   local?: LocalInput;
 }
 
@@ -25,7 +29,7 @@ export interface AppContext {
   readonly settings: StudioSettings;
   /** Colour scheme in effect for the UI and for adapters. */
   readonly scheme: "light" | "dark";
-  /** Session-local file or pasted text, if one was opened in this tab. */
+  /** Session-local file or pasted text of the current history entry, if it still has one. */
   readonly local: LocalInput | null;
   /** Absolute URL of the app page without query or hash (base for share links). */
   readonly appUrl: string;
@@ -39,6 +43,8 @@ export interface AppContext {
   settingsOpen(): boolean;
   /** Opens the keyboard shortcuts dialog. */
   openShortcuts(): void;
+  /** Formats this build can open (optional ones only when the formats registry has them). */
+  readonly formats: readonly FormatMeta[];
   /** Translated, comma-separated list of the formats Studio opens (for error messages). */
   formatList(): string;
 }
@@ -51,5 +57,11 @@ export interface View {
   settingsChanged?(prev: StudioSettings, next: StudioSettings): void;
   /** The resolved colour scheme changed (theme setting, or the system theme while on "auto"). */
   schemeChanged?(scheme: "light" | "dark"): void;
+  /**
+   * The interface language changed and `ctx.i18n` is the new translator. A view that implements
+   * this updates its text in place and keeps its state (a running build, typed drafts); a view
+   * without it is built again.
+   */
+  localeChanged?(): void;
   destroy(): void;
 }
