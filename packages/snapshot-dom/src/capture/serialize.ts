@@ -1,8 +1,8 @@
 import type { CSSMap } from "@swarmloom/core";
-import { isElement, isText, MATHML_NS } from "../dom/env";
+import { IGNORE_ATTR, isElement, isHtmlElement, isSvgElement, isText, MATHML_NS, SKIP_TAGS, SVG_NS } from "../dom/env";
 import { escapeAttr, escapeText, safeImageUrl, safeLinkUrl } from "../util/html";
 import { imageUrlOf } from "./image-src";
-import { classify, hasVisibleText, isFlexOrGrid, isMath } from "./inline";
+import { classify, hasVisibleText, isFlexOrGrid, isMath, isVerbatim } from "./inline";
 import { isInlinePseudo, pseudoOf } from "./pseudo-info";
 import { type Capture, childrenOf, type ElInfo, type FlatChild, infoOf, rectOf } from "./state";
 import {
@@ -93,6 +93,33 @@ const MATH_ATTRS = new Set([
   "width",
   "height",
   "depth",
+]);
+
+/** SVG elements and attributes kept inside verbatim markup (KaTeX draws roots, arrows and wide accents with them). */
+const VERBATIM_SVG_TAGS = new Set(["svg", "g", "path", "line", "rect", "circle", "ellipse", "polyline", "polygon"]);
+const VERBATIM_SVG_ATTRS = new Set([
+  "viewBox",
+  "preserveAspectRatio",
+  "width",
+  "height",
+  "d",
+  "x",
+  "y",
+  "x1",
+  "y1",
+  "x2",
+  "y2",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "points",
+  "transform",
+  "fill",
+  "stroke",
+  "stroke-width",
+  "fill-rule",
 ]);
 
 function styleAttr(style: CSSMap): string {
@@ -248,6 +275,38 @@ function writeMath(s: Ser, el: Element, depth: number): void {
   push(s, `</${tag}>`);
 }
 
+/**
+ * Copies a verbatim subtree: HTML elements become spans with their class and inline style, SVG
+ * keeps its geometry. Inline styles that load resources are dropped. `rootStyle` is appended to
+ * the root's own style.
+ */
+function writeVerbatim(s: Ser, el: Element, depth: number, rootStyle = ""): void {
+  if (depth > 64 || s.size > HTML_BUDGET) return;
+  const svg = isSvgElement(el);
+  if (svg ? !VERBATIM_SVG_TAGS.has(el.localName) : !isHtmlElement(el) || SKIP_TAGS.has(el.localName)) return;
+  if (el.hasAttribute(IGNORE_ATTR) || infoOf(s.cap, el).display === "none") return;
+  const tag = svg ? el.localName : "span";
+  let attrs = tag === "svg" ? ` xmlns="${SVG_NS}"` : "";
+  for (const attr of Array.from(el.attributes)) {
+    if (attr.name === "class" || (svg && VERBATIM_SVG_ATTRS.has(attr.name))) {
+      attrs += ` ${attr.name}="${escapeAttr(attr.value)}"`;
+    }
+  }
+  const own = (el.getAttribute("style") ?? "").trim();
+  const style = (own && !/(?:url|image-set)\s*\(/i.test(own) ? own.replace(/;?$/, ";") : "") + rootStyle;
+  if (style) attrs += ` style="${escapeAttr(style)}"`;
+  push(s, `<${tag}${attrs}>`);
+  for (const child of Array.from(el.childNodes)) {
+    if (isText(child)) {
+      push(s, escapeText(child.data));
+      if (!svg) addText(s, child.data, "normal");
+    } else if (isElement(child)) {
+      writeVerbatim(s, child, depth + 1);
+    }
+  }
+  push(s, `</${tag}>`);
+}
+
 function writePseudo(s: Ser, info: ElInfo, which: "before" | "after", parentProps: TextProps): void {
   const p = pseudoOf(s.cap, info, which);
   if (!p || !isInlinePseudo(p)) return;
@@ -301,6 +360,10 @@ function writeElement(s: Ser, info: ElInfo, parentProps: TextProps, depth: numbe
   }
   if (isMath(el)) {
     writeMath(s, el, 0);
+    return;
+  }
+  if (isVerbatim(el)) {
+    writeVerbatim(s, el, 0);
     return;
   }
   if (tag === "picture" || tag === "video" || tag === "canvas" || tag === "iframe") return;
@@ -377,11 +440,10 @@ export interface SerializeOptions {
   after?: boolean;
 }
 
-/** Serialises the inline content of `info` (or a run of its children) into sanitised HTML + plain text. */
-export function serializeInline(cap: Capture, info: ElInfo, opts: SerializeOptions = {}): Fragment {
-  const s: Ser = {
+function newSer(cap: Capture, el: Element): Ser {
+  return {
     cap,
-    base: info.el.baseURI || cap.doc.baseURI,
+    base: el.baseURI || cap.doc.baseURI,
     html: [],
     text: [],
     outflow: [],
@@ -390,6 +452,11 @@ export function serializeInline(cap: Capture, info: ElInfo, opts: SerializeOptio
     preserved: false,
     firstText: null,
   };
+}
+
+/** Serialises the inline content of `info` (or a run of its children) into sanitised HTML + plain text. */
+export function serializeInline(cap: Capture, info: ElInfo, opts: SerializeOptions = {}): Fragment {
+  const s = newSer(cap, info.el);
   const props = textPropsOf(cap, info);
   const all = opts.children === undefined;
   if (opts.before ?? all) writePseudo(s, info, "before", props);
@@ -407,17 +474,14 @@ function finishText(s: Ser): string {
 
 /** Serialises a display-math element (allow-listed MathML only). */
 export function serializeMath(cap: Capture, el: Element): Fragment {
-  const s: Ser = {
-    cap,
-    base: el.baseURI || cap.doc.baseURI,
-    html: [],
-    text: [],
-    outflow: [],
-    size: 0,
-    pendingSpace: true,
-    preserved: false,
-    firstText: null,
-  };
+  const s = newSer(cap, el);
   writeMath(s, el, 0);
+  return { html: s.html.join(""), text: finishText(s), outflow: [], firstText: null };
+}
+
+/** Serialises a block-level verbatim element as itself, without margins (the layer box is its border box). */
+export function serializeVerbatim(cap: Capture, el: Element): Fragment {
+  const s = newSer(cap, el);
+  writeVerbatim(s, el, 0, "margin:0;");
   return { html: s.html.join(""), text: finishText(s), outflow: [], firstText: null };
 }

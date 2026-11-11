@@ -11,6 +11,12 @@ export const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
 export const IGNORE_ATTR = "data-swarmloom-ignore";
 /** Elements carrying this attribute become a media placeholder labelled with its value. */
 export const MEDIA_ATTR = "data-swarmloom-media";
+/**
+ * Elements carrying this attribute keep their markup (classes, inline styles, simple SVG) as one
+ * piece of a text layer instead of computed styles: for layouts that only the caller's style sheet
+ * can reproduce, such as KaTeX formulas. The caller passes that sheet as `Blueprint.css`.
+ */
+export const VERBATIM_ATTR = "data-swarmloom-verbatim";
 
 export function isElement(node: Node): node is Element {
   return node.nodeType === 1;

@@ -5,11 +5,11 @@ import { px } from "../util/css";
 import { inset, intersect, isIdentity, multiplyLinear, parseLinear } from "../util/geom";
 import { emitBox, emitRule, emitSides } from "./box";
 import { emitFormControl } from "./form";
-import { classify, hasVisibleText, inlineFacts, isFlexOrGrid, isMath, isTextLeaf } from "./inline";
+import { classify, hasVisibleText, inlineFacts, isFlexOrGrid, isMath, isTextLeaf, isVerbatim } from "./inline";
 import { emitMedia } from "./media";
 import { type Placement, placeElement, placeInset } from "./place";
 import { emitPositionedPseudo } from "./pseudo";
-import { serializeMath } from "./serialize";
+import { serializeMath, serializeVerbatim } from "./serialize";
 import {
   type Capture,
   type Ctx,
@@ -24,7 +24,7 @@ import {
   toWorld,
 } from "./state";
 import { borderInsets, containerTextStyle, contentInsets, paintsBox, textPropsOf, visualOf } from "./styles";
-import { emitTextLeaf, emitTextRun, floatBox } from "./text";
+import { emitTextLeaf, emitTextRun, floatBox, textRole } from "./text";
 import { emitBackdrop, isTopLayer, TOP_LAYER_KEY } from "./top-layer";
 
 /** Initial walk context: viewport -> world offset (dx, dy) and an optional world clip. */
@@ -291,8 +291,8 @@ function render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: 
     if (visible) emitFormControl(cap, own, info, place, visualOf(info));
     return;
   }
-  if (isMath(el)) {
-    if (visible) emitMathBlock(cap, own, info, place);
+  if (isMath(el) || isVerbatim(el)) {
+    if (visible) emitAtomBlock(cap, own, info, place);
     return;
   }
   const v = visualOf(info);
@@ -373,19 +373,23 @@ function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
   flush(true);
 }
 
-function emitMathBlock(cap: Capture, own: Ctx, info: ElInfo, place: Placement): void {
-  const frag = serializeMath(cap, info.el);
+/** A display-math or block-level verbatim element: one text layer holding the whole element. */
+function emitAtomBlock(cap: Capture, own: Ctx, info: ElInfo, place: Placement): void {
+  const math = isMath(info.el);
+  const frag = math ? serializeMath(cap, info.el) : serializeVerbatim(cap, info.el);
   if (!frag.text) return;
   const style = containerTextStyle(textPropsOf(cap, info));
-  style["text-align"] = "center";
+  if (math) style["text-align"] = "center";
+  const fontSize = Math.round(px(info.cs.fontSize, 16) * 100) / 100;
+  const role = math ? "math" : textRole(info.el, fontSize);
   const draft: Omit<TextLayer, "id"> = {
     kind: "text",
     box: place.box,
     html: frag.html,
     text: frag.text,
     style,
-    fontSize: Math.round(px(info.cs.fontSize, 16) * 100) / 100,
-    role: "math",
+    fontSize,
+    ...(role ? { role } : {}),
   };
   if (place.transform) draft.transform = place.transform;
   emit<TextLayer>(cap, own, draft);

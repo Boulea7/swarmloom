@@ -46,7 +46,7 @@ export function textRole(el: Element, fontSize: number): LayerRole | undefined {
   let cur: Element | null = el;
   for (let depth = 0; cur && depth < 3; depth++) {
     const aria = cur.getAttribute("role");
-    if (aria === "heading" || aria === "button" || aria === "cell" || aria === "listitem") {
+    if (aria === "heading" || aria === "button" || aria === "cell" || aria === "listitem" || aria === "math") {
       return aria === "listitem" ? "list-item" : aria;
     }
     const role = ROLE_BY_TAG[cur.localName];
