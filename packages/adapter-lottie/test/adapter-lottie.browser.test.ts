@@ -8,13 +8,14 @@ import {
   VirtualClock,
 } from "@swarmloom/core";
 import { strToU8, zipSync } from "fflate";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import shuttleJson from "../../../examples/lottie/shuttle-loop.json?raw";
 import shuttleUrl from "../../../examples/lottie/shuttle-loop.lottie?url";
 import {
   type AnimTimelineData,
   animTargetOf,
   collectKeyframes,
+  createLottieAdapter,
   type LottieLoadedSource,
   type LottiePlayerData,
   lottieAdapter,
@@ -24,6 +25,7 @@ import {
 
 const ctx = { document, width: 640, theme: "light" as const };
 const PLAYER_ID = "lottie-player";
+const TIMELINE_ID = "lottie-timeline";
 
 function byKind<K extends Layer["kind"]>(layers: readonly Layer[], kind: K): Extract<Layer, { kind: K }>[] {
   return layers.filter((l): l is Extract<Layer, { kind: K }> => l.kind === kind);
@@ -87,7 +89,7 @@ async function playToDone(loaded: LottieLoadedSource, { reducedMotion = false, f
     player.destroy();
     host.remove();
   };
-  return { stage: stage as StageApi, advance, close };
+  return { stage: stage as StageApi, player, advance, close };
 }
 
 afterEach(() => {
@@ -215,6 +217,41 @@ describe("lottie playback with the real player", () => {
     // Real time without engine time moves nothing: lottie-web runs no clock of its own.
     await new Promise((r) => setTimeout(r, 120));
     expect(target?.time()).toBe(t1);
+    close();
+    loaded.dispose?.();
+  });
+
+  it.each([
+    ["own", true],
+    ["player", false],
+  ] as const)('after go live with liveClock "%s", plays on without player time: %s', async (liveClock, playsOn) => {
+    const adapter = createLottieAdapter({ liveClock });
+    const loaded = (await adapter.load({ text: shuttleJson, name: "shuttle-loop.json" }, ctx)) as LottieLoadedSource;
+    const { stage, player, advance, close } = await playToDone(loaded);
+    const el = stage.el(PLAYER_ID) as HTMLElement;
+    const target = animTargetOf(el);
+    const head = (): string | null | undefined => stage.el(TIMELINE_ID)?.querySelector("g")?.getAttribute("transform");
+    player.goLive();
+    await advance(1500);
+    expect((el.getRootNode() as ShadowRoot).host.hasAttribute("data-live")).toBe(true);
+    const t0 = target?.time() ?? Number.NaN;
+    const h0 = head();
+    if (playsOn) {
+      // A realtime player stops its clock once live: the animation and the playhead play on.
+      await vi.waitFor(
+        () => {
+          expect(target?.time()).not.toBe(t0);
+          expect(head()).not.toBe(h0);
+        },
+        { timeout: 3000 },
+      );
+    } else {
+      // Exports keep ticking their virtual clock after go live: player time only, every frame exact.
+      await new Promise((r) => setTimeout(r, 200));
+      expect(target?.time()).toBe(t0);
+      await advance(500);
+      expect(((target?.time() ?? Number.NaN) - t0 + 4000) % 4000).toBeCloseTo(500, 6);
+    }
     close();
     loaded.dispose?.();
   });

@@ -561,6 +561,9 @@ importers:
       '@swarmloom/adapter-html':
         specifier: workspace:*
         version: link:../adapter-html
+      '@swarmloom/adapter-lottie':
+        specifier: workspace:*
+        version: link:../adapter-lottie
       '@swarmloom/adapter-svg':
         specifier: workspace:*
         version: link:../adapter-svg

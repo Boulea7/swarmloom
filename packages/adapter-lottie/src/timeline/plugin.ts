@@ -67,6 +67,8 @@ interface Mounted {
   done: boolean;
   /** Cached animation target (resolved lazily, stable for the life of this mount). */
   target: AnimTarget | undefined;
+  /** Stops following the target's moves (`AnimTarget.subscribe`). */
+  unsubscribe: (() => void) | undefined;
 }
 
 function resolveTarget(stage: StageApi, spec: TimelineSpec): AnimTarget | undefined {
@@ -81,7 +83,9 @@ function resolveTarget(stage: StageApi, spec: TimelineSpec): AnimTarget | undefi
  *
  * With reduced motion the task never runs: the bar appears complete and the target keeps showing
  * the static pose. When the build is finished early (finish now, go live) before the task could
- * start playback, the bar appears complete and the target plays on from the static pose.
+ * start playback, the bar appears complete and the target plays on from the static pose. After go
+ * live, the playhead follows a target that plays on its own clock through `AnimTarget.subscribe`,
+ * since a realtime player then stops calling `Plugin.frame`.
  *
  * State lives in the instance, and every player gets its own (`Plugin.perPlayer`).
  */
@@ -89,8 +93,12 @@ export function createAnimTimelinePlugin(): Plugin {
   const mounted = new Map<CustomLayer, Mounted>();
   const progress = new WeakMap<CustomLayer, TaskProgress>();
 
-  const targetOf = (m: Mounted): AnimTarget | undefined => {
-    m.target ??= resolveTarget(m.stage, m.spec);
+  const targetOf = (layer: CustomLayer, m: Mounted): AnimTarget | undefined => {
+    if (m.target) return m.target;
+    m.target = resolveTarget(m.stage, m.spec);
+    m.unsubscribe = m.target?.subscribe?.(() => {
+      if (m.done && mounted.get(layer) === m) draw(layer);
+    });
     return m.target;
   };
 
@@ -100,7 +108,7 @@ export function createAnimTimelinePlugin(): Plugin {
     const frame: TimelineFrame = { bar: m.bar, marks: 0, head: null };
     if (m.done) {
       frame.marks = m.view.markCount;
-      const t = targetOf(m)?.time() ?? null;
+      const t = targetOf(layer, m)?.time() ?? null;
       frame.head = t === null ? m.spec.rest : clamp(t / m.spec.duration, 0, 1);
     } else {
       const p = progress.get(layer);
@@ -115,7 +123,8 @@ export function createAnimTimelinePlugin(): Plugin {
       const spec = readTimeline(layer, marksFor(layer.box.w));
       if (!spec) return;
       const view = new TimelineView(container.ownerDocument, spec, layer.box.w, layer.box.h);
-      mounted.set(layer, { view, spec, stage, bar: 0, done: false, target: undefined });
+      mounted.get(layer)?.unsubscribe?.();
+      mounted.set(layer, { view, spec, stage, bar: 0, done: false, target: undefined, unsubscribe: undefined });
       draw(layer);
       return view.root;
     },
@@ -133,11 +142,12 @@ export function createAnimTimelinePlugin(): Plugin {
       m.done = true;
       // Finished without its task (finish now, go live): play on from the woven pose. A completed
       // task already started playback; reduced motion keeps the still frame.
-      const target = m.stage.reducedMotion ? undefined : targetOf(m);
+      const target = m.stage.reducedMotion ? undefined : targetOf(layer, m);
       if (target && target.time() === null) target.play(m.spec.rest * m.spec.duration);
       draw(layer);
     },
     unmount(layer) {
+      mounted.get(layer)?.unsubscribe?.();
       mounted.delete(layer);
     },
   };

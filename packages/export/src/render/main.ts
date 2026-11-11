@@ -10,8 +10,8 @@ import { createRenderApi } from "./api";
 
 /**
  * The formats registry with the render page's go-live settings: HTML documents keep their live page
- * (laid out at the frame's height, so it lines up with the woven one) and SVG SMIL replays stay on
- * player time after go live, since the export clock keeps ticking.
+ * (laid out at the frame's height, so it lines up with the woven one); SVG SMIL replays and Lottie
+ * players stay on player time after go live, since the export clock keeps ticking.
  */
 function renderFormats(height: number): FormatEntry[] {
   return formats.map((entry): FormatEntry => {
@@ -28,6 +28,12 @@ function renderFormats(height: number): FormatEntry[] {
       return {
         ...entry,
         loader: () => import("@swarmloom/adapter-svg").then((m) => m.createSvgAdapter({ liveClock: "player" })),
+      };
+    }
+    if (entry.id === "lottie") {
+      return {
+        ...entry,
+        loader: () => import("@swarmloom/adapter-lottie").then((m) => m.createLottieAdapter({ liveClock: "player" })),
       };
     }
     return entry;

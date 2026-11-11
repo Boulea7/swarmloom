@@ -7,7 +7,7 @@ import { LottieError, throwIfAborted } from "./errors";
 import { readLottieSource } from "./input";
 import type { LottieInfo, ParsedLottie } from "./lottie/model";
 import { parseLottie } from "./lottie/validate";
-import { createLottiePlugin } from "./player/plugin";
+import { checkLiveClock, createLottiePlugin, type LottiePluginOptions } from "./player/plugin";
 import { candidateFrames, choosePose, fixedPose, type PoseChoice, type ScoredFrame, visibleArea } from "./render/pose";
 import { loadRuntime } from "./render/runtime";
 import { renderLottie } from "./render/sandbox";
@@ -32,6 +32,12 @@ export interface LottieAdapterOptions {
   maxBytes?: number;
   /** Most blueprint layers, including the player and timeline (default 1500; `AdapterContext.maxLayers` can lower it). */
   maxLayers?: number;
+  /**
+   * Clock of playback once the stage goes live: "own" (default) plays on in wall time after a
+   * realtime player stops its clock; "player" stays on player time, for exports whose virtual clock
+   * keeps ticking after go live and must stay frame-exact.
+   */
+  liveClock?: LottiePluginOptions["liveClock"];
 }
 
 /** What the Lottie adapter returns: the loaded source plus quality notes and the composition facts. */
@@ -158,6 +164,7 @@ export function createLottieAdapter(options: LottieAdapterOptions = {}): Adapter
   if (options.maxBytes !== undefined && !(options.maxBytes >= 1)) {
     throw new RangeError("LottieAdapterOptions.maxBytes must be >= 1");
   }
+  checkLiveClock(options.liveClock, "LottieAdapterOptions.liveClock");
   const loop = options.loop;
   if (loop !== undefined && typeof loop !== "boolean" && !(Number.isInteger(loop) && loop >= 1)) {
     throw new RangeError("LottieAdapterOptions.loop must be a boolean or an integer >= 1");
@@ -215,7 +222,8 @@ export function createLottieAdapter(options: LottieAdapterOptions = {}): Adapter
         background: animation.background,
       });
 
-      const plugins: Plugin[] = [...(woven.plugins ?? []), createLottiePlugin(), createAnimTimelinePlugin()];
+      const player = createLottiePlugin(options.liveClock ? { liveClock: options.liveClock } : {});
+      const plugins: Plugin[] = [...(woven.plugins ?? []), player, createAnimTimelinePlugin()];
       const blueprint: Blueprint = {
         version: 1,
         source: { type: LOTTIE_ADAPTER_ID, name: input.name, url: input.url, title: info.name },
