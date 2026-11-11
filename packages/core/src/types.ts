@@ -450,6 +450,10 @@ export interface Plugin {
 
 export type PlayerState = "idle" | "intro" | "building" | "paused" | "finale" | "done" | "live" | "destroyed";
 
+/**
+ * Name tags on the cursors: their names, "Agent 01" numbers, what each one is doing, or nothing.
+ * "none" also leaves out the cursors' status bubbles ("typing"), so the cursors carry no text.
+ */
 export type LabelMode = "names" | "agents" | "roles" | "none";
 
 /**

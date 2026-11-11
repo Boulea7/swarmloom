@@ -74,6 +74,8 @@ export interface AgentView {
   scale: number;
   /** Heading in radians for flocking (cursor art may tilt slightly); optional. */
   angle?: number;
+  /** Hang the name tag below left of the hotspot: the cursor works on text that runs to its right. */
+  tagLeft?: boolean;
 }
 
 export interface StageOptions {

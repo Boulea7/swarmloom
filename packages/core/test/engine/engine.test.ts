@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { builtinPlugin, choreoHelpers } from "../../src/choreo/index";
+import { Agent } from "../../src/engine/agent";
 import { EXIT_MS, FINALE_SETTLE_MS, IDLE_RUSH_MS } from "../../src/engine/constants";
 import type { EngineSettings } from "../../src/engine/engine";
 import { autoAgentCount } from "../../src/engine/options";
+import { createRng } from "../../src/rng";
 import type { AgentApi, Layer, PlayerState, Plugin, Rect, StageApi, TaskFn, TaskGen } from "../../src/types";
 import { blueprintOf, box, harness, samplePage, testPlugin, text } from "./fakes";
 
@@ -384,21 +386,39 @@ describe("Engine", () => {
     expect(autoAgentCount(0, 390 * 844)).toBe(8);
     expect(autoAgentCount(260, 1280 * 800)).toBeGreaterThan(30);
     expect(autoAgentCount(100_000, 2560 * 1440)).toBe(64);
-    const labels = (mode: EngineSettings["labels"]): string[] => {
+    const shown = (mode: EngineSettings["labels"], key: "label" | "bubble" = "label"): string[] => {
       const h = harness(samplePage(), { labels: mode, intro: false, agents: 3 });
       const seen = new Set<string>();
       const render = h.stage.render.bind(h.stage);
       h.stage.render = (now, agents) => {
-        for (const a of agents) seen.add(a.label);
+        for (const a of agents) seen.add(a[key]);
         render(now, agents);
       };
       void h.engine.play();
-      h.run(90);
+      if (key === "bubble") h.until(() => h.engine.state === "finale");
+      else h.run(90);
       return [...seen].sort();
     };
+    const labels = (mode: EngineSettings["labels"]) => shown(mode);
     expect(labels("agents")).toEqual(["Agent 01", "Agent 02", "Agent 03"]);
     expect(labels("roles")).toEqual(expect.arrayContaining(["", "role.layout"]));
     expect(labels("none")).toEqual([""]);
     expect(labels(["Ann", "Bo"])).toEqual(["Ann", "Bo"]);
+    // "none" also hides the status bubbles ("typing"), which covered the line above in terminal takes.
+    expect(shown("names", "bubble")).toContain("typing");
+    expect(shown("none", "bubble")).toEqual([""]);
+  });
+});
+
+describe("Agent", () => {
+  it("hangs its tag on the left while it shows the I-beam and until it moves on", () => {
+    const agent = new Agent(0, "Ada", "#5B5BF7", createRng(1), { emitSound: () => {} });
+    expect(agent.syncView().tagLeft).toBe(false);
+    agent.setCursor("ibeam");
+    expect(agent.syncView().tagLeft).toBe(true);
+    agent.setCursor("arrow");
+    expect(agent.syncView().tagLeft).toBe(true);
+    agent.x += 5;
+    expect(agent.syncView().tagLeft).toBe(false);
   });
 });

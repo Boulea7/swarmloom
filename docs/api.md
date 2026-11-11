@@ -69,7 +69,7 @@ const dispose = () => {
 | `clock` | `Clock` | 默认 `RealtimeClock`；逐帧导出使用 `VirtualClock` |
 | `sound` | `boolean` / `SoundOptions` | 开关、音量、音效包、BPM 和按拍构建 |
 | `theme` | `auto` / `light` / `dark` / `ThemeSpec` | 主题或自定义调色板 |
-| `labels` | `LabelMode` / `string[]` | `names`、`agents`、`roles`、`none` 或自定义标签 |
+| `labels` | `LabelMode` / `string[]` | `names`、`agents`、`roles`、`none` 或自定义标签；`none` 同时隐藏状态泡 |
 | `follow` | `scroll` / `tour` / `none` | 跟随用户、自动巡航或固定视口 |
 | `reducedMotion` | `auto` / `boolean` | 默认尊重系统减少动态偏好 |
 | `intro` | `boolean` | 是否播放图标环绕与扇出开场 |

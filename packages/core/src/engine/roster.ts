@@ -149,6 +149,7 @@ export class Roster {
       if (a.mode === BENCHED || a.alpha <= 0) continue;
       a.label = this.#labeler.label(a.id, a.role);
       const view = a.syncView();
+      if (!this.#labeler.bubbles) view.bubble = "";
       if (project) {
         this.#point.x = a.x;
         this.#point.y = a.y;

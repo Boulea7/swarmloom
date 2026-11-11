@@ -1,5 +1,6 @@
 import { pillSprite, roundRectPath, type Sprite, UI_FONT_STACK } from "../cursor/sprite";
 import { inkOn } from "../theme";
+import type { Point, Rect } from "../types";
 import { flag, isRect, num, numbers, type Props, str, strings } from "./props";
 import type { Tokens } from "./tokens";
 import type { ViewTransform } from "./view";
@@ -43,6 +44,8 @@ export interface PaintEnv {
   rulerInset: number;
   /** Loaded image for `src`, or null while loading / failed (loading starts on first call). */
   image(src: string): HTMLImageElement | null;
+  /** Name tag boxes of this frame's cursors (CSS px); size badges keep clear of them. */
+  tags: readonly Rect[];
 }
 
 /**
@@ -167,12 +170,39 @@ const ghostRect: Painter = (ctx, rec, v, env) => {
   ctx.setLineDash(NO_DASH);
 };
 
+/** Gap between a name tag and a size badge moved below it, CSS px. */
+const BADGE_TAG_GAP = 2;
+
+/**
+ * Where a size badge goes: below right of its point, or clear of the name tag it would overlap there
+ * (the dragging cursor's own tag sits at about the same spot): under the tag, or right of it when
+ * there is no room under it above the canvas bottom `height`.
+ */
+export function badgeOrigin(
+  x: number,
+  y: number,
+  badge: { w: number; h: number },
+  tags: readonly Rect[],
+  height: number,
+): Point {
+  const at = { x: x + 6, y: y + 6 };
+  for (const t of tags) {
+    if (at.x < t.x + t.w && t.x < at.x + badge.w && at.y < t.y + t.h && t.y < at.y + badge.h) {
+      const below = t.y + t.h + BADGE_TAG_GAP;
+      if (below + badge.h <= height) at.y = below;
+      else at.x = t.x + t.w + BADGE_TAG_GAP;
+    }
+  }
+  return at;
+}
+
 const sizeBadge: Painter = (ctx, rec, v, env) => {
   const p = rec.props;
   const text = str(p, "text");
   if (!text) return;
   const s = textLabel(rec, 0, env, v.dpr, text, str(p, "color") ?? env.tokens.select);
-  blit(ctx, s, toX(v, num(p, "x", 0)) + 6, toY(v, num(p, "y", 0)) + 6, v.dpr);
+  const at = badgeOrigin(toX(v, num(p, "x", 0)), toY(v, num(p, "y", 0)), s, env.tags, v.height);
+  blit(ctx, s, at.x, at.y, v.dpr);
 };
 
 const rubberBand: Painter = (ctx, rec, v, env) => {

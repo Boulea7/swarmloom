@@ -1,6 +1,7 @@
 import type { AgentView } from "../internal";
 import type { ViewTransform } from "../overlay/view";
 import { inkOn } from "../theme";
+import type { Rect } from "../types";
 import { cursorSprite } from "./art";
 import { ARROW_HEADING, shapeDef } from "./shapes";
 import { type PillStyle, pillSprite, type Sprite, UI_FONT_STACK } from "./sprite";
@@ -45,9 +46,10 @@ const FLIP_GAP = 4;
 
 /**
  * Top-left corner of a cursor's name tag, CSS px. The tag sits at `offset` from the hotspot
- * (below right); where it would cross the right or bottom edge of the `width` x `height` canvas it
- * flips to the hotspot's left or above it, then it is kept inside the canvas. Depends only on the
- * arguments, so the same cursor path places tags the same way in every run.
+ * (below right, or below left with `left`, mirrored); where it would cross an edge of the
+ * `width` x `height` canvas it flips to the other side of the hotspot or above it, then it is
+ * kept inside the canvas. Depends only on the arguments, so the same cursor path places tags the
+ * same way in every run.
  */
 export function tagOrigin(
   cx: number,
@@ -57,9 +59,16 @@ export function tagOrigin(
   tag: { w: number; h: number },
   width: number,
   height: number,
+  left = false,
 ): { x: number; y: number } {
-  let x = cx + offset.x * size;
-  if (x + tag.w > width) x = cx - FLIP_GAP * size - tag.w;
+  let x: number;
+  if (left) {
+    x = cx - offset.x * size - tag.w;
+    if (x < 0) x = cx + offset.x * size;
+  } else {
+    x = cx + offset.x * size;
+    if (x + tag.w > width) x = cx - FLIP_GAP * size - tag.w;
+  }
   let y = cy + offset.y * size;
   if (y + tag.h > height) y = cy - FLIP_GAP * size - tag.h;
   return { x: Math.max(0, Math.min(x, width - tag.w)), y: Math.max(0, Math.min(y, height - tag.h)) };
@@ -97,6 +106,25 @@ export class CursorPainter {
     this.#agents.clear();
   }
 
+  /**
+   * Name tag boxes (CSS px) of the visible agents {@link draw} would draw, so marks painted below
+   * the cursors can keep clear of them.
+   */
+  tagBoxes(agents: readonly AgentView[], view: ViewTransform): Rect[] {
+    if (view.dpr !== this.#dpr) {
+      this.clear();
+      this.#dpr = view.dpr;
+    }
+    const boxes: Rect[] = [];
+    for (const a of agents) {
+      const at = this.#visible(a, view);
+      if (!at) continue;
+      const tag = this.#agentCache(a, this.#frame).tag;
+      if (tag) boxes.push({ ...this.#tagAt(a, at.cx, at.cy, tag, view), w: tag.w, h: tag.h });
+    }
+    return boxes;
+  }
+
   /** Draws visible agents (with their status bubbles unless `bubbles` is false); returns how many were drawn. */
   draw(ctx: CanvasRenderingContext2D, agents: readonly AgentView[], view: ViewTransform, bubbles = true): number {
     const dpr = view.dpr;
@@ -108,12 +136,9 @@ export class CursorPainter {
     let drawn = 0;
     for (let i = 0; i < agents.length; i++) {
       const a = agents[i];
-      if (!a || !(a.alpha > 0.004)) continue;
-      const cx = view.originX + a.x * view.scale;
-      const cy = view.originY + a.y * view.scale;
-      if (!(cx > -CULL_LEFT && cy > -CULL_LEFT && cx < view.width + CULL_RIGHT && cy < view.height + CULL_LEFT)) {
-        continue; // also rejects NaN
-      }
+      const at = a ? this.#visible(a, view) : null;
+      if (!a || !at) continue;
+      const { cx, cy } = at;
       const def = shapeDef(a.shape);
       const sprite = this.#cursor(a.color, a.shape);
       const size = clamp(Number.isFinite(a.scale) ? a.scale : 1, 0, 4);
@@ -135,10 +160,8 @@ export class CursorPainter {
       const cache = this.#agentCache(a, frame);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (cache.tag) {
-        const at = tagOrigin(cx, cy, def.tag, size, cache.tag, view.width, view.height);
-        const tx = Math.round(at.x * dpr) / dpr;
-        const ty = Math.round(at.y * dpr) / dpr;
-        ctx.drawImage(cache.tag.canvas, tx, ty, cache.tag.w, cache.tag.h);
+        const t = this.#tagAt(a, cx, cy, cache.tag, view);
+        ctx.drawImage(cache.tag.canvas, t.x, t.y, cache.tag.w, cache.tag.h);
       }
       if (bubbles && cache.bubbleSprite) {
         const b = cache.bubbleSprite;
@@ -152,6 +175,24 @@ export class CursorPainter {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (frame % PRUNE_AFTER === 0) this.#prune(frame);
     return drawn;
+  }
+
+  /** Hotspot in CSS px when the agent is drawn this frame (visible and near the canvas), else null. */
+  #visible(a: AgentView, view: ViewTransform): { cx: number; cy: number } | null {
+    if (!(a.alpha > 0.004)) return null;
+    const cx = view.originX + a.x * view.scale;
+    const cy = view.originY + a.y * view.scale;
+    // Also rejects NaN.
+    return cx > -CULL_LEFT && cy > -CULL_LEFT && cx < view.width + CULL_RIGHT && cy < view.height + CULL_LEFT
+      ? { cx, cy }
+      : null;
+  }
+
+  /** Top-left corner of the agent's name tag on device pixels, CSS px. */
+  #tagAt(a: AgentView, cx: number, cy: number, tag: Sprite, view: ViewTransform): { x: number; y: number } {
+    const size = clamp(Number.isFinite(a.scale) ? a.scale : 1, 0, 4);
+    const at = tagOrigin(cx, cy, shapeDef(a.shape).tag, size, tag, view.width, view.height, a.tagLeft === true);
+    return { x: Math.round(at.x * view.dpr) / view.dpr, y: Math.round(at.y * view.dpr) / view.dpr };
   }
 
   #cursor(color: string, shape: string): Sprite {

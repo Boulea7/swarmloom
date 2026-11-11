@@ -81,7 +81,7 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--speed <n>` | `1` | Build-speed multiplier, 0.05–16 |
 | `--seed <n>` | `1` | Random seed, 0–4294967295; the same input, settings and seed give the same video |
 | `--theme <theme>` | `auto` | `auto`, `light` or `dark` |
-| `--labels <mode>` | `names` | `names`, `agents`, `roles` or `none` |
+| `--labels <mode>` | `names` | `names`, `agents`, `roles` or `none` (`none` also hides status bubbles such as "typing") |
 | `--overlays <level>` | `full` | Editing marks drawn while building. `minimal` hides size badges, distance labels, guide lines and rulers; `none` also hides selections, frames, pen lines, carets and status bubbles, leaving the cursors, their name tags and the content |
 | `--finale <finale>` | `flock` | `flock`, `halo` or `none` |
 | `--follow <mode>` | `tour` | `tour` scrolls the page along with the build; `none` does not scroll |

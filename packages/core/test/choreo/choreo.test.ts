@@ -196,6 +196,15 @@ describe("builtin choreographies", () => {
     expect(play(text("lost", "Lost", { snaps: ["nope"] })).timeline.sounds("snap")).toHaveLength(0);
   });
 
+  it("rests the I-beam just left of the text box while it types, off the first glyph", () => {
+    const { agent, timeline } = play(
+      text("para", "Weave it back together.", { box: { x: 100, y: 200, w: 640, h: 72 } }),
+    );
+    expect(timeline.sounds("key").length).toBeGreaterThan(5);
+    expect(agent.x).toBeLessThanOrEqual(100 - 16);
+    expect(agent.y).toBeGreaterThan(200);
+  });
+
   it("types snapping text beside its guide without covering neighbouring content", () => {
     // A feature card: icon on top, then a heading on a shared baseline guide, then a paragraph.
     const card: Layer = { id: "card", kind: "box", box: { x: 940, y: 640, w: 290, h: 215 }, style: {} };

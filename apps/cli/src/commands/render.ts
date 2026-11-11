@@ -63,7 +63,8 @@ Swarm:
       --speed <n>         Build speed multiplier (0.05-16). Default: 1
       --seed <n>          Random seed; the same seed gives the same video (0-4294967295). Default: 1
       --theme <theme>     auto | light | dark. Default: auto
-      --labels <mode>     names | agents | roles | none. Default: names
+      --labels <mode>     names | agents | roles | none (no name tags and no status bubbles).
+                          Default: names
       --overlays <level>  full | minimal | none. minimal hides size badges, distance labels, guide
                           lines and rulers; none also hides selections, frames, pen lines, carets
                           and status bubbles. Default: full

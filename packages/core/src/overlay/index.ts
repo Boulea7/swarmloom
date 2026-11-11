@@ -1,6 +1,6 @@
 import { type BubbleChrome, CursorPainter } from "../cursor";
 import type { AgentView, ResolvedTheme } from "../internal";
-import type { OverlayHandle, OverlayLevel } from "../types";
+import type { OverlayHandle, OverlayLevel, Rect } from "../types";
 import { type GuideLine, type OverlayRecord, PAINTERS, type PaintEnv, paintGuideLines, RANKS } from "./kinds";
 import type { Props } from "./props";
 import { RULER_SIZE, Rulers } from "./rulers";
@@ -26,6 +26,7 @@ interface ImageEntry {
 }
 
 const NOOP_HANDLE: OverlayHandle = { update() {}, remove() {} };
+const NO_TAGS: readonly Rect[] = [];
 
 const MEASURING_KINDS = ["size-badge", "measure", "guide"];
 /** Overlay kinds left out per {@link OverlayLevel}; "full" also draws guide lines and rulers. */
@@ -80,6 +81,7 @@ export class OverlayLayer {
       reducedMotion,
       rulerInset: 0,
       image: (src) => this.#image(src),
+      tags: NO_TAGS,
     };
   }
 
@@ -184,6 +186,8 @@ export class OverlayLayer {
     paintGuideLines(ctx, this.guides, guides, v, this.#env);
     const hidden = HIDDEN_KINDS[this.#level];
     const list = this.#records;
+    const badges = !hidden.has("size-badge") && list.some((rec) => rec.kind === "size-badge");
+    this.#env.tags = badges ? this.#cursors.tagBoxes(agents, v) : NO_TAGS;
     for (let i = 0; i < list.length; i++) {
       const rec = list[i];
       if (!rec || hidden.has(rec.kind)) continue;

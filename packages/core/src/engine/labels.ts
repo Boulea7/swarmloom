@@ -54,6 +54,8 @@ export interface Labeler {
   name(index: number): string;
   /** Tag text for the current role (null while idle); empty hides the tag. */
   label(index: number, role: RoleKey | null): string;
+  /** Whether cursors show their status bubbles (AgentApi.say); false in "none" mode, a frame without cursor text. */
+  bubbles: boolean;
 }
 
 /**
@@ -66,20 +68,20 @@ export function createLabeler(mode: LabelMode | readonly string[], translate: (k
   if (typeof mode !== "string") {
     const list = mode.length > 0 ? mode : AGENT_NAMES;
     const at = (index: number): string => list[index % list.length] ?? "";
-    return { name: at, label: at };
+    return { name: at, label: at, bubbles: true };
   }
   const name = (index: number): string => AGENT_NAMES[index % AGENT_NAMES.length] ?? "";
   switch (mode) {
     case "names":
-      return { name, label: name };
+      return { name, label: name, bubbles: true };
     case "agents":
-      return { name, label: agentNumberLabel };
+      return { name, label: agentNumberLabel, bubbles: true };
     case "none":
-      return { name, label: () => "" };
+      return { name, label: () => "", bubbles: false };
     case "roles": {
       const texts = new Map<RoleKey, string>();
       for (const role of ROLE_KEYS) texts.set(role, translate(`role.${role}`));
-      return { name, label: (_index, role) => (role ? (texts.get(role) ?? "") : "") };
+      return { name, label: (_index, role) => (role ? (texts.get(role) ?? "") : ""), bubbles: true };
     }
   }
 }

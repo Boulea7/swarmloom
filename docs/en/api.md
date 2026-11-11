@@ -69,7 +69,7 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `clock` | `Clock` | Defaults to `RealtimeClock`; use `VirtualClock` for frame export |
 | `sound` | `boolean` / `SoundOptions` | Enable, volume, pack, BPM and beat synchronisation |
 | `theme` | `auto` / `light` / `dark` / `ThemeSpec` | Named theme or custom palette |
-| `labels` | `LabelMode` / `string[]` | `names`, `agents`, `roles`, `none` or custom labels |
+| `labels` | `LabelMode` / `string[]` | `names`, `agents`, `roles`, `none` or custom labels; `none` also hides status bubbles |
 | `follow` | `scroll` / `tour` / `none` | Follow the user, tour automatically, or keep a fixed viewport |
 | `reducedMotion` | `auto` / `boolean` | Defaults to the system reduced-motion preference |
 | `intro` | `boolean` | Enable the icon orbit and fan-out introduction |
