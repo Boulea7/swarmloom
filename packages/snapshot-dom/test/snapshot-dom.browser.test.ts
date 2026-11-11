@@ -274,6 +274,25 @@ describe("long pages", () => {
     setTimeout(() => ctrl.abort(), 0);
     await expect(snapshot(doc, { maxHeight: 1e9, signal: ctrl.signal })).rejects.toMatchObject({ name: "AbortError" });
   });
+
+  it.each([{ maxHeight: 2000 }, { maxLayers: 10 }])(
+    "skips paint reads past the cut of %j and keeps fixed UI",
+    async (opts) => {
+      const doc = await mountPage(longPage(1000));
+      const view = doc.defaultView as Window;
+      const read = view.getComputedStyle.bind(view);
+      let pseudoReads = 0;
+      view.getComputedStyle = (el: Element, pseudo?: string | null) => {
+        if (pseudo) pseudoReads++;
+        return read(el, pseudo);
+      };
+      const bp = await snapshot(doc, opts);
+      expect(textWith(bp, "Help")).toBeDefined();
+      expect(bp.truncated?.dropped).toBeGreaterThan(0);
+      // A fully walked row reads its ::before and ::after; rows past the cut are not read at all.
+      expect(pseudoReads).toBeLessThan(600);
+    },
+  );
 });
 
 describe("snapshotHtml", () => {
