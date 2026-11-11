@@ -33,10 +33,12 @@ jobs:
       - id: pages
         uses: actions/configure-pages@v6
       # Layout: /swarmloom/ landing site, /swarmloom/docs/, /swarmloom/studio/, /swarmloom/bm/.
+      # Strict: a failed release lookup or download fails the deploy instead of shipping without videos.
       - name: Fetch website media
         run: node apps/site/scripts/fetch-media.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SWARMLOOM_REQUIRE_MEDIA: "1"
       - name: Build website
         run: pnpm --filter @swarmloom/site build:offline
         env:
