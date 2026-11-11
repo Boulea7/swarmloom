@@ -58,6 +58,8 @@ export const BUDGETS = [
   { key: "large.nodes.finish", max: 2500, label: "4k layers: mounted stage nodes, peak during finish()" },
   { key: "large.finishMs", max: 3000, label: "4k layers: finish() to build end, ms" },
   { key: "large.heapMB.built", max: 48, label: "4k layers: heap after finish(), MB" },
+  { key: "large.tourSeek.ms", max: 2000, label: "4k layers: tour-mode seek(60 s) from the start, ms" },
+  { key: "large.tourSeek.nodes", max: 2500, label: "4k layers: mounted stage nodes after the tour-mode seek" },
   { key: "flock.cbP95", max: 3, label: "128-agent flock: rAF callback p95, ms" },
 ];
 
@@ -181,10 +183,11 @@ export function renderTable(results, lang, checks) {
     row(c, c.large, large, large.build, { nodes: large.nodes, heap: large.heapMB }),
     row(c, c.flock, { layers: demo.layers, agents: flock.agents }, flock),
   ];
+  const tour = large.tourSeek;
   const seek =
     lang === "zh"
-      ? `seek(10 s) 从头重放 ${fmt(demo.seekMs, 0)} ms`
-      : `seek(10 s) from the start ${fmt(demo.seekMs, 0)} ms`;
+      ? `seek(10 s) 从头重放 ${fmt(demo.seekMs, 0)} ms；4k 图层页 tour 模式 seek(60 s) 从头重放 ${fmt(tour.ms, 0)} ms，之后舞台节点 ${fmt(tour.nodes, 0)}`
+      : `seek(10 s) from the start ${fmt(demo.seekMs, 0)} ms; tour-mode seek(60 s) from the start on the 4k-layer page ${fmt(tour.ms, 0)} ms, ${fmt(tour.nodes, 0)} stage nodes after it`;
   const where =
     lang === "zh"
       ? `环境：${env.browser}，无头，${env.viewport}，DPR ${env.dpr}，关闭声音，${env.cpus} 核，1 分钟负载 ${fmt(env.load, 1)}，${env.date}。${seek}。`
