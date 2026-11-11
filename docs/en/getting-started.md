@@ -31,7 +31,7 @@ This route fits PDFs, Word documents, Markdown, source code, images and 3D model
 2. Drop a file, or choose **Open file**, **Paste** or **URL**.
 3. Alternatively, choose an example to play immediately. Sound may need a click or tap before the browser unlocks audio.
 4. Use the settings drawer to change cursors, speed, labels, theme, sound pack and finale.
-5. Choose **Export** to save the result. Browsers without live recording support show the equivalent CLI command.
+5. Choose **Export** to make a video of the result in the page. Browsers that cannot encode video (no WebCodecs) show the equivalent CLI command instead.
 
 Studio parses local files in your browser. Opening a remote URL makes a request to that URL's site.
 
