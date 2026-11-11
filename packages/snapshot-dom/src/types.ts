@@ -37,6 +37,7 @@ export interface SnapshotOptions {
    * are page content and always shown.
    */
   showFormValues?: boolean;
+  /** Cancels the snapshot. The walk runs in slices of about 10 ms and checks it between slices. */
   signal?: AbortSignal;
 }
 

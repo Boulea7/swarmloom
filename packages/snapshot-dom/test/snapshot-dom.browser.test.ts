@@ -258,6 +258,24 @@ describe("edge cases", () => {
   });
 });
 
+describe("long pages", () => {
+  /** Rows of 100 px, with fixed help UI nested in a footer at the end of the DOM. */
+  function longPage(rows: number): string {
+    const body = Array.from({ length: rows }, (_, i) => `<div class="row">Row ${i}</div>`).join("");
+    return (
+      "<!doctype html><html><head><style>body{margin:0}.row{height:100px;border-bottom:1px solid #ccc}</style></head>" +
+      `<body>${body}<footer><div><span style="position:fixed;right:8px;bottom:8px">Help</span></div></footer></body></html>`
+    );
+  }
+
+  it("walks in time slices, so an abort from another task stops it", async () => {
+    const doc = await mountPage(longPage(3000));
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 0);
+    await expect(snapshot(doc, { maxHeight: 1e9, signal: ctrl.signal })).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
 describe("snapshotHtml", () => {
   it("lays out a fragment in a sandbox with its origin at (0,0) and cleans up", async () => {
     const w = window as Window & { __pwned?: number };

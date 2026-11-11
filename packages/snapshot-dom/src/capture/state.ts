@@ -2,6 +2,7 @@ import type { Layer, Rect } from "@swarmloom/core";
 import { isElement, isText, viewOf } from "../dom/env";
 import type { ResolvedOptions } from "../options";
 import { contains, intersect, type Linear, outwardRect, roundRect } from "../util/geom";
+import type { Slice } from "../util/slice";
 import type { BoxVisual } from "./styles";
 
 /** A child in the flat (composed) tree together with the element its inherited styles come from. */
@@ -140,6 +141,8 @@ export interface Capture {
   /** Layers refused because the capture already holds far more than maxLayers. */
   overflow: number;
   readonly hardLimit: number;
+  /** Deadline of the current walk slice (set by the driver in snapshot.ts). */
+  readonly slice: Slice;
   svgSeq: number;
   fontRatios: Map<string, number>;
   measure: CanvasRenderingContext2D | null | undefined;
@@ -188,6 +191,7 @@ export function createCapture(
     droppedHeight: 0,
     overflow: 0,
     hardLimit: opts.maxLayers * 2 + 256,
+    slice: { deadline: Number.POSITIVE_INFINITY },
     svgSeq: 0,
     fontRatios: new Map(),
     measure: undefined,

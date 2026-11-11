@@ -1,8 +1,8 @@
 import type { BoxLayer, Rect, TextLayer } from "@swarmloom/core";
 import { FORM_TAGS, IGNORE_ATTR, isElement, isText, MEDIA_ATTR, MEDIA_TAGS, SKIP_TAGS } from "../dom/env";
-import { throwIfAborted } from "../util/abort";
 import { px } from "../util/css";
 import { inset, intersect, isIdentity, multiplyLinear, parseLinear } from "../util/geom";
+import { now } from "../util/slice";
 import { emitBox, emitRule, emitSides } from "./box";
 import { emitFormControl } from "./form";
 import { classify, hasVisibleText, inlineFacts, isFlexOrGrid, isMath, isTextLeaf } from "./inline";
@@ -26,6 +26,12 @@ import {
 import { borderInsets, containerTextStyle, contentInsets, paintsBox, textPropsOf, visualOf } from "./styles";
 import { emitTextLeaf, emitTextRun, floatBox } from "./text";
 import { emitBackdrop, isTopLayer, TOP_LAYER_KEY } from "./top-layer";
+
+/**
+ * A walk step. The walk is a generator so snapshot() can run it in time slices: it yields
+ * (at element boundaries) once the slice deadline in `cap.slice` has passed.
+ */
+export type Walk<T = void> = Generator<void, T, void>;
 
 /** Initial walk context: viewport -> world offset (dx, dy) and an optional world clip. */
 export function rootContext(dx: number, dy: number, clip: Rect | null): Ctx {
@@ -254,13 +260,13 @@ function childContext(
 }
 
 /** Walks one element subtree. */
-export function visit(cap: Capture, el: Element, ctx: Ctx): void {
+export function* visit(cap: Capture, el: Element, ctx: Ctx): Walk {
+  if (now() >= cap.slice.deadline) yield;
   if (cap.visited >= cap.maxElements) {
     cap.elementCapHit = true;
     return;
   }
   cap.visited++;
-  if ((cap.visited & 127) === 0) throwIfAborted(cap.opts.signal);
   const tag = el.localName;
   if (SKIP_TAGS.has(tag) || el.hasAttribute(IGNORE_ATTR)) return;
   const info = infoOf(cap, el);
@@ -271,19 +277,19 @@ export function visit(cap: Capture, el: Element, ctx: Ctx): void {
   const place = placeElement(cap, own, info);
   const rec = openNode(cap, el, place.box);
   try {
-    render(cap, own, info, place, own.paintKey !== ctx.paintKey, topLayer);
+    yield* render(cap, own, info, place, own.paintKey !== ctx.paintKey, topLayer);
   } finally {
     closeNode(cap, rec);
   }
 }
 
-function render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: boolean, topLayer: boolean): void {
+function* render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: boolean, topLayer: boolean): Walk {
   const el = info.el;
   const tag = el.localName;
   const visible = info.visibility === "visible";
   if (el.hasAttribute(MEDIA_ATTR) || MEDIA_TAGS.has(tag)) {
     if (!visible) return;
-    if ((tag === "iframe" || tag === "frame") && visitFrame(cap, own, info, place)) return;
+    if ((tag === "iframe" || tag === "frame") && (yield* visitFrame(cap, own, info, place))) return;
     emitMedia(cap, own, info, place);
     return;
   }
@@ -314,15 +320,15 @@ function render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: 
   const kids = childContext(cap, own, info, place, boxId, newKey, topLayer);
   if (!kids) return;
   if (visible) emitPositionedPseudo(cap, kids, info, "before", place.box);
-  renderContent(cap, kids, info);
+  yield* renderContent(cap, kids, info);
   if (visible) emitPositionedPseudo(cap, kids, info, "after", place.box);
 }
 
-function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
+function* renderContent(cap: Capture, kids: Ctx, info: ElInfo): Walk {
   if (isTextLeaf(cap, info)) {
     const content = placeInset(cap, kids, info, contentInsets(info.cs));
     const res = emitTextLeaf(cap, kids, info, content);
-    for (const o of res.outflow) visit(cap, o, kids);
+    for (const o of res.outflow) yield* visit(cap, o, kids);
     return;
   }
   let content: Rect | null = null;
@@ -334,14 +340,14 @@ function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
   let segText = false;
   let sawBlock = false;
   let prevBlock: FlatChild | undefined;
-  const flush = (atEnd: boolean, next?: FlatChild): void => {
+  const flush = function* (atEnd: boolean, next?: FlatChild): Walk {
     if (seg.length === 0) return;
     if (segText) {
       const neighbours = { prev: prevBlock, next };
       const res = emitTextRun(cap, kids, info, seg, contentBox(), { before: !sawBlock, after: atEnd }, neighbours);
-      for (const o of res.outflow) visit(cap, o, kids);
+      for (const o of res.outflow) yield* visit(cap, o, kids);
     } else {
-      for (const ch of seg) if (isElement(ch.node)) visit(cap, ch.node, kids);
+      for (const ch of seg) if (isElement(ch.node)) yield* visit(cap, ch.node, kids);
     }
     seg = [];
     segText = false;
@@ -351,14 +357,14 @@ function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
     if (cls === "skip") continue;
     const node = child.node;
     if (cls === "outflow") {
-      if (isElement(node)) visit(cap, node, kids);
+      if (isElement(node)) yield* visit(cap, node, kids);
       continue;
     }
     if (cls === "block") {
-      flush(false, child);
+      yield* flush(false, child);
       sawBlock = true;
       prevBlock = child;
-      if (isElement(node)) visit(cap, node, kids);
+      if (isElement(node)) yield* visit(cap, node, kids);
       continue;
     }
     seg.push(child);
@@ -370,7 +376,7 @@ function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
       }
     }
   }
-  flush(true);
+  yield* flush(true);
 }
 
 function emitMathBlock(cap: Capture, own: Ctx, info: ElInfo, place: Placement): void {
@@ -402,7 +408,7 @@ function frameBackground(cap: Capture, doc: Document): string | null {
 }
 
 /** Captures a same-origin iframe document in place. Returns false when it must become a placeholder. */
-function visitFrame(cap: Capture, own: Ctx, info: ElInfo, place: Placement): boolean {
+function* visitFrame(cap: Capture, own: Ctx, info: ElInfo, place: Placement): Walk<boolean> {
   if (own.frameDepth >= 3 || own.linear) return false;
   let doc: Document | null = null;
   try {
@@ -450,6 +456,6 @@ function visitFrame(cap: Capture, own: Ctx, info: ElInfo, place: Placement): boo
     );
   cap.bgSources.add(root);
   if (body) cap.bgSources.add(body);
-  visit(cap, root, { ...fctx, parentId: bgId ?? fctx.parentId });
+  yield* visit(cap, root, { ...fctx, parentId: bgId ?? fctx.parentId });
   return true;
 }
