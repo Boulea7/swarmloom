@@ -11,7 +11,7 @@ Watch a swarm of cursors weave it into being. SwarmLoom takes a web page, a docu
 
 > [!NOTE]
 > SwarmLoom is a visual replay, not an AI agent orchestrator. The cursors follow a plan computed from
-> the finished content, so the same seed always draws the same build.
+> the finished content: with the same input, settings, browser and fonts, a fixed seed repeats the build.
 
 ## What you can weave
 
