@@ -1,7 +1,7 @@
-import type { PlayerOptions } from "@swarmloom/core";
+import { createPlayer } from "@swarmloom/core";
 import { describe, expect, it } from "vitest";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
-import { ClockPlayer } from "./fake-player";
+import { watchShadowRoots } from "../src/render/live";
 
 describe("export in Chromium", () => {
   it("detects live recording support", async () => {
@@ -25,20 +25,24 @@ describe("export in Chromium", () => {
     };
     const api = createRenderApi({
       load: async () => ({ blueprint }),
-      createPlayer: (options: PlayerOptions) => new ClockPlayer(options),
+      createPlayer,
       renderAudioWav: async () => new Uint8Array(),
     });
-    await api.init({ input: { name: "a.md", text: "# Hi" }, width: 320, height: 200, fps: 25, sound: false });
+    // The stage's shadow roots are closed: record them as they are attached.
+    const shadows = watchShadowRoots(window);
     try {
-      // The inline stage's scroller rules (core stage styles): it reserves a thin, stable gutter.
-      const scroller = document.createElement("div");
-      scroller.style.cssText =
-        "position:absolute;inset:0;overflow:auto;overflow-x:hidden;scrollbar-gutter:stable;scrollbar-width:thin";
-      document.getElementById("swarmloom-render")?.append(scroller);
+      await api.init({ input: { name: "a.md", text: "# Hi" }, width: 320, height: 200, fps: 25, sound: false });
+      const scroller = shadows
+        .roots()
+        .map((root) => root.querySelector<HTMLElement>(".scroller"))
+        .find((el) => el !== null);
+      if (!scroller) throw new Error("No stage scroller in the render host");
+      // The real inline scroller reserves its gutter, and the host is widened by exactly that much.
       expect(scroller.offsetWidth).toBeGreaterThan(scroller.clientWidth);
       expect(scroller.clientWidth).toBe(320);
     } finally {
       api.dispose();
+      shadows.stop();
     }
   });
 });
