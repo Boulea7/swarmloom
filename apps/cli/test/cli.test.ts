@@ -82,6 +82,12 @@ describe("render options", () => {
     expect(opts).toMatchObject({ output, format, settings: { sound } });
   });
 
+  it("forwards --bpm and resolves --events-out", () => {
+    const opts = parseRenderOptions(["a.pdf", "-f", "png-seq", "--bpm", "121.991", "--events-out", "o/ev.json"], cwd);
+    expect(opts).toMatchObject({ eventsOut: path.join(cwd, "o/ev.json"), settings: { bpm: 121.991 } });
+    expect(parseRenderOptions(["a.pdf"], cwd)).not.toHaveProperty("eventsOut");
+  });
+
   it.each([
     [["a.md", "-o", "x.mov"], "Cannot tell the video format"],
     [["a.md", "-o", "x.mp4", "--format", "gif"], "--output ends in .mp4 but --format is gif"],
@@ -91,6 +97,7 @@ describe("render options", () => {
     [["a.md", "--width", "7680", "--scale", "2"], "larger than 8192 px"],
     [["a.md", "--agents", "many"], "--agents must be an integer"],
     [["a.md", "--locale", "not a tag"], "--locale must be a BCP 47 language tag"],
+    [["a.md", "--bpm", "300"], "--bpm must be a number"],
     [["a.md", "b.md"], 'Unexpected argument "b.md"'],
   ])("rejects %j", (argv, message) => {
     expect(() => parseRenderOptions(argv, cwd)).toThrow(message);

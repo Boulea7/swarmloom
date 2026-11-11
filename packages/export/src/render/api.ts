@@ -159,6 +159,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       return bytesToBase64(wav);
     },
 
+    async soundLog(): Promise<SoundEvent[]> {
+      return activeRender().session.soundLog.map((ev) => ({ ...ev }));
+    },
+
     dispose,
   };
 }

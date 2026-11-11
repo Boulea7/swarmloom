@@ -42,6 +42,7 @@ describe("render page protocol", () => {
   it("steps a virtual clock to done, then renders the soundtrack and cleans up", async () => {
     const { api, players, loads, dispose, audio } = setup();
     await expect(api.step(40)).rejects.toThrow("Call init() first");
+    await expect(api.soundLog()).rejects.toThrow("Call init() first");
 
     const { estimatedMs } = await api.init({
       ...base,
@@ -76,6 +77,7 @@ describe("render page protocol", () => {
     expect(player.readyCalls).toBe(31);
 
     expect(base64ToBytes(await api.audioWav())).toEqual(Uint8Array.from([4, 120]));
+    expect(await api.soundLog()).toEqual(player.soundLog);
     expect(audio.mock.calls[0]?.[2]).toMatchObject({ sampleRate: 48000, channels: 2 });
 
     await expect(api.init(base)).rejects.toThrow("already active");

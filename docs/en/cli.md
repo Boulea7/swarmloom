@@ -51,7 +51,7 @@ swarmloom render <file|url> [-o out.mp4]
   [--width 1280] [--height 720] [--scale 1] [--fps 30]
   [--agents auto] [--speed 1] [--seed 1]
   [--theme auto] [--labels names] [--finale flock]
-  [--no-sound] [--tail 2500] [--max-duration 120]
+  [--no-sound] [--tail 2500] [--bpm 112] [--max-duration 120] [--events-out <path>]
   [--chrome <path>] [--ffmpeg <path>] [--quiet]
 ```
 
@@ -74,7 +74,9 @@ swarmloom render <file|url> [-o out.mp4]
 | `--finale <mode>` | `flock` | `flock`, `halo` or `none` |
 | `--no-sound` | Sound enabled | Disable the soundtrack and sound-event output |
 | `--tail <ms>` | `2500` | Hold time after the build completes |
+| `--bpm <number>` | `112` | Tempo the placement notes snap to (40–240), e.g. to match a soundtrack |
 | `--max-duration <s>` | `120` | Maximum engine duration in seconds; prevents endless renders |
+| `--events-out <path>` | Off | Also write the sound event log as JSON (engine ms, same clock as the frames), e.g. to compare two runs |
 | `--chrome <path>` | Auto-discover | Chrome/Chromium executable |
 | `--ffmpeg <path>` | Auto-discover | ffmpeg executable |
 | `--quiet` | Off | Hide frame and ETA progress |

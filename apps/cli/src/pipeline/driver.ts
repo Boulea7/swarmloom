@@ -106,6 +106,21 @@ export class RenderPageDriver implements FrameSource {
     return typeof base64 === "string" && base64.length > 0 ? Buffer.from(base64, "base64") : null;
   }
 
+  /**
+   * The page's sound log (every event of the run, engine ms).
+   * @throws RenderError when the render page predates soundLog() or returns something else than a list.
+   */
+  async soundLog(): Promise<unknown[]> {
+    const events = await this.call("Reading the sound log", AUDIO_MS, () =>
+      this.page.evaluate(() => {
+        const api = (globalThis as unknown as SwarmWindow).__swarmloom;
+        return typeof api.soundLog === "function" ? api.soundLog() : null;
+      }),
+    );
+    if (!Array.isArray(events)) throw new RenderError("This render page cannot report its sound log (--events-out)");
+    return events;
+  }
+
   /** Lets the page release its player; never throws. */
   async dispose(): Promise<void> {
     await this.page.evaluate(() => (globalThis as unknown as SwarmWindow).__swarmloom.dispose()).catch(() => {});

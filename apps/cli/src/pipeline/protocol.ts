@@ -4,7 +4,7 @@
  * The CLI serves `@swarmloom/export/dist/render/` on 127.0.0.1 and drives `window.__swarmloom`
  * through Playwright. These types mirror that contract; the CLI only depends on this shape.
  */
-import type { Blueprint } from "@swarmloom/core";
+import type { Blueprint, SoundEvent } from "@swarmloom/core";
 
 export interface RenderInput {
   name: string;
@@ -58,6 +58,8 @@ export interface RenderApi {
   step(ms: number): Promise<StepResult>;
   /** Base64 WAV of the sound log rendered offline for the elapsed duration. */
   audioWav(): Promise<string>;
+  /** Every sound event logged so far (optional: older render pages lack it). */
+  soundLog?(): Promise<SoundEvent[]>;
   dispose(): void;
 }
 

@@ -27,7 +27,7 @@ npx swarmloom doctor
 | `formats` | Lists the supported input formats (`--json` for scripts). |
 | `doctor` | Checks Node.js, the browser, ffmpeg and the bundled pages. |
 
-Every command has `--help`. Common `render` options: `--width`/`--height` (CSS px, default 1280x720), `--scale` (device pixel ratio of the frames), `--fps` (default 30), `--agents`, `--speed`, `--seed`, `--theme`, `--labels`, `--finale`, `--tail` (hold after the build, ms), `--no-sound`, `--no-remote`, `--max-duration` (seconds, default 120; the video stops there even if the build is not done) and `--quiet`.
+Every command has `--help`. Common `render` options: `--width`/`--height` (CSS px, default 1280x720), `--scale` (device pixel ratio of the frames), `--fps` (default 30), `--agents`, `--speed`, `--seed`, `--theme`, `--labels`, `--finale`, `--tail` (hold after the build, ms), `--bpm` (tempo the placement notes snap to), `--events-out` (also write the sound log as JSON, one event per sound with engine-ms timestamps on the frames' clock), `--no-sound`, `--no-remote`, `--max-duration` (seconds, default 120; the video stops there even if the build is not done) and `--quiet`.
 
 Progress goes to stderr: a bar with the remaining time on a terminal, a line per quarter otherwise. Ctrl+C stops the render, closes the browser, stops ffmpeg and deletes temporary files; a second Ctrl+C quits at once. The CLI only ever stops processes it started.
 

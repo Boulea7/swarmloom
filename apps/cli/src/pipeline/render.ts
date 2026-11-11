@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Blueprint } from "@swarmloom/core";
 import type { Browser, Page } from "playwright-core";
@@ -37,6 +37,8 @@ export interface RenderJob {
   fps: number;
   settings: PlayerSettings;
   maxDurationMs: number;
+  /** Absolute path for the sound log JSON (--events-out), written next to the output on success. */
+  eventsOut?: string;
   /** Let the render page load https: images and fonts the input references (decision C03). */
   remoteAssets: boolean;
   quiet: boolean;
@@ -157,9 +159,17 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
         audio = true;
       }
     }
+    const events = job.eventsOut ? await driver.soundLog() : null;
     await driver.dispose();
     progress.clear();
     await moveIntoPlace(output, job.output);
+    if (job.eventsOut && events) {
+      // Same clock as the frames: event t is engine ms, frame i shows t = i * 1000 / fps.
+      const log = { version: 1, fps: job.fps, frames: result.frames, durationMs: result.durationMs, events };
+      const tmpLog = path.join(tmp, "sound-events.json");
+      await writeFile(tmpLog, `${JSON.stringify(log)}\n`);
+      await moveIntoPlace(tmpLog, job.eventsOut);
+    }
     return {
       frames: result.frames,
       durationMs: result.durationMs,

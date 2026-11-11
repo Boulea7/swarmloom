@@ -37,6 +37,7 @@ Output:
       --scale <n>         Pixels per CSS px; the video is width*scale x height*scale (0.25-4). Default: 1
       --fps <n>           Frames per second (1-120). Default: 30
       --max-duration <s>  Stop after this many seconds of video (1-3600). Default: 120
+      --events-out <path> Also write the sound log (every sound event, engine ms) as JSON
 
 Swarm:
       --agents <n|auto>   Number of cursors (1-256) or auto. Default: auto
@@ -47,6 +48,7 @@ Swarm:
       --finale <finale>   flock | halo | none. Default: flock
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
       --tail <ms>         Hold after the build finishes, ms (0-60000). Default: 2500
+      --bpm <n>           Tempo the placement notes snap to (40-240). Default: 112
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
@@ -76,6 +78,8 @@ const OPTIONS = {
   scale: { type: "string" },
   fps: { type: "string" },
   "max-duration": { type: "string" },
+  "events-out": { type: "string" },
+  bpm: { type: "string" },
   agents: { type: "string" },
   speed: { type: "string" },
   seed: { type: "string" },
@@ -110,6 +114,8 @@ export interface RenderOptions {
   scale: number;
   fps: number;
   maxDurationMs: number;
+  /** Absolute path of the sound log JSON (--events-out). */
+  eventsOut?: string;
   settings: PlayerSettings;
   noSound: boolean;
   /** Load https: images and fonts (default on; --no-remote turns it off). */
@@ -154,6 +160,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     sound: !values["no-sound"] && formatHasAudio(format),
   };
   if (values.locale !== undefined) settings.locale = readLocale(values.locale);
+  if (values.bpm !== undefined) settings.bpm = readNumber("bpm", values.bpm, 120, { min: 40, max: 240 });
 
   return {
     input,
@@ -167,6 +174,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     remoteAssets: !values["no-remote"],
     fps: readInt("fps", values.fps, 30, 1, 120),
     maxDurationMs: readNumber("max-duration", values["max-duration"], 120, { min: 1, max: 3600 }) * 1000,
+    ...(values["events-out"] ? { eventsOut: path.resolve(cwd, values["events-out"]) } : {}),
     settings,
     chrome: values.chrome,
     ffmpeg: values.ffmpeg,
@@ -303,6 +311,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       fps: opts.fps,
       settings: opts.settings,
       maxDurationMs: opts.maxDurationMs,
+      ...(opts.eventsOut ? { eventsOut: opts.eventsOut } : {}),
       remoteAssets: opts.remoteAssets,
       quiet: opts.quiet,
       verbose: opts.verbose,

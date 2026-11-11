@@ -1,4 +1,4 @@
-import type { LabelMode } from "@swarmloom/core";
+import type { LabelMode, SoundEvent } from "@swarmloom/core";
 
 /** Input of a render: what `SourceInput` carries, serialisable across the driver boundary. */
 export interface RenderInput {
@@ -63,6 +63,11 @@ export interface RenderApi {
   step(ms: number): Promise<RenderStep>;
   /** Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for the elapsed duration. */
   audioWav(): Promise<string>;
+  /**
+   * Every sound event logged so far (engine ms, name, pan, pitch, velocity), the list `audioWav()`
+   * renders. Logged even when sound is off, so drivers can record or compare runs.
+   */
+  soundLog(): Promise<SoundEvent[]>;
   /** Destroys the player and releases the loaded source; `init()` may be called again afterwards. */
   dispose(): void;
 }

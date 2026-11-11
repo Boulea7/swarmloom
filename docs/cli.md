@@ -51,7 +51,7 @@ swarmloom render <file|url> [-o out.mp4]
   [--width 1280] [--height 720] [--scale 1] [--fps 30]
   [--agents auto] [--speed 1] [--seed 1]
   [--theme auto] [--labels names] [--finale flock]
-  [--no-sound] [--tail 2500] [--max-duration 120]
+  [--no-sound] [--tail 2500] [--bpm 112] [--max-duration 120] [--events-out <path>]
   [--chrome <path>] [--ffmpeg <path>] [--quiet]
 ```
 
@@ -74,7 +74,9 @@ swarmloom render <file|url> [-o out.mp4]
 | `--finale <mode>` | `flock` | `flock`、`halo` 或 `none` |
 | `--no-sound` | 开启声音 | 禁用音轨与声音事件输出 |
 | `--tail <ms>` | `2500` | 构建完成后的结尾停留时间 |
+| `--bpm <number>` | `112` | 放置音符对齐的节拍速度（40–240），给视频配乐对拍时使用 |
 | `--max-duration <s>` | `120` | 最长引擎时长，单位秒；防止异常输入无限渲染 |
+| `--events-out <path>` | 关闭 | 另写一份声音事件日志 JSON（引擎毫秒，与帧同一时钟），可比较两次运行 |
 | `--chrome <path>` | 自动探测 | 指定 Chrome/Chromium 可执行文件 |
 | `--ffmpeg <path>` | 自动探测 | 指定 ffmpeg 可执行文件 |
 | `--quiet` | 关闭 | 不显示帧数与 ETA 进度 |
