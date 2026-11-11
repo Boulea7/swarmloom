@@ -5,13 +5,13 @@ description: Start with SwarmLoom through an extension, Studio or the source wor
 
 # Getting started
 
-::: warning Current status
-In-place rebuilding, Studio playback and CLI rendering are still being implemented. The v1 workflows below are planned; the development entry point at the end is available now.
+::: info Current status
+Studio is online: it opens files, plays them and exports video in the page. The extensions, the CLI and the `<swarm-loom>` element work when built from source; store listings and npm packages are not published yet.
 :::
 
 There are three ways to use SwarmLoom: rebuild a page in place, open content in Studio, or embed the player in your own project.
 
-## Rebuild a web page <Badge type="warning" text="Planned" />
+## Rebuild a web page <Badge type="info" text="Build from source" />
 
 This is the best route for articles, documentation, landing pages and ordinary application screens.
 
@@ -23,7 +23,7 @@ This is the best route for articles, documentation, landing pages and ordinary a
 
 Browser-privileged pages, extension stores and built-in PDF viewers do not allow injected rebuild scripts. Use **Open in Studio** or import the original file instead.
 
-## Open a file in Studio <Badge type="warning" text="Planned" />
+## Open a file in Studio
 
 This route fits PDFs, Word documents, Markdown, source code, images and 3D models. It also works on mobile devices.
 
@@ -35,7 +35,7 @@ This route fits PDFs, Word documents, Markdown, source code, images and 3D model
 
 Studio parses local files in your browser. Opening a remote URL makes a request to that URL's site.
 
-## Embed it in your own page <Badge type="warning" text="Planned" />
+## Embed it in your own page <Badge type="info" text="Build from source" />
 
 Register the Web Component and give it a source:
 
@@ -67,7 +67,7 @@ PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install
 pnpm dev:studio
 ```
 
-This starts Studio's Vite development server. The current interface and playback paths may still contain stubs; they are not a release-quality preview.
+This starts Studio's Vite development server with hot reload.
 
 Run the documentation site locally with:
 

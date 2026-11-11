@@ -5,13 +5,13 @@ description: 通过扩展、Studio 或源码开始体验 SwarmLoom。
 
 # 快速开始
 
-::: warning 当前状态
-扩展重建、Studio 播放和 CLI 渲染仍在实现中。下面首先描述 v1 规划流程；文末列出了当前可以运行的开发入口。
+::: info 当前状态
+Studio 已经上线，可以打开文件、播放，并在页面内导出视频。扩展、CLI 和 `<swarm-loom>` 元素从源码构建后即可使用；商店条目和 npm 包尚未发布。
 :::
 
 SwarmLoom 有三种使用方式：在原网页上重建、在 Studio 中打开内容、在自己的项目中调用播放器。
 
-## 在网页上重建 <Badge type="warning" text="规划中" />
+## 在网页上重建 <Badge type="info" text="从源码构建" />
 
 适合文章、文档站、落地页和普通应用界面。
 
@@ -23,7 +23,7 @@ SwarmLoom 有三种使用方式：在原网页上重建、在 Studio 中打开�
 
 浏览器特权页、扩展商店页和内建 PDF 查看器不能注入重建脚本。此时使用“在 Studio 中打开”，或直接打开原文件。
 
-## 在 Studio 中打开文件 <Badge type="warning" text="规划中" />
+## 在 Studio 中打开文件
 
 适合 PDF、Word、Markdown、源码、图片和 3D 模型，也适合手机。
 
@@ -35,7 +35,7 @@ SwarmLoom 有三种使用方式：在原网页上重建、在 Studio 中打开�
 
 Studio 默认在浏览器本地解析文件。打开远程 URL 时，浏览器会请求该 URL 所在站点。
 
-## 嵌入自己的页面 <Badge type="warning" text="规划中" />
+## 嵌入自己的页面 <Badge type="info" text="从源码构建" />
 
 使用 Web Component 时，注册标签并提供来源：
 
@@ -67,7 +67,7 @@ PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install
 pnpm dev:studio
 ```
 
-这会启动 Studio 的 Vite 开发服务器。当前界面与播放功能仍可能包含桩实现，不应作为发布版体验来验收。
+这会启动带热更新的 Studio Vite 开发服务器。
 
 文档站也可以本地运行：
 

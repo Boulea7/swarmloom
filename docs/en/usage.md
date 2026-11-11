@@ -5,8 +5,8 @@ description: SwarmLoom shortcuts, settings, touring, sound, go-live, sharing and
 
 # Usage
 
-::: warning Current status
-The player and toolbar are still being implemented. This page describes v1 interactions already fixed in the contracts. Refer to release notes for final availability.
+::: info Current status
+These controls work in Studio today, and in the extensions and the `<swarm-loom>` element when built from source. Store listings and npm packages are not published yet.
 :::
 
 ## Keyboard shortcuts
@@ -52,7 +52,7 @@ Long pages mount only nearby layers. A fast manual scroll prioritises newly visi
 
 ## Sound
 
-Effects are synthesised with Web Audio rather than downloaded recordings. Four sound packs are planned:
+Effects are synthesised with Web Audio rather than downloaded recordings. There are four sound packs:
 
 | Pack | Character |
 | --- | --- |
@@ -94,7 +94,7 @@ A hidden frame runs the same render page as the [CLI](./cli). Its virtual clock 
 
 Use the CLI for WebM, GIF, animated WebP or a PNG sequence, or when those differences matter. It screenshots each frame in headless Chrome and renders the same sound-event log offline to WAV before muxing.
 
-## Share <Badge type="warning" text="Planned" />
+## Share
 
 Small Markdown, SVG and code inputs can be compressed into the `#d=` URL hash. Large files and remote URLs use file import or `?src=` instead.
 
