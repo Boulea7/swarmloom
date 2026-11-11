@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Builds the unpacked extension for each target into dist/<target>/ and zips it to dist/<target>.zip.
+// Every package carries THIRD_PARTY_NOTICES.txt (scripts/notices.mjs) and SwarmLoom's LICENSE.txt.
 //
 // Usage: node scripts/build.mjs [--target all|chrome,edge,firefox,safari]
 //                               [--e2e] [--studio <dir>] [--no-zip]
@@ -15,6 +16,14 @@ import { parseArgs } from "node:util";
 import { build } from "esbuild";
 import { placeholderIcon } from "./icons.mjs";
 import { ICON_SIZES, manifestFor, messageKeys, referencedFiles, validateManifest } from "./manifest.mjs";
+import {
+  bundledPackages,
+  collectNotices,
+  dependencyClosure,
+  LICENSE_COPY,
+  NOTICES_FILE,
+  renderNotices,
+} from "./notices.mjs";
 import { parseTargets, STUBBED_PACKAGES, TARGETS } from "./targets.mjs";
 import { directoryEntries, sourceDateEpoch, zipEntries } from "./zip.mjs";
 
@@ -137,6 +146,7 @@ function writeLocales(out, catalogs, keys) {
  * @param {import("./targets.mjs").TargetId} target
  * @param {string} out
  * @param {string} studioEntry
+ * @returns {Promise<import("esbuild").Metafile[]>} what each build bundled, for the licence notices
  */
 async function bundle(target, out, studioEntry) {
   const spec = TARGETS[target];
@@ -158,6 +168,7 @@ async function bundle(target, out, studioEntry) {
     // Path comments in the output are relative to this directory, whatever the caller's cwd, so a
     // reviewer rebuilding from the source package gets byte-identical files.
     absWorkingDir: root,
+    metafile: true,
     define: {
       __SWARMLOOM_TARGET__: JSON.stringify(target),
       __SWARMLOOM_STUDIO__: JSON.stringify(studioEntry),
@@ -169,19 +180,32 @@ async function bundle(target, out, studioEntry) {
     ["src/content/main.ts", "swarm.js"],
     ["src/content/tracker-main.ts", "tracker.js"],
   ];
-  await Promise.all(
-    scripts.map(([entry, file]) =>
+  const results = await Promise.all([
+    ...scripts.map(([entry, file]) =>
       build({ ...common, entryPoints: [join(root, entry ?? "")], outfile: join(out, file ?? ""), format: "iife" }),
     ),
-  );
-  await build({
-    ...common,
-    entryPoints: ["options", "welcome", "notice", "demo"].map((p) => join(root, "src", "pages", `${p}.ts`)),
-    outdir: join(out, "pages"),
-    format: "esm",
-    splitting: true,
-    chunkNames: "chunks/[name]-[hash]",
-  });
+    build({
+      ...common,
+      entryPoints: ["options", "welcome", "notice", "demo"].map((p) => join(root, "src", "pages", `${p}.ts`)),
+      outdir: join(out, "pages"),
+      format: "esm",
+      splitting: true,
+      chunkNames: "chunks/[name]-[hash]",
+    }),
+  ]);
+  return results.map((result) => /** @type {import("esbuild").Metafile} */ (result.metafile));
+}
+
+/**
+ * Writes the third-party notices of everything in the package, and SwarmLoom's own licence.
+ * @param {string} out
+ * @param {import("esbuild").Metafile[]} metafiles
+ * @param {readonly string[]} studioPackages dependency closure of the bundled Studio, or none
+ */
+function writeNotices(out, metafiles, studioPackages) {
+  const notices = collectNotices([...bundledPackages(metafiles, root), ...studioPackages]);
+  writeFileSync(join(out, NOTICES_FILE), renderNotices(notices));
+  cpSync(join(repo, "LICENSE"), join(out, LICENSE_COPY));
 }
 
 /**
@@ -199,6 +223,8 @@ function validate(out, manifest, target, catalogs) {
     "welcome.html",
     "notice.html",
     "demo.html",
+    NOTICES_FILE,
+    LICENSE_COPY,
   ]) {
     if (!existsSync(join(out, file))) problems.push(`missing file ${file}`);
   }
@@ -226,6 +252,8 @@ const studio = findStudio();
 if (!studio) {
   console.log("note: no Studio extension build found; Studio links use the hosted Studio");
 }
+// Vite bundles the Studio from its runtime dependencies; their notices ship with the copy.
+const studioPackages = studio ? dependencyClosure(join(repo, "apps", "studio")) : [];
 
 mkdirSync(outRoot, { recursive: true });
 for (const target of targets) {
@@ -240,7 +268,8 @@ for (const target of targets) {
   const manifest = manifestFor(target, version, e2e ? { hostPermissions: ["<all_urls>"] } : {});
   writeLocales(out, catalogs, messageKeys(manifest));
   const generatedIcons = writeIcons(out);
-  await bundle(target, out, studioEntry);
+  const metafiles = await bundle(target, out, studioEntry);
+  writeNotices(out, metafiles, studioPackages);
   writeFileSync(join(out, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   validate(out, manifest, target, catalogs);
 

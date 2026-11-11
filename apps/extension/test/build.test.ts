@@ -5,6 +5,14 @@ import { describe, expect, it } from "vitest";
 import { auditPackage } from "../scripts/audit.mjs";
 import { placeholderIcon } from "../scripts/icons.mjs";
 import { cspProblems, GECKO_ID, manifestFor, messageKeys, validateManifest } from "../scripts/manifest.mjs";
+import {
+  bundledPackages,
+  collectNotices,
+  dependencyClosure,
+  LICENSE_COPY,
+  NOTICES_FILE,
+  renderNotices,
+} from "../scripts/notices.mjs";
 import { parseTargets, TARGET_IDS } from "../scripts/targets.mjs";
 import { directoryEntries, sourceDateEpoch, unzipEntries, zipEntries } from "../scripts/zip.mjs";
 import { BUILD_CAPABILITIES } from "../src/shared/capabilities";
@@ -140,12 +148,74 @@ describe("packaging helpers", () => {
   });
 });
 
+/** Writes `node_modules/<name>` under `dir` with a package.json and optional extra files. */
+function fakePackage(dir: string, pkg: Record<string, unknown>, files: Record<string, string> = {}): string {
+  const root = join(dir, "node_modules", String(pkg.name));
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, "package.json"), JSON.stringify(pkg));
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
+  return root;
+}
+
+describe("licence notices", () => {
+  it("lists every bundled third-party package with its licence text, and no workspace code", () => {
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-notices-"));
+    try {
+      const app = join(dir, "app");
+      mkdirSync(app);
+      writeFileSync(
+        join(app, "package.json"),
+        JSON.stringify({ name: "app", dependencies: { lib: "1" }, optionalDependencies: { absent: "1" } }),
+      );
+      const lib = fakePackage(
+        app,
+        {
+          name: "lib",
+          version: "1.0.0",
+          license: "Apache-2.0",
+          dependencies: { small: "2", "@types/lib": "1", "lib-linux-x64": "1" },
+        },
+        { LICENSE: "Apache licence of lib", "NOTICE.txt": "lib notice" },
+      );
+      fakePackage(app, { name: "small", version: "2.0.0", license: "MIT", author: { name: "Ada" } });
+      fakePackage(app, { name: "lib-linux-x64", version: "1.0.0", license: "MIT", os: ["linux"] });
+
+      const text = renderNotices(collectNotices(dependencyClosure(app)));
+      expect(text).toContain("lib 1.0.0\nLicense: Apache-2.0");
+      expect(text).toContain("Apache licence of lib");
+      expect(text).toContain("lib notice");
+      expect(text).toContain("Copyright (c) Ada");
+      expect(text).not.toMatch(/lib-linux-x64|@types|^app /m);
+      // esbuild metafile inputs: workspace sources and plugin namespaces are not packages.
+      const inputs = { "../app/node_modules/lib/index.js": {}, "src/main.ts": {}, "stub:@swarmloom/adapter-pdf": {} };
+      expect(bundledPackages([{ inputs }], join(dir, "work"))).toEqual([lib]);
+      expect(renderNotices([])).toContain("no third-party software");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a package without licence text it cannot reproduce, and a missing dependency", () => {
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-notices-"));
+    try {
+      const bare = fakePackage(dir, { name: "bare", version: "1.0.0", license: "BSD-3-Clause" });
+      expect(() => collectNotices([bare])).toThrow(/bare@1\.0\.0: no licence file/);
+      const needy = fakePackage(dir, { name: "needy", version: "1.0.0", dependencies: { gone: "1" } });
+      expect(() => dependencyClosure(needy)).toThrow(/gone is not installed/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("package audit", () => {
-  it("passes a clean package and flags remote code, the test hook and a stale zip", () => {
+  it("passes a clean package and flags remote code, the test hook, missing notices and a stale zip", () => {
     const dir = mkdtempSync(join(tmpdir(), "swarmloom-audit-"));
     try {
       writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifestFor("chrome", "1.0.0")));
       writeFileSync(join(dir, "swarm.js"), "console.log(1);");
+      writeFileSync(join(dir, NOTICES_FILE), renderNotices([]));
+      writeFileSync(join(dir, LICENSE_COPY), "MIT License");
       mkdirSync(join(dir, "pages"));
       writeFileSync(join(dir, "pages", "welcome.js"), "const site = 'https://example.com/'; open(site);");
       const zip = join(dir, "..", `${dir.split(/[\\/]/).pop()}.zip`);
@@ -154,10 +224,12 @@ describe("package audit", () => {
 
       writeFileSync(join(dir, "page.html"), '<script src="https://cdn.example/x.js"></script>');
       writeFileSync(join(dir, "background.js"), "globalThis.__swarmloomTest = {}; eval(code);");
+      rmSync(join(dir, NOTICES_FILE));
       const problems = auditPackage(dir, "chrome", zip).join("\n");
       expect(problems).toMatch(/page\.html: remote <script src>/);
       expect(problems).toMatch(/background\.js: eval/);
       expect(problems).toMatch(/test hook/);
+      expect(problems).toMatch(/THIRD_PARTY_NOTICES\.txt is missing/);
       expect(problems).toMatch(/does not match/);
       rmSync(zip);
     } finally {

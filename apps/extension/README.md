@@ -49,12 +49,19 @@ exists (`apps/studio/dist-extension`, `--studio <dir>` or `SWARMLOOM_STUDIO_DIR`
 as `studio/`; otherwise Studio links go to the hosted Studio. Brand icons come from
 `assets/brand/icon-<size>.png`, with generated placeholders until they exist.
 
+Every package carries `LICENSE.txt` (SwarmLoom, MIT) and `THIRD_PARTY_NOTICES.txt`, written by
+`scripts/notices.mjs`: the name, version, declared licence and shipped licence/NOTICE files of each
+third-party package in it. The extension's own scripts contribute what esbuild actually bundled;
+the copied Studio contributes the runtime dependency closure of `@swarmloom/studio` (type-only and
+platform-binary packages left out). A package with no licence file fails the build unless it is MIT,
+whose standard text is then used.
+
 ## Commands
 
 ```sh
 pnpm -F @swarmloom/extension build             # all targets + zips
 node scripts/build.mjs --target firefox        # one target (comma-separated list allowed)
-pnpm -F @swarmloom/extension check:package     # permissions, CSP, no remote code, zip = folder, size budget
+pnpm -F @swarmloom/extension check:package     # permissions, CSP, no remote code, notices, zip = folder, size budget
 pnpm -F @swarmloom/extension lint:firefox      # web-ext lint dist/firefox
 pnpm -F @swarmloom/extension build:amo-source  # dist/firefox-amo-source.zip for AMO review
 node scripts/amo-source.mjs --verify           # rebuild from that zip in a temp folder, compare hashes
