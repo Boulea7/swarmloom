@@ -168,6 +168,22 @@ test("explains a restricted page with a badge and a notice tab offering the next
   await page.close();
 });
 
+test("extension pages may compile WebAssembly (Studio's Draco and PDF decoders)", async () => {
+  const page = await context.newPage();
+  await page.goto(new URL("options.html", worker.url()).href);
+  const wasmHeader = [0, 97, 115, 109, 1, 0, 0, 0];
+  const result = await page.evaluate(async (bytes) => {
+    try {
+      await WebAssembly.compile(new Uint8Array(bytes));
+      return "ok";
+    } catch (error) {
+      return String(error);
+    }
+  }, wasmHeader);
+  assert.equal(result, "ok");
+  await page.close();
+});
+
 test("a second toggle stops the swarm and leaves the page exactly as it was", async () => {
   const { page, tabId } = await openTab(`${origin}/page?toggle`);
   const before = await pageHtml(page);

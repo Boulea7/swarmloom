@@ -53,6 +53,11 @@ describe("manifests", () => {
     const safari = manifestFor("safari", "1.0.0") as Json;
     expect(safari.background).toEqual({ service_worker: "background.js" });
     expect(safari.permissions).toEqual(["activeTab", "scripting", "storage", "contextMenus"]);
+
+    // Bundled Studio decodes Draco and PDFs with WebAssembly; MV3's default CSP blocks it.
+    const wasmCsp = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
+    for (const m of [chrome, safari]) expect(m.content_security_policy).toEqual({ extension_pages: wasmCsp });
+    expect(firefox.content_security_policy).toBe(wasmCsp);
   });
 
   it("rejects broken manifests and unknown targets", () => {
@@ -72,6 +77,8 @@ describe("manifests", () => {
       content_security_policy: "script-src 'self' https://cdn.example; object-src 'self'",
     };
     expect(validateManifest(remote, "firefox").join("\n")).toMatch(/cdn\.example/);
+    const { content_security_policy: _, ...noCsp } = manifestFor("chrome", "1.0.0") as Json;
+    expect(validateManifest(noCsp, "chrome").join("\n")).toMatch(/extension_pages must allow 'wasm-unsafe-eval'/);
     expect(cspProblems("script-src 'self' 'unsafe-eval'")).toHaveLength(1);
     expect(parseTargets("all")).toEqual([...TARGET_IDS]);
     expect(() => parseTargets("chrome,netscape")).toThrow("netscape");
