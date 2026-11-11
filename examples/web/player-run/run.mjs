@@ -95,9 +95,10 @@ async function realtime(page) {
   await page.evaluate(() => {
     window.__longTasks = [];
     new PerformanceObserver((list) => {
-      for (const e of list.getEntries()) window.__longTasks.push(Math.round(e.duration));
+      for (const e of list.getEntries()) window.__longTasks.push({ ms: Math.round(e.duration), at: e.startTime });
     }).observe({ type: "longtask", buffered: false });
   });
+  const startedAt = await page.evaluate(() => performance.now());
   await page.evaluate((o) => window.__swl.start(o), {
     follow: values.follow,
     seed,
@@ -111,7 +112,8 @@ async function realtime(page) {
   console.log(
     `realtime: first screen ${sec(m.firstScreenAt)}, build complete ${sec(m.builtAt)}, done ${sec(m.doneAt)}`,
   );
-  console.log(`long tasks ${long.length} [${long.join(", ")}] ms`);
+  const list = long.map((t) => `${t.ms} ms at ${sec(t.at - startedAt)}`).join(", ");
+  console.log(`long tasks ${long.length}${list ? ` (${list}; 0.0 s = snapshot and createPlayer)` : ""}`);
 }
 
 /** Nine evenly spread frames (first and last included) in a 3 x 3 grid at half size. */
