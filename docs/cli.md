@@ -69,6 +69,7 @@ swarmloom render <file|url> [options]
 | `--scale <n>` | `1` | 每个 CSS px 对应的像素数，视频尺寸为宽高各乘以该值，范围 0.25–4；任一边不能超过 8192 px |
 | `--fps <n>` | `30` | 每秒帧数，范围 1–120；每帧推进 `1000 / fps` 毫秒 |
 | `--max-duration <s>` | `120` | 视频达到该秒数即停止，范围 1–3600；构建未完成时给出警告 |
+| `--duration <s>` | 关闭 | 固定视频时长，范围 0.1–3600 秒：构建完成后继续录制收尾与完成页，未完成的构建在此截断；不能与 `--max-duration` 同用 |
 
 各格式的编码：`mp4` 为 H.264 + AAC，`webm` 为 VP9 + Opus，`gif` 和 `webp` 为无声动画。`png-seq` 写入不存在或为空的目录，帧文件从 `frame-000001.png` 开始编号，声音另存为 `audio.wav`（`--no-sound` 时不写）。
 
@@ -85,8 +86,20 @@ swarmloom render <file|url> [options]
 | `--follow <mode>` | `tour` | `tour` 随构建滚动页面；`none` 不滚动 |
 | `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒 |
 | `--locale <tag>` | `en-US` | 工具栏文字和页面的语言，BCP 47 标签，例如 `zh-CN` |
+| `--bpm <n>` | `112` | 放置音符、散开音与完成和弦对齐的速度（八分音符网格），范围 40–240 |
+| `--cue <at>:<action>` | 无 | 在固定视频时间执行播放器动作，可重复。`<at>` 为秒（`12.5`）、毫秒（`12500ms`）或按 `--bpm` 计的拍数（`26b`，需要显式给出 `--bpm`）；`<action>` 为 `pause`（全部光标停住）、`resume` 或 `finish`（快速完成构建）。在不早于 `<at>` 的第一帧生效，同一时间的动作按给出顺序执行；`<at>` 必须早于视频结尾 |
 | `--no-sound` | 带声音 | 不输出音轨；GIF 和 WebP 本身没有音轨 |
 | `--no-remote` | 加载 | 不加载输入引用的 `https:` 图片和字体。其他站点的脚本、样式表、数据请求和 `http:` 文件始终不加载 |
+
+### 录制证据
+
+用于可复核、可重复的录制。三个文件与 `--output` 必须是不同的文件。
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `--audio-out <file>` | 关闭 | 另写一份音轨 WAV（48 kHz 立体声，与视频等长）；需要声音，不能与 `--no-sound`、GIF 或 WebP 同用 |
+| `--events-out <file>` | 关闭 | 另写一份声音事件日志 JSON：引擎毫秒、与帧同一时钟，并附每个事件的帧号 |
+| `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素 |
 
 ### 程序与日志
 
@@ -135,6 +148,14 @@ swarmloom render ./slides.pptx -o ./frames \
 ```bash
 swarmloom render ./model.glb -o model.mp4 \
   --max-duration 15 --chrome /path/to/chromium --ffmpeg /path/to/ffmpeg
+```
+
+固定 24 秒、在第 26 拍停住、第 28 拍完成，并留下可复核的录制证据：
+
+```bash
+swarmloom render ./logo.svg -o take.mp4 --duration 24 --bpm 90 \
+  --cue 26b:pause --cue 28b:resume --cue 28b:finish \
+  --audio-out take.wav --events-out events.json --manifest-out manifest.json
 ```
 
 ## `snapshot`
@@ -259,4 +280,4 @@ swarmloom doctor
 
 CLI 固定视口、DPR、种子和帧步长。确定性来自播放器自己的虚拟时钟：每帧推进 `1000 / fps` 毫秒，等待当前帧就绪后截图，不依赖浏览器的 BeginFrame。声音事件离线渲染为 WAV，按视频时长补静音或截断后再合流；合流不使用 `-shortest`，因此音频和视频时长一致。
 
-确定性验收比较原始帧与 PCM，而不是 MP4/WebM 文件字节。编码器版本、线程和平台可能改变压缩字节，即使画面与声音一致。要复现结果，还应记录输入内容、CLI/适配器版本、浏览器、字体、ffmpeg 和导出参数。
+确定性验收比较原始帧与 PCM，而不是 MP4/WebM 文件字节；`--manifest-out` 记录的每帧 PNG 哈希与声音日志哈希可直接用来比较两次运行。编码器版本、线程和平台可能改变压缩字节，即使画面与声音一致。要复现结果，还应记录输入内容、CLI/适配器版本、浏览器、字体、ffmpeg 和导出参数。

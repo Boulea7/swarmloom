@@ -69,6 +69,7 @@ Render a file or web page to a video of the swarm building it, with sound by def
 | `--scale <n>` | `1` | Pixels per CSS px; the video is width and height times this value, 0.25–4. Neither side may exceed 8192 px |
 | `--fps <n>` | `30` | Frames per second, 1–120; each frame advances `1000 / fps` ms |
 | `--max-duration <s>` | `120` | Stop the video at this many seconds, 1–3600; warns when the build has not finished |
+| `--duration <s>` | Off | Exact video length, 0.1–3600 s: keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
 
 Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are silent animations. `png-seq` writes into a missing or empty directory, numbering frames from `frame-000001.png`, with the sound in `audio.wav` (not written with `--no-sound`).
 
@@ -85,8 +86,20 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--follow <mode>` | `tour` | `tour` scrolls the page along with the build; `none` does not scroll |
 | `--tail <ms>` | `2500` | Hold time after the build finishes, 0–60000 ms |
 | `--locale <tag>` | `en-US` | Language of the toolbar strings and the page, a BCP 47 tag such as `zh-CN` |
+| `--bpm <n>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid), 40–240 |
+| `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume` or `finish` (complete the build quickly). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
 | `--no-sound` | Sound on | Leave out the soundtrack; GIF and WebP never have one |
 | `--no-remote` | Loaded | Do not load `https:` images and fonts the input links to. Scripts, style sheets, data requests and `http:` files from other sites are never loaded |
+
+### Capture evidence
+
+For takes that can be checked and repeated. These files and `--output` must all be different.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
+| `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
+| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256, player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels |
 
 ### Programs and logging
 
@@ -135,6 +148,14 @@ Render at most 15 seconds with explicit tool paths:
 ```bash
 swarmloom render ./model.glb -o model.mp4 \
   --max-duration 15 --chrome /path/to/chromium --ffmpeg /path/to/ffmpeg
+```
+
+Render exactly 24 seconds, hold on beat 26, finish on beat 28 and keep evidence that can be checked later:
+
+```bash
+swarmloom render ./logo.svg -o take.mp4 --duration 24 --bpm 90 \
+  --cue 26b:pause --cue 28b:resume --cue 28b:finish \
+  --audio-out take.wav --events-out events.json --manifest-out manifest.json
 ```
 
 ## `snapshot`
@@ -259,4 +280,4 @@ Progress goes to stderr and never mixes with file data: a progress bar with the 
 
 The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once it is ready, without relying on the browser's BeginFrame. Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
 
-Deterministic validation compares raw frames and PCM, not MP4/WebM bytes. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.
+Deterministic validation compares raw frames and PCM, not MP4/WebM bytes; the per-frame PNG hashes and the sound log hash that `--manifest-out` records can be compared across two runs directly. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.

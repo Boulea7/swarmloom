@@ -1,13 +1,21 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import pkg from "../../package.json" with { type: "json" };
 import { expectPositionals, parseCommand, readEnum, readInt, readNumber } from "../args";
 import { locateAssets, requireRenderDir } from "../assets";
 import { findBrowser } from "../discovery/browser";
-import { type FfmpegCaps, findFfmpeg, probeFfmpeg, systemFfmpegDeps } from "../discovery/ffmpeg";
+import {
+  type FfmpegCaps,
+  type FfmpegVersion,
+  findFfmpeg,
+  formatFfmpegVersion,
+  probeFfmpeg,
+  systemFfmpegDeps,
+} from "../discovery/ffmpeg";
 import { type HostEnv, systemHost } from "../discovery/host";
 import { installedPlaywright } from "../discovery/playwright";
-import { MissingDependencyError, UsageError } from "../errors";
+import { MissingDependencyError, RenderError, UsageError } from "../errors";
 import { warn } from "../io";
 import {
   FORMAT_EXTENSION,
@@ -17,9 +25,18 @@ import {
   planMux,
   planVideo,
 } from "../pipeline/encode";
-import { outputStem, resolveSource } from "../pipeline/input";
+import {
+  buildManifest,
+  cueFrame,
+  eventsDocument,
+  type ResolvedCue,
+  sha256File,
+  sourceDigest,
+  writeAtomic,
+} from "../pipeline/evidence";
+import { outputStem, type RenderSource, resolveSource } from "../pipeline/input";
 import { formatClock } from "../pipeline/progress";
-import { type PlayerSettings, renderVideo } from "../pipeline/render";
+import { type PlayerSettings, type RenderSummary, renderVideo } from "../pipeline/render";
 import { isMissingOrEmptyDir } from "../util/fs";
 import type { Command, CommandContext } from "./types";
 
@@ -37,6 +54,9 @@ Output:
       --scale <n>         Pixels per CSS px; the video is width*scale x height*scale (0.25-4). Default: 1
       --fps <n>           Frames per second (1-120). Default: 30
       --max-duration <s>  Stop after this many seconds of video (1-3600). Default: 120
+      --duration <s>      Exact video length in seconds (0.1-3600): keeps capturing after the build
+                          (the finale, then the finished page) and cuts an unfinished build there.
+                          Replaces --max-duration
 
 Swarm:
       --agents <n|auto>   Number of cursors (1-256) or auto. Default: auto
@@ -48,9 +68,24 @@ Swarm:
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
       --tail <ms>         Hold after the build finishes, ms (0-60000). Default: 2500
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
+      --bpm <n>           Tempo the placement notes, the fan-out and the final chord snap to (eighth
+                          notes, 40-240). Default: 112
+      --cue <at>:<action> Player action at a fixed video time; repeatable. <at> is seconds (12.5),
+                          milliseconds (12500ms) or beats from the start at --bpm (26b). <action> is
+                          pause (every cursor holds), resume, or finish (complete the build quickly).
+                          Applied on the first frame at or after <at>; same-time cues in order given
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
                           and plain-http files from other sites are never loaded
+
+Capture evidence (for repeatable takes; see the README):
+      --audio-out <file>  Also write the soundtrack as WAV (48 kHz stereo, same length as the video)
+      --events-out <file> Also write the sound log (every sound event) as JSON, in engine ms on the
+                          frames' clock, with each event's frame number
+      --manifest-out <file>
+                          Write a JSON manifest: arguments, input and blueprint SHA-256, player
+                          settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256
+                          of every frame (frames are then captured as PNG) and of the sound log
 
 Programs:
       --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then
@@ -65,6 +100,8 @@ Examples:
   swarmloom render README.md -o readme.mp4
   swarmloom render https://example.com --format webm --speed 2
   swarmloom render deck.pptx -o deck.gif --fps 15 --width 960 --height 540
+  swarmloom render logo.svg -o take.mp4 --duration 24 --bpm 90 --cue 26b:pause --cue 28b:resume \
+    --cue 28b:finish --audio-out take.wav --events-out events.json --manifest-out manifest.json
 
 Exit codes: 0 ok, 1 usage error, 2 missing Chrome/ffmpeg, 3 render failure, 130 interrupted.`;
 
@@ -76,6 +113,12 @@ const OPTIONS = {
   scale: { type: "string" },
   fps: { type: "string" },
   "max-duration": { type: "string" },
+  duration: { type: "string" },
+  bpm: { type: "string" },
+  cue: { type: "string", multiple: true },
+  "audio-out": { type: "string" },
+  "events-out": { type: "string" },
+  "manifest-out": { type: "string" },
   agents: { type: "string" },
   speed: { type: "string" },
   seed: { type: "string" },
@@ -110,6 +153,13 @@ export interface RenderOptions {
   scale: number;
   fps: number;
   maxDurationMs: number;
+  /** --duration: exactly maxDurationMs of video. */
+  fixedLength: boolean;
+  cues: ResolvedCue[];
+  /** Absolute evidence paths. */
+  audioOut?: string;
+  eventsOut?: string;
+  manifestOut?: string;
   settings: PlayerSettings;
   noSound: boolean;
   /** Load https: images and fonts (default on; --no-remote turns it off). */
@@ -154,6 +204,34 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     sound: !values["no-sound"] && formatHasAudio(format),
   };
   if (values.locale !== undefined) settings.locale = readLocale(values.locale);
+  if (values.bpm !== undefined) settings.bpm = readNumber("bpm", values.bpm, 120, { min: 40, max: 240 });
+
+  if (values.duration !== undefined && values["max-duration"] !== undefined) {
+    throw new UsageError("Use either --duration (exact length) or --max-duration (upper limit), not both");
+  }
+  const fixedLength = values.duration !== undefined;
+  const maxDurationMs = fixedLength
+    ? readNumber("duration", values.duration, 0, { min: 0.1, max: 3600 }) * 1000
+    : readNumber("max-duration", values["max-duration"], 120, { min: 1, max: 3600 }) * 1000;
+  const fps = readInt("fps", values.fps, 30, 1, 120);
+  const cues = (values.cue ?? []).map((spec) => parseCue(spec, settings.bpm, fps));
+  for (const cue of cues) {
+    if (cue.at >= maxDurationMs) {
+      throw new UsageError(`--cue ${cue.spec} is at or after the end of the video (${maxDurationMs / 1000} s)`);
+    }
+  }
+  const evidence = {
+    audioOut: values["audio-out"] ? path.resolve(cwd, values["audio-out"]) : undefined,
+    eventsOut: values["events-out"] ? path.resolve(cwd, values["events-out"]) : undefined,
+    manifestOut: values["manifest-out"] ? path.resolve(cwd, values["manifest-out"]) : undefined,
+  };
+  if (evidence.audioOut && !settings.sound) {
+    throw new UsageError("--audio-out needs sound: drop --no-sound and use mp4, webm or png-seq");
+  }
+  const files = [output, evidence.audioOut, evidence.eventsOut, evidence.manifestOut].filter(Boolean);
+  if (new Set(files).size !== files.length) {
+    throw new UsageError("--output, --audio-out, --events-out and --manifest-out must be different files");
+  }
 
   return {
     input,
@@ -165,14 +243,37 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     scale,
     noSound: values["no-sound"] ?? false,
     remoteAssets: !values["no-remote"],
-    fps: readInt("fps", values.fps, 30, 1, 120),
-    maxDurationMs: readNumber("max-duration", values["max-duration"], 120, { min: 1, max: 3600 }) * 1000,
+    fps,
+    maxDurationMs,
+    fixedLength,
+    cues,
+    ...evidence,
     settings,
     chrome: values.chrome,
     ffmpeg: values.ffmpeg,
     quiet: values.quiet ?? false,
     verbose: values.verbose ?? false,
   };
+}
+
+const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish)$/;
+
+/**
+ * Parses one --cue: "<time>[s|ms|b]:<action>"; beats ("b") count from the start of the video at `bpm`.
+ * @throws UsageError for bad syntax or beats without --bpm.
+ */
+export function parseCue(spec: string, bpm: number | undefined, fps: number): ResolvedCue {
+  const match = CUE_RE.exec(spec.trim());
+  if (!match) {
+    throw new UsageError(
+      `--cue must look like <time>:<action>, e.g. 12.5:pause, 12500ms:resume or 26b:finish (got "${spec}")`,
+    );
+  }
+  const [, value = "0", unit = "s", action] = match;
+  if (unit === "b" && bpm === undefined) throw new UsageError(`--cue ${spec} counts beats, which needs --bpm`);
+  const n = Number(value);
+  const at = unit === "ms" ? n : unit === "b" ? (n * 60_000) / (bpm as number) : n * 1000;
+  return { spec, at, frame: cueFrame(at, fps), action: action as ResolvedCue["action"] };
 }
 
 function readLocale(raw: string): string {
@@ -241,7 +342,10 @@ function pngSequenceFallback(opts: RenderOptions, cwd: string): Partial<RenderOp
  * than after minutes of capturing.
  * @throws MissingDependencyError that also suggests png-seq, which needs no ffmpeg.
  */
-async function prepareFfmpeg(opts: RenderOptions, host: HostEnv): Promise<{ path: string; caps: FfmpegCaps }> {
+async function prepareFfmpeg(
+  opts: RenderOptions,
+  host: HostEnv,
+): Promise<{ path: string; caps: FfmpegCaps; version: FfmpegVersion }> {
   try {
     const found = await findFfmpeg(systemFfmpegDeps(host), { flag: opts.ffmpeg });
     const caps = await probeFfmpeg(found.path);
@@ -249,7 +353,7 @@ async function prepareFfmpeg(opts: RenderOptions, host: HostEnv): Promise<{ path
     if (opts.settings.sound && (opts.format === "mp4" || opts.format === "webm")) {
       planMux(opts.format, { video: "v", wav: "a", output: "o", durationMs: 1000 }, caps);
     }
-    return { path: found.path, caps };
+    return { path: found.path, caps, version: found.version };
   } catch (error) {
     if (!(error instanceof MissingDependencyError)) throw error;
     const fallback = "Without ffmpeg, --format png-seq writes PNG frames plus audio.wav.";
@@ -270,7 +374,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   const source = await resolveSource(opts.input, { cwd: ctx.cwd, signal: ctx.signal });
   const host = ctx.host ?? systemHost(ctx.env);
   const browser = findBrowser(host, { flag: opts.chrome, playwright: installedPlaywright() });
-  let ffmpeg: { path: string; caps: FfmpegCaps } | undefined;
+  let ffmpeg: { path: string; caps: FfmpegCaps; version: FfmpegVersion } | undefined;
   if (opts.format !== "png-seq") {
     try {
       ffmpeg = await prepareFfmpeg(opts, host);
@@ -303,6 +407,11 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       fps: opts.fps,
       settings: opts.settings,
       maxDurationMs: opts.maxDurationMs,
+      fixedLength: opts.fixedLength,
+      cues: opts.cues.map(({ at, action }) => ({ at, action })),
+      evidence: wantsEvidence(opts)
+        ? { audio: Boolean(opts.audioOut), events: Boolean(opts.eventsOut), manifest: Boolean(opts.manifestOut) }
+        : undefined,
       remoteAssets: opts.remoteAssets,
       quiet: opts.quiet,
       verbose: opts.verbose,
@@ -317,10 +426,18 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       tmpRoot: ctx.tmpRoot,
     },
   );
+  await writeEvidence(opts, summary, {
+    argv: ["render", ...argv],
+    cwd: ctx.cwd,
+    source,
+    browserPath: browser.path,
+    ffmpeg: ffmpeg ? { path: ffmpeg.path, version: formatFfmpegVersion(ffmpeg.version) } : null,
+  });
   if (opts.quiet) return 0;
   if (!summary.finished) {
     const layers = summary.last.total > 0 ? ` (${summary.last.built} of ${summary.last.total} layers built)` : "";
-    warn(io, `stopped at --max-duration ${formatClock(opts.maxDurationMs / 1000)} before the build finished${layers}`);
+    const flag = opts.fixedLength ? "--duration" : "--max-duration";
+    warn(io, `stopped at ${flag} ${formatClock(opts.maxDurationMs / 1000)} before the build finished${layers}`);
   }
   if (summary.blockedRequests > 0 && !opts.verbose) {
     warn(io, `blocked ${summary.blockedRequests} request(s) the input made to other sites (see --verbose)`);
@@ -331,6 +448,76 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
     `Wrote ${target}: ${(summary.durationMs / 1000).toFixed(1)} s, ${summary.frames} frames, ${pixels}, ${sound} (took ${took})`,
   );
   return 0;
+}
+
+function wantsEvidence(opts: RenderOptions): boolean {
+  return Boolean(opts.audioOut || opts.eventsOut || opts.manifestOut);
+}
+
+/** Writes --audio-out, --events-out and then --manifest-out (which hashes the other outputs). */
+async function writeEvidence(
+  opts: RenderOptions,
+  summary: RenderSummary,
+  run: {
+    argv: string[];
+    cwd: string;
+    source: RenderSource;
+    browserPath: string;
+    ffmpeg: { path: string; version: string } | null;
+  },
+): Promise<void> {
+  const evidence = summary.evidence;
+  if (!evidence) return;
+  if (opts.audioOut) {
+    if (!evidence.wav) throw new RenderError("The render produced no soundtrack for --audio-out");
+    await writeAtomic(opts.audioOut, evidence.wav);
+  }
+  if (opts.eventsOut && evidence.events) {
+    const meta = { fps: opts.fps, frames: summary.frames, durationMs: summary.durationMs, bpm: opts.settings.bpm };
+    await writeAtomic(opts.eventsOut, eventsDocument(evidence.events, meta));
+  }
+  if (!opts.manifestOut) return;
+  const outputs: Record<string, { path: string; sha256: string; bytes: number }> = {};
+  const named: [string, string | undefined][] = [
+    ["video", opts.format === "png-seq" ? undefined : opts.output],
+    ["audio", opts.audioOut],
+    ["events", opts.eventsOut],
+  ];
+  for (const [name, file] of named) if (file) outputs[name] = { path: file, ...(await sha256File(file)) };
+  const playwright = installedPlaywright();
+  const input = { arg: opts.input, kind: run.source.kind, name: run.source.name, ...(await sourceDigest(run.source)) };
+  const manifest = buildManifest({
+    tool: { name: "swarmloom", version: pkg.version },
+    argv: run.argv,
+    cwd: run.cwd,
+    input: { ...input, format: run.source.kind === "page" ? "html" : run.source.format },
+    info: summary.info,
+    video: { format: opts.format, width: opts.width, height: opts.height, scale: opts.scale, fps: opts.fps },
+    settings: opts.settings,
+    fixedLength: opts.fixedLength,
+    maxDurationMs: opts.maxDurationMs,
+    cues: opts.cues,
+    programs: {
+      browser: { path: run.browserPath, version: summary.browserVersion },
+      ffmpeg: run.ffmpeg,
+      playwrightCore: playwright.version ?? null,
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+    },
+    fonts: evidence.fonts,
+    result: {
+      frames: summary.frames,
+      durationMs: summary.durationMs,
+      builtAtMs: summary.builtAtMs,
+      finished: summary.finished,
+      imageType: evidence.imageType,
+      frameSha256: evidence.frameSha256,
+    },
+    events: evidence.events,
+    outputs,
+  });
+  await writeAtomic(opts.manifestOut, `${JSON.stringify(manifest, null, 1)}\n`);
 }
 
 export const renderCommand: Command = {
