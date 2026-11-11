@@ -12,13 +12,17 @@
  * a loom frame, five warp threads, a weft thread drawn on and off with a trim path, a shuttle
  * that travels along the weft while its fill fades in and out, and a caption. Output is
  * deterministic (fixed key order, no timestamps), so re-running it produces identical files.
+ * The JSON is formatted with the repository's Biome setup (run `pnpm install` first) so lint
+ * stays clean; the archive packs the same text.
  */
-import { writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, "../..");
 // fflate is a dependency of the adapter package; resolve it from there.
 const require = createRequire(join(here, "../../packages/adapter-lottie/package.json"));
 const { zipSync, strToU8 } = require("fflate");
@@ -213,10 +217,7 @@ const shuttle = shapeLayer(
     ]),
   ),
   [
-    group("bobbin", [
-      { ty: "rc", d: 1, p: still([0, 0]), s: still([44, 10]), r: still(5), nm: "Rect" },
-      fill(AMBER),
-    ]),
+    group("bobbin", [{ ty: "rc", d: 1, p: still([0, 0]), s: still([44, 10]), r: still(5), nm: "Rect" }, fill(AMBER)]),
     group("hull", [
       hull,
       fill(
@@ -242,7 +243,14 @@ const caption = {
   ks: layerTransform([240, 274, 0]),
   ao: 0,
   t: {
-    d: { k: [{ s: { s: 22, f: "SansRegular", t: "woven by many hands", j: 2, tr: 20, lh: 26.4, ls: 0, fc: INK.slice(0, 3) }, t: 0 }] },
+    d: {
+      k: [
+        {
+          s: { s: 22, f: "SansRegular", t: "woven by many hands", j: 2, tr: 20, lh: 26.4, ls: 0, fc: INK.slice(0, 3) },
+          t: 0,
+        },
+      ],
+    },
     p: {},
     m: { g: 1, a: still([0, 0]) },
     a: [],
@@ -269,8 +277,10 @@ const animation = {
   meta: { g: "SwarmLoom examples/lottie/generate.mjs", a: "SwarmLoom contributors", d: "Original sample, MIT" },
 };
 
-const json = `${JSON.stringify(animation)}\n`;
-writeFileSync(join(here, "shuttle-loop.json"), json);
+const jsonPath = join(here, "shuttle-loop.json");
+writeFileSync(jsonPath, `${JSON.stringify(animation)}\n`);
+execFileSync(join(root, "node_modules/.bin/biome"), ["format", "--write", jsonPath], { cwd: root, stdio: "ignore" });
+const json = readFileSync(jsonPath, "utf8");
 
 const manifest = {
   version: "1",
