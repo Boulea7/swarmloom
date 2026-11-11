@@ -140,6 +140,28 @@ describe("lottieAdapter on the example", () => {
     expect(shapes(fromArchive.blueprint)).toEqual(shapes(fromJson.blueprint));
     expect(fromArchive.blueprint.layers).toHaveLength(12);
   });
+
+  it("gives the host turns while it picks the pose, and stops there when aborted", async () => {
+    // A host task pings until it finds the off-screen render up, then aborts the load.
+    const controller = new AbortController();
+    const ping = new MessageChannel();
+    let sawRender = false;
+    ping.port1.onmessage = () => {
+      if (document.querySelector("[data-swarmloom-sandbox]")) {
+        sawRender = true;
+        controller.abort();
+      } else if (!controller.signal.aborted) ping.port2.postMessage(null);
+    };
+    ping.port2.postMessage(null);
+    const load = lottieAdapter.load({ text: shuttleJson, name: "x.json" }, { ...ctx, signal: controller.signal });
+    try {
+      await expect(load).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      controller.abort();
+      ping.port1.close();
+    }
+    expect(sawRender).toBe(true);
+  });
 });
 
 describe("lottie playback with the real player", () => {

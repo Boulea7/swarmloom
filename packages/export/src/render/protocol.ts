@@ -78,7 +78,11 @@ export interface RenderInfo {
   estimatedMs: number;
   /** Number of layers in the blueprint. */
   layers: number;
-  /** SHA-256 (hex) of the blueprint's JSON, so a capture can record exactly what was played. */
+  /**
+   * SHA-256 (hex) of the blueprint's JSON, so a capture can record exactly what was played. Object
+   * URLs and the driver's own input URL (random per take) are normalized first, so takes of the same
+   * input and settings report the same hash. Empty without Web Crypto.
+   */
   blueprintSha256: string;
 }
 

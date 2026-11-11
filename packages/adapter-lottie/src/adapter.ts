@@ -11,6 +11,7 @@ import { createLottiePlugin } from "./player/plugin";
 import { candidateFrames, choosePose, fixedPose, type PoseChoice, type ScoredFrame, visibleArea } from "./render/pose";
 import { loadRuntime } from "./render/runtime";
 import { renderLottie } from "./render/sandbox";
+import { createSlicer, type Slicer } from "./render/slice";
 import { mergeLetters, snapshotMarkup } from "./render/snapshot";
 import { sniffLottie } from "./sniff";
 import { TIMELINE_PLUGIN } from "./timeline/data";
@@ -72,31 +73,42 @@ async function readAnimation(input: SourceInput, opts: LottieAdapterOptions, sig
   return out;
 }
 
-/** Renders the animation off-screen, picks the pose and returns it as SVG markup in world space. */
-function snapshotPose(
+/**
+ * Renders the animation off-screen, picks the pose and returns it as SVG markup in world space.
+ * Rendering and measuring the candidate frames is long for big files, so the work runs in slices
+ * with host turns in between; an abort is honoured at each turn.
+ */
+async function snapshotPose(
   parsed: ParsedLottie,
   choice: PoseChoice,
   doc: Document,
   runtime: Awaited<ReturnType<typeof loadRuntime>>,
   layout: ReturnType<typeof layoutFor>,
-): { rest: number; markup: string } {
+  slicer: Slicer,
+): Promise<{ rest: number; markup: string }> {
   const { info } = parsed;
   const count = Math.max(1, Math.floor(info.op - info.ip));
   const fit = Math.min(1, SANDBOX_SIDE / Math.max(info.w, info.h));
   const rendered = renderLottie(runtime, doc, parsed.json, { w: info.w * fit, h: info.h * fit });
   try {
+    // lottie-web builds the whole animation in one call: the host gets a turn right after it.
+    await slicer.yield();
     let rest = fixedPose(choice, info.ip, count);
     if (rest === null) {
       const keys = new Set(parsed.keyTimes.map((t) => Math.round(t - info.ip)));
-      const scored: ScoredFrame[] = candidateFrames(
+      const candidates = candidateFrames(
         [...keys].sort((a, b) => a - b),
         count,
-      ).map((index) => {
+      );
+      const scored: ScoredFrame[] = [];
+      for (const index of candidates) {
+        await slicer.pause();
         rendered.show(index);
-        return { index, score: visibleArea(rendered.svg), key: keys.has(index) };
-      });
+        scored.push({ index, score: visibleArea(rendered.svg), key: keys.has(index) });
+      }
       rest = choosePose(scored, count - 1);
     }
+    await slicer.pause();
     rendered.show(rest);
     mergeLetters(rendered.svg);
     return {
@@ -122,9 +134,10 @@ function validateContext(ctx: AdapterContext): void {
  *  1. The animation is validated and sanitised (`parseLottie`): no expressions, remote assets,
  *     web fonts, audio or data layers reach the renderer; sizes, depth and counts are limited.
  *  2. lottie-web's light SVG renderer (loaded on first use) draws it off-screen; one frame is
- *     chosen as the static pose and converted by the SVG adapter: shapes become path layers with
- *     their fills and strokes, text becomes typed text (one layer per line), images become image
- *     layers. Layers are clipped to the composition; a full-canvas solid becomes the background.
+ *     chosen as the static pose (in ~10 ms slices with host turns, so `ctx.signal` can stop it
+ *     there) and converted by the SVG adapter: shapes become path layers with their fills and
+ *     strokes, text becomes typed text (one layer per line), images become image layers. Layers
+ *     are clipped to the composition; a full-canvas solid becomes the background.
  *  3. Two custom layers finish the blueprint: `lottie:player` over the composition and an
  *     `anim:timeline` bar under it. After the weave, one agent drags out the timeline, drops the
  *     keyframes, scrubs the playhead, and the real animation then plays from the engine clock.
@@ -157,19 +170,30 @@ export function createLottieAdapter(options: LottieAdapterOptions = {}): Adapter
       validateContext(ctx);
       const { signal } = ctx;
       throwIfAborted(signal);
+      const slicer = createSlicer(signal);
 
       const animation = await readAnimation(input, options, signal);
       const { parsed } = animation;
       const runtime = await loadRuntime();
       throwIfAborted(signal);
+      await slicer.pause();
 
       const { info } = parsed;
       const layout = layoutFor({ w: info.w, h: info.h }, ctx.width);
-      const { rest, markup } = snapshotPose(parsed, options.pose ?? "auto", ctx.document, runtime, layout);
+      const { rest, markup } = await snapshotPose(
+        parsed,
+        options.pose ?? "auto",
+        ctx.document,
+        runtime,
+        layout,
+        slicer,
+      );
       if (markup.length > LIMITS.maxFrameChars) {
         throw new LottieError("too-large", "The chosen frame of this animation is too complex to rebuild.");
       }
 
+      // The conversion is one more long step: the host gets a turn before it.
+      await slicer.yield();
       const limit = Math.min(maxLayers, ctx.maxLayers ?? maxLayers) - OWN_LAYERS;
       const woven = await frameAdapter.load(
         { text: markup, name: input.name },

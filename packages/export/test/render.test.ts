@@ -1,4 +1,11 @@
-import type { LoadedSource, PlayerOptions, RenderOfflineOptions, SoundEvent, SourceInput } from "@swarmloom/core";
+import type {
+  Blueprint,
+  LoadedSource,
+  PlayerOptions,
+  RenderOfflineOptions,
+  SoundEvent,
+  SourceInput,
+} from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { base64ToBytes, bytesToBase64, createRenderApi, type RenderInit } from "../src/index";
 import { ClockPlayer } from "./fake-player";
@@ -12,7 +19,7 @@ const blueprint = {
 };
 const base: RenderInit = { input: { name: "a.md", text: "# Hi" }, width: 320, height: 200, fps: 25, tail: 200 };
 
-function setup() {
+function setup(make: (input: SourceInput) => Blueprint = () => blueprint) {
   const players: ClockPlayer[] = [];
   const loads: { input: SourceInput; format?: string; width: number }[] = [];
   const dispose = vi.fn();
@@ -22,7 +29,7 @@ function setup() {
   const api = createRenderApi({
     async load(input, ctx, { format }): Promise<LoadedSource> {
       loads.push({ input, format, width: ctx.width });
-      return { blueprint, dispose };
+      return { blueprint: make(input), dispose };
     },
     createPlayer(options: PlayerOptions) {
       const player = new ClockPlayer(options);
@@ -141,6 +148,28 @@ describe("render page protocol", () => {
       ["key", 550],
     ]);
     api.dispose();
+  });
+
+  it("hashes the same blueprint across takes served under different random URLs", async () => {
+    // Adapters copy the input URL into the blueprint, resolve assets against it and mint object URLs.
+    const box = { x: 0, y: 0, w: 1, h: 1 };
+    const { api } = setup((input) => ({
+      ...blueprint,
+      source: { type: "svg", name: input.name, url: input.url },
+      layers: [
+        { id: "a", kind: "image", box, src: new URL("logo.png", String(input.url)).href },
+        { id: "b", kind: "image", box, src: `blob:${location.origin}/${Math.random()}` },
+      ],
+    }));
+    const take = async (url: string) => {
+      const { blueprintSha256 } = await api.init({ ...base, input: { name: "a.svg", url } });
+      api.dispose();
+      return blueprintSha256;
+    };
+    const first = await take(`${location.origin}/input/tokenA/a.svg`);
+    expect(await take(`${location.origin}/input/tokenB/a.svg`)).toBe(first);
+    // A remote input URL is part of what was played.
+    expect(await take("https://example.com/a.svg")).not.toBe(await take("https://example.org/a.svg"));
   });
 
   it("plays a driver-supplied blueprint instead of loading the input", async () => {
