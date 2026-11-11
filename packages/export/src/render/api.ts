@@ -131,6 +131,8 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
           player: playerOptions(init, loaded, host),
           tailMs: init.tail,
           createPlayer: deps.createPlayer,
+          // Recoverable: the render goes on; the CLI echoes these with --verbose.
+          onWarning: (error) => console.warn(`[swarmloom] ${error.message}`),
         });
         await session.start();
         active = { init, loaded, session, host };

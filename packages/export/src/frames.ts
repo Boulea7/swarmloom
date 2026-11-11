@@ -11,6 +11,8 @@ export interface FrameExportOptions {
   tailMs?: number;
   /** Called once per frame after its assets are ready; capture the stage here (screenshot, canvas read, encoder). */
   onFrame(index: number, timeMs: number): void | Promise<void>;
+  /** Called for each recoverable player error (see `RenderSessionOptions.onWarning`); throw to abort. */
+  onWarning?: (error: Error) => void;
   signal?: AbortSignal;
 }
 
@@ -21,6 +23,8 @@ export interface FrameExportResult {
   durationMs: number;
   /** Sound events of the run, ready for `renderAudioWav(soundLog, durationMs)`. */
   soundLog: readonly SoundEvent[];
+  /** Recoverable errors the player reported during the run (skipped layers, failed tasks). */
+  warnings: readonly Error[];
 }
 
 const DEFAULT_MAX_DURATION = 600_000;
@@ -38,8 +42,8 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
  *
  * @param options Player options; the clock is supplied by the exporter.
  * @param frames Frame rate, limits and the per-frame capture callback.
- * @throws RangeError for an invalid fps or limit; whatever `onFrame` or the player throws; the
- *   signal's reason when aborted.
+ * @throws RangeError for an invalid fps or limit; whatever `onFrame` or `onWarning` throws or
+ *   `play()` rejects with; the signal's reason when aborted. Recoverable player errors do not throw.
  */
 export async function exportFrames(
   options: Omit<PlayerOptions, "clock">,
@@ -53,7 +57,11 @@ export async function exportFrames(
   }
   throwIfAborted(signal);
 
-  const session = new RenderSession({ player: { controls: false, ...options }, tailMs: frames.tailMs });
+  const session = new RenderSession({
+    player: { controls: false, ...options },
+    tailMs: frames.tailMs,
+    onWarning: frames.onWarning,
+  });
   try {
     await session.start();
     let index = 0;
@@ -66,7 +74,12 @@ export async function exportFrames(
       await session.step(next - session.elapsed);
     }
     const count = index + 1;
-    return { frames: count, durationMs: (count * 1000) / fps, soundLog: [...session.soundLog] };
+    return {
+      frames: count,
+      durationMs: (count * 1000) / fps,
+      soundLog: [...session.soundLog],
+      warnings: [...session.warnings],
+    };
   } finally {
     session.dispose();
   }
