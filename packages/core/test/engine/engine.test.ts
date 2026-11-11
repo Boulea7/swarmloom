@@ -32,6 +32,7 @@ describe("Engine", () => {
     // Every layer was built, its overlays removed, and the sound engine got what was logged.
     expect(a.h.stage.finished).toHaveLength(7);
     expect(a.h.stage.live("ghost-rect")).toHaveLength(0);
+    expect(a.h.stage.live("icon")).toHaveLength(0);
     expect(a.h.sound.played).toEqual(a.h.engine.soundLog);
     expect(a.log.map((e) => e.name)).toEqual(expect.arrayContaining(["swell", "fanout", "key", "note", "chord"]));
   });
@@ -47,6 +48,22 @@ describe("Engine", () => {
     h.run(30);
     expect(h.engine.soundLog).toEqual(first.log);
     expect(h.stage.hash.value).toBe(first.hash);
+  });
+
+  it("fades the intro icon out from its current alpha after fan-out, then removes it", () => {
+    const h = harness(samplePage(), { seed: 7 });
+    void h.engine.play();
+    h.run(6);
+    const icon = h.stage.live("icon")[0];
+    h.stage.userScroll(40); // an early user scroll fans the crew out while the icon fades in
+    h.run(1);
+    expect(h.engine.state).toBe("building");
+    const atFanOut = icon?.props.alpha as number;
+    expect(atFanOut).toBeLessThan(1);
+    h.run(1);
+    expect(icon?.props.alpha).toBeLessThan(atFanOut);
+    h.run(30);
+    expect(h.stage.live("icon")).toHaveLength(0);
   });
 
   it("pause freezes time, resume continues and speed shortens the build", async () => {

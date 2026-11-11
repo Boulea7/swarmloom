@@ -640,6 +640,8 @@ export class Engine implements Player {
     const vp = this.#readViewport();
     if (this.#state !== "paused") {
       this.#pt += dt;
+      // The intro icon keeps fading out after fan-out, through building and finale.
+      this.#intro.frame(vp, this.#pt);
       switch (this.#state) {
         case "intro":
           this.#stepIntro(dt, vp);
@@ -665,7 +667,6 @@ export class Engine implements Player {
 
   #stepIntro(dt: number, vp: Rect): void {
     this.#camera.track(vp, dt, this.#userScrolled);
-    this.#intro.frame(vp, this.#pt);
     const roster = this.#roster;
     if (roster.activeCount() < this.#base) roster.join(SWARM, vp, this.#sim, INTRO_JOIN_MS);
     const steps = this.#takeSteps(dt);
