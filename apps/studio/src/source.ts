@@ -1,4 +1,5 @@
 import type { SourceInput } from "@swarmloom/core";
+import { inspect } from "@swarmloom/formats";
 import { MAX_INPUT_BYTES, StudioError } from "./errors";
 import type { ExampleEntry } from "./examples/manifest";
 import { formatById, formatOfName } from "./formats-meta";
@@ -249,8 +250,21 @@ async function fromInbox(ref: { kind: "inbox"; id: string }, ctx: ResolveContext
 }
 
 /**
+ * Text formats the registry's content heuristics recognise, with the extension a paste gets. The
+ * name decides the adapter, so without this a pasted patch or notebook would open as Markdown.
+ */
+const SNIFFED_PASTE: Readonly<Record<string, string>> = {
+  notebook: "ipynb",
+  terminal: "cast",
+  diff: "patch",
+  mindmap: "mm",
+  rtf: "rtf",
+};
+
+/**
  * Picks a file name for pasted text so the right adapter runs: SVG and HTML by their root
- * element, JSON and CSV by shape, Markdown otherwise.
+ * element; notebooks, asciicasts, patches, FreeMind maps and RTF by the registry's heuristics;
+ * JSON and CSV by shape; Markdown otherwise.
  */
 export function guessPasteName(text: string): string {
   const head = text.trimStart().slice(0, 2048);
@@ -258,6 +272,8 @@ export function guessPasteName(text: string): string {
   if (/^(<!--[\s\S]*?-->\s*)*(<!doctype html|<html[\s>]|<(body|div|section|main|article|header)[\s>])/i.test(head)) {
     return "pasted.html";
   }
+  const sniffed = SNIFFED_PASTE[inspect({ text: text.trimStart() }).id ?? ""];
+  if (sniffed) return `pasted.${sniffed}`;
   if (/^[[{]/.test(head)) {
     try {
       JSON.parse(text);

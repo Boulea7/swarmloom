@@ -34,10 +34,14 @@ const APPLE_ICON = { src: "icons/apple-touch-icon.png", size: 180 } as const;
 const FAVICON = "favicon.svg";
 const MANIFEST = "manifest.webmanifest";
 
-/** `accept` map for `file_handlers`: every MIME type Studio registers, with its extensions. */
+/**
+ * `accept` map for `file_handlers`: every MIME type Studio registers, with its extensions.
+ * Optional formats are left out: the manifest is static, and their adapter may be missing.
+ */
 export function fileHandlerAccept(): Record<string, string[]> {
   const accept: Record<string, string[]> = {};
   for (const meta of FORMAT_META) {
+    if (meta.optional) continue;
     for (const [mime, extensions] of Object.entries(meta.handlers)) {
       accept[mime] = [...new Set([...(accept[mime] ?? []), ...extensions])];
     }

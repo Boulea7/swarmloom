@@ -1,3 +1,4 @@
+import type { FormatMeta } from "./formats-meta";
 import type { StudioI18n } from "./i18n";
 import type { Viewport } from "./layout/viewport";
 import type { Route } from "./route";
@@ -39,6 +40,8 @@ export interface AppContext {
   settingsOpen(): boolean;
   /** Opens the keyboard shortcuts dialog. */
   openShortcuts(): void;
+  /** Formats this build can open (optional ones only when the formats registry has them). */
+  readonly formats: readonly FormatMeta[];
   /** Translated, comma-separated list of the formats Studio opens (for error messages). */
   formatList(): string;
 }

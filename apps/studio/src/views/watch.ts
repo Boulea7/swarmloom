@@ -28,7 +28,9 @@ type Item = { ref: SourceRef; title: string; entry?: ExampleEntry };
 
 /** What the watch cycles through: the requested source first, then the light examples. */
 function playlist(ctx: AppContext): Item[] {
-  const examples = entriesForLocale(ctx.services.manifest, ctx.i18n.locale).filter((e) => formatById(e.format)?.light);
+  const examples = entriesForLocale(ctx.services.manifest, ctx.i18n.locale, ctx.formats).filter(
+    (e) => formatById(e.format)?.light,
+  );
   const items: Item[] = examples.map((entry) => ({
     ref: { kind: "example", id: entry.id },
     title: entry.title,

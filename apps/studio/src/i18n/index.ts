@@ -19,6 +19,11 @@ export interface StudioI18n {
   core(key: string, fallback: string, vars?: Vars): string;
 }
 
+/** True for keys of the Studio catalog (as opposed to core-owned keys such as `format.pdf`). */
+export function isStudioKey(key: string): key is StudioKey {
+  return Object.hasOwn(en, key);
+}
+
 /** Used when nothing is known about the user's languages. */
 export const DEFAULT_LOCALE: StudioLocale = "zh-CN";
 /** Used when the user's languages are known but none is supported. */

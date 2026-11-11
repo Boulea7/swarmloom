@@ -31,17 +31,26 @@ export interface ExampleManifest {
 
 export const EMPTY_MANIFEST: ExampleManifest = { version: 1, entries: [] };
 
-/** Gallery order: documents first, then visual formats, then models. */
+/** Gallery order: documents first, then visual formats, then developer formats, then images and models. */
 export const FORMAT_ORDER: readonly string[] = [
   "markdown",
   "html",
   "docx",
   "doc",
+  "odf",
+  "rtf",
   "pdf",
+  "ofd",
+  "epub",
   "slides",
   "sheet",
   "svg",
+  "mindmap",
+  "lottie",
+  "notebook",
   "code",
+  "diff",
+  "terminal",
   "image",
   "three",
 ];
@@ -197,12 +206,20 @@ export function sortEntries<T extends { format: string; path: string }>(entries:
 /**
  * Picks one variant per group for the UI language: exact language, then English, then the first.
  * Entries without a language suffix are their own group and always shown.
+ *
+ * @param formats Formats this build can open (see `availableFormats`); entries of other formats are left out.
  */
-export function entriesForLocale(manifest: ExampleManifest, locale: string): ExampleEntry[] {
+export function entriesForLocale(
+  manifest: ExampleManifest,
+  locale: string,
+  formats: readonly { readonly id: string }[] = FORMAT_META,
+): ExampleEntry[] {
   const language = locale.toLowerCase();
   const base = language.split("-")[0] ?? language;
+  const open = new Set(formats.map((f) => f.id));
   const groups = new Map<string, ExampleEntry[]>();
   for (const entry of manifest.entries) {
+    if (!open.has(entry.format)) continue;
     const list = groups.get(entry.group);
     if (list) list.push(entry);
     else groups.set(entry.group, [entry]);

@@ -6,7 +6,7 @@ export const zhTW: StudioCatalog = {
   "app.skip": "跳到主要內容",
 
   "home.lede":
-    "開啟網頁、文件、PDF、簡報、試算表、程式碼、圖片或 3D 模型，游標們會當著你的面把它重建出來，還能匯出影片。",
+    "開啟網頁、文件、電子書、PDF、簡報、試算表、程式碼、心智圖、圖片或 3D 模型，游標們會當著你的面把它重建出來，還能匯出影片。",
   "home.open": "開啟檔案",
   "home.paste": "貼上",
   "home.url.label": "檔案或網頁網址",
@@ -32,6 +32,15 @@ export const zhTW: StudioCatalog = {
   "home.footer.source": "原始碼",
 
   "format.other": "檔案",
+  "format.odf": "OpenDocument 文件",
+  "format.epub": "EPUB 電子書",
+  "format.rtf": "RTF 富文字",
+  "format.ofd": "OFD 版式文件",
+  "format.notebook": "Jupyter 筆記本",
+  "format.terminal": "終端機錄製",
+  "format.diff": "修補檔",
+  "format.mindmap": "心智圖",
+  "format.lottie": "Lottie 動畫",
 
   "nav.back": "返回",
 

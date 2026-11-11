@@ -2,6 +2,7 @@ import type { AppContext, View } from "../context";
 import { describeError, MAX_INPUT_BYTES } from "../errors";
 import { type ExampleEntry, entriesForLocale } from "../examples/manifest";
 import { acceptAttribute, formatById } from "../formats-meta";
+import { isStudioKey } from "../i18n";
 import { normalizeSourceUrl } from "../route";
 import { guessPasteName, readLocalFile } from "../source";
 import { CURSOR_PALETTE, decorCursor } from "../ui/brand";
@@ -16,10 +17,15 @@ const PASTE_FORMATS = ["md", "html", "svg", "csv", "json", "js", "ts", "py"] as 
 
 const DECOR_NAMES = ["Ada", "Lin", "Mo"] as const;
 
-/** Translated short name of a format, e.g. "PDF" or "Markdown". */
+/**
+ * Translated short name of a format, e.g. "PDF" or "Markdown". Studio's own catalog names the
+ * formats core does not translate yet; core names the rest.
+ */
 export function formatLabel(ctx: AppContext, id: string): string {
   const meta = formatById(id);
-  return meta ? ctx.i18n.core(`format.${id}`, meta.label) : ctx.i18n.t("format.other");
+  if (!meta) return ctx.i18n.t("format.other");
+  const key = `format.${id}`;
+  return isStudioKey(key) ? ctx.i18n.t(key) : ctx.i18n.core(key, meta.label);
 }
 
 function exampleCard(ctx: AppContext, entry: ExampleEntry, onOpen: (entry: ExampleEntry) => void): HTMLLIElement {
@@ -60,7 +66,7 @@ function exampleCard(ctx: AppContext, entry: ExampleEntry, onOpen: (entry: Examp
 
 function gallery(ctx: AppContext, onOpen: (entry: ExampleEntry) => void): HTMLElement {
   const { i18n, services } = ctx;
-  const entries = entriesForLocale(services.manifest, i18n.locale);
+  const entries = entriesForLocale(services.manifest, i18n.locale, ctx.formats);
   const headingId = nextId("examples");
   const section = h(
     "section",
@@ -118,7 +124,7 @@ export function createHome(ctx: AppContext): View {
 
   const picker = h("input", {
     class: "visually-hidden",
-    attrs: { type: "file", accept: acceptAttribute(), tabindex: -1, "aria-hidden": "true" },
+    attrs: { type: "file", accept: acceptAttribute(ctx.formats), tabindex: -1, "aria-hidden": "true" },
     on: {
       change: () => {
         const file = picker.files?.[0];

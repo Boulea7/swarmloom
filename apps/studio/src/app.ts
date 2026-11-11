@@ -1,5 +1,5 @@
 import type { AppContext, NavigateOptions, View } from "./context";
-import { FORMAT_META } from "./formats-meta";
+import { availableFormats } from "./formats-meta";
 import { createStudioI18n, loadCatalog, negotiateLocale, type StudioI18n } from "./i18n";
 import { watchViewport } from "./layout/viewport";
 import { parseRoute, type Route, routeToUrl } from "./route";
@@ -239,6 +239,7 @@ export async function mountStudio(
     drawer.open(modal);
   }
 
+  const formats = availableFormats(services.formats);
   const listFormat = (items: string[]): string => {
     try {
       return new Intl.ListFormat(i18n.locale, { type: "conjunction" }).format(items);
@@ -272,7 +273,8 @@ export async function mountStudio(
     toggleSettings,
     settingsOpen: () => panels().settings.isOpen,
     openShortcuts: () => panels().shortcuts.open(true),
-    formatList: () => listFormat([...new Set(FORMAT_META.map((m) => formatLabel(ctx, m.id)))]),
+    formats,
+    formatList: () => listFormat([...new Set(formats.map((m) => formatLabel(ctx, m.id)))]),
   };
 
   // Global listeners

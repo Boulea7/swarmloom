@@ -6,7 +6,7 @@ export const es: StudioCatalog = {
   "app.skip": "Ir al contenido",
 
   "home.lede":
-    "Abre una página web, un documento, un PDF, una presentación, una hoja de cálculo, código, una imagen o un modelo 3D. Los cursores lo reconstruyen delante de ti y luego puedes exportar el vídeo.",
+    "Abre una página web, un documento, un libro electrónico, un PDF, una presentación, una hoja de cálculo, código, un mapa mental, una imagen o un modelo 3D. Los cursores lo reconstruyen delante de ti y luego puedes exportar el vídeo.",
   "home.open": "Abrir archivo",
   "home.paste": "Pegar",
   "home.url.label": "URL del archivo o de la página",
@@ -33,6 +33,15 @@ export const es: StudioCatalog = {
   "home.footer.source": "Código fuente",
 
   "format.other": "Archivo",
+  "format.odf": "OpenDocument",
+  "format.epub": "Libro electrónico EPUB",
+  "format.rtf": "Texto enriquecido (RTF)",
+  "format.ofd": "Documento OFD",
+  "format.notebook": "Cuaderno de Jupyter",
+  "format.terminal": "Grabación de terminal",
+  "format.diff": "Parche",
+  "format.mindmap": "Mapa mental",
+  "format.lottie": "Animación Lottie",
 
   "nav.back": "Atrás",
 

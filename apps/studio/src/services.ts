@@ -63,6 +63,11 @@ export interface StudioServices {
    * (decisions-v1 C03) so document adapters know whether https images and fonts may load.
    */
   load(input: SourceInput, ctx: StudioLoadContext): Promise<LoadedSource>;
+  /**
+   * Adapter ids of the `@swarmloom/formats` registry. Optional formats (`FormatMeta.optional`, such
+   * as Lottie) are offered only when listed here.
+   */
+  formats?: readonly string[];
   createPlayer(options: PlayerOptions): Player & PlayerExtras;
   /** `@swarmloom/export` recordElement; absent hides in-browser recording. */
   recordElement?: (target: Element, opts?: RecordOptions) => Promise<Recording>;

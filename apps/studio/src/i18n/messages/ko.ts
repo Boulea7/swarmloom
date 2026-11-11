@@ -6,7 +6,7 @@ export const ko: StudioCatalog = {
   "app.skip": "본문으로 건너뛰기",
 
   "home.lede":
-    "웹 페이지, 문서, PDF, 슬라이드, 스프레드시트, 코드, 이미지, 3D 모델을 열면 커서들이 눈앞에서 다시 만들어 냅니다. 영상으로 내보낼 수도 있습니다.",
+    "웹 페이지, 문서, 전자책, PDF, 슬라이드, 스프레드시트, 코드, 마인드맵, 이미지, 3D 모델을 열면 커서들이 눈앞에서 다시 만들어 냅니다. 영상으로 내보낼 수도 있습니다.",
   "home.open": "파일 열기",
   "home.paste": "붙여넣기",
   "home.url.label": "파일 또는 페이지 URL",
@@ -32,6 +32,15 @@ export const ko: StudioCatalog = {
   "home.footer.source": "소스",
 
   "format.other": "파일",
+  "format.odf": "OpenDocument",
+  "format.epub": "EPUB 전자책",
+  "format.rtf": "서식 있는 텍스트(RTF)",
+  "format.ofd": "OFD 문서",
+  "format.notebook": "Jupyter 노트북",
+  "format.terminal": "터미널 기록",
+  "format.diff": "패치",
+  "format.mindmap": "마인드맵",
+  "format.lottie": "Lottie 애니메이션",
 
   "nav.back": "뒤로",
 
