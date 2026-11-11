@@ -79,17 +79,17 @@ SMIL-animated SVG (`animate`, `animateTransform`, `animateMotion`, `set`, `mpath
 
 ## Slides
 
-**Primary extension:** `.pptx`; compatibility targets: `.ppt`, `.odp`
+**Extension:** `.pptx` (`.odp` opens with the OpenDocument reader)
 
 Each slide is planned as a stage section: background, master placeholders and guides first, then shapes and connectors, typed headings and body text, swept images, and finally tables, charts and slide numbers.
 
-PPTX is the main parsing target. Legacy PPT and ODP become supported only after their respective paths pass verification. SmartArt, OLE, complex media and original PowerPoint animation may use snapshots, placeholders or explicit degradation.
+PPTX is the main parsing target. Legacy `.ppt` is not supported yet: opening one asks you to save it as `.pptx` or PDF. SmartArt, OLE, complex media and original PowerPoint animation may use snapshots, placeholders or explicit degradation.
 
 Native Keynote object graphs are not a first-release promise. Export PPTX or PDF from Keynote. An iWork file with a reliable preview PDF can use the PDF pipeline.
 
 ## Spreadsheets
 
-**Extensions:** `.xlsx`, `.xlsm`, `.xls`, `.ods`, `.csv`, `.tsv`
+**Extensions:** `.xlsx`, `.xlsm`, `.ods`, `.csv`, `.tsv`. Legacy `.xls` is not supported yet: opening one asks you to save it as `.xlsx` or CSV.
 
 Sheets build through tabs, column letters, row numbers, grids, headers and data regions. Important cells can be typed; ordinary data appears in spatial tiles or fills. A large used range does not create one animation task per cell.
 
