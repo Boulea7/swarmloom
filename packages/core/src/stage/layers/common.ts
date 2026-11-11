@@ -22,7 +22,7 @@ export interface MountEnv {
   scale(): number;
   /** Bumped when layout-affecting global state changes (web fonts loaded). */
   geometryGen(): number;
-  /** A fresh copy of the sanitized markup of a text layer (parsed once per layer, then cloned). */
+  /** A fresh copy of the sanitized markup of a text layer (parsed, then cloned from a bounded cache). */
   html(id: string, raw: string): DocumentFragment;
   /**
    * Called with freshly inserted markup: when the page CSP dropped its style attributes, they are

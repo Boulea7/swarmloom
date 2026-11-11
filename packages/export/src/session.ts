@@ -31,6 +31,12 @@ export interface RenderSessionOptions {
   cues?: readonly SessionCue[];
   /** Player factory. Default `createPlayer` from `@swarmloom/core`. */
   createPlayer?: (options: PlayerOptions) => Player;
+  /**
+   * Called for each player "error" event. The engine reports recoverable problems this way
+   * (blueprint diagnostics, a failed layer task, sound) and keeps playing, so they do not stop the
+   * session; throw from this callback to make them fatal.
+   */
+  onWarning?: (error: Error) => void;
 }
 
 /** States that mean the build itself has completed. */
@@ -59,6 +65,8 @@ export class RenderSession {
   #elapsed = 0;
   #builtAt: number | null = null;
   #error: Error | null = null;
+  readonly #warnings: Error[] = [];
+  readonly #onWarning: ((error: Error) => void) | undefined;
   #started = false;
   #disposed = false;
   readonly #unsubscribe: (() => void)[];
@@ -76,13 +84,14 @@ export class RenderSession {
     this.#cues = [...(options.cues ?? [])].sort((a, b) => a.at - b.at);
     const bad = this.#cues.find((cue) => !Number.isFinite(cue.at) || cue.at < 0);
     if (bad) throw new RangeError(`cue time must be a finite number >= 0, got ${bad.at}`);
+    this.#onWarning = options.onWarning;
     const create = options.createPlayer ?? coreCreatePlayer;
     this.player = create({ ...options.player, clock: this.clock });
     this.#unsubscribe = [
       this.player.on("state", (e) => {
         if (BUILT.has(e.state)) this.#markBuilt();
       }),
-      this.player.on("error", (e) => this.#fail(e.error)),
+      this.player.on("error", (e) => this.#warn(e.error)),
     ];
   }
 
@@ -94,6 +103,11 @@ export class RenderSession {
   /** Engine time at which the build completed, or null while building. */
   get builtAt(): number | null {
     return this.#builtAt;
+  }
+
+  /** Recoverable errors the player reported so far, in order. */
+  get warnings(): readonly Error[] {
+    return this.#warnings;
   }
 
   /**
@@ -128,7 +142,8 @@ export class RenderSession {
   /**
    * Advances engine time by `ms` and resolves once the resulting frame is ready.
    *
-   * @throws RangeError for a negative, non-finite or over-long step; the player's error when playback failed.
+   * @throws RangeError for a negative, non-finite or over-long step; the reason when `play()` rejected
+   *   or `onWarning` threw.
    */
   async step(ms: number): Promise<SessionStatus> {
     this.#assertActive();
@@ -191,6 +206,15 @@ export class RenderSession {
 
   #fail(reason: unknown): void {
     this.#error ??= toError(reason);
+  }
+
+  #warn(error: Error): void {
+    this.#warnings.push(error);
+    try {
+      this.#onWarning?.(error);
+    } catch (reason) {
+      this.#fail(reason);
+    }
   }
 
   #assertActive(): void {

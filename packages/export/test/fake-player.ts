@@ -83,8 +83,13 @@ export class ClockPlayer implements Player {
     return Promise.resolve();
   }
 
+  /** Delivers `event` to its listeners, as the engine would. */
+  emit(event: PlayerEvent): void {
+    for (const fn of this.#listeners.get(event.type) ?? []) fn(event);
+  }
+
   #set(state: PlayerState): void {
     this.state = state;
-    for (const fn of this.#listeners.get("state") ?? []) fn({ type: "state", state });
+    this.emit({ type: "state", state });
   }
 }

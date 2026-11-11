@@ -87,7 +87,7 @@ npm
 | `pack-extension.mjs` | 把 `apps/extension/dist/<browser>/` 打成确定性的 zip（固定时间戳、排序、去掉点文件和 source map），并检查 manifest：Firefox 必须是含 `gecko` 与 `gecko_android` 的单一包 |
 | `pack-folder.mjs` | 用同样规则打包任意构建目录（书签工具安装页） |
 | `check-store.mjs` | 校验 `store/` 文案长度、与扩展 `_locales` 的名称和简介一致、每个权限都有说明、图片尺寸。`pnpm check:store` |
-| `check-licenses.mjs` | 依赖许可证门禁：SPDX 表达式必须符合 `license-policy.json` 的允许列表，MPL-2.0 / OFL-1.1 只允许列出的包。`pnpm check:licenses` |
+| `check-licenses.mjs` | 依赖许可证门禁：SPDX 表达式必须符合 `license-policy.json` 的允许列表，MPL-2.0 / OFL-1.1 只允许列出的包；其他许可证（含 `BSD` 这类非 SPDX 写法）不加例外，用 `pnpm-workspace.yaml` 的 `overrides` 替换或去掉。CI 每个 PR 和 release 都会运行。`pnpm check:licenses` |
 | `check-packages.mjs` | 发布前检查包元数据（发布权限、license、repository、files 等）。`pnpm check:packages` |
 | `product-tag.mjs` | 从发布结果或 tag 得出产品版本 `vX.Y.Z`，并与 `packages/core/package.json` 核对 |
 | `checksums.mjs` | 为发布文件写 `SHA256SUMS.txt`（`sha256sum -c` 可读） |

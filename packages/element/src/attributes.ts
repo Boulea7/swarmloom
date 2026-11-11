@@ -45,7 +45,7 @@ export interface ElementConfig {
   reducedMotion: "auto" | boolean;
   autoplay: boolean;
   inview: boolean;
-  /** Delay before replaying after the build completes, ms; null disables looping. */
+  /** Delay before replaying once the finale settles ("done"), ms; null disables looping. */
   loop: number | null;
 }
 

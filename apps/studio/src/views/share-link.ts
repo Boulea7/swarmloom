@@ -1,6 +1,6 @@
 import { restorable, routeToUrl } from "../route";
 import { DEFAULT_SETTINGS, type StudioSettings } from "../settings";
-import { encodeShare, MAX_SHARE_LENGTH, sanitizeShareName } from "../share";
+import { encodeShare, MAX_SHARE_LENGTH, SHARE_SETTING_KEYS, sanitizeShareName } from "../share";
 import type { OpenedSource } from "../source";
 
 /** Why a source cannot be shared as a link. */
@@ -10,9 +10,8 @@ export type ShareLink = { ok: true; url: string } | { ok: false; reason: ShareRe
 
 /** Settings worth carrying in a link: the ones that change the performance, when not default. */
 export function shareableSettings(s: StudioSettings): Partial<StudioSettings> {
-  const keys = ["seed", "speed", "agents", "labels", "finale", "follow"] as const;
   const out: Partial<StudioSettings> = {};
-  for (const key of keys) {
+  for (const key of SHARE_SETTING_KEYS) {
     if (s[key] !== DEFAULT_SETTINGS[key]) (out as Record<string, unknown>)[key] = s[key];
   }
   return out;

@@ -35,6 +35,33 @@ describe("exportFrames", () => {
     expect(created[0]?.destroyed).toBe(true);
   });
 
+  it("keeps exporting through recoverable player errors and reports them as warnings", async () => {
+    const warning = new Error("blueprint: 1 reference(s) to missing layers ignored");
+    const seen: Error[] = [];
+    const emitWarning = (index: number) => {
+      if (index === 0) created.at(-1)?.emit({ type: "error", error: warning });
+    };
+    const result = await exportFrames(
+      { blueprint },
+      { fps: 30, onFrame: emitWarning, onWarning: (error) => void seen.push(error) },
+    );
+    expect(result.frames).toBe(4);
+    expect(result.warnings).toEqual([warning]);
+    expect(seen).toEqual([warning]);
+    // A throwing onWarning makes the warning fatal.
+    const strict = exportFrames(
+      { blueprint },
+      {
+        fps: 30,
+        onFrame: emitWarning,
+        onWarning: (error) => {
+          throw error;
+        },
+      },
+    );
+    await expect(strict).rejects.toBe(warning);
+  });
+
   it("stops at maxDurationMs and rejects bad options", async () => {
     const result = await exportFrames({ blueprint }, { fps: 10, maxDurationMs: 50, onFrame: () => undefined });
     expect(result.frames).toBe(1);

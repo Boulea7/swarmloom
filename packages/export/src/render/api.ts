@@ -147,6 +147,8 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
           tailMs: init.tail,
           cues: init.cues,
           createPlayer: deps.createPlayer,
+          // Recoverable: the render goes on; the CLI echoes these with --verbose.
+          onWarning: (error) => console.warn(`[swarmloom] ${error.message}`),
         });
         await session.start();
         const sha = await blueprintSha256(loaded);

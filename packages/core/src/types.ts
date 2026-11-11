@@ -493,6 +493,11 @@ export interface Player {
   readonly progress: { built: number; total: number };
   /** Every sound event emitted so far (for offline audio rendering of exports). */
   readonly soundLog: readonly SoundEvent[];
+  /**
+   * Optional. Player time in ms since play(), pauses excluded: the timeline {@link seek} moves on.
+   * Pairs with {@link eta} to estimate where the build ends.
+   */
+  readonly time?: number;
   /** Starts intro + build. Resolves when the build (not the finale) completes. */
   play(): Promise<void>;
   pause(): void;
@@ -518,8 +523,9 @@ export interface Player {
    */
   finish?(): void;
   /**
-   * Optional. Jumps to `t` ms of player time since play() by replaying from the start in 60 Hz
-   * steps (Studio scrubber). Nothing is drawn or played while seeking; soundLog is kept complete.
+   * Optional. Jumps to `t` ms of player time since play() in 60 Hz steps (Studio scrubber): a later
+   * time fast-forwards the current run, an earlier one replays from the start. Nothing is drawn or
+   * played while seeking; soundLog is kept complete.
    */
   seek?(t: number): void;
   /** Optional. Changes the end-of-build behaviour; applies immediately while the finale runs. */

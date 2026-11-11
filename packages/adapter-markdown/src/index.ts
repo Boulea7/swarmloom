@@ -6,7 +6,7 @@
  * DOM environment and need no layout.
  */
 
-export type { MarkdownAdapterOptions } from "./adapter";
+export type { MarkdownAdapterOptions, MarkdownLoadContext } from "./adapter";
 export { createMarkdownAdapter, markdownAdapter } from "./adapter";
 export { registerFonts } from "./fonts";
 export type { FontFaceSpec, MathAssets, MathEngine } from "./math/index";

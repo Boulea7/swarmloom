@@ -1,5 +1,5 @@
 import type { SourceInput } from "@swarmloom/core";
-import { MAX_INPUT_BYTES, StudioError } from "./errors";
+import { checkFormatLimit, MAX_INPUT_BYTES, StudioError } from "./errors";
 import type { ExampleEntry } from "./examples/manifest";
 import { formatById, formatOfName } from "./formats-meta";
 import { normalizeSourceUrl, type SourceRef } from "./route";
@@ -299,6 +299,13 @@ async function fromHandoff(ref: { kind: "handoff" }, ctx: ResolveContext): Promi
 
 /** Resolves a source reference to loadable input. Throws {@link StudioError} for expected failures. */
 export async function resolveSource(ref: SourceRef, ctx: ResolveContext): Promise<OpenedSource> {
+  const opened = await resolveRef(ref, ctx);
+  const { text, bytes } = opened.input;
+  checkFormatLimit(typeof text === "string" ? text.length : (bytes?.byteLength ?? 0), opened.format);
+  return opened;
+}
+
+async function resolveRef(ref: SourceRef, ctx: ResolveContext): Promise<OpenedSource> {
   switch (ref.kind) {
     case "example":
       return fromExample(ref, ctx);
