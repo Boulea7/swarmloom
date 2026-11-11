@@ -3,7 +3,7 @@ import { type ShadowWatch, watchShadowRoots } from "../render/live";
 import type { RenderApi, RenderInfo, RenderInit, RenderInput } from "../render/protocol";
 import { CHANNELS, type CodecProbe, type EncodingPlan, planEncoding, SAMPLE_RATE, VideoFileWriter } from "./encode";
 import { FRAME_ATTRIBUTE } from "./marker";
-import { type MotionPin, pinMotionPreference } from "./motion";
+import { type MediaPin, pinMediaFeatures } from "./media";
 import { type FontWatch, watchFontFaces } from "./raster/fonts";
 import { FrameRasterizer } from "./raster/rasterize";
 import { type FrameProgress, runFrameSchedule } from "./schedule";
@@ -182,7 +182,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
   let opened: OpenFrame | null = null;
   let shadows: ShadowWatch | null = null;
   let fonts: FontWatch | null = null;
-  let motion: MotionPin | null = null;
+  let media: MediaPin | null = null;
   let writer: VideoFileWriter | null = null;
   let finished = false;
   try {
@@ -192,8 +192,8 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     shadows = watchShadowRoots(win);
     fonts = watchFontFaces(win);
     pinPixelRatio(win);
-    const pinned = pinMotionPreference(win, shadows);
-    motion = pinned;
+    const pinned = pinMediaFeatures(win, shadows);
+    media = pinned;
     const tail = settings.tail ?? 2500;
     const info = await api.init({ ...settings, input: o.input, width, height, fps, tail });
     if (signal?.aborted) throw abortError(signal);
@@ -274,7 +274,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     } finally {
       shadows?.stop();
       fonts?.stop();
-      motion?.stop();
+      media?.stop();
       opened?.frame.remove();
     }
   }
