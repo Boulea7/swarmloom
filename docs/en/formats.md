@@ -83,7 +83,7 @@ SMIL-animated SVG (`animate`, `animateTransform`, `animateMotion`, `set`, `mpath
 
 **Extension:** `.pptx` (`.odp` opens with the OpenDocument reader)
 
-Each slide becomes a 16:9 page on the stage. The reader takes the slide, its layout and master, and the theme into account: backgrounds, preset and custom shapes with fills, outlines and shadows, text with bullets, numbering and placeholder inheritance, cropped pictures and simple tables.
+Each slide becomes a page on the stage with the presentation's own slide size, so 16:9, 4:3 and custom sizes keep their proportions. The reader takes the slide, its layout and master, and the theme into account: backgrounds, preset and custom shapes with fills, outlines and shadows, text with bullets, numbering and placeholder inheritance, cropped pictures and simple tables.
 
 PPTX is the main parsing target. Legacy `.ppt` is not supported yet: opening one asks you to save it as `.pptx` or PDF. Charts, SmartArt, video and other embedded objects appear as labelled placeholders, and original PowerPoint animation is not replayed.
 
