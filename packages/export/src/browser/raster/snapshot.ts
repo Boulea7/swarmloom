@@ -187,6 +187,8 @@ interface ResourceUse {
   fallback?: () => string | null;
   /** Uses one shared definition can serve: `<img>` sources and CSS `url()` outside `@font-face`. */
   shared: number;
+  /** Of those, the `<img>` sources. */
+  images: number;
 }
 
 /** The canvas that may become the {@link CanvasOverlay}, and its token index. */
@@ -267,11 +269,12 @@ function embedUrl(walk: Walk, url: string, kind: "a" | "i" | "c" | "s" | "f", fa
   if (index === undefined) {
     index = walk.urls.length;
     walk.urlIndex.set(url, index);
-    walk.urls.push({ url, fallback, shared: 0 });
+    walk.urls.push({ url, fallback, shared: 0, images: 0 });
   }
   const use = walk.urls[index] as ResourceUse;
   use.fallback ??= fallback;
   if (kind === "i" || kind === "c" || kind === "s") use.shared++;
+  if (kind === "i") use.images++;
   return `\uE000${kind}${index}\uE001`;
 }
 
@@ -1084,18 +1087,22 @@ function sheet(rules: readonly string[], fonts: string, shared: readonly string[
 }
 
 /**
- * Definitions of the resources used more than once: custom properties on the snapshot's root (CSS
- * `url()`s refer to them) and a class per resource for `<img>` clones (`content` replaces the image).
+ * Definitions of the resources used more than once: a class per resource for `<img>` clones
+ * (`content` replaces the image) and custom properties on the snapshot's root (CSS `url()`s refer
+ * to them). The class names the URL itself, not the custom property: Chromium makes a new image of
+ * a `url()` substituted through `var()` for every element, and decodes each one again (a page
+ * bitmap cropped into dozens of layers held the main thread for over 100 ms a frame).
  */
 function sharedRules(walk: Walk, data: readonly string[]): string[] {
   const props: string[] = [];
   const classes: string[] = [];
   walk.urls.forEach((use, i) => {
     if (use.shared < 2) return;
-    props.push(`--slr${i}:url(${cssString(data[i] ?? BLANK_IMAGE)})`);
-    classes.push(`.slr${i}{content:var(--slr${i})}`);
+    const url = `url(${cssString(data[i] ?? BLANK_IMAGE)})`;
+    if (use.images > 0) classes.push(`.slr${i}{content:${url}}`);
+    if (use.shared > use.images) props.push(`--slr${i}:${url}`);
   });
-  return props.length > 0 ? [`foreignObject>div{${props.join(";")}}`, ...classes] : [];
+  return props.length > 0 ? [`foreignObject>div{${props.join(";")}}`, ...classes] : classes;
 }
 
 /** Keeps a CSS string inside the sheet's CDATA section (`\>` is `>` in CSS). */
@@ -1220,7 +1227,7 @@ async function walkFrame(
  * slots, same-origin frames) as XHTML in a `foreignObject`, every clone reset with `all: unset`
  * and given back the computed values that differ, and every resource (images, canvases, fonts)
  * embedded as a data URL, since an SVG image loads nothing else. Resources used more than once
- * are embedded once.
+ * are embedded once for images and once for CSS.
  *
  * Only what can show is written: subtrees away from the viewport are left out (out of flow) or
  * written as empty boxes of their size (in flow), and boxes under a frame that covers the viewport

@@ -65,7 +65,7 @@ it("leaves out boxes under a frame that covers the viewport", async () => {
   expect((await drawn(rasterizer))(90, 90)).toEqual([0, 0, 255]);
 });
 
-it("embeds an image used many times once", async () => {
+it("embeds an image used many times once for images and once for CSS", async () => {
   const canvas = new OffscreenCanvas(2, 1);
   const g = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
   g.fillStyle = "rgb(255,0,0)";
@@ -87,7 +87,9 @@ it("embeds an image used many times once", async () => {
       `<div style="width:30px;height:30px;background:url(${url}) 0 0/60px 30px;image-rendering:pixelated"></div></div>`,
   );
   const { svg } = await rasterizer.snapshot();
-  expect(svg.split(url.slice(30, 90)).length - 1).toBe(1);
+  expect(svg.split(url.slice(30, 90)).length - 1).toBe(2);
+  // Chromium decodes an image again for every element that gets its URL through var().
+  expect(svg).not.toContain("content:var(");
   const at = await drawn(rasterizer);
   expect([at(15, 15), at(45, 15), at(75, 15)]).toEqual([
     [255, 0, 0],
