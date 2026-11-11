@@ -4,6 +4,7 @@ import { px } from "../util/css";
 import { inset, intersect, isIdentity, multiplyLinear, parseLinear } from "../util/geom";
 import { now } from "../util/slice";
 import { emitBox, emitRule, emitSides } from "./box";
+import { countersReady } from "./counters";
 import { emitFormControl } from "./form";
 import { classify, hasVisibleText, inlineFacts, isFlexOrGrid, isMath, isTextLeaf, isVerbatim } from "./inline";
 import { emitMedia } from "./media";
@@ -399,6 +400,8 @@ function* visitDropped(
 
 function* render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: boolean, topLayer: boolean): Walk {
   const el = info.el;
+  // CSS counters in use are counted up to here within the slice, so reading one never blocks.
+  while (!countersReady(cap, el)) if (now() >= cap.slice.deadline) yield;
   const tag = el.localName;
   const visible = info.visibility === "visible";
   if (el.hasAttribute(MEDIA_ATTR) || MEDIA_TAGS.has(tag)) {
