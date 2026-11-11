@@ -79,6 +79,15 @@ export async function mountStudio(
   let route: Route = parseRoute(win.location.href, routeOptions);
   let stored = loadSettings(services.storage);
   let settings: StudioSettings = { ...stored, ...route.overrides };
+  // The page CSP backs up the adapters' own network checks (decisions-v1 C03). It only tightens:
+  // with remote assets off from the start, before anything loads.
+  let assetsBlocked = false;
+  const syncAssetPolicy = () => {
+    if (settings.remoteAssets || assetsBlocked || !services.blockRemoteAssets) return;
+    services.blockRemoteAssets();
+    assetsBlocked = true;
+  };
+  syncAssetPolicy();
   let i18n = await loadI18n(services, resolveLocale(settings.locale, win));
   let local: LocalInput | null = null;
   let view: View | null = null;
@@ -210,6 +219,13 @@ export async function mountStudio(
     for (const key of keys) delete overrides[key];
     route = { ...route, overrides };
     settings = { ...prev, ...clean };
+    syncAssetPolicy();
+    if (settings.remoteAssets && !prev.remoteAssets && assetsBlocked) {
+      toast.show(i18n.t("settings.remote.reload"), {
+        icon: "refresh",
+        action: { label: i18n.t("update.reload"), run: () => win.location.reload() },
+      });
+    }
     if (resolveLocale(prev.locale, win) !== resolveLocale(settings.locale, win)) {
       void loadI18n(services, resolveLocale(settings.locale, win)).then((next) => {
         i18n = next;

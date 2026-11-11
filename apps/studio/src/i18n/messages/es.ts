@@ -183,6 +183,7 @@ export const es: StudioCatalog = {
   "settings.remote": "Cargar imágenes y fuentes web",
   "settings.remote.hint":
     "Las páginas pueden cargar imágenes y fuentes https sin enviar el referente. Desactívalo para que todo se quede en este dispositivo.",
+  "settings.remote.reload": "Recarga la página para volver a cargar imágenes y fuentes web.",
   "player.restartHint": "Los ajustes nuevos se aplican en la próxima construcción.",
   "player.restart": "Reiniciar",
   "player.progress": "Progreso de la construcción",

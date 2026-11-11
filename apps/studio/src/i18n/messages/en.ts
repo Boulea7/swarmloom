@@ -189,6 +189,7 @@ export const en = {
   "settings.remote": "Load web images and fonts",
   "settings.remote.hint":
     "Pages may load https images and fonts, without sending a referrer. Turn this off to keep everything on this device.",
+  "settings.remote.reload": "Reload the page to load web images and fonts again.",
   "player.restartHint": "New settings apply from the next build.",
   "player.restart": "Restart",
   "player.progress": "Build progress",

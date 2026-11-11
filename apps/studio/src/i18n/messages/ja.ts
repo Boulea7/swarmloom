@@ -182,6 +182,7 @@ export const ja: StudioCatalog = {
   "settings.remote": "Web の画像とフォントを読み込む",
   "settings.remote.hint":
     "ページは https の画像とフォントをリファラーなしで読み込めます。オフにすると、すべてこのデバイス内で処理します。",
+  "settings.remote.reload": "Web の画像とフォントは、ページを再読み込みすると読み込まれます。",
   "player.restartHint": "新しい設定は次の構築から反映されます。",
   "player.restart": "やり直す",
   "player.progress": "構築の進行状況",

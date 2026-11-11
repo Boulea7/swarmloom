@@ -178,6 +178,7 @@ export const ko: StudioCatalog = {
   "settings.remote": "웹 이미지와 글꼴 불러오기",
   "settings.remote.hint":
     "페이지가 리퍼러 없이 https 이미지와 글꼴을 불러올 수 있습니다. 끄면 모든 것이 이 기기 안에만 머뭅니다.",
+  "settings.remote.reload": "페이지를 새로 고치면 웹 이미지와 글꼴을 다시 불러옵니다.",
   "player.restartHint": "새 설정은 다음 빌드부터 적용됩니다.",
   "player.restart": "다시 시작",
   "player.progress": "빌드 진행률",

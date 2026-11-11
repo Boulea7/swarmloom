@@ -185,6 +185,7 @@ export const de: StudioCatalog = {
   "settings.remote": "Bilder und Schriften aus dem Web laden",
   "settings.remote.hint":
     "Seiten dürfen https-Bilder und -Schriften ohne Referrer laden. Ausschalten, damit alles auf diesem Gerät bleibt.",
+  "settings.remote.reload": "Seite neu laden, um Bilder und Schriften aus dem Web wieder zu laden.",
   "player.restartHint": "Neue Einstellungen gelten ab dem nächsten Aufbau.",
   "player.restart": "Neu starten",
   "player.progress": "Aufbaufortschritt",

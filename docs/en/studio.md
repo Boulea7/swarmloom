@@ -80,6 +80,8 @@ Studio fetches URLs directly in the browser, so same-origin policy, CORS, mixed 
 
 The remote site may log requests. Opening only a local file does not upload its content.
 
+The Studio page carries a Content-Security-Policy that backs up every format's sanitizer: only Studio's own scripts run, and from the web only https images, fonts and the file you open load. Turning off **Load web images and fonts** adds a stricter policy that blocks web images and fonts too; turning it back on needs a page reload, which Studio offers.
+
 ## Foldables and small screens
 
 Studio always has an ordinary responsive layout. Supported Chromium environments can add dual-screen enhancements through Viewport Segments:

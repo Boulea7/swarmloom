@@ -4,6 +4,7 @@ import * as core from "@swarmloom/core";
 import { canRecordElement, recordElement } from "@swarmloom/export";
 import { formats, load } from "@swarmloom/formats";
 import { mountStudio } from "./app";
+import { blockRemoteAssets } from "./csp";
 import { MAX_INPUT_BYTES } from "./errors";
 import { sanitizeManifest } from "./examples/manifest";
 import { receiveHandoff } from "./handoff";
@@ -105,6 +106,7 @@ const services: StudioServices = {
         })
     : undefined,
   receiveHandoff: (signal) => receiveHandoff(window, signal),
+  blockRemoteAssets: () => blockRemoteAssets(document),
 };
 
 const root = document.getElementById("app");

@@ -77,4 +77,9 @@ export interface StudioServices {
   onLaunch?: (consumer: (files: File[]) => void) => void;
   /** Bookmarklet handoff (`?from=bookmarklet`): the page copy posted by `window.opener`. */
   receiveHandoff?: (signal?: AbortSignal) => Promise<HandoffPage>;
+  /**
+   * Narrows the page CSP to local images and fonts while remote assets are off (src/csp.ts). The
+   * policy cannot be lifted again; turning remote assets back on needs a page reload.
+   */
+  blockRemoteAssets?: () => void;
 }

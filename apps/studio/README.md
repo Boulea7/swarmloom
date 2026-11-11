@@ -10,7 +10,7 @@ SwarmLoom Studio is the installable web app (PWA). Open or drop a file, paste te
 - **PWA:** installable, a share target for files and text, an OS file handler, and a hand-written service worker. It caches the shell and the format chunks, so Studio opens offline.
 - **Languages:** zh-CN, zh-TW, en, ja, ko, es, fr and de. Studio picks the browser language, and the settings can change it.
 
-Files are read in the browser and never uploaded. Remote https images and fonts in documents load without a referrer; the "Load web images and fonts" setting turns them off.
+Files are read in the browser and never uploaded. Remote https images and fonts in documents load without a referrer; the "Load web images and fonts" setting turns them off. A Content-Security-Policy in `index.html` backs up the format readers: only Studio's own scripts run, and from the web only https images and fonts load, plus the file you open. With the setting off, `src/csp.ts` adds a stricter policy that also blocks web images and fonts; turning it back on asks for a page reload.
 
 ## URL parameters
 

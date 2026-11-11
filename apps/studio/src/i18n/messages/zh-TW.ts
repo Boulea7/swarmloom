@@ -174,6 +174,7 @@ export const zhTW: StudioCatalog = {
 
   "settings.remote": "載入網路圖片和字型",
   "settings.remote.hint": "頁面可以載入 https 圖片和字型，不傳送來源資訊。關閉後，所有內容只留在本機。",
+  "settings.remote.reload": "重新整理頁面後才會重新載入網路圖片和字型。",
   "player.restartHint": "新設定會在下次建構時生效。",
   "player.restart": "重新開始",
   "player.progress": "建構進度",

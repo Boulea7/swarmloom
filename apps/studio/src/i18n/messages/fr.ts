@@ -185,6 +185,7 @@ export const fr: StudioCatalog = {
   "settings.remote": "Charger les images et polices du web",
   "settings.remote.hint":
     "Les pages peuvent charger des images et polices https sans envoyer de référent. Désactivez pour tout garder sur cet appareil.",
+  "settings.remote.reload": "Rechargez la page pour charger à nouveau les images et polices du web.",
   "player.restartHint": "Les nouveaux réglages s’appliquent à la prochaine construction.",
   "player.restart": "Recommencer",
   "player.progress": "Progression de la construction",

@@ -174,6 +174,7 @@ export const zhCN: StudioCatalog = {
 
   "settings.remote": "加载网络图片和字体",
   "settings.remote.hint": "页面可以加载 https 图片和字体，不发送来源信息。关闭后，所有内容只留在本机。",
+  "settings.remote.reload": "刷新页面后才会重新加载网络图片和字体。",
   "player.restartHint": "新设置会在下次构建时生效。",
   "player.restart": "重新开始",
   "player.progress": "构建进度",

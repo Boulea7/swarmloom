@@ -2,6 +2,17 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Page policy (decisions-v1 C03). Documents are laid out and replayed inside this page, so it
+      backs up every adapter's sanitizer: no scripts but Studio's own, no plugins or form posts, and
+      from the web only https images and fonts (sent without a referrer) plus the file the user
+      opens (connect-src; file: only works in the extension). Turning off "web images and fonts"
+      adds a stricter policy (src/csp.ts).
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' blob: data:; img-src 'self' https: blob: data:; font-src 'self' https: blob: data:; media-src 'self' blob: data:; connect-src 'self' https: http: blob: data: file:; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; form-action 'none'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#fafafc" />
