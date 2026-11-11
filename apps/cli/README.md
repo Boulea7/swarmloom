@@ -22,7 +22,7 @@ npx swarmloom doctor
 | Command | What it does |
 | --- | --- |
 | `render <file\|url>` | Renders to `mp4` (H.264 + AAC, faststart), `webm` (VP9 + Opus), `gif` (palettegen/paletteuse), `webp` (animated) or `png-seq` (PNG frames + WAV). |
-| `snapshot <url\|file.html>` | Opens the page headless and writes its Blueprint JSON (`-o -` for stdout). |
+| `snapshot <url\|file.html>` | Opens the page headless and writes its Blueprint JSON (`-o -` for stdout). Local files open with their scripts turned off and get the same network rules as `render`: only the assets next to them, plus `https:` images and fonts. |
 | `serve` | Serves the bundled Studio on `127.0.0.1` (random free port unless `--port`); `--open` opens it. |
 | `formats` | Lists the supported input formats (`--json` for scripts). |
 | `doctor` | Checks Node.js, the browser, ffmpeg and the bundled pages. |
