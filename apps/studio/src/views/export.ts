@@ -335,6 +335,15 @@ export function createExporter(deps: ExportDeps): Exporter {
     return ui.panel.isOpen && (!active || active === document.body || ui.panel.root.contains(active));
   };
 
+  /**
+   * True when focus is still on Cancel (or nowhere), so the result may take it. The run ends
+   * asynchronously: focus the user moved meanwhile (the command line, Close) stays where it is.
+   */
+  const focusIsOnRun = () => {
+    const active = document.activeElement;
+    return ui.panel.isOpen && (!active || active === document.body || active === ui.panel.root || active === ui.cancel);
+  };
+
   const clearFile = () => {
     if (file) URL.revokeObjectURL(file.url);
     file = null;
@@ -404,7 +413,7 @@ export function createExporter(deps: ExportDeps): Exporter {
         partial: !result.finished,
       };
     }
-    const refocus = focusIsOurs();
+    const refocus = focusIsOnRun();
     render();
     if (refocus) (file ? ui.download : ui.start)?.focus();
   };

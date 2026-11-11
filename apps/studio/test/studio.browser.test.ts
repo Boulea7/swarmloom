@@ -231,6 +231,38 @@ describe("Studio in a browser", () => {
     expect([signal?.aborted, ...shown()]).toEqual([true, false, true, true]);
   });
 
+  it("hands focus to the result only from Cancel, never from where the user moved on to", async () => {
+    let finish: ((result: BrowserExportResult) => void) | null = null;
+    const done = {
+      blob: new Blob(["V"]),
+      extension: "webm",
+      durationMs: 1000,
+      finished: true,
+      soundUnsupported: false,
+      warnings: [],
+    } as BrowserExportResult;
+    const { root } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      exportVideo: () => new Promise((resolve) => (finish = resolve)),
+    });
+    const { dialog, start, cancel, download } = await openExport(root);
+    const settle = async () => {
+      (await until(() => finish))(done);
+      finish = null;
+      await until(() => !download.hidden);
+    };
+    start.click();
+    expect(document.activeElement).toBe(cancel);
+    await settle();
+    expect(document.activeElement).toBe(download);
+
+    start.click();
+    const copy = dialog.querySelector<HTMLButtonElement>(".cli-copy");
+    copy?.focus();
+    await settle();
+    expect(document.activeElement).toBe(copy);
+  });
+
   it("cancels at once while the exporter is still loading", async () => {
     const unused = () => Promise.reject(new Error("not loaded yet"));
     const { root, services } = await mount("?example=svg-chart", false, {
