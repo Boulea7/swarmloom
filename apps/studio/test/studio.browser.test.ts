@@ -1,3 +1,4 @@
+import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import "../src/styles/studio.css";
@@ -30,6 +31,9 @@ const MANIFEST: ExampleManifest = {
 
 const EXAMPLES_BASE = new URL("/examples/", location.origin).href;
 
+// Like main.ts: the bundled registry's ids, so optional formats it provides (Lottie) show.
+const REGISTRY_IDS = REGISTRY.map((meta) => meta.id);
+
 let app: StudioApp | null = null;
 
 async function mount(search = "", seekable = false) {
@@ -37,6 +41,7 @@ async function mount(search = "", seekable = false) {
   const root = document.createElement("div");
   document.body.append(root);
   const fake = fakeServices({ manifest: MANIFEST, examplesBase: EXAMPLES_BASE, seekable });
+  fake.services.formats = REGISTRY_IDS;
   app = await mountStudio(root, fake.services);
   return { root, ...fake };
 }
@@ -69,7 +74,9 @@ describe("Studio in a browser", () => {
     expect(MANIFEST.entries.length).toBeGreaterThanOrEqual(4);
     const ids = [...root.querySelectorAll<HTMLAnchorElement>(".card")].map((card) => card.dataset.example);
     // One card per example group: language and file-type variants share a card.
-    expect(ids).toEqual(entriesForLocale(MANIFEST, "en", availableFormats()).map((e) => e.id));
+    expect(ids).toEqual(entriesForLocale(MANIFEST, "en", availableFormats(REGISTRY_IDS)).map((e) => e.id));
+    // Optional formats the registry provides get their card (Lottie is hidden without services.formats).
+    expect(ids).toContain("lottie-shuttle-loop");
     expect(root.querySelector('.card[data-example="epub-loom-notes"] .card-sub')?.textContent).toMatch(/^EPUB/);
   });
 
