@@ -14,7 +14,7 @@ import {
   saveSettings,
 } from "./settings";
 import { type LocalInput, readLocalFile } from "./source";
-import { createPanel, type Panel } from "./ui/dialog";
+import { createPanel, type Panel, topModal } from "./ui/dialog";
 import { h, isTyping } from "./ui/dom";
 import { createToaster, type Toaster } from "./ui/toast";
 import { syncThemeButton } from "./views/chrome";
@@ -357,7 +357,9 @@ export async function mountStudio(
   const onKey = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) return;
     const { settings: drawer, shortcuts } = panels();
-    if (event.key === "Escape" && drawer.isOpen && !drawer.isModal) {
+    // A modal dialog (shortcuts, export, the watch QR code) covers the desktop drawer: Esc is its own.
+    const modal = topModal(doc);
+    if (event.key === "Escape" && drawer.isOpen && !drawer.isModal && !modal) {
       event.preventDefault();
       drawer.close();
       return;
@@ -367,6 +369,8 @@ export async function mountStudio(
       event.preventDefault();
       return;
     }
+    // A dialog of the view is open: no panel opens behind it (inert) or over it.
+    if (modal) return;
     if (isTyping(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.key === "?") {
       event.preventDefault();

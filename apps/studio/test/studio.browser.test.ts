@@ -1,7 +1,7 @@
 import type { BrowserExportOptions, BrowserExportResult } from "@swarmloom/export/browser";
 import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
 import { afterEach, describe, expect, it } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import {
@@ -244,6 +244,25 @@ describe("Studio in a browser", () => {
     cancel.click();
     await until(() => status.textContent === "Export cancelled.");
     expect([start.hidden, cancel.hidden]).toEqual([false, true]);
+  });
+
+  it("leaves Esc to an open export dialog and opens no panel behind it", async () => {
+    await page.viewport(1280, 800);
+    try {
+      const unused = () => Promise.reject(new Error("unused"));
+      const { root } = await mount("?example=svg-chart", false, { bytesToBase64: () => "", exportVideo: unused });
+      // The desktop settings drawer stays open beside the stage; the export dialog opens over it.
+      app?.context.toggleSettings();
+      const { dialog, start } = await openExport(root);
+      start.focus();
+      await userEvent.keyboard("s?");
+      expect([app?.context.settingsOpen(), document.querySelectorAll("dialog:modal").length]).toEqual([true, 1]);
+      await userEvent.keyboard("{Escape}");
+      await until(() => !dialog.open);
+      expect(app?.context.settingsOpen()).toBe(true);
+    } finally {
+      await page.viewport(414, 896);
+    }
   });
 
   it("explains an unknown example instead of mounting a player", async () => {
