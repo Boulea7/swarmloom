@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { builtinPlugin, choreoHelpers } from "../../src/choreo/index";
 import { FINALE_SETTLE_MS } from "../../src/engine/constants";
 import type { EngineSettings } from "../../src/engine/engine";
 import { autoAgentCount } from "../../src/engine/options";
-import type { AgentApi, Layer, PlayerState, Plugin, StageApi, TaskGen } from "../../src/types";
+import type { AgentApi, Layer, PlayerState, Plugin, Rect, StageApi, TaskGen } from "../../src/types";
 import { blueprintOf, box, harness, samplePage, testPlugin, text } from "./fakes";
 
 /** Plays to the finale and returns the frame trace hash and a copy of the sound log. */
@@ -32,6 +33,7 @@ describe("Engine", () => {
     // Every layer was built, its overlays removed, and the sound engine got what was logged.
     expect(a.h.stage.finished).toHaveLength(7);
     expect(a.h.stage.live("ghost-rect")).toHaveLength(0);
+    expect(a.h.stage.live("icon")).toHaveLength(0);
     expect(a.h.sound.played).toEqual(a.h.engine.soundLog);
     expect(a.log.map((e) => e.name)).toEqual(expect.arrayContaining(["swell", "fanout", "key", "note", "chord"]));
   });
@@ -47,6 +49,22 @@ describe("Engine", () => {
     h.run(30);
     expect(h.engine.soundLog).toEqual(first.log);
     expect(h.stage.hash.value).toBe(first.hash);
+  });
+
+  it("fades the intro icon out from its current alpha after fan-out, then removes it", () => {
+    const h = harness(samplePage(), { seed: 7 });
+    void h.engine.play();
+    h.run(6);
+    const icon = h.stage.live("icon")[0];
+    h.stage.userScroll(40); // an early user scroll fans the crew out while the icon fades in
+    h.run(1);
+    expect(h.engine.state).toBe("building");
+    const atFanOut = icon?.props.alpha as number;
+    expect(atFanOut).toBeLessThan(1);
+    h.run(1);
+    expect(icon?.props.alpha).toBeLessThan(atFanOut);
+    h.run(30);
+    expect(h.stage.live("icon")).toHaveLength(0);
   });
 
   it("pause freezes time, resume continues and speed shortens the build", async () => {
@@ -191,6 +209,20 @@ describe("Engine", () => {
     expect(errors).toEqual(['layer "a": boom', 'layer "b": task yielded an unsupported value of type string']);
   });
 
+  it("drags each copy from the nearest finished copy, starting over from the master on replay", () => {
+    const copies = [1, 2, 3, 4, 5].map((n) => box(`c${n}`, 20 + 130 * n, 20, 120, 60, { master: "m" }));
+    const bp = blueprintOf([box("m", 20, 20, 120, 60), ...copies]);
+    const h = harness(bp, { intro: false, agents: 1 }, { plugins: [builtinPlugin], estimate: choreoHelpers.estimate });
+    // The duplicate choreography measures from the source it dragged the copy from.
+    const sources = () => h.stage.overlays.filter((o) => o.kind === "measure").map((o) => (o.props.a as Rect).x);
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    expect(sources()).toEqual([20, 150, 280, 410, 540]);
+    h.engine.replay();
+    h.until(() => h.engine.state === "finale");
+    expect(sources()).toEqual([20, 150, 280, 410, 540, 20, 150, 280, 410, 540]);
+  });
+
   it("ready() waits for the stage and for promises tasks wait on; eta() counts down", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => {
@@ -247,6 +279,30 @@ describe("Engine", () => {
     expect(h.engine.state).toBe("destroyed");
     expect(h.stage.calls.destroy).toBe(1);
     expect(h.sound.destroyed).toBe(true);
+  });
+
+  it("seek() fast-forwards the current run and replays only to go back or after finish()", () => {
+    const page = blueprintOf(Array.from({ length: 40 }, (_, i) => box(`b${i}`, (i % 5) * 150, Math.floor(i / 5) * 90)));
+    const h = harness(page, { intro: false });
+    void h.engine.play();
+    h.run(30);
+    h.engine.pause();
+    const built = h.engine.progress.built;
+    const head = h.engine.soundLog.slice();
+    h.engine.seek(2000);
+    // Forward: no replay, the run's log continues and a paused player stays paused.
+    expect(h.stage.calls.reset).toBe(0);
+    expect(h.engine.soundLog.slice(0, head.length)).toEqual(head);
+    expect(h.engine.progress.built).toBeGreaterThan(built);
+    expect(h.engine.state).toBe("paused");
+    expect(h.engine.time).toBeCloseTo(2000, 3);
+    h.engine.seek(1000);
+    expect(h.stage.calls.reset).toBe(1);
+    expect(h.engine.time).toBeCloseTo(1000, 3);
+    h.engine.resume();
+    h.engine.finish();
+    h.engine.seek(3000);
+    expect(h.stage.calls.reset).toBe(2);
   });
 
   it("sizes the crew automatically and labels agents per mode", () => {

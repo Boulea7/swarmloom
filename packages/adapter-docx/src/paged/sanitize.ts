@@ -56,8 +56,10 @@ function sanitizeAttributes(el: Element): void {
       const value = attr.value.trim();
       const ok = name === "href" && el.localName === "a" ? SAFE_LINK.test(value) : SAFE_MEDIA.test(value);
       if (!ok) el.removeAttribute(attr.name);
-    } else if (name === "style" && /url\s*\(|expression\s*\(/i.test(attr.value)) {
-      el.setAttribute("style", stripStyleUrls(attr.value));
+    } else if (name === "style") {
+      // Renderers copy some style attributes verbatim (docx-preview: VML shape styles).
+      const clean = sanitizeCss(attr.value);
+      if (clean !== attr.value) el.setAttribute("style", clean);
     }
   }
   if (el.localName === "a" && el.hasAttribute("href")) {
@@ -66,24 +68,33 @@ function sanitizeAttributes(el: Element): void {
   }
 }
 
-/** Drops declarations that reference non-data URLs (they would fetch from the network). */
-function stripStyleUrls(style: string): string {
-  return style
-    .split(";")
-    .filter((decl) => {
-      if (/expression\s*\(/i.test(decl)) return false;
-      const urls = decl.match(/url\s*\(\s*(['"]?)([^'")]*)\1\s*\)/gi) ?? [];
-      return urls.every((u) => /url\s*\(\s*['"]?\s*data:/i.test(u));
-    })
-    .join(";");
+/**
+ * Decodes CSS escapes (`\75` hex, `\(` literal) so they cannot spell `url(`, `image-set(` or `@import`
+ * in disguise, then drops the backslashes left over (from `\\` or `\5c`): kept, they would start new
+ * escapes in the output. Invalid code points become U+FFFD, as in the CSS syntax specification.
+ */
+function decodeCssEscapes(css: string): string {
+  return css
+    .replace(
+      /\\(?:([0-9a-fA-F]{1,6})[ \t\n\r\f]?|([^\n\r\f0-9a-fA-F]))|\\[\n\r\f]/g,
+      (_m, hex?: string, ch?: string) => {
+        if (!hex) return ch ?? "";
+        const cp = Number.parseInt(hex, 16);
+        return cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? "\ufffd" : String.fromCodePoint(cp);
+      },
+    )
+    .replace(/\\/g, "");
 }
 
-/** Removes `@import` rules and non-data `url()` references from a style sheet (no network from documents). */
+/**
+ * Makes style text fetch nothing from the network: removes `@import`, and turns every `url(` that is
+ * not a data or blob URL, every `image-set(` and `src(` (they accept bare URL strings) and `expression(`
+ * into an invalid function. Escapes are decoded first. Also covers text a renderer spliced untrusted
+ * names into (docx-preview copies font names into style sheets unescaped).
+ */
 export function sanitizeCss(css: string): string {
-  return css
-    .replace(/@import[^;]*;?/gi, "")
-    .replace(/url\s*\(\s*(['"]?)([^'")]*)\1\s*\)/gi, (match, _q: string, url: string) =>
-      /^\s*(?:data:|blob:)/i.test(url) ? match : "none",
-    )
-    .replace(/expression\s*\(/gi, "(");
+  return decodeCssEscapes(css)
+    .replace(/@import\b[^;]*;?/gi, "")
+    .replace(/url\s*\((?!\s*['"]?\s*(?:data:|blob:))/gi, "invalid(")
+    .replace(/(?:-webkit-)?image-set\s*\(|\bsrc\s*\(|expression\s*\(/gi, "invalid(");
 }

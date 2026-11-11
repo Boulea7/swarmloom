@@ -11,7 +11,7 @@ import { clamp01, reapplyStyleAttributes } from "./layers/common";
 import { Mounter, type MountStats } from "./mounter";
 import { PageGuard } from "./page";
 import { LayerRegistry, type Slot } from "./registry";
-import { sanitizeFragment } from "./sanitize";
+import { FragmentCache } from "./sanitize";
 import { ScrollController } from "./scroll";
 
 /** Blank-canvas fade over the page (enter) and dissolve back to it (overlay go-live), engine ms. */
@@ -24,6 +24,12 @@ const READY_TIMEOUT_MS = 2500;
 /** A virtualization pass runs when the view moved by this fraction of its height, and every N frames. */
 const PASS_SCROLL_FRACTION = 0.2;
 const PASS_EVERY_FRAMES = 30;
+/**
+ * Sanitized text markup kept for re-mounts (least recently used out). Above the mounter's keep-all
+ * threshold, so small pages never parse a layer twice; on large pages it covers a few mount bands
+ * instead of holding a DOM copy of every text layer ever mounted.
+ */
+const FRAGMENT_CACHE_LIMIT = 512;
 
 const NOOP_HANDLE: OverlayHandle = { update() {}, remove() {} };
 const NO_AGENTS: readonly AgentView[] = [];
@@ -247,8 +253,10 @@ export class SwarmStage implements Stage {
     if (!slot.dom) return;
     const view = slot.view;
     if (!view) {
-      // Mounting restores the recorded state, reveal included.
-      if (v > 0) this.#mounter.ensure(slot);
+      // Mounting restores the recorded state, reveal included. Far layers keep only that state
+      // until virtualization reaches them: a cross-fade (finish now, reduced motion) reveals the
+      // whole page at once and must not mount all of it.
+      if (v > 0 && this.#nearView(slot)) this.#mounter.ensure(slot);
       return;
     }
     try {
@@ -590,13 +598,29 @@ export class SwarmStage implements Stage {
     }
   }
 
+  /** Top of the visible view, stage px. */
+  #viewTop(): number {
+    const g = this.#geo;
+    return (g.scrollTop - g.offsetY) / g.scale;
+  }
+
+  /** Height of the visible view, stage px (the whole world before the first measure). */
+  #viewHeight(): number {
+    const g = this.#geo;
+    return (g.clientH || g.worldH) / g.scale;
+  }
+
+  /** True when a virtualization pass for the current view would mount `slot`. */
+  #nearView(slot: Slot): boolean {
+    const top = this.#viewTop();
+    return this.#mounter.near(slot, top, top + this.#viewHeight());
+  }
+
   /** Virtualization pass for the current view. */
   #pass(): void {
     if (this.#destroyed) return;
-    const g = this.#geo;
-    const top = (g.scrollTop - g.offsetY) / g.scale;
-    const h = (g.clientH || g.worldH) / g.scale;
-    this.#mounter.pass(top, top + h);
+    const top = this.#viewTop();
+    this.#mounter.pass(top, top + this.#viewHeight());
     this.#lastPassTop = top;
     this.#lastPassFrame = this.#frame;
     this.#passDirty = false;
@@ -724,7 +748,7 @@ export class SwarmStage implements Stage {
         if (isRenderer(renderer)) renderers.set(key, renderer);
       }
     }
-    const fragments = new Map<string, DocumentFragment>();
+    const fragments = new FragmentCache(doc, FRAGMENT_CACHE_LIMIT);
     /** 0: unknown, 1: style attributes apply, 2: the page CSP drops them. */
     let inlineStyleState = 0;
     let uid = 0;
@@ -738,14 +762,7 @@ export class SwarmStage implements Stage {
       renderer: (task) => renderers.get(task),
       scale: () => this.#geo.scale,
       geometryGen: () => this.#gen,
-      html: (id, raw) => {
-        let frag = fragments.get(id);
-        if (!frag) {
-          frag = sanitizeFragment(doc, raw);
-          fragments.set(id, frag);
-        }
-        return doc.importNode(frag, true);
-      },
+      html: (id, raw) => fragments.copy(id, raw),
       inlineStyles: (root) => {
         if (inlineStyleState === 1) return;
         if (inlineStyleState === 0) {

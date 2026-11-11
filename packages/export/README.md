@@ -13,11 +13,11 @@ Deterministic video and audio export for SwarmLoom, plus a quick in-browser reco
 3. `audioWav()` returns the run's sound log rendered offline to a 48 kHz stereo WAV, as base64. It is the same length as the video.
 4. `dispose()`.
 
-Invalid `init` options reject with a `TypeError` that names the field. Only one render can be active per page.
+Invalid `init` options reject with a `TypeError` that names the field. Recoverable player errors do not stop a render; the page logs them with `console.warn`. Only one render can be active per page.
 
 ## Library
 
-- `exportFrames(playerOptions, { fps, onFrame, tailMs?, maxDurationMs?, signal? })` runs a player on a `VirtualClock`. It calls `onFrame(index, timeMs)` for each frame once the frame's assets are ready, and returns `{ frames, durationMs, soundLog }`. Frame `n` shows engine time `n * 1000 / fps`.
+- `exportFrames(playerOptions, { fps, onFrame, tailMs?, maxDurationMs?, onWarning?, signal? })` runs a player on a `VirtualClock`. It calls `onFrame(index, timeMs)` for each frame once the frame's assets are ready, and returns `{ frames, durationMs, soundLog, warnings }`. Frame `n` shows engine time `n * 1000 / fps`. Player `error` events (skipped layers, a failed layer task, sound) are recoverable: they go to `onWarning` and `warnings` and the export goes on. Throw from `onWarning` to abort instead.
 - `renderAudioWav(soundLog, durationMs, options?)` renders sound events to WAV bytes with `OfflineAudioContext`.
 - `RenderSession` is the clock-and-player stepping used by both of the above.
 - `createRenderApi(deps)` builds the `window.__swarmloom` object with your own loader and player factory.

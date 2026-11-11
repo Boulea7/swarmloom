@@ -450,9 +450,11 @@ export function createControls(opts: ToolbarOptions): Controls {
   };
 
   host.append(dom.element);
+  // The first render() queues the first layout (fold placement, compact vs full) for the next
+  // frame, which still runs before the first paint. Measuring here instead would force a
+  // synchronous layout of the whole page plus stage inside createPlayer (~17 ms on large pages).
   render();
   if (!(view as ToolbarView | null)?.pinned) autoHide.activity();
-  relayout();
   return controls;
 }
 

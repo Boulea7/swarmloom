@@ -102,7 +102,10 @@ describe("buildView", () => {
     expect(running.progressText).toBe("3 of 12 layers · About 40 seconds left");
     expect(running).toMatchObject({ play: { visible: true, icon: "pause" }, speed: { visible: true }, pinned: false });
     expect(running.goLive).toEqual({ visible: true, primary: false });
-    expect(buildView({ ...base, compact: true }, t)).toMatchObject({ replay: false, goLive: { visible: false } });
+    // Narrow touch screens keep a tappable way past the build: finish now, else go live.
+    const narrow = { ...base, compact: true };
+    expect(buildView(narrow, t)).toMatchObject({ finish: true, replay: false, goLive: { visible: false } });
+    expect(buildView({ ...narrow, canFinish: false }, t)).toMatchObject({ finish: false, goLive: { visible: true } });
     // Finish now only exists while building, and only when the player offers it.
     expect(running.finish).toBe(true);
     expect(buildView({ ...base, canFinish: false }, t).finish).toBe(false);

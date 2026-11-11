@@ -22,6 +22,8 @@ import {
   parseContent,
   primaryFamilies,
   reparseContent,
+  sanitizeCss,
+  sanitizeTree,
   substituteFor,
   withFontFallbacks,
 } from "../src/paged/index";
@@ -377,6 +379,29 @@ describe("font fallbacks (decisions-v1 F01)", () => {
     expect(
       primaryFamilies("p { font-family: 'Times New Roman', serif } :root { --docx-minorHAnsi-font: Calibri; }"),
     ).toEqual(["Times New Roman", "Calibri"]);
+  });
+});
+
+describe("style clean-up", () => {
+  // docx-preview copies w:rFonts names into style sheets unescaped, so a name can inject whole rules.
+  const fetching = /url\(\s*['"]?\s*https|image-set\(|@import|\\/i;
+
+  it.each([
+    ["image-set with a bare string", ".a{font-family:'a';}*{background-image:image-set('https://t.test/1.png' 1x)}"],
+    ["escaped url(", ".b{background:\\75 rl(https://t.test/2.png)}"],
+    ["escaped backslash before an escape", ".c{background:\\\\75 rl(https://t.test/3.png)}"],
+    ["url( left open at the end", '.d{background:url("https://t.test/4.png"'],
+    ["escaped @import", "@\\69mport 'https://t.test/5.css';"],
+  ])("leaves no network fetch in style sheets: %s", (_name, css) => {
+    expect(sanitizeCss(css)).not.toMatch(fetching);
+  });
+
+  it("keeps inline images and neutralizes fetches in style attributes", () => {
+    expect(sanitizeCss(".e{--b:url(data:image/png;base64,AA)}")).toBe(".e{--b:url(data:image/png;base64,AA)}");
+    const host = document.createElement("div");
+    host.innerHTML = `<p><svg style="background-image:image-set('https://t.test/6.png' 1x)"></svg></p>`;
+    sanitizeTree(host);
+    expect(host.innerHTML).not.toMatch(fetching);
   });
 });
 
