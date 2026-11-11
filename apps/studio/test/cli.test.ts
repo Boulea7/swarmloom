@@ -56,6 +56,17 @@ describe("CLI command", () => {
     });
   });
 
+  // Windows opens these as devices even with an extension, so the video would be thrown away.
+  it.each([
+    ["NUL.md", "NUL_.mp4"],
+    ["con.final.md", "con_.final.mp4"],
+    ["COM1.md", "COM1_.mp4"],
+    ["console.md", "console.mp4"],
+    ["COM10.md", "COM10.mp4"],
+  ])("writes the output of %j as %s", (name, output) => {
+    expect(command(name, true).text).toBe(`npx swarmloom render ${name} -o ${output} --seed 1`);
+  });
+
   it("writes the export dialog's choices, and the in-page export uses the same settings", () => {
     const settings = { ...DEFAULT_SETTINGS, follow: "scroll" as const, remoteAssets: false };
     const choices = { sound: false, scheme: "dark" as const, locale: "zh-CN" };

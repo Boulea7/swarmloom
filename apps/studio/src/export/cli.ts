@@ -77,11 +77,17 @@ export function shellArg(arg: string): string | null {
   return QUOTABLE.test(arg) ? `"${arg}"` : null;
 }
 
-/** "report.final.pdf" -> "report.final" */
+/**
+ * Names Windows opens as a device even with an extension: "NUL.mp4" and "nul.final.mp4" are the null
+ * device, not files. The superscript digits are reserved too.
+ */
+const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?=\.|$)/i;
+
+/** "report.final.pdf" -> "report.final"; "NUL.md" -> "NUL_" so the output is a file on Windows too. */
 export function stem(name: string): string {
   const ext = extensionOf(name);
   const base = (ext ? name.slice(0, -(ext.length + 1)) : name).replace(/[^\p{L}\p{M}\p{N}._-]+/gu, "-");
-  return base.replace(/^-+|-+$/g, "") || "swarmloom";
+  return (base.replace(/^-+|-+$/g, "") || "swarmloom").replace(WINDOWS_DEVICE, "$&_");
 }
 
 /** A file name made of {@link BARE} characters, keeping the extension: "R&D notes.md" -> "R-D-notes.md". */
