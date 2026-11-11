@@ -109,7 +109,7 @@ export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerVi
     if (typeof source === "string") {
       img.src = source;
     } else {
-      // A same-origin .svg file: shown at once, swapped for its still copy once fetched.
+      // A same-origin .svg file or blob: URL: shown at once, swapped for its still copy once fetched.
       img.src = src;
       still = source.then((copy) => {
         if (!gone && copy !== src) img.src = copy;

@@ -28,11 +28,12 @@ function blueprint(layers: Layer[], size: Size = { w: 800, h: 600 }): Blueprint 
 
 function mount(
   layers: Layer[],
-  extra: Partial<StageOptions> & { size?: Size; hostCss?: string } = {},
+  extra: Partial<StageOptions> & { size?: Size; hostCss?: string; parent?: HTMLElement } = {},
 ): { stage: Stage; host: HTMLElement } {
-  const host = document.createElement("div");
+  const parent = extra.parent ?? document.body;
+  const host = parent.ownerDocument.createElement("div");
   host.style.cssText = extra.hostCss ?? "width:800px;height:600px;position:relative";
-  document.body.append(host);
+  parent.append(host);
   const bp = blueprint(layers, extra.size);
   const stage = createStage({
     blueprint: bp,
@@ -49,6 +50,18 @@ function mount(
     host.remove();
   });
   return { stage, host };
+}
+
+/** Body of a srcdoc frame, as the Studio exports in: same origin as the page, location about:srcdoc. */
+async function srcdocBody(): Promise<HTMLElement> {
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "width:400px;height:200px;border:0";
+  frame.srcdoc = "<!doctype html><body style=margin:0></body>";
+  const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+  document.body.append(frame);
+  cleanups.push(() => frame.remove());
+  await loaded;
+  return (frame.contentDocument as Document).body;
 }
 
 /** Renders frames at 16 ms steps until `promise` settles (fades are driven by engine time). */
@@ -291,19 +304,35 @@ describe("stage: reveal semantics per kind", () => {
     );
   });
 
+  const spinFile = (): string => new URL(SPIN_SVG, location.href).href;
   it.each([
     // Served from the page's own origin, as the CLI serves the files next to a document.
-    { name: "SMIL in a same-origin .svg file", src: new URL(SPIN_SVG, location.href).href, x: 19.5 },
+    { name: "SMIL in a same-origin .svg file", src: spinFile, x: 19.5 },
     {
       name: "CSS keyframes in a data: URL",
-      src: `data:image/svg+xml,${encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>@keyframes m{to{transform:translateX(150px)}}' +
-          'rect{animation:m .83s linear infinite}</style><rect x="10" y="35" width="30" height="30" fill="#e33"/></svg>',
-      )}`,
+      src: () =>
+        `data:image/svg+xml,${encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>@keyframes m{to{transform:translateX(150px)}}' +
+            'rect{animation:m .83s linear infinite}</style><rect x="10" y="35" width="30" height="30" fill="#e33"/></svg>',
+        )}`,
       x: 24.5,
     },
-  ])("image: an animated SVG ($name) holds still once decoded, whatever the wall time", async ({ src, x }) => {
-    const { stage } = mount([{ id: "a", kind: "image", box: { x: 0, y: 0, w: 200, h: 100 }, src }]);
+    // The Studio's export frame: its location (about:srcdoc) has no origin, the document has the page's.
+    { name: "SMIL in a same-origin .svg file, staged in a srcdoc frame", src: spinFile, x: 19.5, srcdoc: true },
+    {
+      // A file opened in the Studio.
+      name: "SMIL in a blob: URL",
+      src: async () => {
+        const url = URL.createObjectURL(await (await fetch(SPIN_SVG)).blob());
+        cleanups.push(() => URL.revokeObjectURL(url));
+        return url;
+      },
+      x: 19.5,
+    },
+  ])("image: an animated SVG ($name) holds still once decoded, whatever the wall time", async ({ src, x, srcdoc }) => {
+    const parent = srcdoc ? await srcdocBody() : undefined;
+    const layer: Layer = { id: "a", kind: "image", box: { x: 0, y: 0, w: 200, h: 100 }, src: await src() };
+    const { stage } = mount([layer], { parent });
     // Shown, since an image nobody paints does not advance its animation.
     stage.reveal("a", 1);
     await stage.ready();

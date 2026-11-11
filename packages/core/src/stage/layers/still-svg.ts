@@ -6,8 +6,9 @@
  * authored drawing, as in the SVG adapter's static skeleton) and CSS animations hold their first
  * frame.
  *
- * The stage can only read SVG `data:` URLs and same-origin `.svg` files (fetched once per URL).
- * Other SVG images, such as cross-origin ones, keep their own clock.
+ * The stage can only read SVG `data:` URLs, same-origin `.svg` files and same-origin `blob:` URLs
+ * of SVG files (fetched once per URL). Other SVG images, such as cross-origin ones, keep their own
+ * clock.
  */
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -16,6 +17,8 @@ const SMIL = new Set(["animate", "animateTransform", "animateMotion", "animateCo
 const KEYFRAMES = /@(?:-[a-z]+-)?keyframes\b/i;
 /** Cheap check before parsing: markup that can animate at all. */
 const MAY_ANIMATE = /<(?:[\w.-]+:)?(?:animate\w*|set|discard)[\s/>]|@(?:-[a-z]+-)?keyframes\b/i;
+/** The SVG media type, with or without parameters. */
+const SVG_TYPE = /^\s*image\/svg\+xml\s*(?:;|$)/i;
 const PAUSE_CSS = "*,*::before,*::after{animation-play-state:paused!important;transition:none!important}";
 /** Larger SVG text is shown as is (characters). */
 const MAX_SVG_CHARS = 2 * 1024 * 1024;
@@ -82,7 +85,9 @@ async function fetchStill(win: Window, url: URL): Promise<string | null> {
   const timer = win.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await win.fetch(url.href, { signal: ctrl.signal, credentials: "same-origin" });
-    if (!res.ok || Number(res.headers.get("content-length")) > MAX_SVG_CHARS) {
+    // A blob: URL says nothing about its type in the URL; its response carries the blob's type.
+    const notSvg = url.protocol === "blob:" && !SVG_TYPE.test(res.headers.get("content-type") ?? "");
+    if (!res.ok || notSvg || Number(res.headers.get("content-length")) > MAX_SVG_CHARS) {
       void res.body?.cancel().catch(() => undefined);
       return null;
     }
@@ -96,14 +101,29 @@ async function fetchStill(win: Window, url: URL): Promise<string | null> {
   }
 }
 
-/** A same-origin http(s) URL whose path ends in `.svg`, else null. */
+/**
+ * Origin of the document shown in `win`. A srcdoc frame (the Studio's export frame) shares its
+ * parent's origin, while its location (about:srcdoc) reports "null".
+ */
+function documentOrigin(win: Window): string {
+  return typeof win.origin === "string" ? win.origin : win.location.origin;
+}
+
+/**
+ * A same-origin URL that may hold an SVG file, else null: an http(s) URL whose path ends in `.svg`,
+ * or a blob: URL (its type is checked once fetched).
+ */
 function sameOriginSvg(src: string, doc: Document): URL | null {
   const win = doc.defaultView;
   if (!win || typeof win.fetch !== "function") return null;
   try {
     const url = new URL(src, doc.baseURI);
+    const origin = documentOrigin(win);
+    // An opaque origin ("null") matches nothing: such a page cannot read other URLs.
+    if (origin === "null" || url.origin !== origin) return null;
+    if (url.protocol === "blob:") return url;
     const web = url.protocol === "http:" || url.protocol === "https:";
-    return web && url.origin === win.location.origin && url.pathname.toLowerCase().endsWith(".svg") ? url : null;
+    return web && url.pathname.toLowerCase().endsWith(".svg") ? url : null;
   } catch {
     return null;
   }
@@ -111,8 +131,8 @@ function sameOriginSvg(src: string, doc: Document): URL | null {
 
 /**
  * What the `<img>` of an image layer should load for `src`: `src` itself, or a still `data:` copy
- * when `src` is an animated SVG the stage can read. Same-origin `.svg` files answer through a
- * promise (fetched, then cached); it never rejects and falls back to `src`.
+ * when `src` is an animated SVG the stage can read. Same-origin `.svg` files and blob: URLs answer
+ * through a promise (fetched, then cached); it never rejects and falls back to `src`.
  */
 export function stillImageSource(src: string, doc: Document): string | Promise<string> {
   if (/^data:/i.test(src)) return stillDataUrl(src) ?? src;
