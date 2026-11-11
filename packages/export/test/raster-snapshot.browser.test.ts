@@ -35,11 +35,60 @@ async function pixel(rasterizer: FrameRasterizer, x: number, y: number): Promise
   return Array.from(ctx.getImageData(x, y, 1, 1).data.slice(0, 3));
 }
 
-it("draws a scrolled document at its scroll offset once", async () => {
+it("draws a scrolled document at its scroll offset once, fixed boxes in view", async () => {
   const bands = Array.from({ length: 8 }, (_, i) => `<div style="height:100px;background:rgb(${i * 30},0,0)"></div>`);
-  const { win, rasterizer } = await frameOf(`<!doctype html><body style="margin:0">${bands.join("")}</body>`);
+  const { win, rasterizer } = await frameOf(
+    `<!doctype html><body style="margin:0">${bands.join("")}` +
+      '<i style="position:fixed;top:0;right:0;width:20px;height:20px;background:rgb(0,255,0)"></i>' +
+      '<i style="position:absolute;top:350px;right:0;width:20px;height:20px;background:rgb(0,0,255)"></i></body>',
+  );
   win.scrollTo(0, 300);
-  expect(await pixel(rasterizer, 5, 5)).toEqual([90, 0, 0]);
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  await rasterizer.draw(ctx);
+  const at = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data.slice(0, 3));
+  expect([at(5, 5), at(90, 5), at(90, 55)]).toEqual([
+    [90, 0, 0],
+    [0, 255, 0],
+    [0, 0, 255],
+  ]);
+});
+
+it.each([
+  ["a zero border width with a style", '<div style="border:0 solid rgb(255,0,0);width:60px;height:60px">', [0, 0, 255]],
+  [
+    "a border colour equal to the default text colour",
+    '<div style="color:rgb(255,0,0);border:10px solid rgb(0,0,0);width:40px;height:40px">',
+    [0, 0, 0],
+  ],
+  [
+    "inherited values set on the root",
+    '<html style="color:rgb(0,128,0)"><div style="border:10px solid;width:40px;height:40px">',
+    [0, 128, 0],
+  ],
+])("draws %s", async (_name, html, expected) => {
+  const { rasterizer } = await frameOf(`<style>body{margin:0}div{background:rgb(0,0,255)}</style>${html}`);
+  expect(await pixel(rasterizer, 2, 2)).toEqual(expected);
+});
+
+it("writes one href for an SVG element that has both href and xlink:href", async () => {
+  const { rasterizer } = await frameOf(
+    '<body style="margin:0"><svg width=50 height=50 style="display:block">' +
+      '<defs><rect id=r width=50 height=50 fill="rgb(255,0,0)"/></defs><use href="#r" xlink:href="#r"/></svg></body>',
+  );
+  // A duplicate attribute makes the SVG ill-formed, so it would not decode.
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+});
+
+it("keeps the counter steps of off-screen content", async () => {
+  const sections = Array.from({ length: 8 }, (_, i) => `<section><h2>S${i + 1}</h2></section>`).join("");
+  const { win, rasterizer } = await frameOf(
+    "<style>body{margin:0;counter-reset:s}section{display:flow-root;height:200px}" +
+      `h2{counter-increment:s}h2::before{content:counter(s)}</style>${sections}`,
+  );
+  win.scrollTo(0, 1200);
+  const { svg } = await rasterizer.snapshot();
+  // The snapshot counts again: a heading left out would lower every number after it.
+  expect(svg.match(/<h2/g)).toHaveLength(8);
 });
 
 it("writes live form state without duplicating authored attributes", async () => {

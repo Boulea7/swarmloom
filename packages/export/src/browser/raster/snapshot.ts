@@ -343,15 +343,47 @@ function offscreen(walk: Walk, el: Element, view: DocView, floats: boolean): boo
   return true;
 }
 
+function stepsCounter(cs: CSSStyleDeclaration): boolean {
+  return cs.getPropertyValue("counter-increment") !== "none" || cs.getPropertyValue("counter-set") !== "none";
+}
+
+/**
+ * Whether an element of the flattened subtrees of `nodes`, or one of its `::before`/`::after`
+ * boxes, increments or sets a counter. Generated content after them may show that counter, and the
+ * snapshot's clones count again: leaving them out would change the numbers. Resets are fine, a
+ * counter reset inside a subtree is not seen after it.
+ */
+function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boolean {
+  const stack = nodes.filter((node): node is Element => node.nodeType === 1).reverse();
+  for (let next = stack.pop(); next; next = stack.pop()) {
+    const cs = view.win.getComputedStyle(next);
+    if (cs.getPropertyValue("display") === "none") continue;
+    if (stepsCounter(cs)) return true;
+    for (const pseudo of ["::before", "::after"] as const) {
+      const ps = view.win.getComputedStyle(next, pseudo);
+      const content = ps.getPropertyValue("content");
+      if (content && content !== "none" && content !== "normal" && stepsCounter(ps)) return true;
+    }
+    // A frame's document counts on its own.
+    if (next.localName === "iframe") continue;
+    const children = flatChildren(walk, next);
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i] as Node;
+      if (child.nodeType === 1) stack.push(child as Element);
+    }
+  }
+  return false;
+}
+
 /**
  * An absolutely positioned subtree that cannot show: fully transparent, or with nothing in it near
- * the viewport. Leaving it out cannot move anything else (it is out of flow).
+ * the viewport. Leaving it out cannot move anything else (it is out of flow), unless it counts.
  */
 function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView): boolean {
   const position = cs.getPropertyValue("position");
   if (position !== "absolute" && position !== "fixed") return false;
-  if (cs.getPropertyValue("opacity") === "0") return true;
-  return offscreen(walk, el, view, false);
+  const hidden = cs.getPropertyValue("opacity") === "0" || offscreen(walk, el, view, false);
+  return hidden && !stepsCounters(walk, [el], view);
 }
 
 /**
@@ -359,8 +391,8 @@ function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView)
  * the viewport, in a layout where its content moves nothing else. Its used size is written anyway
  * (computed width and height), so what follows keeps its place, provided the box does not share
  * margins or floats with its content (it is a block formatting context, or has border or padding
- * on both edges and no floats inside) and no baseline is read from it. Off-screen sections of a
- * long live page then cost one element each.
+ * on both edges and no floats inside), no baseline is read from it and its content steps no
+ * counter. Off-screen sections of a long live page then cost one element each.
  *
  * @param context The parent lays its children out in block flow, or in a flex or grid container
  *   that aligns nothing by baseline, and its own baseline positions nothing.
@@ -383,7 +415,8 @@ function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocV
     if (!edge("top") || !edge("bottom")) return false;
   }
   if (el.getBoundingClientRect().height <= 0) return false;
-  return offscreen(walk, el, view, !contained);
+  // The box keeps its own counters and pseudo-elements, its content's would go.
+  return offscreen(walk, el, view, !contained) && !stepsCounters(walk, flatChildren(walk, el), view);
 }
 
 /** Whether the children of a box with this style sit in a layout {@link hollowable} accepts. */
@@ -724,8 +757,11 @@ function attributes(walk: Walk, el: Element): string {
   const option = local === "option" && !svg ? (el as HTMLOptionElement) : null;
   for (const attr of Array.from(el.attributes)) {
     let name = attr.name;
-    if (attr.namespaceURI === XLINK_NS && attr.localName === "href") name = "href";
-    else if (attr.namespaceURI === XML_NS) name = `xml:${attr.localName}`;
+    if (attr.namespaceURI === XLINK_NS && attr.localName === "href") {
+      // SVG 2: a plain `href` wins, and writing both as `href` would make the SVG ill-formed.
+      if (el.hasAttributeNS(null, "href")) continue;
+      name = "href";
+    } else if (attr.namespaceURI === XML_NS) name = `xml:${attr.localName}`;
     else if (attr.namespaceURI || !XML_NAME.test(name)) continue;
     if (DROP_ATTRS.has(name) || name.startsWith("on") || name === "xmlns") continue;
     // Live form state is written below; the authored attribute too would be a duplicate, which
@@ -961,7 +997,12 @@ function canvasBackground(doc: Document, win: Window): string {
   return body && !transparent(body) ? body : "#fff";
 }
 
-/** A document's viewport: a clipping box at `at` with the canvas background, the root inside it. */
+/**
+ * A document's viewport: a clipping box at `at` with the canvas background that holds the
+ * document's fixed-position boxes (paint containment), and in it the initial containing block,
+ * moved by the scroll offset, with the root inside it. Fixed boxes so stay in view when the
+ * document is scrolled.
+ */
 function* emitDocument(
   walk: Walk,
   view: DocView,
@@ -972,14 +1013,13 @@ function* emitDocument(
   const doc = view.win.document;
   const bg = canvasBackground(doc, view.win);
   walk.out.push(
-    `<div style="display:block;position:absolute;left:${at.x}px;top:${at.y}px;overflow:hidden;` +
+    `<div style="display:block;position:absolute;left:${at.x}px;top:${at.y}px;overflow:hidden;contain:paint;` +
       `width:${width}px;height:${height}px;background:${escapeAttr(bg)}">`,
+    `<div style="display:block;position:absolute;left:${-view.win.scrollX}px;top:${-view.win.scrollY}px;` +
+      `width:${width}px;height:${height}px">`,
   );
-  const x = -view.win.scrollX;
-  const y = -view.win.scrollY;
-  const shift = x !== 0 || y !== 0 ? { x, y } : null;
-  yield* emitElement(walk, doc.documentElement, view, null, XHTML_NS, shift, true);
-  walk.out.push("</div>");
+  yield* emitElement(walk, doc.documentElement, view, null, XHTML_NS, null, true);
+  walk.out.push("</div></div>");
 }
 
 /** Data URLs of binary font faces, made once per face rather than for every frame. */

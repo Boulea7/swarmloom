@@ -46,7 +46,7 @@ it("leaves out what is far from the viewport, keeping layout and what reaches in
   win.scrollTo(0, 1004);
   const { svg, stats } = await rasterizer.snapshot();
   expect(svg).not.toMatch(/far (above|below)/);
-  expect(svg).toContain("near");
+  expect(svg).toContain(">near<");
   expect(stats.culled).toBe(2);
   // The first section went empty but kept its height: the red one is still in view.
   const at = await drawn(rasterizer);
@@ -55,13 +55,13 @@ it("leaves out what is far from the viewport, keeping layout and what reaches in
 
 it("leaves out boxes under a frame that covers the viewport", async () => {
   const { rasterizer } = await frameOf(`<body style="margin:0">
-    <div style="position:fixed;inset:0;background:rgb(255,0,0)">under</div>
+    <div style="position:fixed;inset:0;background:rgb(255,0,0)">covered</div>
     <iframe srcdoc="<body style='margin:0;background:rgb(0,0,255)'>over</body>"
       style="position:fixed;left:0;top:0;width:${SIZE}px;height:${SIZE}px;border:0;z-index:1"></iframe>
   </body>`);
   const { svg } = await rasterizer.snapshot();
-  expect(svg).not.toContain("under");
-  expect(svg).toContain("over");
+  expect(svg).not.toContain("covered");
+  expect(svg).toContain(">over<");
   expect((await drawn(rasterizer))(90, 90)).toEqual([0, 0, 255]);
 });
 
