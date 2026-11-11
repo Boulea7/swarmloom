@@ -108,14 +108,48 @@ it("draws the topmost canvas over the image instead of encoding it", async () =>
   const g = canvas.getContext("2d") as CanvasRenderingContext2D;
   g.fillStyle = "rgb(0,255,0)";
   g.fillRect(0, 0, 50, SIZE);
-  const { svg, overlay } = await rasterizer.snapshot();
-  expect(overlay?.canvas).toBe(canvas);
+  const { svg, overlays } = await rasterizer.snapshot();
+  expect(overlays.map((o) => o.canvas)).toEqual([canvas]);
   expect(svg).not.toContain("image/png");
   const at = await drawn(rasterizer);
   expect([at(25, 50), at(75, 50)]).toEqual([
     [0, 255, 0],
     [0, 0, 255],
   ]);
+});
+
+it("draws the canvases painted last over the image, a scaled one under the topmost", async () => {
+  // As in the render page: a WebGL model in a scaled world of z-indexed layers, the cursor canvas over it.
+  const { win, rasterizer } = await frameOf(`<html style="overflow:hidden">
+    <body style="margin:0;overflow:hidden;background:rgb(0,0,255)">
+    <div style="position:fixed;inset:0;overflow:hidden">
+      <div style="position:absolute;left:0;top:0;transform:matrix(0.5,0,0,0.5,50,0);transform-origin:0 0;isolation:isolate">
+        <i style="position:absolute;z-index:1"></i>
+        <div style="position:absolute;z-index:2"><canvas width=${SIZE} height=${SIZE}
+          style="position:absolute;left:0;top:0"></canvas></div>
+      </div>
+      <canvas width=${SIZE} height=${SIZE} style="position:absolute;left:0;top:0"></canvas></div></body>`);
+  const [model, cursors] = Array.from(win.document.querySelectorAll("canvas"));
+  const fill = (canvas: HTMLCanvasElement | undefined, color: string, width: number) => {
+    const g = canvas?.getContext("2d") as CanvasRenderingContext2D;
+    g.fillStyle = color;
+    g.fillRect(0, 0, width, SIZE);
+  };
+  fill(model, "rgb(0,255,0)", SIZE);
+  fill(cursors, "rgb(255,0,0)", 25);
+  const { svg, overlays } = await rasterizer.snapshot();
+  expect(overlays.map((o) => o.canvas)).toEqual([model, cursors]);
+  expect(svg).not.toContain("image/png");
+  const at = await drawn(rasterizer);
+  expect([at(10, 25), at(40, 25), at(75, 25), at(75, 75)]).toEqual([
+    [255, 0, 0],
+    [0, 0, 255],
+    [0, 255, 0],
+    [0, 0, 255],
+  ]);
+  // A layer above the model's, written before it, would paint over it: the model goes into the image.
+  (win.document.querySelector("i") as HTMLElement).style.zIndex = "3";
+  expect((await rasterizer.snapshot()).overlays.map((o) => o.canvas)).toEqual([cursors]);
 });
 
 it("walks in slices and starts over when the page changes meanwhile", async () => {

@@ -43,7 +43,7 @@ function readable(canvas: HTMLCanvasElement): boolean {
   }
 }
 
-/** Draws the overlay canvas over the snapshot image, inside its clip, scaled like the image. */
+/** Draws an overlay canvas over the snapshot image, inside its clip, scaled like the image. */
 function drawOverlay(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   overlay: CanvasOverlay,
@@ -107,7 +107,7 @@ export class FrameRasterizer {
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     signal?: AbortSignal,
   ): Promise<SnapshotStats> {
-    const { svg, stats, overlay } = await this.snapshot(signal);
+    const { svg, stats, overlays } = await this.snapshot(signal);
     const img = new Image();
     // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
     // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
@@ -117,7 +117,7 @@ export class FrameRasterizer {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
-    if (overlay) drawOverlay(ctx, overlay, width / this.#o.width, height / this.#o.height);
+    for (const overlay of overlays) drawOverlay(ctx, overlay, width / this.#o.width, height / this.#o.height);
     return stats;
   }
 }

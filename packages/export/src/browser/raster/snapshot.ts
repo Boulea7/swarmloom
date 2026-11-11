@@ -145,8 +145,9 @@ export interface SnapshotStats {
 }
 
 /**
- * A canvas drawn over the snapshot image rather than inside it (no PNG round trip): the topmost
- * thing in the frame, with nothing painted after it. CSS px of the snapshot.
+ * A canvas drawn over the snapshot image rather than inside it (no PNG round trip): one of the
+ * canvases painted last in the frame, with nothing but the others painted after it. CSS px of the
+ * snapshot.
  */
 export interface CanvasOverlay {
   canvas: HTMLCanvasElement;
@@ -162,7 +163,8 @@ export interface CanvasOverlay {
 export interface FrameSnapshot {
   svg: string;
   stats: SnapshotStats;
-  overlay: CanvasOverlay | null;
+  /** Canvases to draw over the image, in paint order (a WebGL model, then the cursor layer). */
+  overlays: CanvasOverlay[];
 }
 
 export interface Box {
@@ -191,7 +193,7 @@ interface ResourceUse {
   images: number;
 }
 
-/** The canvas that may become the {@link CanvasOverlay}, and its token index. */
+/** A canvas that may become a {@link CanvasOverlay}, and its token index. */
 interface OverlayCandidate extends CanvasOverlay {
   index: number;
 }
@@ -202,8 +204,13 @@ interface PathEntry {
   cs: CSSStyleDeclaration;
   /** Starts a stacking context (only cases that surely do: missing one is safe, adding one is not). */
   context: boolean;
-  /** A box with a positive z-index sits in this stacking context, so it may paint over later boxes. */
-  raised: boolean;
+  /** May start a stacking context (every case that does, and some that only might). */
+  stacks: boolean;
+  /**
+   * Highest positive z-index of a box written so far in this stacking context, 0 when none: such
+   * a box may paint over later boxes of a lower level.
+   */
+  raised: number;
 }
 
 /** Tells whether the documents read so far changed after the walk read them. */
@@ -224,9 +231,10 @@ interface Walk {
   /** Resources by token index, and the index of each URL. */
   urls: ResourceUse[];
   urlIndex: Map<string, number>;
-  /** Canvas data URLs by token index; null while that canvas may still be drawn as the overlay. */
+  /** Canvas data URLs by token index; null while that canvas may still be drawn as an overlay. */
   canvases: (string | null)[];
-  overlay: OverlayCandidate | null;
+  /** Canvases painted last so far, in paint order. */
+  overlays: OverlayCandidate[];
   /** Ancestors of the element being written, in the frame document only. */
   path: PathEntry[];
   watch: ChangeWatch | null;
@@ -538,12 +546,10 @@ function paintsBox(cs: CSSStyleDeclaration, special: boolean): boolean {
   });
 }
 
-/** Writes the overlay candidate's pixels into the snapshot after all: something paints over it. */
-function dropOverlay(walk: Walk): void {
-  const overlay = walk.overlay;
-  if (!overlay) return;
-  walk.canvases[overlay.index] = canvasDataUrl(overlay.canvas);
-  walk.overlay = null;
+/** Writes the overlay candidates' pixels into the snapshot after all: something paints over them. */
+function dropOverlays(walk: Walk): void {
+  for (const overlay of walk.overlays) walk.canvases[overlay.index] = canvasDataUrl(overlay.canvas);
+  walk.overlays = [];
 }
 
 /** Contains fixed-position descendants (their containing block), in the cases that surely do. */
@@ -558,10 +564,50 @@ function holdsFixed(cs: CSSStyleDeclaration): boolean {
 }
 
 /**
+ * Scaled and moved at most, never flipped ({@link plainPaint} allows a negative scale) or moved
+ * along a path: the box then shows its content the right way round where its client rect says.
+ */
+function upright(cs: CSSStyleDeclaration): boolean {
+  const m = /^matrix\(([^,]+), 0, 0, ([^,]+),/.exec(cs.getPropertyValue("transform"));
+  if (m && !(Number(m[1]) > 0 && Number(m[2]) > 0)) return false;
+  const scale = cs.getPropertyValue("scale");
+  if (scale !== "none" && !scale.split(/\s+/).every((v) => Number.parseFloat(v) > 0)) return false;
+  return cs.getPropertyValue("offset-path") === "none";
+}
+
+/** May start a stacking context: every case that does, and some that only might. */
+function mayStack(cs: CSSStyleDeclaration): boolean {
+  if (stackingContext(cs) || zIndex(cs) !== null || cs.getPropertyValue("will-change") !== "auto") return true;
+  if (/\b(?:layout|paint|strict|content)\b/.test(cs.getPropertyValue("contain"))) return true;
+  if (cs.getPropertyValue("container-type") !== "normal") return true;
+  return [
+    "translate",
+    "rotate",
+    "scale",
+    "backdrop-filter",
+    "perspective",
+    "clip-path",
+    "mask-image",
+    "offset-path",
+    "view-transition-name",
+  ].some((name) => cs.getPropertyValue(name) !== "none");
+}
+
+/**
+ * The level at which the box of `cs` paints in the stacking context around it, when it starts
+ * one of its own: its z-index when positioned, else 0. 0 is never above the true level here, as
+ * negative z-indexes are refused before.
+ */
+function stackLevel(cs: CSSStyleDeclaration): number {
+  return cs.getPropertyValue("position") === "static" ? 0 : (zIndex(cs) ?? 0);
+}
+
+/**
  * The canvas as an overlay candidate, or null: in the frame document, positioned, drawn as is
- * (no border, padding, transparency, blending or rotation, itself or above it), clipped only by
- * rectangles, and with no box of positive z-index written before it in a stacking context it sits
- * in. Whether anything paints after it is known once the walk ends.
+ * (no border, padding, transparency, blending, rotation or flip, itself or above it; scale and
+ * translation only), clipped only by rectangles, and in every stacking context it sits in, at a
+ * level no box written before it rises above. Whether anything paints after it is known once
+ * the walk ends.
  */
 function overlayOf(
   walk: Walk,
@@ -572,17 +618,23 @@ function overlayOf(
   if (!view.top || canvas.width === 0 || canvas.height === 0) return null;
   const position = cs.getPropertyValue("position");
   if (position === "static" || (zIndex(cs) ?? 0) < 0) return null;
-  if (!plainPaint(cs) || cs.getPropertyValue("object-fit") !== "fill") return null;
+  if (!plainPaint(cs) || !upright(cs) || cs.getPropertyValue("object-fit") !== "fill") return null;
   if (SIDES.some((side) => px(cs, `border-${side}-width`) > 0 || px(cs, `padding-${side}`) > 0)) return null;
   const clip = { ...view.viewport };
   // Overflow clips what has its containing block inside the clipping box: walking up, an
   // absolutely positioned box skips static ancestors, a fixed one all but those that contain it.
   let mode = position;
+  // The level of the canvas's branch in the stacking context of the entry being looked at: that
+  // of the outermost box below it that may start a context of its own, else the canvas's.
+  let level = stackLevel(cs);
   for (let i = walk.path.length - 1; i >= 0; i--) {
-    const { el, cs: style, raised } = walk.path[i] as PathEntry;
+    const { el, cs: style, raised, stacks } = walk.path[i] as PathEntry;
+    // A box of a higher level written before paints over the canvas.
+    if (raised > level) return null;
+    if (stacks) level = stackLevel(style);
     // Transparency, filters and masks apply to every descendant, containing block or not; with
     // will-change, whether it contains the canvas is unclear.
-    if (raised || !plainPaint(style) || style.getPropertyValue("transform") !== "none") return null;
+    if (!plainPaint(style) || !upright(style) || (zIndex(style) ?? 0) < 0) return null;
     if (style.getPropertyValue("will-change") !== "auto") return null;
     const ancestorPosition = style.getPropertyValue("position");
     const contains =
@@ -599,13 +651,17 @@ function overlayOf(
     if (!clipX && !clipY) continue;
     if (roundedCorners(style) || style.getPropertyValue("overflow-clip-margin") !== "0px") return null;
     const r = el.getBoundingClientRect();
+    // Borders in CSS px of the viewport: the client rect is scaled with the box, its borders too.
+    const box = el as HTMLElement;
+    const kx = box.offsetWidth > 0 ? r.width / box.offsetWidth : 1;
+    const ky = box.offsetHeight > 0 ? r.height / box.offsetHeight : 1;
     if (clipX) {
-      clip.left = Math.max(clip.left, r.left + px(style, "border-left-width"));
-      clip.right = Math.min(clip.right, r.right - px(style, "border-right-width"));
+      clip.left = Math.max(clip.left, r.left + px(style, "border-left-width") * kx);
+      clip.right = Math.min(clip.right, r.right - px(style, "border-right-width") * kx);
     }
     if (clipY) {
-      clip.top = Math.max(clip.top, r.top + px(style, "border-top-width"));
-      clip.bottom = Math.min(clip.bottom, r.bottom - px(style, "border-bottom-width"));
+      clip.top = Math.max(clip.top, r.top + px(style, "border-top-width") * ky);
+      clip.bottom = Math.min(clip.bottom, r.bottom - px(style, "border-bottom-width") * ky);
     }
   }
   const r = canvas.getBoundingClientRect();
@@ -613,11 +669,10 @@ function overlayOf(
 }
 
 /** The `src` of a canvas clone: its pixels, or a token while it may be drawn over the snapshot instead. */
-function canvasSource(walk: Walk, canvas: HTMLCanvasElement, cs: CSSStyleDeclaration, view: DocView): string {
-  const overlay = overlayOf(walk, canvas, cs, view);
+function canvasSource(walk: Walk, canvas: HTMLCanvasElement, overlay: CanvasOverlay | null): string {
   if (!overlay) return canvasDataUrl(canvas);
   const index = walk.canvases.push(null) - 1;
-  walk.overlay = { ...overlay, index };
+  walk.overlays.push({ ...overlay, index });
   return `\uE000k${index}\uE001`;
 }
 
@@ -822,17 +877,17 @@ function pseudoRules(walk: Walk, el: Element, view: DocView, inherited: Inherite
 function emitText(walk: Walk, node: Node, shift: { x: number; y: number } | null): void {
   const text = escapeText(node.nodeValue ?? "");
   if (!text) return;
-  if (walk.overlay && text.trim()) dropOverlay(walk);
+  if (walk.overlays.length > 0 && text.trim()) dropOverlays(walk);
   if (shift) walk.out.push(`<span style="position:relative;left:${shift.x}px;top:${shift.y}px">${text}</span>`);
   else walk.out.push(text);
 }
 
-/** Marks the stacking context a box with a positive z-index sits in (the frame document only). */
-function raise(walk: Walk): void {
+/** Records a box of z-index `z` > 0 in the stacking context it sits in (the frame document only). */
+function raise(walk: Walk, z: number): void {
   for (let i = walk.path.length - 1; i >= 0; i--) {
     const entry = walk.path[i] as PathEntry;
     if (entry.context) {
-      entry.raised = true;
+      entry.raised = Math.max(entry.raised, z);
       return;
     }
   }
@@ -870,7 +925,8 @@ function* emitElement(
   const hollow = !svg && hollowable(walk, el, cs, view, context);
   if (hollow) walk.stats.culled++;
   walk.stats.elements++;
-  if (view.top && (zIndex(cs) ?? 0) > 0) raise(walk);
+  const z = zIndex(cs) ?? 0;
+  if (view.top && z > 0) raise(walk, z);
 
   const override: Record<string, string> = {};
   const overflowX = cs.getPropertyValue("overflow-x");
@@ -906,11 +962,15 @@ function* emitElement(
   if (!XML_NAME.test(tag)) tag = "span";
   const replaced = !svg && (local === "canvas" || local === "video" || local === "iframe");
   if (replaced && local !== "iframe") tag = "img";
-  // Anything drawn after the overlay candidate may cover it: the candidate goes into the image.
-  if (walk.overlay && paintsBox(cs, svg || replaced || VOID.has(local))) dropOverlay(walk);
+  const canvas = local === "canvas" && !svg ? (el as HTMLCanvasElement) : null;
+  const overlay = canvas ? overlayOf(walk, canvas, cs, view) : null;
+  // Anything else drawn after the overlay candidates may cover them: they go into the image. A
+  // canvas drawn over the image too keeps them, as it is drawn after them.
+  const covers = !overlay && walk.overlays.length > 0;
+  if (covers && paintsBox(cs, svg || replaced || VOID.has(local))) dropOverlays(walk);
   const xmlns = ns !== parentNs ? ` xmlns="${ns}"` : "";
   const pseudo = svg || replaced || VOID.has(local) ? null : pseudoRules(walk, el, view, inherited);
-  if (pseudo) dropOverlay(walk);
+  if (pseudo) dropOverlays(walk);
   const cls = pseudo ? ` class="${pseudo}"` : "";
   const style = styleBody ? ` style="${escapeAttr(embedCssUrls(walk, styleBody, "c"))}"` : "";
   let attrs = attributes(walk, el);
@@ -918,8 +978,8 @@ function* emitElement(
     const img = el as HTMLImageElement;
     const src = img.currentSrc || img.src;
     attrs += src && !src.startsWith("#") ? embedUrl(walk, src, "i", imageFallback(img)) : ` src="${BLANK_IMAGE}"`;
-  } else if (local === "canvas" && !svg) {
-    attrs = ` src="${canvasSource(walk, el as HTMLCanvasElement, cs, view)}"`;
+  } else if (canvas) {
+    attrs = ` src="${canvasSource(walk, canvas, overlay)}"`;
   } else if (local === "video" && !svg) {
     attrs = ` src="${videoDataUrl(el as HTMLVideoElement)}"`;
   }
@@ -953,7 +1013,10 @@ function* emitElement(
       HOLLOW_DISPLAYS.has(cs.getPropertyValue("display")) &&
       !cs.getPropertyValue("align-self").includes("baseline");
     const childContext = inert && hollowContext(cs);
-    if (view.top) walk.path.push({ el, cs, context: walk.path.length === 0 || stackingContext(cs), raised: false });
+    if (view.top) {
+      const root = walk.path.length === 0;
+      walk.path.push({ el, cs, context: root || stackingContext(cs), stacks: root || mayStack(cs), raised: 0 });
+    }
     for (let i = 0; i < children.length; i++) {
       const child = children[i] as Node;
       if (child.nodeType === 1) {
@@ -1197,7 +1260,7 @@ async function walkFrame(
     urls: [],
     urlIndex: new Map(),
     canvases: [],
-    overlay: null,
+    overlays: [],
     path: [],
     watch,
     deadline: 0,
@@ -1231,13 +1294,14 @@ async function walkFrame(
  *
  * Only what can show is written: subtrees away from the viewport are left out (out of flow) or
  * written as empty boxes of their size (in flow), and boxes under a frame that covers the viewport
- * are left out. The topmost canvas (the cursor layer) is returned as the overlay rather than
- * encoded into the image when nothing paints after it. The walk pauses every few milliseconds and
- * starts over if the page changed meanwhile.
+ * are left out. The canvases painted last (the cursor layer, and a WebGL model under it) are
+ * returned as overlays rather than encoded into the image when nothing else paints after them. The
+ * walk pauses every few milliseconds and starts over if the page changed meanwhile.
  *
  * Known limits: pseudo-elements other than `::before`/`::after` (custom `::marker`,
  * `::first-letter`) fall back to defaults; cross-origin images without CORS are left blank;
- * WebGL canvases show what `toDataURL` returns at capture time; `position: sticky` does not stick;
+ * WebGL canvases show what `toDataURL` (in the image) or `drawImage` (as overlays) returns at
+ * capture time; `position: sticky` does not stick;
  * SMIL animations of keyword attributes (enumerations, `preserveAspectRatio`, `orient`) show the
  * base value; ink reaching more than {@link INK_MARGIN} px past the boxes of a subtree away from
  * the viewport (a huge shadow, a fixed-position pseudo-element) is not drawn.
@@ -1262,8 +1326,7 @@ export async function snapshotFrame(
     }
   }
   const fonts = await fontCss(walk, source, docs);
-  const candidate = walk.overlay;
-  if (candidate) walk.canvases[candidate.index] = BLANK_IMAGE;
+  for (const { index } of walk.overlays) walk.canvases[index] = BLANK_IMAGE;
   const data = await Promise.all(walk.urls.map(({ url, fallback }) => resources.resolve(url, fallback)));
   walk.out.splice(1, 0, sheet(walk.rules, fonts, sharedRules(walk, data)));
   walk.out.push("</div>");
@@ -1275,15 +1338,13 @@ export async function snapshotFrame(
   const svg =
     `<svg xmlns="${SVG_NS}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
     `<foreignObject x="0" y="0" width="${width}" height="${height}">${markup}</foreignObject></svg>`;
-  const overlay = candidate
-    ? {
-        canvas: candidate.canvas,
-        x: candidate.x,
-        y: candidate.y,
-        width: candidate.width,
-        height: candidate.height,
-        clip: candidate.clip,
-      }
-    : null;
-  return { svg, stats: walk.stats, overlay };
+  const overlays = walk.overlays.map(({ canvas, x, y, width: w, height: h, clip }) => ({
+    canvas,
+    x,
+    y,
+    width: w,
+    height: h,
+    clip,
+  }));
+  return { svg, stats: walk.stats, overlays };
 }
