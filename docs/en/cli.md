@@ -170,7 +170,7 @@ Capture a web page as Blueprint JSON that the player, `<swarm-loom>` and Studio 
 Local HTML files are treated as untrusted:
 
 - The page's own scripts do not run; the capture shows what its HTML and CSS produce;
-- Only the file itself and the images, fonts, style sheets, media and similar assets next to it (subfolders included) are served, the same set `render` serves. Other files in that folder and dotfiles such as `.env` are not;
+- Only the file itself and the images, fonts, style sheets, media and similar assets next to it (subfolders included) are served, the same set `render` serves. Other files in that folder, dotfiles such as `.env`, and symlinks that point outside the folder or at such files are not;
 - From other sites only `https:` images and fonts load. Every other request is blocked; the CLI reports how many, and `--verbose` lists each one.
 
 Web page URLs run their scripts as usual.

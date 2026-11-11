@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { get } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -197,6 +197,12 @@ describe("static server paths", () => {
 });
 
 describe("static server input mount", () => {
+  // node:http rather than fetch: the unit project's DOM environment replaces fetch.
+  const status = (url: URL) =>
+    new Promise<number | undefined>((resolve, reject) =>
+      get(url, (res) => resolve(res.resume().statusCode)).on("error", reject),
+    );
+
   it("publishes only sibling assets, never documents, scripts or dotfiles", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "swarmloom-mount-"));
     await mkdir(path.join(dir, "img"));
@@ -208,11 +214,6 @@ describe("static server input mount", () => {
       mounts: [{ prefix: "/input/tok/", dir, accept: isSiblingAsset }],
     });
     try {
-      // node:http rather than fetch: the unit project's DOM environment replaces fetch.
-      const status = (p: string) =>
-        new Promise<number | undefined>((resolve, reject) =>
-          get(new URL(p, server.url), (res) => resolve(res.resume().statusCode)).on("error", reject),
-        );
       expect(
         await Promise.all(
           [
@@ -221,12 +222,44 @@ describe("static server input mount", () => {
             "/input/tok/.hidden.png",
             "/input/tok/",
             "/input/x/img/shot.png",
-          ].map(status),
+          ].map((p) => status(new URL(p, server.url))),
         ),
       ).toEqual([200, 404, 404, 404, 404]);
     } finally {
       await server.close();
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves a symlink only when its target is a published file inside the folder", async () => {
+    const top = await mkdtemp(path.join(tmpdir(), "swarmloom-link-"));
+    const dir = path.join(top, "site");
+    await mkdir(dir);
+    await writeFile(path.join(top, "secret.txt"), "TOP-SECRET");
+    await writeFile(path.join(dir, "notes.md"), "x");
+    await writeFile(path.join(dir, "shot.png"), "x");
+    for (const [name, target] of [
+      ["leak.png", path.join(top, "secret.txt")],
+      ["alias.png", "notes.md"],
+      ["link.png", "shot.png"],
+    ]) {
+      await symlink(target, path.join(dir, name));
+    }
+    const server = await startStaticServer({
+      root: dir,
+      mounts: [{ prefix: "/input/tok/", dir, accept: isSiblingAsset }],
+    });
+    try {
+      expect(
+        await Promise.all(
+          ["/input/tok/leak.png", "/input/tok/alias.png", "/input/tok/link.png", "/leak.png", "/link.png"].map((p) =>
+            status(new URL(p, server.url)),
+          ),
+        ),
+      ).toEqual([404, 404, 200, 404, 200]);
+    } finally {
+      await server.close();
+      await rm(top, { recursive: true, force: true });
     }
   });
 });

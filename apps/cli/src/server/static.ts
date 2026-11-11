@@ -1,5 +1,5 @@
 import { createReadStream, type Stats } from "node:fs";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -46,7 +46,10 @@ export function contentType(file: string): string {
 }
 
 export interface StaticServerOptions {
-  /** Directory to serve under `base`. Nothing outside it is ever readable. Omit to serve only `files` and `mounts`. */
+  /**
+   * Directory to serve under `base`. Nothing outside it is ever readable, symlinks included. Omit to
+   * serve only `files` and `mounts`.
+   */
   root?: string;
   /** Interface to bind. Default 127.0.0.1 (loopback only). */
   host?: string;
@@ -67,7 +70,10 @@ export interface StaticServerOptions {
   headers?: Readonly<Record<string, string>>;
 }
 
-/** A directory outside `root` published read-only under `prefix` (no listings, no index files). */
+/**
+ * A directory outside `root` published read-only under `prefix` (no listings, no index files). A symlink
+ * is served only when its target is inside `dir` and passes the same filters.
+ */
 export interface StaticMount {
   /** URL path prefix starting and ending with "/", e.g. "/input/x7Q/". */
   prefix: string;
@@ -116,6 +122,33 @@ async function fileStats(file: string): Promise<Stats | null> {
   }
 }
 
+/** A regular file found by {@link realFileWithin}: its symlink-free path and its location under the directory. */
+interface RealFile {
+  file: string;
+  relative: string;
+  stats: Stats;
+}
+
+/**
+ * Resolves symlinks in `file` and accepts it only when it is a regular file that still sits inside
+ * `dir` (itself resolved too). Lexical checks alone would let a symlink, which git clones and zip
+ * archives keep, publish any file on disk.
+ * @returns The resolved file, or null when it is missing, not a file, or outside `dir`.
+ */
+async function realFileWithin(dir: string, file: string): Promise<RealFile | null> {
+  try {
+    const [realDir, realFile] = await Promise.all([realpath(dir), realpath(file)]);
+    const relative = path.relative(realDir, realFile);
+    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      return null;
+    }
+    const stats = await stat(realFile);
+    return stats.isFile() ? { file: realFile, relative, stats } : null;
+  } catch {
+    return null;
+  }
+}
+
 const HEADERS = { "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" } as const;
 
 type Headers = Readonly<Record<string, string>>;
@@ -152,14 +185,15 @@ async function sendMounted(
 ) {
   const file = resolveRequestPath(mount.dir, mount.prefix, urlPath);
   const relative = file ? path.relative(path.resolve(mount.dir), file) : "";
-  const stats = file && !hasDotSegment(relative) && mount.accept(file) ? await fileStats(file) : null;
-  if (!file || !stats?.isFile()) {
+  const found = file && !hasDotSegment(relative) && mount.accept(file) ? await realFileWithin(mount.dir, file) : null;
+  // The link target must pass the same filter: a "logo.png" link to "notes.md" stays private.
+  if (!file || !found || hasDotSegment(found.relative) || !mount.accept(found.file)) {
     res.writeHead(404).end("Not found");
     return;
   }
-  res.writeHead(200, { ...headers, "Content-Type": contentType(file), "Content-Length": stats.size });
+  res.writeHead(200, { ...headers, "Content-Type": contentType(file), "Content-Length": found.stats.size });
   if (req.method === "HEAD") res.end();
-  else streamFile(file, res);
+  else streamFile(found.file, res);
 }
 
 function streamFile(file: string, res: ServerResponse): void {
@@ -204,22 +238,19 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
       res.writeHead(404).end("Not found");
       return;
     }
-    let stats = await fileStats(file);
-    if (stats?.isDirectory()) {
-      file = path.join(file, "index.html");
-      stats = await fileStats(file);
-    }
-    if (!stats?.isFile() && opts.fallback && path.extname(urlPath) === "") {
+    if ((await fileStats(file))?.isDirectory()) file = path.join(file, "index.html");
+    let found = await realFileWithin(root, file);
+    if (!found && opts.fallback && path.extname(urlPath) === "") {
       file = path.join(root, opts.fallback);
-      stats = await fileStats(file);
+      found = await realFileWithin(root, file);
     }
-    if (!stats?.isFile()) {
+    if (!found) {
       res.writeHead(404).end("Not found");
       return;
     }
-    res.writeHead(200, { ...headers, "Content-Type": contentType(file), "Content-Length": stats.size });
+    res.writeHead(200, { ...headers, "Content-Type": contentType(file), "Content-Length": found.stats.size });
     if (req.method === "HEAD") res.end();
-    else streamFile(file, res);
+    else streamFile(found.file, res);
   }
 
   const server = createServer((req, res) => {
