@@ -232,8 +232,10 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   if (evidence.audioOut && !settings.sound) {
     throw new UsageError("--audio-out needs sound: drop --no-sound and use mp4, webm or png-seq");
   }
-  const files = [output, evidence.audioOut, evidence.eventsOut, evidence.manifestOut].filter(Boolean);
-  if (new Set(files).size !== files.length) {
+  const files = [output, evidence.audioOut, evidence.eventsOut, evidence.manifestOut].filter(
+    (file): file is string => file !== undefined,
+  );
+  if (new Set(files.map(sameFileKey)).size !== files.length) {
     throw new UsageError("--output, --audio-out, --events-out and --manifest-out must be different files");
   }
 
@@ -258,6 +260,15 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     quiet: values.quiet ?? false,
     verbose: values.verbose ?? false,
   };
+}
+
+/**
+ * Comparison key for "is this the same file?": NTFS and default APFS volumes ignore case (APFS also
+ * Unicode normalization), so `take.mp4` and `TAKE.MP4` name one file there. Folding on every platform
+ * rejects case-only twins on case-sensitive volumes too, which is harmless next to overwriting the video.
+ */
+function sameFileKey(file: string): string {
+  return file.normalize("NFC").toLowerCase();
 }
 
 const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish)$/;
