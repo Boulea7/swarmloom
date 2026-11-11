@@ -34,11 +34,12 @@ const NAMED_ELEMENTS = "img[name],img[id],form[name],form[id],embed[name],embed[
 
 /**
  * Content Security Policy of the capture frame. Scripts, connections, forms, frames, workers and
- * plugins are always off. Images and fonts may come from data:, blob: and, with the default
- * "https" policy, any https: URL; style sheets and media only from data: and blob:.
+ * plugins are always off. Images and fonts may come from data:, blob:, the local origin of a plain
+ * http `baseUrl` (see `localOrigin`) and, with the default "https" policy, any https: URL; style
+ * sheets and media only from data: and blob:.
  */
-export function contentSecurityPolicy(opts: Pick<PrepareOptions, "network"> = {}): string {
-  const remote = sourceList(opts.network ?? "https");
+export function contentSecurityPolicy(opts: Pick<PrepareOptions, "network" | "baseUrl"> = {}): string {
+  const remote = sourceList(opts.network ?? "https", opts.baseUrl);
   return [
     "default-src 'none'",
     `img-src ${remote}`,
@@ -148,7 +149,10 @@ export function prepareDocument(html: string, win: Window, opts: PrepareOptions 
   for (const old of Array.from(head.querySelectorAll("meta[charset]"))) old.remove();
   const nodes: Node[] = [
     meta(doc, { charset: "utf-8" }),
-    meta(doc, { "http-equiv": "Content-Security-Policy", content: contentSecurityPolicy(opts) }),
+    meta(doc, {
+      "http-equiv": "Content-Security-Policy",
+      content: contentSecurityPolicy({ network: opts.network, baseUrl: base }),
+    }),
     meta(doc, { name: "referrer", content: "no-referrer" }),
   ];
   if (base) {
