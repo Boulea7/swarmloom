@@ -5,8 +5,8 @@ description: SwarmLoom rendering budgets, virtualisation, resource management an
 
 # Performance
 
-::: warning Measurement status
-`pnpm bench` is currently a placeholder. No reproducible FPS, long-task or memory benchmark has been published. Numbers on this page are design budgets, not measured claims.
+::: info Measurement status
+The numbers on this page are design budgets. `pnpm bench` measures snapshot time, frame rate, long tasks, stage nodes and heap on a demo page and a synthetic page of about 4,400 layers and checks looser regression budgets; the scenarios and the latest results are on [Benchmarks](./benchmarks.md). Those results come from one shared Linux machine and do not prove the targets on every device.
 :::
 
 ## Design budgets
@@ -87,10 +87,10 @@ A comparable report includes:
 
 Do not upload private source documents or full profiles. Create a minimal, redacted reproduction first.
 
-## Planned benchmark command
+## Benchmark command
 
 ```bash
 pnpm bench
 ```
 
-The finished benchmark will record FPS, long tasks and heap memory, with public samples, environments and raw results. Until then, the placeholder's successful exit is not evidence that performance passed.
+It runs the benchmark scenarios in headless Chromium and exits with status 1 when a regression budget fails. Run it alone on an idle machine; options, budgets and the latest results are on [Benchmarks](./benchmarks.md).
