@@ -134,8 +134,10 @@ export function createOdfAdapter(options: OdfAdapterOptions = {}): DocumentAdapt
           ...(options.snapshotHtml ? { snapshotHtml: options.snapshotHtml } : {}),
           ...(budget.dropped > 0 ? { truncated: { reason: what, dropped: budget.dropped } } : {}),
         });
-        return loaded(blueprint, [fonts.note(), ...kindNotes(pkg.kind, render.stats, pkg.missingImages)], () =>
-          assets.revokeAll(),
+        return loaded(
+          blueprint,
+          [fonts.note(ctx.document), ...kindNotes(pkg.kind, render.stats, pkg.missingImages)],
+          () => assets.revokeAll(),
         );
       } catch (error) {
         assets.revokeAll();

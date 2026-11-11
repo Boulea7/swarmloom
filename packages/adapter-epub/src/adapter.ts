@@ -281,10 +281,14 @@ export function createEpubAdapter(options: EpubAdapterOptions = {}): DocumentAda
           },
         );
         const remove = removeFonts;
-        return loaded(blueprint, [outlineNote(book.toc), fonts.note(), ...statsNotes(renderer.stats, failed)], () => {
-          remove();
-          assets.revokeAll();
-        });
+        return loaded(
+          blueprint,
+          [outlineNote(book.toc), fonts.note(ctx.document), ...statsNotes(renderer.stats, failed)],
+          () => {
+            remove();
+            assets.revokeAll();
+          },
+        );
       } catch (error) {
         removeFonts();
         assets.revokeAll();

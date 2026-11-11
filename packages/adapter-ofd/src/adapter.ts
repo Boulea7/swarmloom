@@ -100,7 +100,7 @@ export function createOfdAdapter(options: OfdAdapterOptions = {}): DocumentAdapt
             ? { truncated: { reason: "Long document: only the first pages were woven.", dropped: budget.dropped } }
             : {}),
         });
-        return loaded(blueprint, [fonts.note(), ...notes(pkg, render.stats)], () => assets.revokeAll());
+        return loaded(blueprint, [fonts.note(ctx.document), ...notes(pkg, render.stats)], () => assets.revokeAll());
       } catch (error) {
         assets.revokeAll();
         throw error;

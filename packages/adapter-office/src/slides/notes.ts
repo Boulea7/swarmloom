@@ -6,8 +6,11 @@
 import type { FontLog } from "../shared/fonts";
 import type { Presentation } from "./model";
 
-/** Builds the notes for `OfficeLoadedSource.notes` (empty when the deck converted fully). */
-export function slideNotes(pres: Presentation, fonts: FontLog): string[] {
+/**
+ * Builds the notes for `OfficeLoadedSource.notes` (empty when the deck converted fully).
+ * `doc` is the document the slides are shown in; fonts it can draw are not reported.
+ */
+export function slideNotes(pres: Presentation, fonts: FontLog, doc: Document): string[] {
   const notes: string[] = [];
   const placeholders = new Map<string, number>();
   const broken: number[] = [];
@@ -28,7 +31,7 @@ export function slideNotes(pres: Presentation, fonts: FontLog): string[] {
       `Slide${plural ? "s" : ""} ${list} could not be read and ${plural ? "are" : "is"} shown as a placeholder.`,
     );
   }
-  const fontNote = fonts.note();
+  const fontNote = fonts.note(doc);
   if (fontNote) notes.push(fontNote);
   return notes;
 }

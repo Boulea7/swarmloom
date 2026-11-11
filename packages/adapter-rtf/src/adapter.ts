@@ -91,7 +91,7 @@ export function createRtfAdapter(options: RtfAdapterOptions = {}): DocumentAdapt
             ? { truncated: { reason: "Long document: only the first pages were woven.", dropped: budget.dropped } }
             : {}),
         });
-        return loaded(blueprint, [fonts.note(), ...rtfNotes(doc, render.stats.missingImages)], () =>
+        return loaded(blueprint, [fonts.note(ctx.document), ...rtfNotes(doc, render.stats.missingImages)], () =>
           assets.revokeAll(),
         );
       } catch (error) {

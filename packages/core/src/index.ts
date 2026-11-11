@@ -6,6 +6,7 @@
 
 export type { RealtimeClockOptions } from "./clock";
 export { RealtimeClock, VirtualClock } from "./clock";
+export { missingFonts } from "./font-probe";
 export type { FontFallback, GenericFontFamily, ResolvedFontFamily } from "./fonts";
 export { cleanFontFamily, FONT_FALLBACKS, formatFontFamily, resolveFontFamily } from "./fonts";
 export type { Locale } from "./i18n/index";
