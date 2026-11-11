@@ -296,6 +296,23 @@ describe("snapshotHtml", () => {
     expect(w.__pwned).toBeUndefined();
   });
 
+  it("copies verbatim markup whole for the blueprint CSS to lay out", async () => {
+    const bp = await snapshotHtml(
+      '<p>Sum <span class="f" data-swarmloom-verbatim style="background:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)">' +
+        '<span class="up">k</span><svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 0h10" onclick="x()"></path></svg></span> end</p>' +
+        '<div role="math"><span class="d" data-swarmloom-verbatim><span class="up">n</span></span></div>',
+      { width: 400, css: ".up{display:block;position:relative;top:-0.5em}.d{display:block;margin:1em 0}" },
+    );
+    expect(texts(bp).map((t) => [t.text, t.role, t.html])).toEqual([
+      [
+        "Sum k end",
+        "paragraph",
+        'Sum <span class="f"><span class="up">k</span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10" height="10"><path d="M0 0h10"></path></svg></span> end',
+      ],
+      ["n", "math", '<span class="d" style="margin:0;"><span class="up">n</span></span>'],
+    ]);
+  });
+
   it("rejects invalid widths and removes the sandbox when aborted", async () => {
     await expect(snapshotHtml("<p>x</p>", { width: 0 })).rejects.toThrow(RangeError);
     const ctrl = new AbortController();

@@ -93,6 +93,9 @@ describe("markdownToHtml: GFM", () => {
     expect(dom.querySelector(".loom-math .katex")).not.toBeNull();
     expect(dom.querySelector(".loom-math-block .katex-display")).not.toBeNull();
     expect(dom.querySelector(".katex-mathml")).toBeNull();
+    // snapshot-dom copies KaTeX's markup as-is; its computed styles cannot rebuild the layout.
+    expect(dom.querySelectorAll(".loom-math > .katex[data-swarmloom-verbatim]")).toHaveLength(1);
+    expect(dom.querySelectorAll(".loom-math-block > .katex-display[data-swarmloom-verbatim]")).toHaveLength(1);
     expect(css).toMatch(/@font-face\{font-family:KaTeX_Main;[^}]*data:font\/woff2;base64,/);
     expect(fonts.some((f) => f.family === "KaTeX_Math")).toBe(true);
   });
@@ -147,7 +150,7 @@ describe("markdownToHtml: safety", () => {
     expect(warnings.filter((w) => /unsafe URL/.test(w))).toHaveLength(2);
   });
 
-  it("loads https images by default, never http, and none when remote images are off", async () => {
+  it("loads https images by default, http only from the document's server, none when remote images are off", async () => {
     const md = '![a](https://x.dev/a.png) ![b](http://x.dev/b.png) <img src="https://x.dev/c.png" alt="c">';
     const on = await render(md);
     expect(Array.from(on.dom.querySelectorAll("img"), (i) => i.getAttribute("src"))).toEqual([
@@ -158,6 +161,14 @@ describe("markdownToHtml: safety", () => {
     expect(off.dom.querySelectorAll("img")).toHaveLength(0);
     expect(off.dom.querySelectorAll(".loom-blocked")).toHaveLength(3);
     expect(off.warnings.filter((w) => w.includes("remote images are off"))).toHaveLength(2);
+    // The CLI serves the input folder over http on loopback: relative images stay on that origin.
+    const local = await render(md.replace("https://x.dev/a.png", "./img/a.png"), {
+      baseUrl: "http://127.0.0.1:4100/input/t/doc.md",
+    });
+    expect(Array.from(local.dom.querySelectorAll("img"), (i) => i.getAttribute("src"))).toEqual([
+      "http://127.0.0.1:4100/input/t/img/a.png",
+      "https://x.dev/c.png",
+    ]);
   });
 
   it("maps relative images through the asset resolver (dropped folders)", async () => {

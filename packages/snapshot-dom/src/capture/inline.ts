@@ -1,4 +1,14 @@
-import { FORM_TAGS, IGNORE_ATTR, isElement, isText, MATHML_NS, MEDIA_ATTR, MEDIA_TAGS, SKIP_TAGS } from "../dom/env";
+import {
+  FORM_TAGS,
+  IGNORE_ATTR,
+  isElement,
+  isText,
+  MATHML_NS,
+  MEDIA_ATTR,
+  MEDIA_TAGS,
+  SKIP_TAGS,
+  VERBATIM_ATTR,
+} from "../dom/env";
 import { px } from "../util/css";
 import { isInlinePseudo, pseudoOf } from "./pseudo-info";
 import { type Capture, childrenOf, type ElInfo, type FlatChild, type InlineFacts, infoOf, rectOf } from "./state";
@@ -54,6 +64,11 @@ export function isMath(el: Element): boolean {
   return el.namespaceURI === MATHML_NS && el.localName === "math";
 }
 
+/** Element whose markup is copied as-is (see {@link VERBATIM_ATTR}). */
+export function isVerbatim(el: Element): boolean {
+  return el.hasAttribute(VERBATIM_ATTR);
+}
+
 /** Classifies a flat child of `parent`. Reads styles through the per-snapshot cache. */
 export function classify(cap: Capture, child: FlatChild, parent: ElInfo): ChildClass {
   const node = child.node;
@@ -100,6 +115,11 @@ function isAtom(el: Element): boolean {
  */
 export function inlineFacts(cap: Capture, info: ElInfo): InlineFacts {
   if (info.facts) return info.facts;
+  if (isVerbatim(info.el)) {
+    // Copied whole: its inner blocks are the caller's layout, not blocks of the page.
+    info.facts = { onlyInline: true, hasText: hasVisibleText(info.el.textContent ?? "") };
+    return info.facts;
+  }
   const facts: InlineFacts = { onlyInline: true, hasText: false };
   info.facts = facts;
   for (const which of ["before", "after"] as const) {

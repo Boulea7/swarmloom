@@ -167,10 +167,21 @@ export function assetPath(url: string): string {
   return out.join("/");
 }
 
+/** True when `url` has the same origin as `base` (for `http:`, the server the document came from). */
+function sameOrigin(url: string, base: string | undefined): boolean {
+  if (!base) return false;
+  try {
+    return new URL(url).origin === new URL(base).origin;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * An image source safe to load, or undefined. Allowed: raster/SVG data: URLs, blob: URLs,
- * `https:` (unless `policy.remote` is false) and `file:` when the document itself is a local file.
- * Plain `http:` is refused: it would be mixed content in the Studio and leak the reader's address.
+ * `https:` (unless `policy.remote` is false), `file:` when the document itself is a local file and
+ * `http:` on the document's own origin (such as the CLI's local server for the input folder).
+ * Other plain `http:` is refused: it would be mixed content in the Studio and leak the reader's address.
  */
 export function safeImageSrc(url: string, base?: string, policy: ImagePolicy = {}): string | undefined {
   const v = url.trim();
@@ -182,6 +193,7 @@ export function safeImageSrc(url: string, base?: string, policy: ImagePolicy = {
   if (scheme === "blob") return resolved;
   if (scheme === "https") return policy.remote === false ? undefined : resolved;
   if (scheme === "file") return base !== undefined && schemeOf(base) === "file" ? resolved : undefined;
+  if (scheme === "http") return sameOrigin(resolved, base) ? resolved : undefined;
   return undefined;
 }
 

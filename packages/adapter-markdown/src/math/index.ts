@@ -28,6 +28,15 @@ export interface MathAssets {
 /** Formulas longer than this are reported as errors instead of rendered. */
 const MAX_TEX = 8000;
 
+/**
+ * Marks KaTeX's root element (`.katex`, or `.katex-display` in display mode) so snapshot-dom keeps
+ * its markup: KaTeX positions glyphs with nested tables, struts and relative offsets that only its
+ * own style sheet (passed on as Blueprint.css) can reproduce on the stage.
+ */
+function markVerbatim(html: string): string {
+  return html.replace(/^<span class="([^"]*)"/, '<span class="$1" data-swarmloom-verbatim=""');
+}
+
 interface FaceRule {
   family: string;
   weight: string;
@@ -133,7 +142,7 @@ export function createMathEngine(
           maxSize: 40,
           maxExpand: 500,
         });
-        return { html };
+        return { html: markVerbatim(html) };
       } catch (error) {
         return { error: error instanceof Error ? error.message : String(error) };
       }
