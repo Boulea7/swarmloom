@@ -2,11 +2,11 @@
 /**
  * End-to-end render tests: bundle the CLI, run it as a real process against a real browser and ffmpeg,
  * and inspect the result with ffprobe. Skipped (with the reason) when the machine lacks Chrome or ffmpeg;
- * the tests on the real render page also skip while its build is missing or older than the sources,
+ * the tests on the real render page also skip while its build is missing or older than its inputs,
  * except under CI, which builds before testing: there that is a broken pipeline and the tests fail.
  */
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it, type TestContext } from "vit
 import { findBrowser } from "../src/discovery/browser";
 import { findFfmpeg, systemFfmpegDeps } from "../src/discovery/ffmpeg";
 import { systemHost, which } from "../src/discovery/host";
+import { renderPageProblem } from "./real-deps";
 
 const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
 const REPO = path.resolve(CLI_DIR, "../..");
@@ -44,28 +45,7 @@ const missing = !chrome
       ? "no ffprobe next to ffmpeg or on PATH"
       : undefined;
 
-/**
- * Why the real render page cannot be used: it is not built, or a file under packages/<name>/src changed
- * after the build. The page bundles every package from src/, so a stale build would test old code.
- */
-function renderPageProblem(): string | undefined {
-  const page = path.join(EXPORT_RENDER_DIR, "index.html");
-  const rebuild = "run pnpm -F @swarmloom/export build";
-  if (!existsSync(page)) return `render page not built yet: ${rebuild}`;
-  const builtAt = statSync(page).mtimeMs;
-  const packages = path.join(REPO, "packages");
-  for (const name of readdirSync(packages)) {
-    const src = path.join(packages, name, "src");
-    if (!existsSync(src)) continue;
-    const files = readdirSync(src, { recursive: true, encoding: "utf8" });
-    if (files.some((file) => statSync(path.join(src, file)).mtimeMs > builtAt)) {
-      return `render page is older than packages/${name}/src: ${rebuild}`;
-    }
-  }
-  return undefined;
-}
-
-const renderPage = renderPageProblem();
+const renderPage = renderPageProblem(REPO);
 const IN_CI = /^(1|true)$/i.test(process.env.CI ?? "");
 
 /** Skips a real render page test while the page is unusable; CI must have built it, so there it fails. */
