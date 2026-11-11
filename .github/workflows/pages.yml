@@ -33,6 +33,15 @@ jobs:
       - id: pages
         uses: actions/configure-pages@v6
       # Layout: /swarmloom/ landing site, /swarmloom/docs/, /swarmloom/studio/, /swarmloom/bm/.
+      - name: Fetch website media
+        run: node apps/site/scripts/fetch-media.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build website
+        run: pnpm --filter @swarmloom/site build:offline
+        env:
+          SWARMLOOM_SITE_BASE: /swarmloom/
+          SWARMLOOM_SITE_URL: ${{ steps.pages.outputs.base_url }}
       - name: Build docs
         run: pnpm docs:build
         env:
@@ -46,16 +55,13 @@ jobs:
         run: pnpm --filter @swarmloom/bookmarklet build
         env:
           SWARMLOOM_PAGES_BASE: ${{ steps.pages.outputs.base_url }}/
-      - name: Assemble site
+      - name: Assemble Pages artifact
         run: |
           mkdir -p _site/docs _site/studio _site/bm
+          cp -R apps/site/dist/. _site/
           cp -R docs/.vitepress/dist/. _site/docs/
           cp -R apps/studio/dist/. _site/studio/
           cp -R apps/bookmarklet/dist/. _site/bm/
-          # The landing site (apps/site) is not built yet: the root forwards to the docs until it is.
-          printf '%s\n' '<!doctype html><meta charset="utf-8"><title>SwarmLoom</title>' \
-            '<meta http-equiv="refresh" content="0; url=./docs/">' \
-            '<link rel="canonical" href="./docs/"><a href="./docs/">SwarmLoom docs</a>' > _site/index.html
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

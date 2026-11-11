@@ -80,9 +80,14 @@ export default defineConfig({
   title: "SwarmLoom",
   description: "让一群光标，把它织出来。",
   base: process.env.SWARMLOOM_DOCS_BASE ?? "/swarmloom/docs/",
+  // GitHub README translations use repository-relative links and are not documentation pages.
+  srcExclude: ["i18n/**"],
   cleanUrls: true,
   lastUpdated: true,
-  head: [["meta", { name: "theme-color", content: "#5B5BF7" }]],
+  head: [
+    ["meta", { name: "theme-color", content: "#5B5BF7" }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: "/swarmloom/brand/favicon.svg" }],
+  ],
   markdown: { lineNumbers: true },
   locales: {
     root: {
