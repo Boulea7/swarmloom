@@ -95,19 +95,25 @@ describe("Studio in a browser", () => {
     expect(log.calls).toContain("play");
   });
 
-  it("seeks once per frame to the latest value while the scrubber is dragged", async () => {
+  it("previews a scrubber drag and seeks once, to where it is let go", async () => {
     const { root, log } = await mount("?example=svg-chart", true);
     (await until(() => root.querySelector<HTMLButtonElement>(".play-big"))).click();
     const seeker = root.querySelector<HTMLInputElement>(".scrub-range");
-    expect(seeker?.hidden).toBe(false);
+    if (!seeker || seeker.hidden) throw new Error("no seek slider");
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const seeks = () => log.calls.filter((c) => c.startsWith("seek:"));
+    // A seek back replays the build from the start: dragging only moves the thumb.
     for (const value of ["100", "200", "300"]) {
-      if (!seeker) break;
       seeker.value = value;
       seeker.dispatchEvent(new Event("input", { bubbles: true }));
+      await frame();
     }
-    const seeks = () => log.calls.filter((c) => c.startsWith("seek:"));
     expect(seeks()).toEqual([]);
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect([seeker.value, seeker.getAttribute("aria-valuetext")]).toEqual(["300", "30%"]);
+    // Letting go (pointerup anywhere, then change on the slider) seeks once.
+    document.body.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    seeker.dispatchEvent(new Event("change", { bubbles: true }));
+    await frame();
     expect(seeks()).toEqual(["seek:3600"]); // 300 / 1000 of the fake's 12 s plan
   });
 
