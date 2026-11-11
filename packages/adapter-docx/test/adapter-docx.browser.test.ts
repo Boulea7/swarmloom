@@ -128,6 +128,20 @@ describe.each(["preview", "plain"] as const)("DOCX sample with the %s renderer",
       sandbox.dispose();
     }
   });
+
+  it("gives single-spaced table cells Word's single line height, not 1 em", () => {
+    if (renderer !== "preview") return;
+    const sandbox = createSandbox(document, 1000);
+    try {
+      sandbox.addCss(calls[0].opts.css ?? "");
+      sandbox.root.innerHTML = calls[0].html;
+      const cell = Array.from(sandbox.root.querySelectorAll("td p")).find((p) => p.textContent === "格式 Format");
+      const style = cell && getComputedStyle(cell);
+      expect(style && Number.parseFloat(style.lineHeight) / Number.parseFloat(style.fontSize)).toBeCloseTo(1.15, 2);
+    } finally {
+      sandbox.dispose();
+    }
+  });
 });
 
 describe("DOCX layout options", () => {
