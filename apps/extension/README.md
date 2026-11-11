@@ -54,7 +54,9 @@ Every package carries `LICENSE.txt` (SwarmLoom, MIT) and `THIRD_PARTY_NOTICES.tx
 third-party package in it. The extension's own scripts contribute what esbuild actually bundled;
 the copied Studio contributes the runtime dependency closure of `@swarmloom/studio` (type-only and
 platform-binary packages left out). A package with no licence file fails the build unless it is MIT,
-whose standard text is then used. The build log prints the entry count per package (one
+whose standard text is then used. Code a dependency ships pre-bundled (core-js inside pdf.js) is
+listed from `EMBEDDED_PACKAGES`, with the version and copyright line read from the host's files;
+`check:package` fails when a shipped script carries such code and the notices do not list it. The build log prints the entry count per package (one
 `License:` line per name@version in the file).
 
 ## Commands

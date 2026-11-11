@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { auditPackage } from "../scripts/audit.mjs";
 import { placeholderIcon } from "../scripts/icons.mjs";
@@ -153,7 +153,10 @@ function fakePackage(dir: string, pkg: Record<string, unknown>, files: Record<st
   const root = join(dir, "node_modules", String(pkg.name));
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, "package.json"), JSON.stringify(pkg));
-  for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
+  for (const [name, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, name)), { recursive: true });
+    writeFileSync(join(root, name), text);
+  }
   return root;
 }
 
@@ -195,6 +198,25 @@ describe("licence notices", () => {
     }
   });
 
+  it("lists core-js, which pdf.js ships pre-bundled, with the version and copyright it records", () => {
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-notices-"));
+    try {
+      const store = `version: '3.51.0',\n  mode: IS_PURE ? 'pure' : 'global',\n  copyright: '© 2013 Denis Pushkarev'`;
+      const pdfjs = fakePackage(
+        dir,
+        { name: "pdfjs-dist", version: "6.5.438", license: "Apache-2.0" },
+        { LICENSE: "Apache licence of pdf.js", "legacy/build/pdf.mjs": `push({\n  ${store}\n});` },
+      );
+      const text = renderNotices(collectNotices([pdfjs]));
+      expect(text).toContain("core-js 3.51.0\nLicense: MIT");
+      expect(text).toContain("© 2013 Denis Pushkarev\n\nPermission is hereby granted");
+      rmSync(join(pdfjs, "legacy"), { recursive: true });
+      expect(() => collectNotices([pdfjs])).toThrow(/no core-js record/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a package without licence text it cannot reproduce, and a missing dependency", () => {
     const dir = mkdtempSync(join(tmpdir(), "swarmloom-notices-"));
     try {
@@ -224,6 +246,8 @@ describe("package audit", () => {
 
       writeFileSync(join(dir, "page.html"), '<script src="https://cdn.example/x.js"></script>');
       writeFileSync(join(dir, "background.js"), "globalThis.__swarmloomTest = {}; eval(code);");
+      writeFileSync(join(dir, "pdf.worker.mjs"), 'var r="__core-js_shared__";');
+      expect(auditPackage(dir, "chrome").join("\n")).toMatch(/pdf\.worker\.mjs: bundles core-js, which THIRD_PARTY/);
       rmSync(join(dir, NOTICES_FILE));
       const problems = auditPackage(dir, "chrome", zip).join("\n");
       expect(problems).toMatch(/page\.html: remote <script src>/);

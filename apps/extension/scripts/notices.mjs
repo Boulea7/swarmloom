@@ -33,6 +33,64 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.`;
 const RULE = "=".repeat(80);
 
 /**
+ * @typedef {object} EmbeddedPackage
+ * @property {string} name
+ * @property {string} host installed package whose files contain this one, pre-bundled
+ * @property {string} file file of the host holding `record`
+ * @property {RegExp} record matches the embedded code's version (group 1) and copyright line (group 2)
+ * @property {string} marker string every bundled copy carries, minified or not (audit.mjs looks for it)
+ * @property {string} license
+ * @property {string} source
+ */
+
+/**
+ * MIT packages that a dependency ships pre-bundled inside its own files, so they are never installed and
+ * have no licence file to read. Listed whenever their host is bundled. Keep in step with
+ * EMBEDDED_PACKAGES in scripts/release/third-party-notices.mjs (the npm package notices).
+ * @type {readonly EmbeddedPackage[]}
+ */
+export const EMBEDDED_PACKAGES = [
+  {
+    name: "core-js",
+    host: "pdfjs-dist",
+    // core-js records itself in its shared store: { version, mode, copyright, license, source }.
+    file: "legacy/build/pdf.mjs",
+    record: /\bversion:\s*["']([^"']+)["'],\s*mode:[^,]+,\s*copyright:\s*["']([^"']+)["']/,
+    marker: "__core-js_shared__",
+    license: "MIT",
+    source: "https://github.com/zloirock/core-js",
+  },
+];
+
+/**
+ * Notices of the packages `host` ships pre-bundled, with the version and copyright line read from it.
+ * @param {string} dir real path of the host package
+ * @param {any} pkg the host's package.json
+ * @returns {Notice[]}
+ * @throws Error when the host file no longer holds the record (update EMBEDDED_PACKAGES)
+ */
+function embeddedNotices(dir, pkg) {
+  return EMBEDDED_PACKAGES.filter((embedded) => embedded.host === pkg.name).map((embedded) => {
+    const path = join(dir, embedded.file);
+    const found = existsSync(path) ? readFileSync(path, "utf8").match(embedded.record) : null;
+    if (!found) {
+      throw new Error(
+        `${pkg.name}@${pkg.version}: no ${embedded.name} record in ${embedded.file}; update EMBEDDED_PACKAGES`,
+      );
+    }
+    const [, version, copyright] = found;
+    const file = `(standard MIT text; pre-bundled inside ${pkg.name}, which ships no licence file for it)`;
+    return {
+      name: embedded.name,
+      version,
+      license: embedded.license,
+      source: embedded.source,
+      texts: [{ file, text: `${copyright}\n\n${MIT_TEXT}` }],
+    };
+  });
+}
+
+/**
  * @typedef {object} Notice
  * @property {string} name
  * @property {string} version
@@ -154,11 +212,13 @@ function authorOf(pkg) {
 }
 
 /**
- * Reads the notice of every third-party package among `roots` (folders inside node_modules);
- * workspace packages are skipped. Sorted by name and version, one entry per name@version.
+ * Reads the notice of every third-party package among `roots` (folders inside node_modules), and of
+ * the packages they ship pre-bundled; workspace packages are skipped. Sorted by name and version, one
+ * entry per name@version.
  * @param {Iterable<string>} roots
  * @returns {Notice[]}
- * @throws Error when a package ships no licence file and is not MIT (no text to reproduce)
+ * @throws Error when a package ships no licence file and is not MIT (no text to reproduce), or a
+ *   host of EMBEDDED_PACKAGES no longer holds the embedded package's record
  */
 export function collectNotices(roots) {
   /** @type {Map<string, Notice>} */
@@ -183,6 +243,10 @@ export function collectNotices(roots) {
       texts.push({ file: "(standard MIT text; the package ships no licence file)", text: `${copyright}${MIT_TEXT}` });
     }
     byId.set(id, { name: pkg.name, version: pkg.version, license, source: sourceOf(pkg), texts });
+    for (const notice of embeddedNotices(dir, pkg)) {
+      const embeddedId = `${notice.name}@${notice.version}`;
+      if (!byId.has(embeddedId)) byId.set(embeddedId, notice);
+    }
   }
   // Code-unit order, not localeCompare: the file must not depend on the ICU data of the machine.
   return [...byId.keys()].sort().map((id) => /** @type {Notice} */ (byId.get(id)));
