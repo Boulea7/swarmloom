@@ -20,7 +20,7 @@ Files are read in the browser and never uploaded. Remote https images and fonts 
 | `?src=<url>` | Open a remote file or page (http and https only). |
 | `#d=<payload>` | Open a shared text file (base64url of deflate-raw JSON). |
 | `?autoplay=1` | Start without waiting for the play button. |
-| `?watch=1` | Watch face. Screens up to 320 x 400 switch to it on their own. |
+| `?watch=1` | Watch face. Watch-sized screens (up to 320 x 400) switch to it on their own; a narrow window on a bigger screen and `?import=1` links keep the normal Studio. |
 | `?round=1` | Round watch face: every control stays in the inscribed square. |
 | `?import=1` | Highlight the file picker (sent by the extension). |
 | `?key=<key>` | Read input the extension stored in `chrome.storage` (extension build). |

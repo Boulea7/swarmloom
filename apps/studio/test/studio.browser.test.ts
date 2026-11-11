@@ -175,6 +175,32 @@ describe("Studio in a browser", () => {
     expect(root.querySelector<HTMLElement>(".paste-panel")?.hidden).toBe(false);
   });
 
+  it("shows toasts inside an open modal settings sheet, where they can be used", async () => {
+    await mount();
+    app?.context.toggleSettings();
+    const sheet = await until(() => document.querySelector<HTMLDialogElement>("dialog.panel-settings:modal"));
+    app?.toast.show("Reload to apply", { action: { label: "Reload", run: () => undefined } });
+    const action = document.querySelector<HTMLButtonElement>(".toast-action");
+    action?.focus();
+    expect(document.activeElement).toBe(action);
+    expect(action?.closest("dialog")).toBe(sheet);
+
+    app?.context.toggleSettings();
+    await until(() => !action?.closest("dialog"));
+    expect(action?.isConnected).toBe(true);
+  });
+
+  it("keeps the file picker for ?import=1 on a watch-sized window", async () => {
+    await page.viewport(320, 400);
+    try {
+      const { root } = await mount("?import=1");
+      expect(document.documentElement.dataset.view).toBe("home");
+      expect(root.querySelector('input[type="file"]')).not.toBeNull();
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
   it("keeps the drop zone's cursors clear of a long German title on a 320px phone", async () => {
     await page.viewport(320, 568);
     try {

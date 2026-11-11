@@ -191,7 +191,8 @@ export async function mountStudio(
     html.dataset.drawer = "closed";
   };
 
-  const isWatch = () => route.watch || viewport.state.watch;
+  // A watch-sized screen gets the watch face unless the link asks for the file picker (`?import=1`).
+  const isWatch = () => route.watch || (viewport.state.watch && !route.import);
 
   const renderView = () => {
     view?.destroy();
