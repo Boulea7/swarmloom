@@ -65,6 +65,25 @@ export function intrinsicSize(width: string | null, height: string | null, viewB
   return null;
 }
 
+/** Height of the frame a drawing is fitted into, per px of layout width (16:9, the CLI's default viewport). */
+const FRAME_RATIO = 9 / 16;
+/** Tallest stage size the adapter produces, px. */
+const MAX_STAGE_HEIGHT = 60_000;
+
+/**
+ * Stage size of a drawing laid out `width` px wide. It fills the width unless that makes it taller
+ * than a 16:9 frame; then it is fitted whole into the frame, so a logo or a square chart ends fully
+ * in view (the stage enlarges it into a taller viewport). Drawings that would end up narrower than
+ * half the width that way (long diagrams) keep the full width and scroll instead.
+ */
+export function stageSize(intrinsic: Size, width: number): Size {
+  let scale = width / intrinsic.w;
+  const framed = (width * FRAME_RATIO) / intrinsic.h;
+  if (framed < scale && framed >= scale / 2) scale = framed;
+  if (intrinsic.h * scale > MAX_STAGE_HEIGHT) scale = MAX_STAGE_HEIGHT / intrinsic.h;
+  return { w: Math.max(1, Math.round(intrinsic.w * scale)), h: Math.max(1, Math.round(intrinsic.h * scale)) };
+}
+
 /** Normalised diagonal used to resolve percentages that are neither horizontal nor vertical. */
 export function normalizedDiagonal(size: Size): number {
   return Math.sqrt((size.w * size.w + size.h * size.h) / 2);

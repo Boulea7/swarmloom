@@ -19,7 +19,7 @@ import { hasSmil, SMIL_TASK, type SvgSmilData, stripSmil } from "./smil";
 import { looksLikeSvg, readSvgText } from "./source";
 import { computedStyle, isTransparent, luminance } from "./style";
 import { collectSmilTimeline, findTimelinePlugin, TIMELINE_BAND, timelineLayer } from "./timeline";
-import { intrinsicSize, parseViewBox, SVG_NS, XLINK_NS } from "./units";
+import { intrinsicSize, parseViewBox, SVG_NS, stageSize, XLINK_NS } from "./units";
 import { assignKeys, expandUses } from "./use";
 
 /** Limits and tuning of the SVG adapter. */
@@ -51,8 +51,6 @@ export interface SvgLoadContext extends AdapterContext {
 
 /** Size used by browsers for an SVG that declares neither a size nor a viewBox. */
 const DEFAULT_SIZE: Size = { w: 300, h: 150 };
-/** Tallest world the adapter produces (stage px). */
-const MAX_HEIGHT = 60_000;
 /** The original document is used as the intro icon when its sanitised markup is at most this long. */
 const MAX_ICON_CHARS = 48 * 1024;
 /** Embedded images whose size has to be measured before layout. */
@@ -116,12 +114,6 @@ function fontFaces(root: Element): string {
     for (const m of (style.textContent ?? "").matchAll(/@font-face\s*\{[^}]*\}/gi)) rules.push(m[0]);
   }
   return rules.join("\n");
-}
-
-function fitSize(intrinsic: Size, width: number): Size {
-  let scale = width / intrinsic.w;
-  if (intrinsic.h * scale > MAX_HEIGHT) scale = MAX_HEIGHT / intrinsic.h;
-  return { w: Math.max(1, Math.round(intrinsic.w * scale)), h: Math.max(1, Math.round(intrinsic.h * scale)) };
 }
 
 /**
@@ -198,7 +190,7 @@ function takeBackground(layers: Layer[], world: Size): string | null {
 /**
  * Creates an SVG adapter. The SVG is parsed with `DOMParser`, sanitised (no scripts, event
  * handlers, `foreignObject` or external references), laid out in an invisible sandbox in
- * `ctx.document`, and converted into stage layers scaled to `ctx.width`:
+ * `ctx.document`, and converted into stage layers scaled to `ctx.width` (see {@link stageSize}):
  * - shapes and paths become path layers in stage coordinates; stroked ones are drawn with the pen
  *   (`meta.anchors` holds the pen anchors), filled outlines are traced and then filled;
  * - gradients, patterns, clip paths, masks, filters and markers are rewritten into stage space and
@@ -278,7 +270,7 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
           viewBox = b.width > 0 && b.height > 0 ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
           intrinsic = viewBox ? { w: viewBox.w, h: viewBox.h } : DEFAULT_SIZE;
         }
-        const world = fitSize(intrinsic, ctx.width);
+        const world = stageSize(intrinsic, ctx.width);
         const vb = viewBox ?? { x: 0, y: 0, w: intrinsic.w, h: intrinsic.h };
         svg.setAttribute("viewBox", [vb.x, vb.y, vb.w, vb.h].map((v) => formatNumber(v, 6)).join(" "));
         svg.setAttribute("width", String(world.w));
