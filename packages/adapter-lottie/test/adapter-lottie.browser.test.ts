@@ -7,6 +7,7 @@ import {
   type StageApi,
   VirtualClock,
 } from "@swarmloom/core";
+import { strToU8, zipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vitest";
 import shuttleJson from "../../../examples/lottie/shuttle-loop.json?raw";
 import shuttleUrl from "../../../examples/lottie/shuttle-loop.lottie?url";
@@ -139,6 +140,38 @@ describe("lottieAdapter on the example", () => {
     const shapes = (b: Blueprint) => byKind(b.layers, "path").map((p) => p.d);
     expect(shapes(fromArchive.blueprint)).toEqual(shapes(fromJson.blueprint));
     expect(fromArchive.blueprint.layers).toHaveLength(12);
+  });
+
+  it.each([
+    ["#000000", "rgb(0, 0, 0)", "dark"],
+    ["#00000080", "rgb(125, 125, 126)", "dark"],
+    ["#0000", "#FAFAFC", "light"],
+  ])("uses the .lottie manifest background %s when no solid fills the canvas", async (color, background, scheme) => {
+    // A white stroked square and no canvas solid: the manifest is the only source of the background.
+    const square = {
+      ty: "gr",
+      it: [
+        { ty: "rc", p: { a: 0, k: [50, 50] }, s: { a: 0, k: [40, 40] }, r: { a: 0, k: 0 } },
+        { ty: "st", c: { a: 0, k: [1, 1, 1, 1] }, o: { a: 0, k: 100 }, w: { a: 0, k: 4 } },
+        { ty: "tr", p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 } },
+      ],
+    };
+    const json = {
+      v: "5.12.0",
+      fr: 30,
+      ip: 0,
+      op: 30,
+      w: 100,
+      h: 100,
+      layers: [{ ty: 4, ind: 1, ks: {}, ip: 0, op: 30, st: 0, shapes: [square] }],
+    };
+    const bytes = zipSync({
+      "manifest.json": strToU8(JSON.stringify({ animations: [{ id: "a", background: color }] })),
+      "animations/a.json": strToU8(JSON.stringify(json)),
+    });
+    const { blueprint } = await lottieAdapter.load({ bytes, name: "a.lottie" }, ctx);
+    expect(blueprint).toMatchObject({ background, scheme });
+    expect((custom(blueprint, PLAYER_TASK).data as LottiePlayerData).background).toBe(background);
   });
 
   it("gives the host turns while it picks the pose, and stops there when aborted", async () => {

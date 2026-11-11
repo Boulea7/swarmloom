@@ -52,6 +52,8 @@ interface Animation {
   parsed: ParsedLottie;
   loop?: boolean | number;
   speed?: number;
+  /** dotLottie manifest background colour. */
+  background?: string;
   notes: string[];
 }
 
@@ -70,6 +72,7 @@ async function readAnimation(input: SourceInput, opts: LottieAdapterOptions, sig
   const out: Animation = { parsed, notes: content.notes };
   if (content.loop !== undefined) out.loop = content.loop;
   if (content.speed !== undefined) out.speed = content.speed;
+  if (content.background !== undefined) out.background = content.background;
   return out;
 }
 
@@ -137,7 +140,8 @@ function validateContext(ctx: AdapterContext): void {
  *     chosen as the static pose (in ~10 ms slices with host turns, so `ctx.signal` can stop it
  *     there) and converted by the SVG adapter: shapes become path layers with their fills and
  *     strokes, text becomes typed text (one layer per line), images become image layers. Layers
- *     are clipped to the composition; a full-canvas solid becomes the background.
+ *     are clipped to the composition; a full-canvas solid, else the dotLottie manifest background,
+ *     becomes the background.
  *  3. Two custom layers finish the blueprint: `lottie:player` over the composition and an
  *     `anim:timeline` bar under it. After the weave, one agent drags out the timeline, drops the
  *     keyframes, scrubs the playhead, and the real animation then plays from the engine clock.
@@ -208,6 +212,7 @@ export function createLottieAdapter(options: LottieAdapterOptions = {}): Adapter
         keyTimes: parsed.keyTimes,
         loop: loop ?? animation.loop ?? true,
         speed: animation.speed ?? 1,
+        background: animation.background,
       });
 
       const plugins: Plugin[] = [...(woven.plugins ?? []), createLottiePlugin(), createAnimTimelinePlugin()];
