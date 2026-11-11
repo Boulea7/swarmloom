@@ -63,7 +63,7 @@ The shadow parts are `root`, `content`, `stage` and `error`. In children mode th
 <swarm-loom src="deck.pptx" inview></swarm-loom>
 ```
 
-The IIFE build defines the element and exposes `window.SwarmLoom` (`define`, `configure`, `SwarmLoomElement`). It contains no adapter code. When a source needs an adapter, it loads `swarm-loom.adapters.js` and that adapter's chunk from `chunks/`, relative to the script URL. Host the whole `dist/` folder together.
+The IIFE build defines the element and exposes `window.SwarmLoom` (`define`, `configure`, `SwarmLoomElement`). It contains no adapter code. When a source needs an adapter, it loads `swarm-loom.adapters.js` and that adapter's chunk from `chunks/`, relative to the script URL. Worker files, such as the PDF parser, load from `assets/`. Host the whole `dist/` folder together.
 
 `configure({ createPlayer, formats, maxBytes })` replaces the shared runtime, for example to restrict formats or lower the download limit.
 
