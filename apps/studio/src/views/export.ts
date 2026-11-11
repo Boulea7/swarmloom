@@ -1,8 +1,18 @@
-import type { Recording } from "@swarmloom/export";
+import type { BrowserExportResult, ExportProgress } from "@swarmloom/export/browser";
 import type { AppContext } from "../context";
+import {
+  canEncodeInBrowser,
+  clockOf,
+  EXPORT_FPS,
+  type ExportFps,
+  exportFileName,
+  exportSettingsOf,
+  renderInputOf,
+} from "../export/browser";
 import { buildCliCommand, FRAME_PRESETS, VIDEO_FORMATS, type VideoFormat } from "../export/cli";
+import type { BrowserExporter } from "../services";
 import type { OpenedSource } from "../source";
-import { button, nextId, segmented, select } from "../ui/controls";
+import { button, nextId, segmented, select, toggle } from "../ui/controls";
 import { createPanel, type Panel } from "../ui/dialog";
 import { formatSize, h } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -10,51 +20,109 @@ import { icon } from "../ui/icons";
 export interface ExportDeps {
   ctx: AppContext;
   opened: () => OpenedSource | null;
-  /** Element to record (the stage host). */
-  target: () => HTMLElement;
-  /** Restarts the build from the beginning, so the recording covers all of it. */
-  restart: () => void;
-  /** Called while recording starts and stops, so the player can show a recording indicator. */
-  onRecording: (recording: { stop(): void; startedAt: number } | null) => void;
 }
 
 export interface Exporter {
   /** The dialog. {@link relabel} replaces it, so read it again rather than keeping it. */
   readonly panel: Panel;
   open(): void;
-  /** Stops a running recording (keeps what was recorded). */
-  stopRecording(): void;
-  /** The interface language changed: rebuilds the dialog in place, keeping choices and results. */
+  /** The interface language changed: rebuilds the dialog in place, keeping choices, progress and results. */
   relabel(): void;
+  /** Cancels a running export and frees the result. */
   destroy(): void;
 }
 
-function downloadName(name: string, mime: string): string {
-  const stem = name.replace(/\.[a-z0-9]+$/i, "").replace(/[^\p{L}\p{N}._-]+/gu, "-") || "swarmloom";
-  return `${stem}.${mime.includes("mp4") ? "mp4" : "webm"}`;
+/** A finished export, ready to download. */
+interface ExportFile {
+  url: string;
+  name: string;
+  size: number;
+  durationMs: number;
+  /** Sound was asked for but the browser could not encode it. */
+  silent: boolean;
+  /** The build ran longer than the export allows; the video stops there. */
+  partial: boolean;
 }
 
 /** The dialog's DOM for one language. */
 interface ExportUi {
   panel: Panel;
-  download: HTMLAnchorElement;
-  recordStatus: HTMLElement;
+  options: HTMLFieldSetElement;
+  soundSwitch: HTMLInputElement | null;
+  start: HTMLButtonElement | null;
+  cancel: HTMLButtonElement | null;
+  download: HTMLAnchorElement | null;
+  bar: HTMLElement | null;
+  fill: HTMLElement | null;
+  status: HTMLElement;
   renderCommand(): void;
 }
 
+/** Shortest gap between two status line updates, so screen readers are not flooded. */
+const STATUS_INTERVAL = 1000;
+
 /**
- * Export dialog: quick in-browser recording where the browser can crop a tab capture to the stage
- * (labelled "quick", it runs in real time), and the frame-exact `npx swarmloom render` command that
- * reproduces the same performance from the same seed.
+ * Export dialog: a frame-exact export in this page (WebCodecs and Mediabunny, loaded when the
+ * dialog first opens) and the `npx swarmloom render` command that makes the same file. Browsers
+ * without WebCodecs get the command only.
  */
 export function createExporter(deps: ExportDeps): Exporter {
   const { ctx } = deps;
   let format: VideoFormat = "mp4";
   let preset = FRAME_PRESETS[0] ?? { id: "720p", width: 1280, height: 720 };
-  let recording: Recording | null = null;
-  let result: { url: string; name: string } | null = null;
-  /** The quick recording's status line, read in the current language. */
-  let status: (() => string) | null = null;
+  let fps: ExportFps = 30;
+  /** Sound switch; null follows the Sound setting. */
+  let sound: boolean | null = null;
+  let running: AbortController | null = null;
+  let progress: ExportProgress | null = null;
+  let file: ExportFile | null = null;
+  /** Status line in the current language: a phase, a result or an error. */
+  let note: (() => string) | null = null;
+  let statusAt = 0;
+  let exporterModule: Promise<BrowserExporter> | null = null;
+
+  const supported = () => Boolean(ctx.services.loadExporter) && canEncodeInBrowser();
+  const soundOn = () => sound ?? ctx.settings.sound;
+
+  /** Loads the exporter once; a failed load (offline) is tried again next time. */
+  const loadExporter = (): Promise<BrowserExporter> => {
+    const load = ctx.services.loadExporter;
+    if (!load) return Promise.reject(new Error("The exporter is not available"));
+    exporterModule ??= load().catch((error: unknown) => {
+      exporterModule = null;
+      throw error;
+    });
+    return exporterModule;
+  };
+
+  const progressText = (p: ExportProgress | null): string => {
+    const { i18n } = ctx;
+    if (!p) return i18n.t("export.web.loading");
+    switch (p.phase) {
+      case "starting":
+        return i18n.t("export.web.starting");
+      case "sound":
+        return i18n.t("export.web.sound");
+      case "finishing":
+        return i18n.t("export.web.finishing");
+      default: {
+        const vars = { frame: String(p.frames), total: String(p.totalFrames) };
+        return p.etaMs === null
+          ? i18n.t("export.web.frames", vars)
+          : i18n.t("export.web.framesEta", { ...vars, time: clockOf(p.etaMs) });
+      }
+    }
+  };
+
+  const fileText = (f: ExportFile): string => {
+    const { i18n } = ctx;
+    // Whole seconds, rounded: clockOf rounds up, which suits a countdown but not a length.
+    const time = clockOf(Math.round(f.durationMs / 1000) * 1000);
+    const parts = [i18n.t("export.web.ready", { time, size: formatSize(f.size, i18n.locale) })];
+    if (f.silent) parts.push(i18n.t("export.web.silent"));
+    if (f.partial) parts.push(i18n.t("export.web.partial"));
+    return parts.join(" ");
+  };
 
   const build = (): ExportUi => {
     const { i18n } = ctx;
@@ -64,7 +132,87 @@ export function createExporter(deps: ExportDeps): Exporter {
       class: "panel-dialog panel-export",
     });
 
-    // Command line section
+    // Shared choices: the in-page export and the command line make the same file from them.
+    const sizeControl = select({
+      label: i18n.t("export.size"),
+      choices: FRAME_PRESETS.map((p) => ({ value: p.id, label: `${p.width} × ${p.height}` })),
+      value: preset.id,
+      onChange: (id) => {
+        preset = FRAME_PRESETS.find((p) => p.id === id) ?? preset;
+        renderCommand();
+      },
+    });
+    const fpsControl = segmented<`${ExportFps}`>({
+      legend: i18n.t("export.fps"),
+      name: nextId("export-fps"),
+      choices: EXPORT_FPS.map((value) => ({ value: `${value}`, label: i18n.t("export.fpsValue", { fps: value }) })),
+      value: `${fps}`,
+      onChange: (value) => {
+        fps = Number(value) as ExportFps;
+        renderCommand();
+      },
+    });
+    const soundControl = toggle({
+      label: i18n.t("export.sound"),
+      checked: soundOn(),
+      onChange: (on) => {
+        sound = on;
+        renderCommand();
+      },
+    });
+    const options = h(
+      "fieldset",
+      { class: "export-choices" },
+      h("div", { class: "export-options" }, sizeControl, fpsControl),
+      soundControl,
+    );
+
+    // In this browser
+    const status = h("p", { class: "export-status", attrs: { role: "status" } });
+    let start: HTMLButtonElement | null = null;
+    let cancel: HTMLButtonElement | null = null;
+    let download: HTMLAnchorElement | null = null;
+    let bar: HTMLElement | null = null;
+    let fill: HTMLElement | null = null;
+    const webSection = h(
+      "section",
+      { class: "export-section" },
+      h("h3", { class: "export-title" }, icon("export", 18), h("span", { text: i18n.t("export.web.title") })),
+      h("p", { class: "export-body", text: i18n.t(supported() ? "export.web.body" : "export.web.unsupported") }),
+    );
+    if (supported()) {
+      start = button({
+        label: i18n.t("export.web.start"),
+        icon: "export",
+        variant: "primary",
+        onClick: () => void runExport(),
+      });
+      cancel = button({ label: i18n.t("export.web.cancel"), icon: "stop", onClick: () => running?.abort() });
+      download = h(
+        "a",
+        { class: "btn btn-secondary" },
+        icon("download", 18),
+        h("span", { class: "btn-label", text: i18n.t("export.web.download") }),
+      );
+      fill = h("div", { class: "export-progress-fill" });
+      bar = h(
+        "div",
+        {
+          class: "export-progress",
+          attrs: {
+            role: "progressbar",
+            "aria-label": i18n.t("export.web.progress"),
+            "aria-valuemin": 0,
+            "aria-valuemax": 100,
+          },
+        },
+        fill,
+      );
+      webSection.append(bar, h("div", { class: "export-actions" }, start, cancel, download));
+    }
+    webSection.append(status);
+
+    // Command line
     const command = h("code", { class: "cli-code" });
     const copyLabel = h("span", { class: "btn-label", text: i18n.t("export.cli.copy") });
     const copyButton = h(
@@ -85,6 +233,10 @@ export function createExporter(deps: ExportDeps): Exporter {
         format,
         width: preset.width,
         height: preset.height,
+        fps,
+        sound: soundOn(),
+        scheme: ctx.scheme,
+        locale: ctx.i18n.locale,
       });
       command.textContent = cli.text;
       saveHint.hidden = cli.saveAs === undefined;
@@ -99,8 +251,7 @@ export function createExporter(deps: ExportDeps): Exporter {
         window.setTimeout(() => (copyLabel.textContent = i18n.t("export.cli.copy")), 1800);
       } catch {
         // Clipboard denied: select the text so the user can copy it by hand.
-        const selection = window.getSelection();
-        selection?.selectAllChildren(command);
+        window.getSelection()?.selectAllChildren(command);
         ctx.toast.show(i18n.t("share.failed"), { icon: "alert" });
       }
     });
@@ -114,113 +265,137 @@ export function createExporter(deps: ExportDeps): Exporter {
         renderCommand();
       },
     });
-    const sizeControl = select({
-      label: i18n.t("export.cli.size"),
-      choices: FRAME_PRESETS.map((p) => ({ value: p.id, label: `${p.width} × ${p.height}` })),
-      value: preset.id,
-      onChange: (id) => {
-        preset = FRAME_PRESETS.find((p) => p.id === id) ?? preset;
-        renderCommand();
-      },
-    });
     const cliSection = h(
       "section",
       { class: "export-section" },
       h("h3", { class: "export-title" }, icon("terminal", 18), h("span", { text: i18n.t("export.cli.title") })),
       h("p", { class: "export-body", text: i18n.t("export.cli.body") }),
-      h("div", { class: "export-options" }, formatControl, sizeControl),
+      formatControl,
       h("div", { class: "cli-block" }, h("pre", { class: "cli-pre", attrs: { tabindex: 0 } }, command), copyButton),
       saveHint,
     );
 
-    // Quick recording section
-    const canRecord = Boolean(ctx.services.recordElement && (ctx.services.canRecord?.() ?? false));
-    const recordStatus = h("p", { class: "export-status", attrs: { role: "status" }, text: status?.() ?? "" });
-    const download = h(
-      "a",
-      { class: "btn btn-secondary", attrs: { hidden: !result, download: result?.name ?? "" } },
-      icon("download", 18),
-      h("span", { class: "btn-label", text: i18n.t("export.record.download") }),
-    );
-    if (result) download.setAttribute("href", result.url);
-    const startButton = button({
-      label: i18n.t("export.record.start"),
-      icon: "record",
-      variant: "primary",
-      onClick: () => void startRecording(),
-    });
-    const recordSection = h(
-      "section",
-      { class: "export-section" },
-      h("h3", { class: "export-title" }, icon("record", 18), h("span", { text: i18n.t("export.record.title") })),
-      h("p", {
-        class: "export-body",
-        text: canRecord ? i18n.t("export.record.body") : i18n.t("export.record.unsupported"),
-      }),
-      canRecord ? h("div", { class: "export-actions" }, startButton, download) : null,
-      recordStatus,
-    );
-    panel.body.append(cliSection, recordSection);
-    return { panel, download, recordStatus, renderCommand };
+    panel.body.append(h("div", { class: "export-section" }, options), webSection, cliSection);
+    const soundSwitch = soundControl.querySelector<HTMLInputElement>("input.switch");
+    return { panel, options, soundSwitch, start, cancel, download, bar, fill, status, renderCommand };
   };
 
   let ui = build();
 
-  const setStatus = (next: (() => string) | null) => {
-    status = next;
-    ui.recordStatus.textContent = next?.() ?? "";
-  };
+  const statusText = (): string => (running ? progressText(progress) : (note?.() ?? (file ? fileText(file) : "")));
 
-  const clearResult = () => {
-    if (result) URL.revokeObjectURL(result.url);
-    result = null;
-    ui.download.hidden = true;
-  };
-
-  const startRecording = async () => {
-    const record = ctx.services.recordElement;
-    const opened = deps.opened();
-    if (!record || !opened || recording) return;
-    clearResult();
-    setStatus(null);
-    try {
-      // Ask for the capture first: the permission prompt must not eat the first seconds of the build.
-      const rec = await record(deps.target(), { audio: "tab" });
-      recording = rec;
-      ui.panel.close();
-      deps.restart();
-      deps.onRecording({ stop: () => void rec.stop(), startedAt: performance.now() });
-      const blob = await rec.result;
-      recording = null;
-      deps.onRecording(null);
-      result = { url: URL.createObjectURL(blob), name: downloadName(opened.name, rec.mimeType) };
-      ui.download.setAttribute("href", result.url);
-      ui.download.setAttribute("download", result.name);
-      ui.download.hidden = false;
-      setStatus(() => ctx.i18n.t("export.record.ready", { size: formatSize(blob.size, ctx.i18n.locale) }));
-      ui.panel.open(true);
-    } catch (error) {
-      recording = null;
-      deps.onRecording(null);
-      const code = (error as { code?: string }).code;
-      // A cancelled share prompt is the user's choice, not an error worth a message.
-      if (code === "denied") return;
-      const message = error instanceof Error ? error.message : String(error);
-      setStatus(() => ctx.i18n.t("export.record.failed", { message }));
-      if (!ui.panel.isOpen) ui.panel.open(true);
+  /** Puts the state into the DOM; `force` also refreshes a status line updated less than a second ago. */
+  const render = (force = true) => {
+    const busy = running !== null;
+    ui.options.disabled = busy;
+    if (ui.start) ui.start.hidden = busy;
+    if (ui.cancel) ui.cancel.hidden = !busy;
+    if (ui.download) {
+      ui.download.hidden = busy || !file;
+      if (file) {
+        ui.download.href = file.url;
+        ui.download.download = file.name;
+      } else {
+        ui.download.removeAttribute("href");
+      }
+    }
+    if (ui.bar && ui.fill) {
+      ui.bar.hidden = !busy;
+      const p = progress;
+      const value = !p ? 0 : p.phase === "frames" ? Math.floor((100 * p.frames) / Math.max(1, p.totalFrames)) : 100;
+      const shown = p?.phase === "starting" ? 0 : value;
+      ui.bar.setAttribute("aria-valuenow", String(shown));
+      ui.fill.style.width = `${shown}%`;
+    }
+    const now = performance.now();
+    if (force || now - statusAt >= STATUS_INTERVAL) {
+      statusAt = now;
+      ui.status.textContent = statusText();
     }
   };
+
+  /** True when moving focus will not pull it out of somewhere else on the page. */
+  const focusIsOurs = () => {
+    const active = document.activeElement;
+    return ui.panel.isOpen && (!active || active === document.body || ui.panel.root.contains(active));
+  };
+
+  const clearFile = () => {
+    if (file) URL.revokeObjectURL(file.url);
+    file = null;
+  };
+
+  const runExport = async () => {
+    const opened = deps.opened();
+    if (!opened || running) return;
+    clearFile();
+    note = null;
+    progress = null;
+    const controller = new AbortController();
+    running = controller;
+    const moveFocus = focusIsOurs();
+    render();
+    if (moveFocus) ui.cancel?.focus();
+    let result: BrowserExportResult | null = null;
+    try {
+      const exporter = await loadExporter();
+      controller.signal.throwIfAborted();
+      result = await exporter.exportVideo({
+        input: renderInputOf(opened, exporter.bytesToBase64),
+        width: preset.width,
+        height: preset.height,
+        fps,
+        settings: exportSettingsOf(ctx.settings, { sound: soundOn(), scheme: ctx.scheme, locale: ctx.i18n.locale }),
+        network: ctx.settings.remoteAssets ? "https" : "none",
+        signal: controller.signal,
+        onProgress: (p) => {
+          const phaseChanged = p.phase !== progress?.phase;
+          progress = p;
+          render(phaseChanged);
+        },
+      });
+    } catch (error) {
+      if (controller.signal.aborted) note = () => ctx.i18n.t("export.web.cancelled");
+      else if ((error as { name?: string }).name === "UnsupportedExportError")
+        note = () => ctx.i18n.t("export.web.noCodec");
+      else {
+        console.warn("[studio] export failed", error);
+        const message = error instanceof Error ? error.message : String(error);
+        note = () => ctx.i18n.t("export.web.failed", { message });
+      }
+    }
+    // destroy() ran meanwhile: the result has nowhere to go.
+    if (running !== controller) return;
+    running = null;
+    progress = null;
+    if (result) {
+      file = {
+        url: URL.createObjectURL(result.blob),
+        name: exportFileName(opened.name, result.extension),
+        size: result.blob.size,
+        durationMs: result.durationMs,
+        silent: result.soundUnsupported,
+        partial: !result.finished,
+      };
+    }
+    const refocus = focusIsOurs();
+    render();
+    if (refocus) (file ? ui.download : ui.start)?.focus();
+  };
+
+  render();
 
   return {
     get panel() {
       return ui.panel;
     },
     open() {
+      if (sound === null && ui.soundSwitch) ui.soundSwitch.checked = ctx.settings.sound;
       ui.renderCommand();
+      render();
       ui.panel.open(true);
-    },
-    stopRecording() {
-      void recording?.stop();
+      // Fetch the exporter now, so it is ready by the time Export is pressed.
+      if (supported()) loadExporter().catch((error: unknown) => console.warn("[studio] exporter unavailable", error));
     },
     relabel() {
       const old = ui;
@@ -228,15 +403,16 @@ export function createExporter(deps: ExportDeps): Exporter {
       ui = build();
       old.panel.root.replaceWith(ui.panel.root);
       old.panel.destroy();
+      render();
       if (wasOpen) {
         ui.renderCommand();
         ui.panel.open(true);
       }
     },
     destroy() {
-      void recording?.stop();
-      recording = null;
-      clearResult();
+      running?.abort();
+      running = null;
+      clearFile();
       ui.panel.destroy();
     },
   };

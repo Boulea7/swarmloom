@@ -1,8 +1,14 @@
 import type { AdapterContext, LoadedSource, Player, PlayerOptions, SourceInput } from "@swarmloom/core";
-import type { Recording, RecordOptions } from "@swarmloom/export";
+import type { BrowserExportOptions, BrowserExportResult } from "@swarmloom/export/browser";
 import type { ExampleManifest } from "./examples/manifest";
 import type { HandoffPage } from "./handoff";
 import type { CoreI18n } from "./i18n";
+
+/** What Studio uses of `@swarmloom/export/browser`, loaded only when the export dialog opens. */
+export interface BrowserExporter {
+  exportVideo(options: BrowserExportOptions): Promise<BrowserExportResult>;
+  bytesToBase64(bytes: Uint8Array): string;
+}
 
 /** Build target: the hosted PWA or the page bundled inside the browser extension. */
 export type StudioTarget = "web" | "extension";
@@ -61,10 +67,11 @@ export interface StudioServices {
   formats?: readonly string[];
   /** Core's createPlayer. The scrubber becomes a seek slider when the player has the optional `seek(t)`. */
   createPlayer(options: PlayerOptions): Player;
-  /** `@swarmloom/export` recordElement; absent hides in-browser recording. */
-  recordElement?: (target: Element, opts?: RecordOptions) => Promise<Recording>;
-  /** True when {@link recordElement} can work in this browser. */
-  canRecord?: () => boolean;
+  /**
+   * Loads the in-page video exporter (WebCodecs + Mediabunny) on demand, so it never weighs on
+   * startup. Absent leaves only the command line in the export dialog.
+   */
+  loadExporter?: () => Promise<BrowserExporter>;
   /** Core toolbar and format strings for a locale, when core provides them. */
   coreI18n?: (locale: string) => CoreI18n | null;
   fetch: typeof fetch;

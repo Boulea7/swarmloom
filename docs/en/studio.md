@@ -97,7 +97,20 @@ Studio always has an ordinary responsive layout. Supported Chromium environments
 
 ## Export and sharing
 
-**Export** uses live region capture where supported and creates WebM with synchronised sound. Unsupported browsers show the equivalent `npx swarmloom render ...` command instead of disguising an unreliable canvas redraw as export.
+**Export** (shortcut `E`) opens one dialog for both ways to make a video. Pick the size (1280 × 720, 1920 × 1080, 1080 × 1920 or 1080 × 1080), 30 or 60 fps, and whether to include sound.
+
+- **Export in this browser** renders the video in the page, frame by frame. A hidden frame runs the same render page as `swarmloom render`, advances the same virtual clock by whole frames and keeps the same tail, so the frames match the CLI's for the same settings. Each frame is drawn from a snapshot of the page, encoded with WebCodecs (H.264 in MP4, or VP9 in WebM when H.264 is not available) and packed by [Mediabunny](https://github.com/Vanilagy/mediabunny). The sound is the run's sound log rendered offline, as AAC or Opus; when the browser cannot encode either, the video is silent and the dialog says so. A progress bar shows the frame count and the time left, **Cancel** stops at once, and **Download** saves the file. The page stays usable while it works; keep the tab open.
+- **Render with the command line** shows the `npx swarmloom render ...` command for the same file, with the chosen size, frame rate, theme, language, sound and web images setting. It also offers WebM, GIF and WebP.
+
+Browsers without WebCodecs (no `VideoEncoder`) show only the command. The exporter and Mediabunny load when the dialog first opens, so they add nothing to Studio's start-up.
+
+Limits of the in-page export:
+
+- It takes about 0.1 to 0.2 s per frame at 1280 × 720, so a 35 s video takes about 3 minutes. Input stays responsive between frames, with up to one frame's delay.
+- Frames are drawn from an SVG snapshot of the page, not a screenshot. Custom `::marker` and `::first-letter` styles, `position: sticky`, WebGL canvases and cross-origin images that do not allow CORS (left blank) can differ from the CLI.
+- It uses the sound pack chosen in Studio; the CLI always uses the default pack.
+- Encoders differ: Chromium tags its H.264 as BT.601, the CLI writes BT.709, so decoded colours can differ by a few levels. Chromium on Linux has no AAC encoder, so MP4 files there carry Opus sound, whose track runs up to 20 ms past the video.
+- Two exports of the same input and seed draw the same pixels in every frame, but the browser's encoder does not write the same bytes each time. The difference is too small to see.
 
 **Share** can put small text into `#d=`. Export a video or share the original file for large content. Check for sensitive material before sharing.
 
