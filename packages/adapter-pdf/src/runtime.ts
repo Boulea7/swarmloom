@@ -46,6 +46,34 @@ export function supportsModernBuild(): boolean {
   ].every((f) => typeof f === "function");
 }
 
+/** True when `Promise.withResolvers` is the engine's own, so a worker started by this page has it too. */
+function nativeWithResolvers(): boolean {
+  const f = (Promise as unknown as { withResolvers?: unknown }).withResolvers;
+  return typeof f === "function" && /\{\s*\[native code\]\s*\}\s*$/.test(Function.prototype.toString.call(f));
+}
+
+/**
+ * Installs `Promise.withResolvers` (ES2024) when it is missing: the legacy pdf.js build polyfills
+ * the other recent built-ins it calls, but not this one, which Chrome/Edge 116-118 and Safari before
+ * 17.4 lack. Same semantics as the built-in (`this` is the promise constructor).
+ */
+function installWithResolvers(): void {
+  if (typeof (Promise as unknown as { withResolvers?: unknown }).withResolvers === "function") return;
+  Object.defineProperty(Promise, "withResolvers", {
+    configurable: true,
+    writable: true,
+    value: function withResolvers<T>(this: PromiseConstructor | undefined) {
+      let resolve!: (value: T | PromiseLike<T>) => void;
+      let reject!: (reason?: unknown) => void;
+      const promise = new (this ?? Promise)<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    },
+  });
+}
+
 function pickBuild(pref: ResolvedOptions["build"]): "modern" | "legacy" {
   if (pref !== "auto") return pref;
   return supportsModernBuild() ? "modern" : "legacy";
@@ -118,12 +146,16 @@ function spawnWorker(src: string): Promise<Worker> {
 
 async function startRuntime(o: ResolvedOptions): Promise<PdfRuntime> {
   const build = pickBuild(o.build);
+  // A worker has the same built-ins as this page and no way to receive the polyfill: without a native
+  // withResolvers the default worker cannot run pdf.js, so parsing stays on the main thread.
+  const workerCanRun = nativeWithResolvers();
+  if (build === "legacy") installWithResolvers();
   const pdfjs = await importApi(build);
   const verbosity = VERBOSITY_ERRORS;
   if (o.workerPort) {
     return { pdfjs, build, mainThread: false, worker: pdfjs.PDFWorker.create({ port: o.workerPort, verbosity }) };
   }
-  const src = o.workerSrc ?? defaultWorkerUrl(build);
+  const src = o.workerSrc ?? (workerCanRun ? defaultWorkerUrl(build) : null);
   if (!o.disableWorker && src && typeof Worker === "function") {
     const port = await spawnWorker(src).catch(() => null);
     // PDFWorker.create() binds one PDFWorker per port (the constructor typings omit the port parameter).

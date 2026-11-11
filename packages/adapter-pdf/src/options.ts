@@ -19,11 +19,16 @@ export interface PdfAdapterOptions {
    * or `"data"` URLs (survive serialization, e.g. a blueprint saved to JSON or played in another document).
    */
   urlType?: "blob" | "data";
-  /** pdf.js build: `"auto"` (default) uses the legacy build when the browser lacks built-ins the modern one needs. */
+  /**
+   * pdf.js build: `"auto"` (default) uses the legacy build when the browser lacks built-ins the modern one needs.
+   * Where `Promise.withResolvers` is missing (Chrome/Edge 116-118, Safari before 17.4) the adapter installs it
+   * and parses on the main thread, because the default worker would lack it.
+   */
   build?: "auto" | "modern" | "legacy";
   /**
    * URL of `pdf.worker.min.mjs` from the same pdfjs-dist version and build. By default the adapter asks the
    * bundler for it (`new URL("pdfjs-dist/...", import.meta.url)`), which Vite, webpack 5 and Parcel resolve.
+   * A custom worker must provide `Promise.withResolvers` itself in browsers that lack it.
    */
   workerSrc?: string | URL;
   /** A caller-owned pdf.js worker (e.g. created from an extension URL). Never terminated by the adapter. */
