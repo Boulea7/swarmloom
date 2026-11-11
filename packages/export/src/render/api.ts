@@ -50,6 +50,26 @@ function toSourceInput({ input }: ParsedInit): { source: SourceInput; format?: s
   return { source, format: input.type || undefined };
 }
 
+/**
+ * Width of the scrollbar gutter an inline stage reserves (thin, `scrollbar-gutter: stable`).
+ * Chromium keeps reserving it when the render browser hides its scrollbars.
+ */
+function stageGutter(doc: Document): number {
+  const probe = doc.createElement("div");
+  probe.style.cssText =
+    "position:absolute;visibility:hidden;width:100px;height:10px;overflow:hidden;" +
+    "scrollbar-gutter:stable;scrollbar-width:thin";
+  doc.body.append(probe);
+  const gutter = probe.offsetWidth - probe.clientWidth;
+  probe.remove();
+  return Math.max(0, gutter);
+}
+
+/**
+ * Mounts the stage host. It is wider than the frame by the stage's scrollbar gutter, so the gutter
+ * lies past the right edge instead of showing as an empty strip, and the stage fits content laid
+ * out at `width` at scale 1.
+ */
 function mountHost(doc: Document, width: number, height: number): HTMLElement {
   doc.getElementById(HOST_ID)?.remove();
   const root = doc.documentElement;
@@ -57,7 +77,7 @@ function mountHost(doc: Document, width: number, height: number): HTMLElement {
   doc.body.style.cssText = "margin:0;padding:0;overflow:hidden";
   const host = doc.createElement("div");
   host.id = HOST_ID;
-  host.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:${height}px;overflow:hidden`;
+  host.style.cssText = `position:fixed;left:0;top:0;width:${width + stageGutter(doc)}px;height:${height}px;overflow:hidden`;
   doc.body.append(host);
   return host;
 }

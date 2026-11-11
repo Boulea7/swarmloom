@@ -34,6 +34,8 @@ export function hostCss(mode: "overlay" | "inline"): string {
  * Overlay scrollers keep the default scrollbar and no reserved gutter: it appears exactly when the page had one,
  * so content stays aligned with the page underneath. Inline scrollers reserve it, so the fit-to-width
  * scale cannot oscillate as the scrollbar comes and goes.
+ * The world isolates its own stacking context, so layer z-indexes stay under the cursor canvas
+ * even when it has no transform (scale 1, no centring).
  * No transitions or animations: every fade is driven by engine time (deterministic exports).
  */
 export const STAGE_CSS = `
@@ -45,7 +47,7 @@ export const STAGE_CSS = `
 .root[data-mode=inline] .scroller{overflow-x:hidden;scrollbar-gutter:stable;scrollbar-width:thin}
 .root[data-mode=inline] .scroller:focus-visible{outline:2px solid var(--sl-focus,#5B5BF7);outline-offset:-2px}
 .sizer{position:relative;overflow:hidden;overflow:clip}
-.world{position:absolute;left:0;top:0;transform-origin:0 0;display:block;pointer-events:none}
+.world{position:absolute;left:0;top:0;transform-origin:0 0;display:block;pointer-events:none;isolation:isolate}
 .root[data-live] .world{pointer-events:auto}
 .canvas{position:absolute;left:0;top:0;pointer-events:none;display:block}
 .ui{position:absolute;inset:0;pointer-events:none}

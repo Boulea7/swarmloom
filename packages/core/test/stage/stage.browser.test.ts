@@ -470,6 +470,16 @@ describe("stage: virtualization", () => {
 });
 
 describe("stage: overlays and canvas", () => {
+  it("keeps the world in its own stacking context when it fits at scale 1", () => {
+    // A world exactly as wide as the scroller's client area gets no transform; without a stacking
+    // context of its own, layers with a z-index would paint over the cursor canvas.
+    const fit = (mount([]).stage.root.querySelector(".scroller") as HTMLElement).clientWidth;
+    const { stage } = mount([], { size: { w: fit, h: 1200 } });
+    const world = stage.root.querySelector(".world") as HTMLElement;
+    expect(css(world).transform).toBe("none");
+    expect(css(world).isolation).toBe("isolate");
+  });
+
   it("draws overlay handles and clears them on remove", () => {
     const { stage } = mount([]);
     const canvas = stage.root.querySelector("canvas") as HTMLCanvasElement;
