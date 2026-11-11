@@ -1,3 +1,4 @@
+import type { BrowserExportOptions, BrowserExportResult } from "@swarmloom/export/browser";
 import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
@@ -12,6 +13,7 @@ import {
   sortEntries,
 } from "../src/examples/manifest";
 import { availableFormats } from "../src/formats-meta";
+import type { BrowserExporter } from "../src/services";
 import { fakeServices } from "./fakes";
 
 /** Every file of the repository's examples folder, as the build would see it (paths only). */
@@ -36,12 +38,13 @@ const REGISTRY_IDS = REGISTRY.map((meta) => meta.id);
 
 let app: StudioApp | null = null;
 
-async function mount(search = "", seekable = false) {
+async function mount(search = "", seekable = false, exporter?: BrowserExporter) {
   history.replaceState(null, "", `${location.pathname}${search}`);
   const root = document.createElement("div");
   document.body.append(root);
   const fake = fakeServices({ manifest: MANIFEST, examplesBase: EXAMPLES_BASE, seekable });
   fake.services.formats = REGISTRY_IDS;
+  if (exporter) fake.services.loadExporter = async () => exporter;
   app = await mountStudio(root, fake.services);
   return { root, ...fake };
 }
@@ -54,6 +57,16 @@ async function until<T>(probe: () => T | null | undefined, timeoutMs = 4000): Pr
     if (performance.now() - start > timeoutMs) throw new Error("timed out");
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+}
+
+/** Opens the export dialog of a loaded example and returns its in-page export controls. */
+async function openExport(root: HTMLElement) {
+  (await until(() => root.querySelector<HTMLButtonElement>('.appbar [aria-keyshortcuts="E"]:enabled'))).click();
+  const dialog = await until(() => root.querySelector<HTMLDialogElement>("dialog.panel-export[open]"));
+  const [start, cancel, download] = dialog.querySelectorAll<HTMLElement>(".export-actions > *");
+  const status = dialog.querySelector<HTMLElement>(".export-status");
+  if (!start || !cancel || !download || !status) throw new Error("no in-page export");
+  return { dialog, start, cancel, download: download as HTMLAnchorElement, status };
 }
 
 afterEach(() => {
@@ -135,6 +148,81 @@ describe("Studio in a browser", () => {
     expect(seeker?.disabled).toBe(false);
     seeker?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
     await until(() => log.calls.includes("seek:12000"));
+  });
+
+  it("exports in the page with the dialog's choices and offers the file for download", async () => {
+    const calls: BrowserExportOptions[] = [];
+    const { root } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      async exportVideo(options) {
+        calls.push(options);
+        options.onProgress?.({
+          phase: "frames",
+          frames: 3,
+          totalFrames: 6,
+          built: 1,
+          layers: 2,
+          elapsedMs: 50,
+          etaMs: null,
+        });
+        const blob = new Blob(["VIDEO"], { type: "video/webm" });
+        return {
+          blob,
+          extension: "webm",
+          durationMs: 2000,
+          finished: true,
+          soundUnsupported: false,
+        } as BrowserExportResult;
+      },
+    });
+    const { dialog, start, download, status } = await openExport(root);
+    const size = dialog.querySelector<HTMLSelectElement>("select");
+    if (size) size.value = "square";
+    size?.dispatchEvent(new Event("change"));
+    dialog.querySelector<HTMLInputElement>('input[type="radio"][value="60"]')?.click();
+    dialog.querySelector<HTMLInputElement>("input.switch")?.click();
+    start.click();
+
+    await until(() => !download.hidden);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      input: { name: "chart.svg" },
+      width: 1080,
+      height: 1080,
+      fps: 60,
+      network: "https",
+      settings: { seed: app?.context.settings.seed, sound: false, locale: "en" },
+    });
+    expect(calls[0]?.input.text).toContain("<svg");
+    expect(download.download).toBe("chart.webm");
+    expect(await (await fetch(download.href)).text()).toBe("VIDEO");
+    expect([start.hidden, status.textContent]).toEqual([false, expect.stringMatching(/^Done: 0:02 long/)]);
+  });
+
+  it("reports a failed and a cancelled export without a download", async () => {
+    let runs = 0;
+    let signal: AbortSignal | undefined;
+    const { root } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      exportVideo(options) {
+        runs += 1;
+        signal = options.signal;
+        if (runs === 1) return Promise.reject(new Error("encoder broke"));
+        return new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal?.reason)));
+      },
+    });
+    const { start, cancel, download, status } = await openExport(root);
+    const shown = () => [start.hidden, cancel.hidden, download.hidden];
+    start.click();
+    await until(() => status.textContent === "Export failed: encoder broke");
+    expect(shown()).toEqual([false, true, true]);
+
+    start.click();
+    expect(shown()).toEqual([true, false, true]);
+    await until(() => runs === 2);
+    cancel.click();
+    await until(() => status.textContent === "Export cancelled.");
+    expect([signal?.aborted, ...shown()]).toEqual([true, false, true, true]);
   });
 
   it("explains an unknown example instead of mounting a player", async () => {
