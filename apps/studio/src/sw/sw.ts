@@ -2,9 +2,9 @@
 /**
  * Studio service worker, hand-written and small:
  *  - precaches the app shell (HTML, entry chunks, CSS, icons, manifest) per release;
- *  - warms the lazy adapter and locale chunks with what they load (pdf.js workers included) at
- *    install (best effort), and caches every other hashed asset (legacy builds) on first use,
- *    cache-first;
+ *  - warms the lazy adapter and locale chunks with what they load (pdf.js's modern and legacy
+ *    builds and workers included) at install (best effort), and caches every other hashed asset
+ *    (three's Draco decoders) on first use, cache-first;
  *  - serves examples stale-while-revalidate;
  *  - answers navigations from the cached shell, so Studio opens offline;
  *  - receives the PWA share target (POST) into a short-lived inbox the page reads (`?inbox=`).

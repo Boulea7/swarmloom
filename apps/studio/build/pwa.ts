@@ -114,11 +114,13 @@ export function shellFiles(bundle: Record<string, ChunkLike>): string[] {
 }
 
 /**
- * Sources whose output is never warmed, only cached on first use: pdf.js's legacy build (old
- * browsers only) and three's bundled Draco decoders (the 3D reader loads a decoder only from a
- * configured `dracoDecoderPath`, which Studio does not set).
+ * Sources whose output is never warmed, only cached on first use: three's bundled Draco decoders
+ * (the 3D reader loads a decoder only from a configured `dracoDecoderPath`, which Studio does not
+ * set). pdf.js's legacy build is warmed like the modern one: the PDF reader picks it in every
+ * browser that lacks a built-in the modern build calls (Chrome/Edge 116-118 among them, see
+ * adapter-pdf's runtime), so it is the build those browsers request offline.
  */
-const COLD_SOURCES = ["/legacy/", "/three/examples/jsm/libs/draco/"];
+const COLD_SOURCES = ["/three/examples/jsm/libs/draco/"];
 
 function cold(sources: readonly string[] = []): boolean {
   return sources.some((id) => COLD_SOURCES.some((part) => id.includes(part)));
@@ -129,9 +131,9 @@ function cold(sources: readonly string[] = []): boolean {
  * locale or in-browser video exporter entry together with everything it imports statically, their
  * CSS and the files they load by URL (pdf.js's worker script), since the reader fails offline if
  * any of them is missing. Size is no limit: pdf.js's worker and its main-thread fallback (a lazy
- * entry of its own) are both over 1 MiB. An entry is warmed whole or not at all: when a chunk it
- * imports is cold, the entry is left to the runtime cache too. A cold file loaded by URL is an
- * alternative build and is skipped alone.
+ * entry of its own) are both over 1 MiB, in the modern and the legacy build alike. An entry is
+ * warmed whole or not at all: when a chunk it imports is cold, the entry is left to the runtime
+ * cache too. A cold file loaded by URL is skipped alone.
  */
 export function warmFiles(bundle: Record<string, ChunkLike>, shell: readonly string[]): string[] {
   const skip = new Set(shell);

@@ -39,8 +39,8 @@ describe("PWA precache", () => {
         viteMetadata: { importedCss: new Set(["assets/lib.css"]) },
       }),
       chunk("assets/purify.js"),
-      // The PDF reader opens offline only with its worker script and the main-thread fallback; the
-      // legacy build (old browsers) and loaders importing it stay cold.
+      // The PDF reader opens offline only with its worker script and the main-thread fallback, in
+      // both builds: browsers without the modern build's built-ins (Chrome 116-118) load the legacy one.
       chunk("assets/pdf-reader.js", {
         isDynamicEntry: true,
         viteMetadata: { importedAssets: new Set(["assets/pdf.worker.mjs", "assets/pdf.worker-legacy.mjs"]) },
@@ -48,8 +48,22 @@ describe("PWA precache", () => {
       asset("assets/pdf.worker.mjs", "/pdfjs-dist/build/pdf.worker.min.mjs"),
       asset("assets/pdf.worker-legacy.mjs", "/pdfjs-dist/legacy/build/pdf.worker.min.mjs"),
       chunk("assets/pdf.worker.js", { isDynamicEntry: true, moduleIds: ["/pdfjs-dist/build/pdf.worker.min.mjs"] }),
-      chunk("assets/legacy-loader.js", { isDynamicEntry: true, imports: ["assets/pdf-legacy.js"] }),
+      chunk("assets/pdf.worker-legacy.js", {
+        isDynamicEntry: true,
+        moduleIds: ["/pdfjs-dist/legacy/build/pdf.worker.min.mjs"],
+      }),
       chunk("assets/pdf-legacy.js", { isDynamicEntry: true, moduleIds: ["/pdfjs-dist/legacy/build/pdf.mjs"] }),
+      // Three's Draco decoders (never loaded by Studio) and loaders importing them stay cold.
+      chunk("assets/model-reader.js", {
+        isDynamicEntry: true,
+        viteMetadata: { importedAssets: new Set(["assets/draco.wasm"]) },
+      }),
+      asset("assets/draco.wasm", "/three/examples/jsm/libs/draco/draco_decoder.wasm"),
+      chunk("assets/draco-loader.js", { isDynamicEntry: true, imports: ["assets/draco.js"] }),
+      chunk("assets/draco.js", {
+        isDynamicEntry: true,
+        moduleIds: ["/three/examples/jsm/libs/draco/draco_decoder.js"],
+      }),
     ];
     const bundle = Object.fromEntries(items.map((item) => [item.fileName, item]));
     const shell = shellFiles(bundle);
@@ -58,7 +72,11 @@ describe("PWA precache", () => {
       "assets/lib.css",
       "assets/lib.js",
       "assets/markdown.js",
+      "assets/model-reader.js",
+      "assets/pdf-legacy.js",
       "assets/pdf-reader.js",
+      "assets/pdf.worker-legacy.js",
+      "assets/pdf.worker-legacy.mjs",
       "assets/pdf.worker.js",
       "assets/pdf.worker.mjs",
       "assets/purify.js",
