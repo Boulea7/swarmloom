@@ -284,6 +284,13 @@ export interface ControlsOptions {
    * the toolbar shows a keyboard-accessible seek bar that calls `seek(t)` on release.
    */
   timeline?: () => { elapsed: number; duration: number };
+  /**
+   * Optional (ui seam): the player's resolved reduced-motion setting (PlayerOptions.reducedMotion).
+   * When true, the toolbar drops its slides, transitions and the sound hint's pulse even where the
+   * OS does not ask for reduced motion (an app-level choice such as Studio's Motion setting). The
+   * toolbar follows `prefers-reduced-motion` either way.
+   */
+  reducedMotion?: boolean;
 }
 
 /**

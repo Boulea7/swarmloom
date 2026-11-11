@@ -18,6 +18,8 @@ While audio is locked, the first press on the sound button only unlocks it: the 
 
 The seek bar is opt-in: it appears only when the shell passes the `timeline` seam (`createPlayer({ scrubber: true })` does) and the player implements `seek()`. It is a native range input across the top of the pill, its own tab stop. Dragging previews the position and seeks on release (a seek back replays the build from the start); arrows step 1 s, Page Up/Down 10 %, Home/End jump to the ends, and steps within one frame collapse into one seek. The length shown is the build's estimated length, which only grows within a run so the thumb does not slide back when the ETA is revised.
 
+Reduced motion turns off the pill's slide, its transitions and the pulse on the "Tap for sound" button (a static ring stays). It applies when the OS asks for it (`prefers-reduced-motion`) and when the player resolved `reducedMotion` to true (the `reducedMotion` seam), so an app-level setting such as Studio's Motion choice reaches the toolbar too.
+
 The toolbar has no finale menu; `Player.setFinale()` is left to shells that offer one.
 
 The toolbar never feeds the engine clock, so its wall-clock timers do not affect exports.

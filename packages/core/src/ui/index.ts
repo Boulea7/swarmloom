@@ -10,7 +10,8 @@
  * auto-hide after ~2.5 s without pointer activity while building, tap on the empty stage toggles
  * it on touch screens, icons-only compact layout with 44 px targets on narrow hosts, safe-area
  * insets, fold-aware placement on dual-segment screens and a polite live region announcing
- * start / halfway / done.
+ * start / halfway / done. Reduced motion (the OS preference, or the player's setting through the
+ * `reducedMotion` seam) drops its slides, transitions and pulse.
  */
 
 import type { Controls, ControlsOptions, I18n } from "../internal";
@@ -80,6 +81,7 @@ export function createControls(opts: ToolbarOptions): Controls {
   if (!win) throw new TypeError("createControls() needs a host attached to a document with a window");
 
   const dom = buildToolbar(doc, opts.chrome === "dark" ? "dark" : "light");
+  setAttr(dom.element, "data-reduced-motion", opts.reducedMotion === true);
   const text = toolbarText(i18n);
   const t = translator(i18n);
   const milestones = createMilestones();
@@ -693,5 +695,8 @@ function validate(opts: ToolbarOptions): void {
   }
   if (typeof opts.soundLocked !== "function" || typeof opts.onUnlockSound !== "function") {
     throw new TypeError("createControls(): `soundLocked` and `onUnlockSound` must be functions");
+  }
+  if (opts.reducedMotion !== undefined && typeof opts.reducedMotion !== "boolean") {
+    throw new TypeError("createControls(): `reducedMotion` must be a boolean");
   }
 }

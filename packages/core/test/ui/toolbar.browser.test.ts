@@ -18,6 +18,7 @@ async function mount(opts: {
   soundLocked?: boolean;
   finish?: boolean;
   seekable?: boolean;
+  reducedMotion?: boolean;
 }) {
   const fake = createFakePlayer(opts.state);
   if (opts.finish) Object.assign(fake.player, { finish: vi.fn() });
@@ -37,6 +38,7 @@ async function mount(opts: {
     chrome: "light",
     soundLocked: () => opts.soundLocked ?? false,
     onUnlockSound: () => {},
+    reducedMotion: opts.reducedMotion,
     ...seekable,
   });
   await frames();
@@ -123,5 +125,24 @@ describe("toolbar layout in Chromium", () => {
     seek?.focus();
     expect(m.root.activeElement).toBe(seek);
     expect(seek?.getAttribute("aria-valuetext")).toBe("0:04 of 0:16");
+  });
+
+  it("drops its pulse, slides and transitions when the player asks for reduced motion and the OS does not", async () => {
+    await page.viewport(1280, 800);
+    expect(matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(false);
+    const moving = await mount({ locale: "en", state: "building", soundLocked: true });
+    const pulse = (root: ShadowRoot): string =>
+      getComputedStyle(root.querySelector(".btn.locked") as Element, "::before").animationName;
+    const slide = (root: ShadowRoot): string =>
+      getComputedStyle(root.querySelector(".bar") as Element).transitionDuration;
+    expect(pulse(moving.root)).toBe("sl-pulse");
+    expect(slide(moving.root)).not.toMatch(/^0s(, 0s)*$/);
+    moving.controls.destroy();
+
+    const m = await mount({ locale: "en", state: "building", soundLocked: true, reducedMotion: true });
+    controls = m.controls;
+    expect(pulse(m.root)).toBe("none");
+    expect(slide(m.root)).toMatch(/^0s(, 0s)*$/);
+    expect(getComputedStyle(m.root.querySelector(".dock") as Element).transitionDuration).toMatch(/^0s(, 0s)*$/);
   });
 });

@@ -3,6 +3,22 @@
  * Colours follow the SwarmLoom brand constants (Loom Indigo #5B5BF7, ink #0B0B12, paper #FAFAFC).
  */
 
+/**
+ * Reduced motion: no slides, fades or pulse; the sound hint keeps a static ring instead. Applies
+ * when the OS asks for it and when the player was told to (data-reduced-motion, e.g. Studio's
+ * Motion setting), with every selector prefixed by `scope`.
+ */
+function reducedMotionCss(scope: string): string {
+  const sel = (list: string): string =>
+    list
+      .split(",")
+      .map((s) => scope + s.trim())
+      .join(", ");
+  return `${sel(".dock, .bar, .btn, .tip, .ring .fg")} { transition: none !important; }
+${sel(".btn.locked::before")} { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--sl-primary) 45%, transparent); }
+${sel(".dock[data-away] .bar")} { transform: none; }`;
+}
+
 export const TOOLBAR_CSS = /* css */ `
 :host {
   all: initial;
@@ -290,10 +306,9 @@ export const TOOLBAR_CSS = /* css */ `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dock, .bar, .btn, .tip, .ring .fg { transition: none !important; }
-  .btn.locked::before { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--sl-primary) 45%, transparent); }
-  .dock[data-away] .bar { transform: none; }
+${reducedMotionCss("")}
 }
+${reducedMotionCss(":host([data-reduced-motion]) ")}
 @media (forced-colors: active) {
   .bar, .tip { border-color: CanvasText; }
   .btn.primary, .speed .btn[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }

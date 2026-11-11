@@ -192,6 +192,7 @@ export function assemblePlayer(options: PlayerOptions, zones: PlayerZones): Play
           options.onClose?.();
         },
         focus: () => player.focus(),
+        reducedMotion: settings.reducedMotion,
         ...(scrubber ? { timeline: () => player.timeline() } : {}),
       });
       player.addCleanup(() => controls.destroy());

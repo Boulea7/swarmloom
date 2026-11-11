@@ -82,6 +82,8 @@ describe("assemblePlayer", () => {
     expect(zones.createSound.mock.calls.at(-1)?.[0]).toMatchObject({ seed: 5 });
     expect(controls[0]?.host).toBe(stage.uiLayer);
     expect(controls[0]?.player).toBe(player);
+    // Toolbar and stage follow the same resolved reduced-motion setting.
+    expect(zones.createControls.mock.calls[0]?.[0].reducedMotion).toBe(args?.reducedMotion);
     expect(typeof player.finish).toBe("function");
     // The seek bar is opt-in: without `scrubber` the toolbar gets no timeline.
     expect(controls[0]?.timeline).toBeUndefined();
