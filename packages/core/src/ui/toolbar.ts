@@ -3,7 +3,7 @@
  * through compare-before-write helpers, so an unchanged view costs no DOM mutation.
  */
 
-import { h, setAttr, setHidden, setText } from "./dom";
+import { h, setAttr, setHidden, setStyleVar, setText } from "./dom";
 import { createIcon } from "./icons";
 import { TOOLBAR_CSS } from "./styles";
 import { SPEEDS, type ToolbarView } from "./view-model";
@@ -32,6 +32,8 @@ export interface ToolbarText {
   goLive: string;
   goLiveHint: string;
   finish: string;
+  /** Accessible name of the seek bar. */
+  seek: string;
   close: string;
   record: string;
   keySpace: string;
@@ -55,6 +57,8 @@ export interface ToolbarDom {
   root: ShadowRoot;
   dock: HTMLElement;
   bar: HTMLElement;
+  /** Seek bar (a native range input across the top of the pill); hidden unless offered. */
+  seek: HTMLInputElement;
   ring: { el: HTMLElement; fg: SVGCircleElement; pct: HTMLElement; check: SVGSVGElement; tip: HTMLElement };
   play: Button & { playIcon: SVGSVGElement; pauseIcon: SVGSVGElement };
   speedGroup: HTMLElement;
@@ -154,8 +158,10 @@ export function buildToolbar(doc: Document, chrome: "light" | "dark"): ToolbarDo
   const record = button(doc, "record", "", [createIcon(doc, "record")]);
   const close = button(doc, "close", "Escape", [createIcon(doc, "close")]);
   const separator = h(doc, "span", { class: "sep", "aria-hidden": "true" });
+  const seek = h(doc, "input", { type: "range", class: "seek", part: "seek", min: 0, max: 0, step: 1, hidden: true });
 
   const bar = h(doc, "div", { class: "bar", part: "toolbar", role: "toolbar", "aria-orientation": "horizontal" }, [
+    seek,
     ring.el,
     play.el,
     speedGroup,
@@ -179,6 +185,7 @@ export function buildToolbar(doc: Document, chrome: "light" | "dark"): ToolbarDo
     root,
     dock,
     bar,
+    seek,
     ring,
     play,
     speedGroup,
@@ -270,12 +277,31 @@ export function renderToolbar(dom: ToolbarDom, view: ToolbarView, text: ToolbarT
   setHidden(dom.finish.el, !view.finish);
   name(dom.finish, text.finish, text.shortcut(text.finish, "F"));
 
+  // The pill makes room for the seek bar across its top.
+  setAttr(dom.bar, "data-seek", view.seek.visible);
+  renderSeek(dom.seek, view.seek, text.seek);
+
   setHidden(dom.record.el, !view.record);
   name(dom.record, text.record, text.record);
 
   setHidden(dom.close.el, !view.close);
   name(dom.close, text.close, text.shortcut(text.close, text.keyEsc));
   setHidden(dom.separator, !view.close);
+}
+
+/**
+ * Writes the seek bar. The value goes through the `value` property (the attribute stops applying
+ * once the user moved the thumb), after `max` so it is not clamped to a stale range.
+ */
+function renderSeek(input: HTMLInputElement, seek: ToolbarView["seek"], label: string): void {
+  setHidden(input, !seek.visible);
+  if (!seek.visible) return;
+  setAttr(input, "aria-label", label);
+  setAttr(input, "max", seek.max);
+  const value = String(Math.min(seek.max, Math.max(0, seek.value)));
+  if (input.value !== value) input.value = value;
+  setAttr(input, "aria-valuetext", seek.text);
+  setStyleVar(input, "--sl-seek", `${((100 * Number(value)) / Math.max(1, seek.max)).toFixed(2)}%`);
 }
 
 export function formatSpeed(speed: number): string {

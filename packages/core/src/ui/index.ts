@@ -2,7 +2,9 @@
  * Built-in toolbar: a floating pill at the bottom centre of the stage with progress ring (ETA
  * tooltip), play/pause, speed 1x/2x/3x, sound (with a "Tap for sound" hint while the browser
  * blocks audio), tour, finish now (when the player offers finish()), replay, go live (primary
- * once done), optional record, and close.
+ * once done), optional record, and close. With the `timeline` seam and a player that can seek,
+ * a seek bar runs across the top of the pill: dragging previews the position and seeks on
+ * release; arrows step 1 s, Page Up/Down 10 %, Home/End jump to the ends.
  *
  * Behaviour: keyboard shortcuts (see ./keyboard), arrow-key navigation inside the toolbar,
  * auto-hide after ~2.5 s without pointer activity while building, tap on the empty stage toggles
@@ -20,7 +22,15 @@ import { setAttr, setHidden, setStyleVar, setText } from "./dom";
 import { bindShortcuts, type KeyboardScope } from "./keyboard";
 import { type DockPlacement, placeDock, readSegments } from "./placement";
 import { buildToolbar, focusableItems, renderToolbar, type ToolbarText } from "./toolbar";
-import { buildView, type Command, SPEEDS, type ToolbarView, translator } from "./view-model";
+import {
+  buildView,
+  type Command,
+  SEEK_UNIT_MS,
+  SPEEDS,
+  type Timeline,
+  type ToolbarView,
+  translator,
+} from "./view-model";
 
 export { commandForKey, type KeyboardScope, type KeyInput } from "./keyboard";
 export { ELEMENT_NAME } from "./toolbar";
@@ -37,6 +47,10 @@ const PROGRESS_INTERVAL_MS = 200;
 
 /** Heartbeat for values without change events: ETA, sound lock, fold focus. */
 const HEARTBEAT_MS = 1000;
+
+/** Seek bar keyboard steps: arrows move this many player ms, Page Up/Down this share of the build. */
+const SEEK_KEY_STEP_MS = 1000;
+const SEEK_PAGE_SHARE = 0.1;
 
 /** A touch counts as a tap when it ends this fast and this close to where it started. */
 const TAP_MAX_MS = 350;
@@ -89,6 +103,11 @@ export function createControls(opts: ToolbarOptions): Controls {
   let focusWithin = false;
   let activeItem: HTMLElement | null = null;
   let progress = { built: 0, total: 0 };
+  /** Pointer drag on the seek bar in progress (the value previews, the seek waits for release). */
+  let scrubbing = false;
+  /** Seek bar value (in SEEK_UNIT_MS steps) waiting for the next frame to be sought, or -1. */
+  let seekTarget = -1;
+  let seekFrame = 0;
 
   const actions: Actions = createActions({
     player,
@@ -124,9 +143,32 @@ export function createControls(opts: ToolbarOptions): Controls {
         compact: compactLayout,
         canRecord: typeof opts.onRecord === "function",
         canFinish: typeof (player as Player & { finish?: unknown }).finish === "function",
+        timeline: readTimeline(),
       },
       t,
     );
+  };
+
+  /** Longest build length estimated this run, and the elapsed time it was last read at. */
+  let runLength = 0;
+  let lastElapsed = 0;
+
+  /**
+   * Playback position for the seek bar, or null when it is not offered. The length estimate only
+   * grows within a run, so the thumb does not slide back each time the ETA is revised up; a replay
+   * or a seek back starts over, and a finished build reports its real length. While the user holds
+   * or steps the thumb, the position is the thumb's, so refreshes never yank it back.
+   */
+  const readTimeline = (): Timeline | null => {
+    const read = opts.timeline;
+    if (typeof read !== "function" || typeof (player as Player & { seek?: unknown }).seek !== "function") return null;
+    const live = safe(() => read(), null);
+    if (!live || !Number.isFinite(live.elapsed) || !Number.isFinite(live.duration)) return null;
+    if (live.elapsed < lastElapsed || live.elapsed >= live.duration) runLength = 0;
+    lastElapsed = live.elapsed;
+    runLength = Math.max(runLength, live.duration);
+    const elapsed = scrubbing || seekTarget >= 0 ? Number(dom.seek.value) * SEEK_UNIT_MS : live.elapsed;
+    return { elapsed, duration: runLength };
   };
 
   const render = (): void => {
@@ -267,6 +309,68 @@ export function createControls(opts: ToolbarOptions): Controls {
     const command = commandFromButton(target);
     if (command?.kind === "toggleSound") dispatch({ kind: "toggleSound", lockedAtPress: pressLocked });
     else if (command) dispatch(command);
+  });
+
+  /* ------------------------------------------------------------- seek bar */
+
+  /** Seeks to `units` on the next frame; steps in between (key repeat) collapse into one seek. */
+  const commitSeek = (units: number): void => {
+    seekTarget = Math.max(0, units);
+    if (seekFrame || destroyed) return;
+    seekFrame = win.requestAnimationFrame(() => {
+      seekFrame = 0;
+      const t = seekTarget * SEEK_UNIT_MS;
+      seekTarget = -1;
+      if (!dispatch({ kind: "seek", t })) render();
+    });
+  };
+  const endScrub = (): void => {
+    scrubbing = false;
+    autoHide.pin("scrub", false);
+  };
+  listen<PointerEvent>(dom.seek, "pointerdown", () => {
+    scrubbing = true;
+    autoHide.pin("scrub", true);
+  });
+  listen(dom.seek, "pointercancel", () => {
+    endScrub();
+    render();
+  });
+  // Dragging only previews the position: each seek replays the build from the start.
+  listen(dom.seek, "input", () => {
+    if (scrubbing) render();
+  });
+  listen(dom.seek, "change", () => {
+    endScrub();
+    commitSeek(Number(dom.seek.value));
+  });
+  listen<KeyboardEvent>(dom.seek, "keydown", (e) => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const max = Number(dom.seek.max) || 0;
+    const value = Number(dom.seek.value) || 0;
+    const step = SEEK_KEY_STEP_MS / SEEK_UNIT_MS;
+    const page = Math.max(step, Math.round(max * SEEK_PAGE_SHARE));
+    const next =
+      e.key === "ArrowRight" || e.key === "ArrowUp"
+        ? value + step
+        : e.key === "ArrowLeft" || e.key === "ArrowDown"
+          ? value - step
+          : e.key === "PageUp"
+            ? value + page
+            : e.key === "PageDown"
+              ? value - page
+              : e.key === "Home"
+                ? 0
+                : e.key === "End"
+                  ? max
+                  : Number.NaN;
+    if (Number.isNaN(next)) return;
+    // Native stepping would move by one tiny unit and seek on every press: handled here instead.
+    e.preventDefault();
+    e.stopPropagation();
+    dom.seek.value = String(Math.min(max, Math.max(0, next)));
+    commitSeek(Number(dom.seek.value));
+    render();
   });
 
   /* ------------------------------------------------------ roving tab focus */
@@ -442,6 +546,7 @@ export function createControls(opts: ToolbarOptions): Controls {
       win.clearInterval(heartbeat);
       if (frame) win.cancelAnimationFrame(frame);
       if (layoutFrame) win.cancelAnimationFrame(layoutFrame);
+      if (seekFrame) win.cancelAnimationFrame(seekFrame);
       if (throttle !== null) win.clearTimeout(throttle);
       autoHide.destroy();
       for (const fn of cleanups.splice(0)) fn();
@@ -458,7 +563,7 @@ export function createControls(opts: ToolbarOptions): Controls {
 
 /* ------------------------------------------------------------------ helpers */
 
-type SimpleCommand = Exclude<Command, { kind: "speed" }>;
+type SimpleCommand = Exclude<Command, { kind: "speed" } | { kind: "seek" }>;
 
 const COMMAND_KINDS: ReadonlySet<string> = new Set<SimpleCommand["kind"]>([
   "close",
@@ -494,6 +599,7 @@ function toolbarText(i18n: I18n): ToolbarText {
     goLive: t("toolbar.goLive"),
     goLiveHint: t("toolbar.goLiveHint"),
     finish: t("toolbar.finish"),
+    seek: t("toolbar.seek"),
     close: t("toolbar.close"),
     record: t("toolbar.record"),
     keySpace: t("key.space"),

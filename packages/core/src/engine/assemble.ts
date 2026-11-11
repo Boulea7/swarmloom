@@ -140,6 +140,8 @@ export function assemblePlayer(options: PlayerOptions, zones: PlayerZones): Play
   const soundOptions: SoundOptions & { seed: number } = { ...resolveSound(options.sound), seed: settings.seed };
   const clock = options.clock ?? new RealtimeClock();
   const initialScroll = mode === "overlay" && typeof window !== "undefined" ? window.scrollY || 0 : 0;
+  const scrubber = options.scrubber ?? false;
+  if (typeof scrubber !== "boolean") throw new TypeError("scrubber must be a boolean");
   const theme = zones.resolveTheme(options.theme, blueprint, matches("(prefers-color-scheme: dark)"));
 
   let stage: Stage | null = null;
@@ -190,6 +192,7 @@ export function assemblePlayer(options: PlayerOptions, zones: PlayerZones): Play
           options.onClose?.();
         },
         focus: () => player.focus(),
+        ...(scrubber ? { timeline: () => player.timeline() } : {}),
       });
       player.addCleanup(() => controls.destroy());
     }

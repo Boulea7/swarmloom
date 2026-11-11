@@ -9,7 +9,7 @@ Owner: engine team. Also owns `src/player.ts`, `src/clock.ts`, `src/rng.ts`, `sr
 | Module | Role |
 |---|---|
 | `assemble.ts` | Option validation and player assembly from the zone factories (`PlayerZones`); releases what it created when a zone throws |
-| `engine.ts` | `Engine`: state machine (idle, intro, building, paused, finale, done, live, destroyed), frame loop, player and task timelines, events, sound log, eta, ready, replay, seek, finish, go live |
+| `engine.ts` | `Engine`: state machine (idle, intro, building, paused, finale, done, live, destroyed), frame loop, player and task timelines, events, sound log, eta, ready, replay, seek (and the seek bar's timeline), finish, go live |
 | `planner.ts` | Task DAG (parent before child, master subtree before duplicate, guide before snapping text), reading order, priority tiers, unlock positions, cycle and dangling-reference diagnostics |
 | `schedule.ts`, `heap.ts` | Runtime task state: dependency counts, unlock boundary, available set, pick scoring (only work in sight: guides first, then reading position and distance), progress and ETA aggregates |
 | `build.ts`, `runner.ts`, `fallback.ts` | Choreography lookup (later plugins override earlier task keys), generator driving (yield ms, undefined or a promise), timeouts, cleanup of overlays and unfinished layers |

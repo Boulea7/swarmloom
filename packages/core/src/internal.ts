@@ -268,11 +268,19 @@ export interface ControlsOptions {
    * about once a second, only while viewport segments exist.
    */
   focus?: () => Point | null;
+  /**
+   * Optional (ui seam): playback position in player ms (`elapsed` since play, and the expected
+   * `duration` of the build; both 0 before play). When given and the player implements `seek()`,
+   * the toolbar shows a keyboard-accessible seek bar that calls `seek(t)` on release.
+   */
+  timeline?: () => { elapsed: number; duration: number };
 }
 
 /**
- * Floating toolbar: progress, play/pause, speed 1x/2x/3x, sound, tour, replay, go live, close.
- * Keyboard: Esc close, Space pause/resume, M sound, T tour, 1/2/3 speed, R replay, L go live.
+ * Floating toolbar: progress, play/pause, speed 1x/2x/3x, sound, tour, finish now, replay, go live,
+ * close, and a seek bar when the `timeline` seam is given and the player can seek.
+ * Keyboard: Esc close, Space pause/resume, M sound, T tour, 1/2/3 speed, R replay, L go live,
+ * F finish now; arrows, Page Up/Down, Home and End on the focused seek bar.
  * Touch: tap empty stage toggles toolbar; buttons >= 44px hit area; respects safe-area insets
  * and avoids the fold when viewport segments are present. Auto-hides after inactivity while building.
  */

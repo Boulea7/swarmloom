@@ -38,6 +38,37 @@ describe("@swarmloom/core public index", () => {
     host.remove();
   });
 
+  it("the toolbar's finish key completes a real build within about a second", () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    const clock = new VirtualClock();
+    const layers = Array.from({ length: 24 }, (_, i) => ({
+      id: `line${i}`,
+      kind: "text" as const,
+      box: { x: 10, y: 10 + i * 30, w: 300, h: 20 },
+      html: "Woven line",
+      text: "Woven line",
+      style: {},
+    }));
+    const player = createPlayer({
+      blueprint: { ...blueprint, size: { w: 400, h: 800 }, layers },
+      host,
+      clock,
+      sound: false,
+    });
+    void player.play();
+    for (let i = 0; i < 180; i++) clock.advance(1000 / 60);
+    expect(player.state).toBe("building");
+    expect(player.progress.built).toBeLessThan(24);
+    // Keys reach the toolbar through the stage element (its shadow root is closed).
+    const stage = host.firstElementChild;
+    stage?.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true, composed: true, cancelable: true }));
+    for (let i = 0; i < 75; i++) clock.advance(1000 / 60);
+    expect(player.progress).toEqual({ built: 24, total: 24 });
+    expect(player.state).toBe("finale");
+    player.destroy();
+    host.remove();
+  });
+
   it("createPlayer plays a tiny blueprint to done under a VirtualClock", () => {
     const host = document.body.appendChild(document.createElement("div"));
     const clock = new VirtualClock();

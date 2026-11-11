@@ -107,6 +107,44 @@ describe("createControls", () => {
     expect(finish).toHaveBeenCalledTimes(2);
   });
 
+  it("shows a seek bar only when asked and the player can seek; keys and release seek once per frame", async () => {
+    const fake = createFakePlayer("building");
+    const seek = vi.fn();
+    let estimate = { elapsed: 5000, duration: 20_000 };
+    const timeline = () => estimate;
+    expect(mount({ timeline }).shadow.querySelector<HTMLInputElement>(".seek")?.hidden).toBe(true);
+    controls?.destroy();
+    const { shadow } = mount({ player: Object.assign(fake.player, { seek }), timeline });
+    const bar = shadow.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!bar) throw new Error("no seek bar");
+    expect(bar.hidden).toBe(false);
+    expect(bar.getAttribute("aria-label")).toBe("Build position");
+    expect(bar.getAttribute("aria-valuetext")).toBe("0:05 of 0:20");
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    // Two arrow presses within a frame collapse into one seek, 1 s per press.
+    expect(press("ArrowRight", bar).defaultPrevented).toBe(true);
+    press("ArrowRight", bar);
+    expect(bar.getAttribute("aria-valuetext")).toBe("0:07 of 0:20");
+    await frame();
+    expect(seek.mock.calls).toEqual([[7000]]);
+    press("End", bar);
+    await frame();
+    expect(seek).toHaveBeenLastCalledWith(20_000);
+    // Dragging previews without seeking; the release seeks.
+    bar.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    bar.value = "40";
+    bar.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(bar.getAttribute("aria-valuetext")).toBe("0:04 of 0:20");
+    expect(seek).toHaveBeenCalledTimes(2);
+    bar.dispatchEvent(new Event("change", { bubbles: true }));
+    await frame();
+    expect(seek).toHaveBeenLastCalledWith(4000);
+    // A lower ETA later in the run does not pull the thumb back.
+    estimate = { elapsed: 6000, duration: 12_000 };
+    press("2");
+    expect(bar.getAttribute("aria-valuetext")).toBe("0:06 of 0:20");
+  });
+
   it("ignores shortcuts in text fields, with modifiers, and when the phase does not offer them", () => {
     const { player, setState } = mount();
     const input = document.createElement("input");

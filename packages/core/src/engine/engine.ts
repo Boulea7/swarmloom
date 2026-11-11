@@ -480,6 +480,19 @@ export class Engine implements Player {
     return { speed: this.#speed, sound: this.#sound.enabled, follow: this.#follow };
   }
 
+  /**
+   * Playback position for the toolbar's seek bar, in player ms: time since play() and the
+   * expected build length (elapsed plus eta). Once the build is complete both are the time it
+   * completed; before play (and after destroy) both are 0.
+   */
+  timeline(): { elapsed: number; duration: number } {
+    const s = this.#state === "paused" ? this.#resumeState : this.#state;
+    if (s === "idle" || s === "destroyed") return { elapsed: 0, duration: 0 };
+    if (s === "intro" || s === "building") return { elapsed: this.#pt, duration: this.#pt + this.eta() };
+    const end = this.#finaleAt > 0 ? this.#finaleAt : this.#pt;
+    return { elapsed: end, duration: end };
+  }
+
   /** Client-space centroid of the working cursors, or null when nobody works. */
   focus(): Point | null {
     let x = 0;

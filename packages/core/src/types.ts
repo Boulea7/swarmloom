@@ -474,6 +474,11 @@ export interface PlayerOptions {
   finale?: "flock" | "halo" | "none";
   /** Built-in toolbar (play/pause, speed, sound, tour, replay, go live, close). */
   controls?: boolean;
+  /**
+   * Adds a seek bar to the built-in toolbar (drag or arrow keys to jump through the build). Shown
+   * only with `controls` on; default false. Each seek replays the build from the start.
+   */
+  scrubber?: boolean;
   /** BCP 47 tag for toolbar strings; defaults to navigator.language. */
   locale?: string;
   plugins?: Plugin[];
