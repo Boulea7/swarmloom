@@ -28,9 +28,64 @@
 
 <!-- VIDEO:main -->
 
-The main film is in production and will play right here.
+https://github.com/user-attachments/assets/47a365d6-58af-49b0-9c03-dda84e5e3d16
+
+Full-quality videos and captions: [promo-v1](https://github.com/Boulea7/swarmloom/releases/tag/promo-v1)
 
 <!-- /VIDEO:main -->
+
+<!-- VIDEO:more -->
+
+<details>
+<summary>More videos by format (11)</summary>
+
+**Web**
+
+https://github.com/user-attachments/assets/2b4a75f4-a835-4ae0-92d8-b267ddb6a49c
+
+**HTML**
+
+https://github.com/user-attachments/assets/829b9dc8-3ba0-46ed-855e-01cd19fba3a6
+
+**SVG**
+
+https://github.com/user-attachments/assets/31ff1e7f-9bd9-4236-91a0-494bf3961c08
+
+**Markdown**
+
+https://github.com/user-attachments/assets/819d135b-2c05-448e-ab5a-1b2e933476ac
+
+**Word**
+
+https://github.com/user-attachments/assets/4e82522b-71e5-493d-b704-829e70fa74fc
+
+**PDF**
+
+https://github.com/user-attachments/assets/e02a07c0-317e-451b-b5ad-8387f7637e7a
+
+**Office**
+
+https://github.com/user-attachments/assets/3a5871dd-edac-45e1-932b-9e0dae34befd
+
+**Code**
+
+https://github.com/user-attachments/assets/211ba630-d195-4947-ba40-882dfb8eef4f
+
+**Image**
+
+https://github.com/user-attachments/assets/c9b6dc50-55ba-4b1e-b235-7b220fdff8e4
+
+**3D models**
+
+https://github.com/user-attachments/assets/e525ae40-dd06-4986-bb0e-899f82900aaf
+
+**Platforms**
+
+https://github.com/user-attachments/assets/cf9eaea2-e9b3-436b-a40a-2daf376bd8f8
+
+</details>
+
+<!-- /VIDEO:more -->
 
 Without installing anything, you can open the same examples in [Studio online](https://boulea7.github.io/swarmloom/studio/), or read the [illustrated guide](https://boulea7.github.io/swarmloom/docs/en/getting-started.html) first.
 

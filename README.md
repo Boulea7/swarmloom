@@ -28,9 +28,64 @@
 
 <!-- VIDEO:main -->
 
-主片制作中，完成后会在这里直接播放。
+https://github.com/user-attachments/assets/8933469f-4ce9-42f4-be3a-8c1b59dd278c
+
+高清版与字幕：[promo-v1](https://github.com/Boulea7/swarmloom/releases/tag/promo-v1)
 
 <!-- /VIDEO:main -->
+
+<!-- VIDEO:more -->
+
+<details>
+<summary>按方向看更多视频（11 集）</summary>
+
+**网页**
+
+https://github.com/user-attachments/assets/e4297e9e-83e7-4528-b9cf-0c769cf08f8c
+
+**HTML**
+
+https://github.com/user-attachments/assets/43c06dc9-cb10-439c-bc5d-87accebf1471
+
+**SVG**
+
+https://github.com/user-attachments/assets/d3dccbdc-16bf-4f8d-8f31-71f25d7fbd75
+
+**Markdown**
+
+https://github.com/user-attachments/assets/c84f3b76-bf84-402e-99a9-2223e2781eed
+
+**Word**
+
+https://github.com/user-attachments/assets/5eff7de1-96f8-4d65-99ef-25c23caebe03
+
+**PDF**
+
+https://github.com/user-attachments/assets/5c1e11db-54c6-4a7d-b425-463f54352677
+
+**Office**
+
+https://github.com/user-attachments/assets/bf4d9737-5012-4828-a97a-1965f54ae1ad
+
+**代码**
+
+https://github.com/user-attachments/assets/828b2788-b19a-4dcf-b078-0f2527c748eb
+
+**图片**
+
+https://github.com/user-attachments/assets/2c51e887-8a8e-4bdb-bb12-fb9999ccca87
+
+**3D 模型**
+
+https://github.com/user-attachments/assets/a09fac82-9f73-47db-b41e-5d9c281aacb0
+
+**平台**
+
+https://github.com/user-attachments/assets/fb538bef-ae52-4868-a467-bc63b654507c
+
+</details>
+
+<!-- /VIDEO:more -->
 
 不用安装任何东西，就能在[在线 Studio](https://boulea7.github.io/swarmloom/studio/) 打开下面的同一批示例；也可以先看[图文指南](https://boulea7.github.io/swarmloom/docs/getting-started.html)。
 
