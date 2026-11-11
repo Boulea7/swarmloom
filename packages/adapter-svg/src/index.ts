@@ -14,5 +14,5 @@ export { extractAnchors } from "./path/anchors";
 export { type ParsedPath, type PathSegment, parsePathData } from "./path/parse";
 export { createSvgPlugin, DEFS_TASK, SVG_PLUGIN, type SvgDefsData, svgPlugin } from "./plugin";
 export { type SanitizeReport, sanitizeSvgTree } from "./sanitize";
-export { SMIL_TASK, type SvgSmilData } from "./smil";
+export { SMIL_TASK, type SmilPlaybackOptions, type SvgSmilData } from "./smil";
 export { collectSmilTimeline, MAX_TIMELINE_MS, TIMELINE_BAND, TIMELINE_PLUGIN, type TimelineData } from "./timeline";

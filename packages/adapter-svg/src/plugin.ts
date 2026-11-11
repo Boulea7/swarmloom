@@ -1,6 +1,6 @@
 import { type CustomLayer, definePlugin, type LayerRenderer, type Plugin, type TaskFn } from "@swarmloom/core";
 import { sanitizeSvgTree } from "./sanitize";
-import { createSmilPlayback, SMIL_TASK } from "./smil";
+import { createSmilPlayback, SMIL_TASK, type SmilPlaybackOptions } from "./smil";
 import { SVG_NS } from "./units";
 
 /** Plugin name listed in `Blueprint.plugins`. */
@@ -82,8 +82,8 @@ const defsTask: TaskFn<CustomLayer> = function* (_agent, layer, stage) {
  * animation after the weave (decision C04). Replay state is per instance, so the adapter hands each
  * animated drawing its own.
  */
-export function createSvgPlugin(): Plugin {
-  const smil = createSmilPlayback();
+export function createSvgPlugin(options: SmilPlaybackOptions = {}): Plugin {
+  const smil = createSmilPlayback(options);
   return definePlugin({
     name: SVG_PLUGIN,
     tasks: { [DEFS_TASK]: defsTask, [SMIL_TASK]: smil.task },

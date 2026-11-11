@@ -10,7 +10,8 @@ import { SVG_NS } from "./units";
  *
  * While the player runs, animation time follows player time (`Plugin.frame`), so exports under a
  * VirtualClock stay frame-exact; once the stage goes live (`data-live` on the world host, the same
- * switch that lets CSS animations run), the SVG runs on its own clock (`unpauseAnimations()`).
+ * switch that lets CSS animations run), the SVG runs on its own clock (`unpauseAnimations()`),
+ * unless the playback was created with `liveClock: "player"` (see {@link SmilPlaybackOptions}).
  */
 
 /** Custom layer task (and renderer key) of the live, animated copy of the drawing. */
@@ -115,6 +116,16 @@ function start(state: Live): void {
   if (state.live) state.svg.unpauseAnimations?.();
 }
 
+/** Options of {@link createSmilPlayback}. */
+export interface SmilPlaybackOptions {
+  /**
+   * Clock of a started animation once the stage goes live: "own" (default) unpauses it, so it keeps
+   * playing after the player stops its clock; "player" keeps it on player time, for exports whose
+   * virtual clock keeps ticking after go live and must stay frame-exact.
+   */
+  liveClock?: "own" | "player";
+}
+
 /** Renderer, task and frame hook of the SMIL replay; one instance per plugin (player). */
 export interface SmilPlayback {
   renderer: LayerRenderer<CustomLayer>;
@@ -124,8 +135,9 @@ export interface SmilPlayback {
 }
 
 /** Creates the SMIL playback parts of one `svg` plugin instance. */
-export function createSmilPlayback(): SmilPlayback {
+export function createSmilPlayback(options: SmilPlaybackOptions = {}): SmilPlayback {
   const mounted = new Map<CustomLayer, Live>();
+  const ownClock = options.liveClock !== "player";
 
   const unmount = (layer: CustomLayer): void => {
     const state = mounted.get(layer);
@@ -151,7 +163,8 @@ export function createSmilPlayback(): SmilPlayback {
       (typeof wrapper.attachShadow === "function" ? wrapper.attachShadow({ mode: "open" }) : wrapper).appendChild(svg);
       pause(svg);
       seek(svg, 0);
-      const host = worldHost(container);
+      // On player time the live switch changes nothing, so there is nothing to watch.
+      const host = ownClock ? worldHost(container) : null;
       const View = doc.defaultView?.MutationObserver;
       const observer = host && View ? new View(() => applyLive(state, host.hasAttribute("data-live"))) : null;
       const state: Live = { svg, wrapper, observer, started: false, t0: null, live: !!host?.hasAttribute("data-live") };
