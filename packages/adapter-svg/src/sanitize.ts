@@ -16,9 +16,9 @@ export const SMIL_ELEMENTS: ReadonlySet<string> = new Set([
  * drawing vocabulary and SMIL animation (decision C04: `animate`, `animateTransform`,
  * `animateMotion`, `set`, `mpath`) and removes everything that can run script, navigate or load
  * external resources: `script`, `foreignObject`, event handler attributes, non-fragment `href`s
- * (except `data:` raster/SVG images), external `url()` references, `@import`, legacy CSS script
- * hooks, and animations that target links or handlers or carry such values. Elements outside the
- * SVG namespace are dropped.
+ * (except `data:` raster/SVG images), external `url()` and `image-set()` references (CSS escapes
+ * decoded first), `@import`, legacy CSS script hooks, and animations that target links or handlers
+ * or carry such values. Elements outside the SVG namespace are dropped.
  */
 
 /** SVG elements that survive sanitising (case-sensitive local names). */
@@ -129,15 +129,25 @@ function isSafeCssUrl(target: string): boolean {
 
 /** True when every `url()` in an attribute value is a same-document fragment reference. */
 function hasOnlyFragmentUrls(value: string): boolean {
-  if (!/url\s*\(/i.test(value)) return true;
-  CSS_URL.lastIndex = 0;
-  let count = 0;
-  for (const m of value.matchAll(CSS_URL)) {
-    count++;
-    if (!FRAGMENT.test((m[2] ?? "").trim())) return false;
-  }
-  // An unparsable url( ... is treated as unsafe.
-  return count > 0;
+  const opened = value.match(/url\s*\(/gi)?.length ?? 0;
+  if (opened === 0) return true;
+  const urls = Array.from(value.matchAll(CSS_URL));
+  // A url( left open still loads (CSS ends the token with the value), so each one must close.
+  return urls.length === opened && urls.every((m) => FRAGMENT.test((m[2] ?? "").trim()));
+}
+
+/** Functions that load a URL written as a plain string: `image-set('a.png' 1x)`, `src("a.png")`. */
+const STRING_URL_FN = /(?:-webkit-)?image-set\s*\(|\bsrc\s*\(/i;
+
+/**
+ * True when an attribute or animation value could reach outside the document. Browsers parse
+ * presentation attributes and animated values as CSS, so escapes are decoded first (`u\72l(` is
+ * `url(`); then a script URL, a `url()` that is not a `#fragment`, or a function that takes a bare
+ * URL string counts as external.
+ */
+function loadsExternal(value: string): boolean {
+  const v = decodeCssEscapes(value);
+  return isScriptUrl(v) || STRING_URL_FN.test(v) || !hasOnlyFragmentUrls(v);
 }
 
 /**
@@ -175,9 +185,6 @@ export function sanitizeCss(css: string): string {
   return out;
 }
 
-/** Animation values may only reference local fragments and never carry script or data URLs. */
-const UNSAFE_ANIMATION_VALUE = /url\(\s*["']?(?!#)|(?:javascript|vbscript|data):/i;
-
 /**
  * True for an animation that could navigate, run handlers or load resources once it plays.
  * SMIL resolves the `attributeName` prefix through the namespaces in scope, so any prefix can name
@@ -187,9 +194,10 @@ function unsafeAnimation(el: Element): boolean {
   const target = (el.getAttribute("attributeName") ?? "").trim().toLowerCase();
   const local = target.slice(target.lastIndexOf(":") + 1);
   if (local === "href" || local.startsWith("on") || local === "style") return true;
+  // Values may only reference local fragments and never carry script or data URLs.
   for (const name of ["values", "from", "to", "by"]) {
     const v = el.getAttribute(name);
-    if (v && UNSAFE_ANIMATION_VALUE.test(decodeCssEscapes(v))) return true;
+    if (v && (loadsExternal(v) || /data:/i.test(decodeCssEscapes(v)))) return true;
   }
   return false;
 }
@@ -213,7 +221,7 @@ function sanitizeAttributes(el: Element, report: SanitizeReport): void {
     else if (local === "style") {
       const clean = sanitizeCss(value);
       if (clean !== value) attr.value = clean;
-    } else if (isScriptUrl(value) || !hasOnlyFragmentUrls(value)) drop = true;
+    } else if (loadsExternal(value)) drop = true;
     if (drop) {
       el.removeAttributeNode(attr);
       report.removedAttributes++;

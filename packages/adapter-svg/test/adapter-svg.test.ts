@@ -128,6 +128,23 @@ describe("sanitizing helpers", () => {
     expect(svg.outerHTML).not.toContain("evil.test");
   });
 
+  it("drops escaped, unclosed and string-URL references from attributes and animation values", () => {
+    const svg = new DOMParser().parseFromString(
+      `<svg xmlns="http://www.w3.org/2000/svg">
+        <rect mask="image-set('https://evil.test/a.png' 1x)" cursor="image-set('https://evil.test/c.png' 1x), auto"/>
+        <rect fill="u\\72l(https://evil.test/b.svg#p) red" mask="url(#m), url(https://evil.test/o.png"/>
+        <rect fill="url(#g)"><set attributeName="mask" to="image-set('https://evil.test/s.png' 1x)"/>
+          <set attributeName="fill" to="url(#g)"/></rect></svg>`,
+      "image/svg+xml",
+    ).documentElement;
+    const report = sanitizeSvgTree(svg);
+    expect(svg.outerHTML).not.toContain("evil.test");
+    expect(report.removedAttributes).toBe(4);
+    expect(report.removed).toEqual({ set: 1 });
+    // Fragment references are untouched.
+    expect(svg.querySelector('rect[fill="url(#g)"] set')?.getAttribute("to")).toBe("url(#g)");
+  });
+
   it("sniffs SVG through prologs, comments and doctypes", () => {
     const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
     expect(looksLikeSvg(enc('<?xml version="1.0"?>\n<!-- c --><!DOCTYPE svg><svg xmlns="x"/>'))).toBe(true);
