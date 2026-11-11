@@ -35,6 +35,11 @@ export interface BrowserExportOptions {
   container?: HTMLElement;
   /** Codec checks (tests). Default WebCodecs through Mediabunny. */
   probe?: CodecProbe;
+  /**
+   * Hash every frame's RGBA pixels into {@link BrowserExportResult.frameSha256} (tests, evidence),
+   * as the CLI does for `--manifest-out`. Off by default: it reads each frame back from the canvas.
+   */
+  hashFrames?: boolean;
 }
 
 /** Progress of an export. */
@@ -54,7 +59,10 @@ export interface BrowserExportResult {
   finished: boolean;
   /** Sound was asked for but this browser cannot encode it: the video is silent. */
   soundUnsupported: boolean;
-  /** SHA-256 (hex) of every frame's RGBA pixels before encoding, in order; empty without Web Crypto. */
+  /**
+   * SHA-256 (hex) of every frame's RGBA pixels before encoding, in order; empty unless
+   * `hashFrames` was set, or without Web Crypto.
+   */
   frameSha256: string[];
   info: RenderInfo;
   warnings: string[];
@@ -143,11 +151,12 @@ function abortError(signal: AbortSignal): unknown {
 /**
  * Exports a video in the page, frame for frame the same as `swarmloom render`: a hidden frame runs
  * the CLI's render page (same formats, player options and virtual clock steps), each frame is drawn
- * without a screenshot ({@link FrameRasterizer}), hashed, and encoded with WebCodecs into MP4 (H.264)
+ * without a screenshot ({@link FrameRasterizer}) and encoded with WebCodecs into MP4 (H.264)
  * or WebM (VP9) through Mediabunny. The soundtrack is the run's sound log rendered offline, as AAC or
  * Opus when the browser can encode it, else the video is silent.
  *
- * The page stays responsive: the loop yields to the event loop between frames.
+ * The page stays responsive: the loop yields to the event loop between frames, and the snapshot of a
+ * frame pauses every few milliseconds (cancelling takes effect at the next pause).
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).
@@ -210,7 +219,9 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
-    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    const hash = o.hashFrames === true;
+    // Read back only for hashing; otherwise the encoder takes the canvas itself.
+    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: hash });
     if (!ctx) throw new Error("A 2D canvas is not available");
     writer = new VideoFileWriter(plan, width, height, fps);
     await writer.start();
@@ -223,10 +234,14 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
         step: (ms) => api.step(ms),
         capture: async (index) => {
           pinned.sweep();
-          await rasterizer.draw(ctx);
+          await rasterizer.draw(ctx, signal);
+          if (!hash) {
+            await out.addFrame(index, canvas);
+            return;
+          }
           const pixels = ctx.getImageData(0, 0, width, height).data;
-          const hash = await sha256(pixels);
-          if (hash) frameSha256.push(hash);
+          const digest = await sha256(pixels);
+          if (digest) frameSha256.push(digest);
           await out.addFrame(index, pixels);
         },
       },

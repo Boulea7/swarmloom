@@ -2,7 +2,7 @@ import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from
 import { afterAll, beforeAll, expect, it } from "vitest";
 import emblem from "../../../examples/svg/emblem.svg?raw";
 import { VideoFileWriter } from "../src/browser/encode";
-import { type BrowserExportResult, exportVideo } from "../src/browser/index";
+import { type BrowserExportOptions, type BrowserExportResult, exportVideo } from "../src/browser/index";
 import { frameMicros } from "../src/browser/schedule";
 
 const FPS = 30;
@@ -16,7 +16,7 @@ let observer: MutationObserver;
 
 beforeAll(() => {
   VideoFileWriter.prototype.addFrame = function (this: VideoFileWriter, index, rgba) {
-    if (CHECKED.includes(index)) sent.set(index, rgba.slice());
+    if (CHECKED.includes(index) && rgba instanceof Uint8ClampedArray) sent.set(index, rgba.slice());
     return addFrame.call(this, index, rgba);
   };
   container = document.createElement("div");
@@ -40,7 +40,7 @@ afterAll(() => {
   container.remove();
 });
 
-function exportClip(): Promise<BrowserExportResult> {
+function exportClip(extra: Partial<BrowserExportOptions> = {}): Promise<BrowserExportResult> {
   return exportVideo({
     input: { name: "emblem.svg", type: "image/svg+xml", text: emblem },
     width: 1280,
@@ -49,6 +49,8 @@ function exportClip(): Promise<BrowserExportResult> {
     settings: { seed: 7, sound: true },
     maxDurationMs: 2000,
     container,
+    hashFrames: true,
+    ...extra,
   });
 }
 
@@ -118,4 +120,15 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
 
   const second = await exportClip();
   expect(second.frameSha256).toEqual(first.frameSha256);
+
+  // Without hashing the encoder takes the canvas itself: the same picture, no hashes.
+  const plain = await exportClip({ hashFrames: false, maxDurationMs: 100 });
+  expect(plain.frameSha256).toEqual([]);
+  const plainVideo = await new Input({
+    source: new BlobSource(plain.blob),
+    formats: ALL_FORMATS,
+  }).getPrimaryVideoTrack();
+  if (!plainVideo) throw new Error("No video track");
+  const [plainStart] = await decodeFrames(plainVideo, [0]);
+  expect(meanDiff(plainStart as Uint8ClampedArray, start)).toBeLessThan(3);
 });

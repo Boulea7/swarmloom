@@ -63,6 +63,7 @@ async function exportPage(): Promise<{ hashes: string[]; seen: string | null }> 
     fps: 5,
     settings: { sound: false, live: false, tail: 400 },
     container,
+    hashFrames: true,
     onProgress: () => {
       const win = container.querySelector("iframe")?.contentWindow;
       const page = win?.document.querySelector("iframe")?.contentDocument;

@@ -106,7 +106,7 @@ Browsers without WebCodecs (no `VideoEncoder`) show only the command. The export
 
 Limits of the in-page export:
 
-- It takes about 0.1 to 0.2 s per frame at 1280 × 720, so a 35 s video takes about 3 minutes. Input stays responsive between frames, with up to one frame's delay.
+- It takes about 0.1 to 0.2 s per frame at 1280 × 720, so a 35 s video takes about 3 minutes. Input stays responsive while it works: each frame's snapshot pauses every few milliseconds, and drawing a frame holds the page for at most about a tenth of a second.
 - Frames are drawn from an SVG snapshot of the page, not a screenshot. Custom `::marker` and `::first-letter` styles, `position: sticky`, WebGL canvases and cross-origin images that do not allow CORS (left blank; the dialog says how many) can differ from the CLI.
 - It uses the sound pack chosen in Studio; the CLI always uses the default pack.
 - Encoders differ: Chromium tags its H.264 as BT.601, the CLI writes BT.709, so decoded colours can differ by a few levels. Chromium on Linux has no AAC encoder, so MP4 files there carry Opus sound, whose track runs up to 20 ms past the video.

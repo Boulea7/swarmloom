@@ -125,17 +125,23 @@ export class VideoFileWriter {
     await this.#output.start();
   }
 
-  /** Encodes frame `index` from tightly packed RGBA pixels; resolves when the encoder can take more. */
-  async addFrame(index: number, rgba: Uint8ClampedArray): Promise<void> {
-    const timestamp = frameMicros(index, this.#fps);
-    const duration = frameMicros(index + 1, this.#fps) - timestamp;
-    const sample = new VideoSample(rgba, {
-      format: "RGBA",
-      codedWidth: this.#width,
-      codedHeight: this.#height,
-      timestamp: timestamp / 1e6,
-      duration: duration / 1e6,
-    });
+  /**
+   * Encodes frame `index` from tightly packed RGBA pixels or straight from a canvas of the video's
+   * size (no readback into script); resolves when the encoder can take more.
+   */
+  async addFrame(index: number, frame: Uint8ClampedArray | HTMLCanvasElement | OffscreenCanvas): Promise<void> {
+    const micros = frameMicros(index, this.#fps);
+    const timestamp = micros / 1e6;
+    const duration = (frameMicros(index + 1, this.#fps) - micros) / 1e6;
+    const sample = ArrayBuffer.isView(frame)
+      ? new VideoSample(frame, {
+          format: "RGBA",
+          codedWidth: this.#width,
+          codedHeight: this.#height,
+          timestamp,
+          duration,
+        })
+      : new VideoSample(frame, { timestamp, duration });
     try {
       await this.#video.add(sample);
     } finally {
