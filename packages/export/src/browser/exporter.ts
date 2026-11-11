@@ -3,6 +3,7 @@ import { type ShadowWatch, watchShadowRoots } from "../render/live";
 import type { RenderApi, RenderInfo, RenderInit, RenderInput } from "../render/protocol";
 import { CHANNELS, type CodecProbe, type EncodingPlan, planEncoding, SAMPLE_RATE, VideoFileWriter } from "./encode";
 import { FRAME_ATTRIBUTE } from "./marker";
+import { type MotionPin, pinMotionPreference } from "./motion";
 import { type FontWatch, watchFontFaces } from "./raster/fonts";
 import { FrameRasterizer } from "./raster/rasterize";
 import { type FrameProgress, runFrameSchedule } from "./schedule";
@@ -181,6 +182,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
   let opened: OpenFrame | null = null;
   let shadows: ShadowWatch | null = null;
   let fonts: FontWatch | null = null;
+  let motion: MotionPin | null = null;
   let writer: VideoFileWriter | null = null;
   let finished = false;
   try {
@@ -190,6 +192,8 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     shadows = watchShadowRoots(win);
     fonts = watchFontFaces(win);
     pinPixelRatio(win);
+    const pinned = pinMotionPreference(win, shadows);
+    motion = pinned;
     const tail = settings.tail ?? 2500;
     const info = await api.init({ ...settings, input: o.input, width, height, fps, tail });
     if (signal?.aborted) throw abortError(signal);
@@ -218,6 +222,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
       {
         step: (ms) => api.step(ms),
         capture: async (index) => {
+          pinned.sweep();
           await rasterizer.draw(ctx);
           const pixels = ctx.getImageData(0, 0, width, height).data;
           const hash = await sha256(pixels);
@@ -269,6 +274,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     } finally {
       shadows?.stop();
       fonts?.stop();
+      motion?.stop();
       opened?.frame.remove();
     }
   }
