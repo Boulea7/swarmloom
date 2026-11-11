@@ -70,7 +70,7 @@ Chromium 需要单独允许扩展访问文件网址。在扩展详情中开启�
 
 ### 旧版 DOC 为什么只有简化文字？
 
-首版 DOC 管线以恢复正文和段落为目标，不承诺复杂表格、浮动图片、精确字体或分页。需要版式时请转换为 DOCX，精确展示则转换为 PDF。
+DOC 文件以文本模式打开：段落、标题、列表、表格、页眉页脚、脚注和尾注保留结构，但图片、字符格式（字体、字号、颜色、强调）、文本框和浮动形状不显示，也不模仿 Word 的自动分页。需要版式时请转换为 DOCX，精确展示则转换为 PDF。
 
 ### 扫描 PDF 为什么没有逐字输入？
 
@@ -112,7 +112,7 @@ swarmloom render ./demo.md -o demo.mp4 \
   --ffmpeg /path/to/ffmpeg
 ```
 
-也可以使用 `SWARMLOOM_CHROME` 和 `SWARMLOOM_FFMPEG` 环境变量。当前 CLI 子命令仍在实现中，上述是规划接口。
+也可以使用 `SWARMLOOM_CHROME` 和 `SWARMLOOM_FFMPEG` 环境变量。npm 包发布前，请从源码构建 CLI，并以 `node apps/cli/dist/cli.js` 运行（见 [CLI](./cli)）。
 
 ### 相同种子为什么压缩文件字节仍不同？
 
@@ -122,7 +122,7 @@ swarmloom render ./demo.md -o demo.mp4 \
 
 ### 能否在手表上安装扩展或完整 Studio？
 
-不能承诺。watchOS/Wear OS 不提供通用 SwarmLoom 扩展入口。规划替代是 `?watch=1` 精简播放页，或在其他设备导出 MP4、动画 WebP 和静态帧。
+不能承诺。watchOS/Wear OS 不提供通用 SwarmLoom 扩展入口。替代方案是 Studio 的 `?watch=1` 精简播放页（小屏幕会自动切换），或在其他设备导出 MP4、动画 WebP 和静态帧。
 
 ## Safari
 

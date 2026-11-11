@@ -28,7 +28,7 @@ describe("blueprintSha256", () => {
     const [a, b, c, gone] = await Promise.all(
       ["blob:http://127.0.0.1:4001/1f0c", "blob:http://127.0.0.1:4002/9e7a", "blob:http://127.0.0.1:4002/77b2"]
         .concat("blob:http://127.0.0.1:4002/dead")
-        .map((src) => blueprintSha256(withImage(src), undefined, read)),
+        .map((src) => blueprintSha256(withImage(src), undefined, undefined, read)),
     );
     expect(b).toBe(a);
     expect(c).not.toBe(a);

@@ -51,6 +51,9 @@ export const zhTW: StudioCatalog = {
   "player.export": "匯出",
   "player.settings": "設定",
   "player.truncated": { other: "內容太多，無法完整建構，省略了 {count} 個圖層。" },
+  "player.notes": "部分內容有調整：{notes}",
+  "player.fonts": "本機缺少的字型已換成相近字型：{fonts}。",
+  "player.fonts.more": "其他 {count} 種",
   "player.dismiss": "知道了",
   "player.retry": "重試",
   "player.home": "回到 Studio",
@@ -67,6 +70,11 @@ export const zhTW: StudioCatalog = {
   "error.player": "播放器無法啟動：{message}",
   "error.generic": "發生問題：{message}",
   "error.tooComplex": "這個檔案太大或太複雜，無法開啟。請換一個小一點的檔案。",
+  "error.lottieInvalid": "這不是有效的 Lottie 動畫，或檔案已損毀。",
+  "error.lottieRender": "無法繪製這個 Lottie 動畫。請試著重新匯出。",
+  // After Effects has no Traditional Chinese UI (Adobe's zh-TW help is in English), so the menu path stays English.
+  "error.lottieExpressions":
+    "這個動畫只靠 After Effects 運算式運動。Studio 不執行運算式，所以畫面不會動。請在 After Effects 中選取含運算式的屬性，選擇「Animation > Keyframe Assistant > Convert Expression To Keyframes」，然後重新匯出。",
   "error.share": "這個分享連結已損壞或不完整。",
   "error.example": "沒有名為「{id}」的範例。",
   "error.file": "無法透過連結重新開啟本機檔案，請再次開啟該檔案。",

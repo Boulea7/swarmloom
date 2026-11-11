@@ -129,7 +129,7 @@ export function createSheetAdapter(options: SheetAdapterOptions = {}): OfficeAda
       };
       const truncated = truncation(wb, rendered.droppedCells, rendered.droppedSheets);
       if (truncated) blueprint.truncated = truncated;
-      const notes = sheetNotes(wb, source);
+      const notes = sheetNotes(wb, source, ctx.document);
       return notes.length > 0 ? { blueprint, notes } : { blueprint };
     },
   };

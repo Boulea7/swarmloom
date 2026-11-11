@@ -1,6 +1,6 @@
 import type { Blueprint, BlueprintSource, Layer } from "@swarmloom/core";
 import { elementScrolls, findMainScroller, prescroll, shellOf } from "./capture/scroller";
-import { createCapture } from "./capture/state";
+import { type Capture, createCapture } from "./capture/state";
 import { rootContext, visit } from "./capture/walker";
 import { isDocument, isElement, viewOf } from "./dom/env";
 import { type ResolvedOptions, resolveOptions } from "./options";
@@ -15,10 +15,16 @@ import { paintOrder, truncate } from "./post/order";
 import type { SnapshotOptions } from "./types";
 import { delay, throwIfAborted } from "./util/abort";
 import { round2 } from "./util/geom";
-import { runSliced, yieldToHost } from "./util/slice";
+import { runSliced, type SliceGuard, yieldToHost } from "./util/slice";
 
 /** Live pages wait at most this long for web fonts before capture. */
 const FONT_WAIT_MS = 1500;
+
+/** Sliced walks torn by a reflow before the last one runs synchronously. */
+const SLICED_WALKS = 2;
+
+/** Frontier movement (px) between slices that counts as a reflow. */
+const REFLOW_PX = 0.5;
 
 /** Internal hooks used by snapshotHtml to override page-level results. */
 export interface CaptureOverrides {
@@ -82,34 +88,67 @@ function scrollKeeper(view: Window, shell: Element | null): () => void {
   };
 }
 
+/** Viewport positions of the capture root (with its width) and of the walk frontier. */
+function frontierMarks(cap: Capture): number[] {
+  const r = cap.root.getBoundingClientRect();
+  const marks = [r.left, r.top, r.width];
+  for (const el of [cap.frontier.next, cap.frontier.flow]) {
+    const f = el?.getBoundingClientRect();
+    marks.push(f?.left ?? 0, f?.top ?? 0);
+  }
+  return marks;
+}
+
+/**
+ * Keeps one layout across walk slices. Page timers, image and font loads run during the host's
+ * turns; a reflow there would mix rects read before and after it (rows that jump, overlap or run
+ * past the world). After each turn the scroll positions are put back and the walk is stopped when
+ * the root or the frontier moved: content after the frontier is read later anyway, so only a
+ * change to what was already walked tears the result.
+ */
+function layoutGuard(view: Window, cap: Capture): SliceGuard {
+  const keepScroll = scrollKeeper(view, cap.shell?.el ?? null);
+  let before: number[] = [];
+  return {
+    pause: () => {
+      before = frontierMarks(cap);
+    },
+    resume: () => {
+      keepScroll();
+      const after = frontierMarks(cap);
+      return after.every((v, i) => Math.abs(v - (before[i] ?? v)) <= REFLOW_PX);
+    },
+  };
+}
+
 /** Gives the host a turn between post-processing passes and honours an abort. */
 async function pause(signal: AbortSignal | undefined): Promise<void> {
   await yieldToHost();
   throwIfAborted(signal);
 }
 
-/** Core capture shared by snapshot() and snapshotHtml(). */
-export async function capture(
-  root: Element | Document,
-  opts: SnapshotOptions | undefined,
-  overrides: CaptureOverrides = {},
-): Promise<Blueprint> {
-  const o = resolveOptions(opts);
-  if (!isDocument(root) && !(typeof root === "object" && root !== null && isElement(root as Node))) {
-    throw new TypeError("snapshot: root must be an Element or a Document");
-  }
-  throwIfAborted(o.signal);
-  const doc = isDocument(root) ? root : root.ownerDocument;
-  const el = isDocument(root) ? root.documentElement : root;
-  if (!el) throw new TypeError("snapshot: the document has no root element");
-  if (!el.isConnected) throw new TypeError("snapshot: root must be connected to a document");
+/** A walk's capture state and the page geometry it was measured against. */
+interface Walked {
+  cap: Capture;
+  vw: number;
+  vh: number;
+  /** Viewport -> world offset. */
+  dx: number;
+  dy: number;
+  width: number;
+  height: number;
+  bg: PageBackground;
+}
+
+/** Measures the page (or the root element) and creates a fresh capture for one walk. */
+function prepareWalk(
+  doc: Document,
+  el: Element,
+  mode: "document" | "element",
+  o: ResolvedOptions,
+  overrides: CaptureOverrides,
+): Walked {
   const view = viewOf(doc);
-  const pageRoot = el === doc.documentElement || el === doc.body;
-  const mode = o.origin ?? (pageRoot ? "document" : "element");
-
-  if (o.prescroll && mode === "document") await prescroll(doc, o.signal);
-  await waitForFonts(doc, FONT_WAIT_MS, o.signal);
-
   const cap = createCapture(doc, el, mode, o);
   const vw = doc.documentElement.clientWidth || view.innerWidth;
   const vh = view.innerHeight;
@@ -136,11 +175,57 @@ export async function capture(
   cap.worldW = width;
   const bg = overrides.background ?? (mode === "document" ? documentBackground(doc, height) : elementBackground(el));
   for (const s of bg.sources) cap.bgSources.add(s);
+  return { cap, vw, vh, dx, dy, width, height, bg };
+}
 
-  // Time-sliced walk (behavior-spec §3.8 step 6): the page stays responsive and an abort is
-  // honoured within one slice.
-  const ctx = rootContext(dx, dy, null);
-  await runSliced(visit(cap, el, ctx), cap.slice, o.signal, scrollKeeper(view, cap.shell?.el ?? null));
+/**
+ * Walks the tree in time slices (behavior-spec §3.8 step 6), so the page stays responsive and an
+ * abort is honoured within one slice. A walk torn by a reflow between slices is thrown away and
+ * started again from fresh measurements; after SLICED_WALKS torn walks the last one runs in one
+ * task, so a page that keeps reflowing is still read in a single layout.
+ */
+async function walk(
+  doc: Document,
+  el: Element,
+  mode: "document" | "element",
+  o: ResolvedOptions,
+  overrides: CaptureOverrides,
+): Promise<Walked> {
+  for (let attempt = 1; ; attempt++) {
+    const w = prepareWalk(doc, el, mode, o, overrides);
+    const work = visit(w.cap, el, rootContext(w.dx, w.dy, null));
+    if (attempt > SLICED_WALKS) {
+      // A fresh capture's slice deadline is infinite: the walk runs to the end without yielding.
+      work.next();
+      return w;
+    }
+    if (await runSliced(work, w.cap.slice, o.signal, layoutGuard(viewOf(doc), w.cap))) return w;
+  }
+}
+
+/** Core capture shared by snapshot() and snapshotHtml(). */
+export async function capture(
+  root: Element | Document,
+  opts: SnapshotOptions | undefined,
+  overrides: CaptureOverrides = {},
+): Promise<Blueprint> {
+  const o = resolveOptions(opts);
+  if (!isDocument(root) && !(typeof root === "object" && root !== null && isElement(root as Node))) {
+    throw new TypeError("snapshot: root must be an Element or a Document");
+  }
+  throwIfAborted(o.signal);
+  const doc = isDocument(root) ? root : root.ownerDocument;
+  const el = isDocument(root) ? root.documentElement : root;
+  if (!el) throw new TypeError("snapshot: the document has no root element");
+  if (!el.isConnected) throw new TypeError("snapshot: root must be connected to a document");
+  const view = viewOf(doc);
+  const pageRoot = el === doc.documentElement || el === doc.body;
+  const mode = o.origin ?? (pageRoot ? "document" : "element");
+
+  if (o.prescroll && mode === "document") await prescroll(doc, o.signal);
+  await waitForFonts(doc, FONT_WAIT_MS, o.signal);
+
+  const { cap, vw, vh, dx, dy, width, height, bg } = await walk(doc, el, mode, o, overrides);
   await pause(o.signal);
 
   if (o.detectDuplicates) detectDuplicates(cap.rootNode, cap.layers);
@@ -193,8 +278,10 @@ export async function capture(
  * Computed styles and geometry are read in one pass without writes, except for the optional
  * `prescroll` pass and scroll positions put back after a slice (both restore the original
  * position). The walk runs in slices of about 10 ms, so the page stays responsive and `signal`
- * aborts within one slice. Rejects with a TypeError/RangeError for invalid arguments and with the
- * signal's reason when aborted.
+ * aborts within one slice. When the page reflows what was already walked between two slices (an
+ * image or font loads, a timer grows a banner), the walk starts over; after two torn walks the
+ * last one runs in a single task, so the Blueprint always reflects one layout. Rejects with a
+ * TypeError/RangeError for invalid arguments and with the signal's reason when aborted.
  */
 export function snapshot(root: Element | Document, opts?: SnapshotOptions): Promise<Blueprint> {
   return capture(root, opts);

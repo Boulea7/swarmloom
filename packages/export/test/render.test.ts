@@ -1,4 +1,11 @@
-import type { LoadedSource, PlayerOptions, RenderOfflineOptions, SoundEvent, SourceInput } from "@swarmloom/core";
+import type {
+  Blueprint,
+  LoadedSource,
+  PlayerOptions,
+  RenderOfflineOptions,
+  SoundEvent,
+  SourceInput,
+} from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { base64ToBytes, bytesToBase64, createRenderApi, type RenderDeps, type RenderInit } from "../src/index";
 import { ClockPlayer } from "./fake-player";
@@ -12,7 +19,7 @@ const blueprint = {
 };
 const base: RenderInit = { input: { name: "a.md", text: "# Hi" }, width: 320, height: 200, fps: 25, tail: 200 };
 
-function setup(deps: Pick<RenderDeps, "awaitPaint"> = {}) {
+function setup(make: (input: SourceInput) => Blueprint = () => blueprint, deps: Pick<RenderDeps, "awaitPaint"> = {}) {
   const players: ClockPlayer[] = [];
   const loads: { input: SourceInput; format?: string; width: number }[] = [];
   const dispose = vi.fn();
@@ -22,7 +29,7 @@ function setup(deps: Pick<RenderDeps, "awaitPaint"> = {}) {
   const api = createRenderApi({
     async load(input, ctx, { format }): Promise<LoadedSource> {
       loads.push({ input, format, width: ctx.width });
-      return { blueprint, dispose };
+      return { blueprint: make(input), dispose };
     },
     createPlayer(options: PlayerOptions) {
       const player = new ClockPlayer(options);
@@ -105,13 +112,14 @@ describe("render page protocol", () => {
     for (let i = 0; i < 20; i++) states.push((await api.step(50)).state);
     // Step i reaches (i + 1) * 50 ms: paused from the step that reached 300 ms to the one that reached 500.
     expect(states.slice(4, 10)).toEqual(["building", "paused", "paused", "paused", "paused", "building"]);
-    // finish() at 600 ms completes the remaining layers on the next tick (650 ms, player time 450).
+    // finish() at 600 ms fans out at once (player time 400) and completes the remaining layers on the
+    // next tick (650 ms, player time 450).
     expect(states.slice(11, 13)).toEqual(["building", "finale"]);
-    expect(player.soundLog.map((e) => e.t)).toEqual([250, 450, 450, 450]);
+    expect(player.soundLog.map((e) => e.t)).toEqual([250, 400, 450, 450, 450]);
     // The key at 250 sounded before the hold; the later ones move 200 ms later, onto the frame that shows them.
-    expect((await api.soundLog()).map((e) => e.t)).toEqual([250, 650, 650, 650]);
+    expect((await api.soundLog()).map((e) => e.t)).toEqual([250, 600, 650, 650, 650]);
     await api.audioWav();
-    expect(audio.mock.calls[0]?.[0].map((e) => e.t)).toEqual([250, 650, 650, 650]);
+    expect(audio.mock.calls[0]?.[0].map((e) => e.t)).toEqual([250, 600, 650, 650, 650]);
 
     api.dispose();
     const bad: [unknown, string][] = [
@@ -120,6 +128,49 @@ describe("render page protocol", () => {
       [{ ...base, cues: "pause" }, "cues must be an array"],
     ];
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
+  });
+
+  it("shifts the sounds a cue logs itself when it ends a pause", async () => {
+    const { api } = setup();
+    // Hold 300..500 ms; finish() ends the hold and fans out at once, which the video shows at 500 ms.
+    await api.init({
+      ...base,
+      cues: [
+        { at: 300, action: "pause" },
+        { at: 500, action: "finish" },
+      ],
+    });
+    for (let i = 0; i < 12; i++) await api.step(50);
+    expect((await api.soundLog()).map((e) => [e.name, e.t])).toEqual([
+      ["key", 250],
+      ["fanout", 500],
+      ["key", 550],
+      ["key", 550],
+      ["key", 550],
+    ]);
+    api.dispose();
+  });
+
+  it("hashes the same blueprint across takes served under different random URLs", async () => {
+    // Adapters copy the input URL into the blueprint, resolve assets against it and mint object URLs.
+    const box = { x: 0, y: 0, w: 1, h: 1 };
+    const { api } = setup((input) => ({
+      ...blueprint,
+      source: { type: "svg", name: input.name, url: input.url },
+      layers: [
+        { id: "a", kind: "image", box, src: new URL("logo.png", String(input.url)).href },
+        { id: "b", kind: "image", box, src: `blob:${location.origin}/${Math.random()}` },
+      ],
+    }));
+    const take = async (url: string) => {
+      const { blueprintSha256 } = await api.init({ ...base, input: { name: "a.svg", url } });
+      api.dispose();
+      return blueprintSha256;
+    };
+    const first = await take(`${location.origin}/input/tokenA/a.svg`);
+    expect(await take(`${location.origin}/input/tokenB/a.svg`)).toBe(first);
+    // A remote input URL is part of what was played.
+    expect(await take("https://example.com/a.svg")).not.toBe(await take("https://example.org/a.svg"));
   });
 
   it("plays a driver-supplied blueprint instead of loading the input", async () => {
@@ -165,7 +216,7 @@ describe("render page protocol", () => {
   });
 
   it("resolves init and each step only after three animation frames when it awaits paint", async () => {
-    const { api } = setup({ awaitPaint: true });
+    const { api } = setup(undefined, { awaitPaint: true });
     const frames: FrameRequestCallback[] = [];
     const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
     const runFrames = async (from: number, to: number) => {
@@ -190,27 +241,20 @@ describe("render page protocol", () => {
     raf.mockRestore();
   });
 
-  it("hashes the blueprint the same when the input is served from a new address", async () => {
-    const hashes: string[] = [];
-    for (const dir of ["http://127.0.0.1:4001/input/aa11/", "http://127.0.0.1:4002/input/bb22/"]) {
-      const api = createRenderApi({
-        load: async (input) => ({ blueprint: { ...blueprint, source: { type: "svg", url: input.url } } }),
-        createPlayer: (options) => new ClockPlayer(options),
-        renderAudioWav: async () => new Uint8Array(),
-      });
-      hashes.push((await api.init({ ...base, input: { name: "a.svg", url: `${dir}a.svg` } })).blueprintSha256);
-      api.dispose();
-    }
-    expect(hashes[0]).toMatch(/^[0-9a-f]{64}$/);
-    expect(hashes[1]).toBe(hashes[0]);
-  });
-
   it("renders silence when sound is off", async () => {
     const { api, audio } = setup();
     await api.init({ ...base, sound: false });
     await api.step(1000);
     await api.audioWav();
     expect(audio).toHaveBeenCalledWith([], 1000, expect.anything());
+  });
+
+  it("renders the soundtrack for the length the driver asks for (the video is one frame longer)", async () => {
+    const { api, audio } = setup();
+    await api.init(base);
+    await api.step(1000);
+    await api.audioWav(1040);
+    expect(audio).toHaveBeenLastCalledWith(expect.anything(), 1040, expect.anything());
   });
 
   it("rejects invalid init options and steps with a field name", async () => {

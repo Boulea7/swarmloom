@@ -18,7 +18,9 @@ interface SmoothScroll {
  * exports stay deterministic) and the separation of user scrolls from them. A scroll event is the
  * user's when wheel, touch, navigation-key or scrollbar input preceded it, or when it lands where
  * no programmatic scroll put the scroller. Offsets are cached in the Geometry so the frame path
- * never reads layout.
+ * never reads layout. A deferred scroll updates the cache at once and writes the scroller in the
+ * next {@link step}: a seek moves the tour every frame it fast-forwards between task writes, and
+ * every scroller write after a DOM write forces a layout.
  */
 export class ScrollController {
   readonly #el: HTMLElement;
@@ -32,6 +34,9 @@ export class ScrollController {
   #frame = 0;
   #smooth: SmoothScroll | null = null;
   #onScroll: (() => void) | null = null;
+  /** Deferred offsets not yet written to the scroller. */
+  #pendingTop = false;
+  #pendingLeft = false;
 
   constructor(scroller: HTMLElement, geometry: Geometry, reducedMotion: boolean) {
     this.#el = scroller;
@@ -78,8 +83,11 @@ export class ScrollController {
     };
   }
 
-  /** Scrolls so stage y is at the top edge (and stage x at the left edge when given). */
-  scrollTo(y: number, smooth: boolean, x?: number): void {
+  /**
+   * Scrolls so stage y is at the top edge (and stage x at the left edge when given). `defer` keeps
+   * the scroller write for the next {@link step}; a smooth scroll is driven by step anyway.
+   */
+  scrollTo(y: number, smooth: boolean, x?: number, defer = false): void {
     const g = this.#geo;
     const top = g.scrollTopFor(y);
     if (smooth && !this.#reducedMotion && Math.abs(top - g.scrollTop) > 1) {
@@ -90,7 +98,7 @@ export class ScrollController {
     }
     this.#smooth = null;
     this.#inputFrame = -1e9;
-    this.#set(top, x === undefined ? g.scrollLeft : g.scrollLeftFor(x));
+    this.#set(top, x === undefined ? g.scrollLeft : g.scrollLeftFor(x), false, defer);
   }
 
   /** Re-applies the cached offsets (after a re-attach or a geometry change), clamped to the new range. */
@@ -99,11 +107,14 @@ export class ScrollController {
     this.#set(Math.min(g.scrollTop, g.maxScrollTop), Math.min(g.scrollLeft, g.maxScrollLeft), true);
   }
 
-  /** Advances a smooth scroll to engine time `now`; call once per frame. */
+  /** Advances a smooth scroll to engine time `now` and writes deferred offsets; call once per frame. */
   step(now: number, frame: number): void {
     this.#frame = frame;
     const s = this.#smooth;
-    if (!s) return;
+    if (!s) {
+      if (this.#pendingTop || this.#pendingLeft) this.#set(this.#geo.scrollTop, this.#geo.scrollLeft);
+      return;
+    }
     if (!Number.isFinite(s.startAt)) s.startAt = now;
     const t = (now - s.startAt) / s.dur;
     const done = !(t < 1);
@@ -126,18 +137,22 @@ export class ScrollController {
   }
 
   /**
-   * Writes the offsets. Only changed values are written (compared with the cache, not read back:
-   * reading scroll offsets mid-frame would force a layout); `force` writes both (re-attach).
+   * Writes the offsets. Only changed or still deferred values are written (compared with the
+   * cache, not read back: reading scroll offsets mid-frame would force a layout); `force` writes
+   * both (re-attach); `defer` only updates the cache and leaves the write to the next step.
    */
-  #set(top: number, left: number, force = false): void {
+  #set(top: number, left: number, force = false, defer = false): void {
     const g = this.#geo;
     const el = this.#el;
-    const writeTop = force || top !== g.scrollTop;
-    const writeLeft = force || left !== g.scrollLeft;
+    const writeTop = force || this.#pendingTop || top !== g.scrollTop;
+    const writeLeft = force || this.#pendingLeft || left !== g.scrollLeft;
     g.scrollTop = top;
     g.scrollLeft = left;
     this.#expectTop = top;
     this.#expectLeft = left;
+    this.#pendingTop = defer && writeTop;
+    this.#pendingLeft = defer && writeLeft;
+    if (defer) return;
     if (writeTop) el.scrollTop = top;
     if (writeLeft) el.scrollLeft = left;
   }
@@ -147,8 +162,11 @@ export class ScrollController {
     const g = this.#geo;
     const top = el.scrollTop;
     const left = el.scrollLeft;
+    // The scroller's offsets are the truth from here on, deferred ones included.
     g.scrollTop = top;
     g.scrollLeft = left;
+    this.#pendingTop = false;
+    this.#pendingLeft = false;
     const recentInput = this.#frame - this.#inputFrame <= INPUT_FRAMES;
     const expected = Math.abs(top - this.#expectTop) <= MATCH_PX && Math.abs(left - this.#expectLeft) <= MATCH_PX;
     this.#onScroll?.();

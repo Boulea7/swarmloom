@@ -202,6 +202,9 @@ export class RenderSession {
       const cue = this.#cues[this.#nextCue];
       if (!cue || cue.at > this.#elapsed + TIME_EPSILON) break;
       this.#nextCue++;
+      // An action that ends a pause may log sounds itself (finish() fans out from the intro); those
+      // belong after the hold too, so the shift starts before them.
+      const logged = this.player.soundLog.length;
       if (cue.action === "pause") this.player.pause();
       else if (cue.action === "resume") this.player.resume();
       else if (cue.action === "live") this.#goLive();
@@ -212,7 +215,7 @@ export class RenderSession {
         this.#pausedAt = this.#elapsed;
       } else if (!paused && this.#pausedAt !== null) {
         const before = this.#shifts.at(-1)?.shift ?? 0;
-        this.#shifts.push({ from: this.player.soundLog.length, shift: before + this.#elapsed - this.#pausedAt });
+        this.#shifts.push({ from: logged, shift: before + this.#elapsed - this.#pausedAt });
         this.#pausedAt = null;
       }
     }

@@ -64,7 +64,7 @@ Jede Animation unten ist ein echtes SwarmLoom-Rendering. Wähle eine aus, um das
 <details>
 <summary>Weitere unterstützte Formate</summary>
 
-OpenDocument (ODT / ODS / ODP), EPUB, RTF, OFD, Jupyter Notebook, asciinema-Terminalaufnahmen, Patch / Diff sowie XMind- / FreeMind-Mindmaps. Tabellen umfassen XLSX / CSV / ODS, 3D umfasst GLB / glTF / OBJ / STL / PLY. Der [Formatleitfaden](https://boulea7.github.io/swarmloom/docs/en/formats.html) führt jede Dateiendung auf und beschreibt, wie originalgetreu das jeweilige Format wiedergegeben wird.
+OpenDocument (ODT / ODS / ODP), EPUB, RTF, OFD, Jupyter Notebook, asciinema-Terminalaufnahmen, Patch / Diff, XMind- / FreeMind-Mindmaps sowie Lottie-Animationen. Tabellen umfassen XLSX / CSV / ODS, 3D umfasst GLB / glTF / OBJ / STL / PLY. Der [Formatleitfaden](https://boulea7.github.io/swarmloom/docs/en/formats.html) führt jede Dateiendung auf und beschreibt, wie originalgetreu das jeweilige Format wiedergegeben wird.
 
 </details>
 
@@ -210,7 +210,7 @@ Für faltbare Geräte ist nichts zusätzlich erforderlich: Unterstützt der Brow
 
 ## Roadmap
 
-- **Jetzt**: Studio online, Webseiten plus 19 Dateiformate, CLI-Export Bild für Bild sowie aus dem Quellcode erstellbare Erweiterungen für Chrome / Edge / Firefox / Safari.
+- **Jetzt**: Studio online, Webseiten plus 20 Dateiformate, CLI-Export Bild für Bild sowie aus dem Quellcode erstellbare Erweiterungen für Chrome / Edge / Firefox / Safari.
 - **Als Nächstes**: das erste GitHub Release und npm-Pakete, Store-Einträge und signierte Erweiterungen, Videoexport direkt in Studio sowie Tests auf Smartphones und Safari-Geräten.
 - **Später**: weitere Formate und Plattformen, ohne feste Terminzusagen. Teile deine Ideen in [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 

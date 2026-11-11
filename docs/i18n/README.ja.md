@@ -64,7 +64,7 @@
 <details>
 <summary>その他の対応フォーマット</summary>
 
-OpenDocument（ODT / ODS / ODP）、EPUB、RTF、OFD、Jupyter Notebook、asciinema のターミナル録画、Patch / Diff、XMind / FreeMind のマインドマップに対応しています。スプレッドシートは XLSX / CSV / ODS、3D は GLB / glTF / OBJ / STL / PLY をサポートします。各拡張子と再現度の詳細は[フォーマットガイド](https://boulea7.github.io/swarmloom/docs/en/formats.html)をご覧ください。
+OpenDocument（ODT / ODS / ODP）、EPUB、RTF、OFD、Jupyter Notebook、asciinema のターミナル録画、Patch / Diff、XMind / FreeMind のマインドマップ、Lottie アニメーションに対応しています。スプレッドシートは XLSX / CSV / ODS、3D は GLB / glTF / OBJ / STL / PLY をサポートします。各拡張子と再現度の詳細は[フォーマットガイド](https://boulea7.github.io/swarmloom/docs/en/formats.html)をご覧ください。
 
 </details>
 
@@ -210,7 +210,7 @@ Chrome / Edge では Studio を開き、アドレスバーまたはメニュー�
 
 ## ロードマップ
 
-- **現在**：オンライン Studio、Web ページと 19 種類のファイルフォーマット、CLI によるフレーム単位の書き出し、ソースからビルドできる Chrome / Edge / Firefox / Safari 拡張機能。
+- **現在**：オンライン Studio、Web ページと 20 種類のファイルフォーマット、CLI によるフレーム単位の書き出し、ソースからビルドできる Chrome / Edge / Firefox / Safari 拡張機能。
 - **次に**：初の GitHub Release と npm パッケージ、ストアでの公開と署名付き拡張機能、Studio 内での動画書き出し、スマートフォンと Safari 搭載デバイスでのテスト。
 - **今後**：対応フォーマットとプラットフォームの拡充。公開時期は未定です。[Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) でアイデアをお寄せください。
 

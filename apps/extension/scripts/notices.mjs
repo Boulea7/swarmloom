@@ -6,6 +6,7 @@
 // are SwarmLoom's own code, covered by its MIT licence (LICENSE.txt in the package).
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** File names the packages carry: the third-party notices and SwarmLoom's own licence. */
 export const NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
@@ -31,6 +32,92 @@ OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.`;
 
 const RULE = "=".repeat(80);
+
+/**
+ * @typedef {object} EmbeddedPackage
+ * @property {string} name
+ * @property {string} host installed package whose files contain this one, pre-bundled
+ * @property {string} file file of the host holding `record`
+ * @property {"utf8" | "utf-16be"} [encoding] how `file` stores `record` (default utf8; a font's name table is UTF-16BE)
+ * @property {RegExp} record must match in `file`; its `version` and `copyright` groups, when it has them,
+ *   give the embedded code's version (else the host's) and copyright line (else `copyright`)
+ * @property {string} [copyright] the copyright notice when `record` captures none
+ * @property {string} marker string every bundled copy carries, minified or not (audit.mjs looks for it)
+ * @property {"MIT" | "OFL-1.1"} license
+ * @property {string} source
+ */
+
+/** Full SIL Open Font License 1.1 text, shared with the npm notices (amo-source.mjs ships it). */
+// Resolved as a path: under Vitest's DOM environment the global URL resolves relative to the page.
+const OFL_1_1 = resolve(dirname(fileURLToPath(import.meta.url)), "../../../scripts/release/licenses/OFL-1.1.txt");
+
+/**
+ * Code and assets that a dependency ships pre-bundled inside its own files under another licence than
+ * its own, so they have no package or licence file to read. Listed whenever their host is bundled. Keep
+ * in step with EMBEDDED_PACKAGES in scripts/release/third-party-notices.mjs (the npm package notices).
+ * @type {readonly EmbeddedPackage[]}
+ */
+export const EMBEDDED_PACKAGES = [
+  {
+    name: "core-js",
+    host: "pdfjs-dist",
+    // core-js records itself in its shared store: { version, mode, copyright, license, source }.
+    file: "legacy/build/pdf.mjs",
+    record: /\bversion:\s*["'](?<version>[^"']+)["'],\s*mode:[^,]+,\s*copyright:\s*["'](?<copyright>[^"']+)["']/,
+    marker: "__core-js_shared__",
+    license: "MIT",
+    source: "https://github.com/zloirock/core-js",
+  },
+  {
+    name: "KaTeX fonts",
+    host: "katex",
+    // The Studio's Markdown adapter inlines the dist/fonts WOFF2 files (Brotli-compressed); the TTF next to
+    // each carries the same name table, whose description (name ID 13) states the copyright and licence.
+    file: "dist/fonts/KaTeX_Main-Regular.ttf",
+    encoding: "utf-16be",
+    record: /\bThis Font Software is licensed under the SIL Open Font License, Version 1\.1\./,
+    copyright:
+      "Copyright (c) 2009-2010, Design Science, Inc. (<www.mathjax.org>)\n" +
+      "Copyright (c) 2014-2018 Khan Academy (<www.khanacademy.org>),\n" +
+      "with Reserved Font Names KaTeX_AMS, KaTeX_Caligraphic, KaTeX_Fraktur, KaTeX_Main, KaTeX_Math, " +
+      "KaTeX_SansSerif, KaTeX_Script, KaTeX_Size1, KaTeX_Size2, KaTeX_Size3, KaTeX_Size4, KaTeX_Typewriter.",
+    marker: "KaTeX_Main",
+    license: "OFL-1.1",
+    source: "https://github.com/KaTeX/katex-fonts",
+  },
+];
+
+/**
+ * Notices of the packages `host` ships pre-bundled, with the version and copyright line read from it.
+ * @param {string} dir real path of the host package
+ * @param {any} pkg the host's package.json
+ * @returns {Notice[]}
+ * @throws Error when the host file no longer holds the record (update EMBEDDED_PACKAGES)
+ */
+function embeddedNotices(dir, pkg) {
+  return EMBEDDED_PACKAGES.filter((embedded) => embedded.host === pkg.name).map((embedded) => {
+    const path = join(dir, embedded.file);
+    const found = existsSync(path)
+      ? new TextDecoder(embedded.encoding ?? "utf8").decode(readFileSync(path)).match(embedded.record)
+      : null;
+    const copyright = found?.groups?.copyright ?? embedded.copyright;
+    if (!found || !copyright) {
+      throw new Error(
+        `${pkg.name}@${pkg.version}: no ${embedded.name} record in ${embedded.file}; update EMBEDDED_PACKAGES`,
+      );
+    }
+    const ofl = embedded.license === "OFL-1.1";
+    const terms = ofl ? readFileSync(OFL_1_1, "utf8").trim() : MIT_TEXT;
+    const file = `(${ofl ? "SIL Open Font License 1.1" : "standard MIT text"}; pre-bundled inside ${pkg.name}, which ships no licence file for it)`;
+    return {
+      name: embedded.name,
+      version: found.groups?.version ?? pkg.version,
+      license: embedded.license,
+      source: embedded.source,
+      texts: [{ file, text: `${copyright}\n\n${terms}` }],
+    };
+  });
+}
 
 /**
  * @typedef {object} Notice
@@ -154,11 +241,13 @@ function authorOf(pkg) {
 }
 
 /**
- * Reads the notice of every third-party package among `roots` (folders inside node_modules);
- * workspace packages are skipped. Sorted by name and version, one entry per name@version.
+ * Reads the notice of every third-party package among `roots` (folders inside node_modules), and of
+ * the packages they ship pre-bundled; workspace packages are skipped. Sorted by name and version, one
+ * entry per name@version.
  * @param {Iterable<string>} roots
  * @returns {Notice[]}
- * @throws Error when a package ships no licence file and is not MIT (no text to reproduce)
+ * @throws Error when a package ships no licence file and is not MIT (no text to reproduce), or a
+ *   host of EMBEDDED_PACKAGES no longer holds the embedded package's record
  */
 export function collectNotices(roots) {
   /** @type {Map<string, Notice>} */
@@ -183,6 +272,10 @@ export function collectNotices(roots) {
       texts.push({ file: "(standard MIT text; the package ships no licence file)", text: `${copyright}${MIT_TEXT}` });
     }
     byId.set(id, { name: pkg.name, version: pkg.version, license, source: sourceOf(pkg), texts });
+    for (const notice of embeddedNotices(dir, pkg)) {
+      const embeddedId = `${notice.name}@${notice.version}`;
+      if (!byId.has(embeddedId)) byId.set(embeddedId, notice);
+    }
   }
   // Code-unit order, not localeCompare: the file must not depend on the ICU data of the machine.
   return [...byId.keys()].sort().map((id) => /** @type {Notice} */ (byId.get(id)));

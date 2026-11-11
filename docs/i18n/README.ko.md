@@ -64,7 +64,7 @@
 <details>
 <summary>이런 형식도 열 수 있습니다</summary>
 
-OpenDocument(ODT / ODS / ODP), EPUB, RTF, OFD, Jupyter Notebook, asciinema 터미널 녹화, Patch / Diff, XMind / FreeMind 마인드맵을 지원합니다. 스프레드시트는 XLSX / CSV / ODS, 3D는 GLB / glTF / OBJ / STL / PLY를 지원합니다. 모든 확장자와 형식별 재현 수준은 [형식 가이드](https://boulea7.github.io/swarmloom/docs/en/formats.html)에서 확인할 수 있습니다.
+OpenDocument(ODT / ODS / ODP), EPUB, RTF, OFD, Jupyter Notebook, asciinema 터미널 녹화, Patch / Diff, XMind / FreeMind 마인드맵, Lottie 애니메이션을 지원합니다. 스프레드시트는 XLSX / CSV / ODS, 3D는 GLB / glTF / OBJ / STL / PLY를 지원합니다. 모든 확장자와 형식별 재현 수준은 [형식 가이드](https://boulea7.github.io/swarmloom/docs/en/formats.html)에서 확인할 수 있습니다.
 
 </details>
 
@@ -210,7 +210,7 @@ Chrome / Edge에서는 Studio를 열고 주소 표시줄이나 메뉴에서 앱 
 
 ## 로드맵
 
-- **현재**: 온라인 Studio, 웹 페이지와 19가지 파일 형식, 프레임 단위 CLI 내보내기, 소스에서 빌드하는 Chrome / Edge / Firefox / Safari 확장 프로그램을 지원합니다.
+- **현재**: 온라인 Studio, 웹 페이지와 20가지 파일 형식, 프레임 단위 CLI 내보내기, 소스에서 빌드하는 Chrome / Edge / Firefox / Safari 확장 프로그램을 지원합니다.
 - **다음**: 첫 GitHub Release 및 npm 패키지 공개, 스토어 등록과 확장 프로그램 서명, Studio 내 영상 내보내기, 휴대폰 및 Safari 실기기 테스트를 준비하고 있습니다.
 - **이후**: 더 많은 형식과 플랫폼을 지원할 예정이지만 날짜는 약속드릴 수 없습니다. [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas)에서 아이디어를 공유해 주세요.
 

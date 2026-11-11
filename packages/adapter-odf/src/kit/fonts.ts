@@ -4,7 +4,7 @@
  * (`local()` first), then the metric-compatible or look-alike open font, then a generic family.
  * No font files are bundled.
  */
-import { cleanFontFamily, resolveFontFamily } from "@swarmloom/core";
+import { cleanFontFamily, missingFonts, resolveFontFamily } from "@swarmloom/core";
 
 /** CSS generic family that ends a stack. */
 export type GenericFamily = "serif" | "sans-serif" | "monospace";
@@ -34,10 +34,13 @@ export function fontStack(name: string, generic?: GenericFamily): FontChoice {
   return substituted ? { stack, substitute: substituted, family } : { stack, family };
 }
 
-/** Collects F01 substitutions while a document renders and words them as one quality note. */
+/**
+ * Collects F01 substitutions while a document renders and words those the device needs (the
+ * original face is not installed) as one quality note.
+ */
 export class FontReport {
-  /** Lower-case family -> "Family -> Substitute", first spelling wins. */
-  private readonly substitutions = new Map<string, string>();
+  /** Lower-case family -> [family, substitute], first spelling wins. */
+  private readonly substitutions = new Map<string, readonly [string, string]>();
 
   /** Returns the stack for `name` and remembers the substitution, if any. */
   use(name: string, generic?: GenericFamily): string {
@@ -54,16 +57,24 @@ export class FontReport {
       const key = family.toLowerCase();
       const substitute = resolveFontFamily(family).substituted;
       if (substitute && substitute.toLowerCase() !== key && !this.substitutions.has(key)) {
-        this.substitutions.set(key, `${family} -> ${substitute}`);
+        this.substitutions.set(key, [family, substitute]);
       }
     }
     return resolveFontFamily(families, families.length > 0 ? generic : (generic ?? "serif")).family;
   }
 
-  /** "Fonts shown with open substitutes when not installed: Calibri -> Carlito, ...", or undefined. */
-  note(): string | undefined {
-    if (this.substitutions.size === 0) return undefined;
-    const list = [...this.substitutions.values()].join(", ");
-    return `Fonts shown with open substitutes when not installed: ${list}.`;
+  /**
+   * "Fonts shown with open substitutes when not installed: Calibri -> Carlito, ...", listing only the
+   * faces `doc` cannot draw; undefined when there are none or availability cannot be measured.
+   */
+  note(doc: Document): string | undefined {
+    const pairs = [...this.substitutions.values()];
+    if (pairs.length === 0) return undefined;
+    const families = pairs.map(([family]) => family);
+    const missing = new Set(missingFonts(doc, families));
+    const list = pairs
+      .filter(([family]) => missing.has(family))
+      .map(([family, substitute]) => `${family} -> ${substitute}`);
+    return list.length > 0 ? `Fonts shown with open substitutes when not installed: ${list.join(", ")}.` : undefined;
   }
 }

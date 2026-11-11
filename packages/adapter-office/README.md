@@ -33,7 +33,7 @@ Options: `createSheetAdapter({ maxRows, maxCols, maxSheets })` (defaults 200, 30
 ## Limits and notes
 
 - Content dropped by a limit is reported in `Blueprint.truncated`.
-- `notes` on the loaded source (type `OfficeLoadedSource`; proposed as an optional core `LoadedSource` member) lists what is shown differently from the original: placeholders, unreadable slides, formulas without a saved result, workbook drawings, and Office fonts shown with open substitutes (Calibri with Carlito, Cambria with Caladea, Arial with Liberation Sans, SimSun with Noto Serif SC, Microsoft YaHei with Noto Sans SC, and so on, from the shared `FONT_FALLBACKS` table in `@swarmloom/core`). No font files are bundled.
+- `notes` on the loaded source (type `OfficeLoadedSource`; proposed as an optional core `LoadedSource` member) lists what is shown differently from the original: placeholders, unreadable slides, formulas without a saved result, workbook drawings, and Office fonts missing on the device that are shown with open substitutes (Calibri with Carlito, Cambria with Caladea, Arial with Liberation Sans, SimSun with Noto Serif SC, Microsoft YaHei with Noto Sans SC, and so on, from the shared `FONT_FALLBACKS` table in `@swarmloom/core`). An installed original is not reported; `missingFonts` in `@swarmloom/core` measures this on a canvas, and nothing is reported where it cannot measure. No font files are bundled.
 - Nothing in a file is executed or fetched: no macros, no external links. ZIP containers are read with size and entry limits.
 
 Dependency: [fflate](https://github.com/101arrowz/fflate) (MIT).

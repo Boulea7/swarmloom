@@ -1,5 +1,5 @@
 import type { Blueprint, Layer, TextLayer } from "@swarmloom/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import demoHtml from "../../../examples/web/demo.html?raw";
 import { domAdapter, snapshot, snapshotHtml } from "../src/index";
 
@@ -202,11 +202,71 @@ describe("edge cases", () => {
         '.m li::before{content:counter(list-item) ") "}</style>' +
         '<ol class="s"><li>Pick</li><li>Plan</li></ol>' +
         '<div class="n"><p>Alpha</p><div style="counter-reset:sec"><p>Beta</p></div></div>' +
-        '<ol class="m" start="4"><li>Four</li><li>Five</li></ol>',
+        '<ol class="m" start="4"><li>Four</li><li>Five</li></ol>' +
+        '<ol class="m" reversed start="9"><li>Nine</li><li>Eight</li></ol>' +
+        '<ol class="m" reversed><li>Zero</li><li>Minus</li></ol>',
     );
     const bp = await snapshot(doc);
-    const expected = ["01. Pick", "02. Plan", "IV Alpha", "IV-I Beta", "4) Four", "5) Five"];
+    const expected = ["01. Pick", "02. Plan", "IV Alpha", "IV-I Beta", "4) Four", "5) Five", "9) Nine", "8) Eight"];
+    // Chromium counts a reversed list without a start attribute down from 0 for counter(list-item).
+    expected.push("0) Zero", "-1) Minus");
     for (const want of expected) expect(textWith(bp, want.split(" ").at(-1) as string)?.text).toContain(want);
+  });
+
+  it("counts CSS counters within the walk's slices", async () => {
+    const items = Array.from({ length: 1000 }, (_, i) => `<li>Item ${i}</li>`).join("");
+    const doc = await mountPage(`<style>li::before{content:counter(list-item) ". "}</style><ol>${items}</ol>`);
+    const view = doc.defaultView as Window;
+    const read = view.getComputedStyle.bind(view);
+    let reads = 0;
+    view.getComputedStyle = (el: Element, pseudo?: string | null) => {
+      if (pseudo) reads++;
+      return read(el, pseudo);
+    };
+    // Pseudo-element reads between two turns of the host; a clock that runs 1 ms per call keeps
+    // each slice to about ten steps, whatever the machine's speed.
+    let worst = 0;
+    let seen = 0;
+    const ping = new MessageChannel();
+    ping.port1.onmessage = () => {
+      worst = Math.max(worst, reads - seen);
+      seen = reads;
+      ping.port2.postMessage(null);
+    };
+    ping.port2.postMessage(null);
+    let t = performance.now();
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => ++t);
+    try {
+      const bp = await snapshot(doc, { maxHeight: 1e6 });
+      expect(textWith(bp, "Item 999")?.text).toContain("1000. Item 999");
+    } finally {
+      clock.mockRestore();
+      ping.port1.close();
+    }
+    expect(Math.max(worst, reads - seen)).toBeLessThan(200);
+  });
+
+  it("looks for counters once in a style sheet that many shadow roots adopt", async () => {
+    const doc = await mountPage("<body></body>");
+    const shared = new (doc.defaultView as typeof globalThis).CSSStyleSheet();
+    shared.replaceSync("p{color:teal}");
+    for (let i = 0; i < 20; i++) {
+      const root = doc.body.appendChild(doc.createElement("div")).attachShadow({ mode: "open" });
+      root.adoptedStyleSheets = [shared];
+      root.innerHTML = `<p>Part ${i}</p>`;
+    }
+    const rule = shared.cssRules[0] as CSSStyleRule;
+    const style = rule.style;
+    let reads = 0;
+    Object.defineProperty(rule, "style", {
+      get: () => {
+        reads++;
+        return style;
+      },
+    });
+    const bp = await snapshot(doc);
+    expect(textWith(bp, "Part 19")).toBeDefined();
+    expect(reads).toBe(1);
   });
 
   it("captures an open modal dialog and its backdrop into the screen layer", async () => {
@@ -308,6 +368,33 @@ describe("long pages", () => {
       expect(pseudoReads).toBeLessThan(600);
     },
   );
+
+  const tall = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='300'/>";
+  it.each([
+    [
+      "an image above the rows loads",
+      (doc: Document) => setTimeout(() => doc.images[0]?.setAttribute("src", tall), 15),
+    ],
+    [
+      "a timer keeps growing a banner",
+      (doc: Document) => setInterval(() => doc.body.firstElementChild?.append("x "), 1),
+    ],
+  ])("keeps one layout when %s mid-walk", async (_, disturb) => {
+    const rows = Array.from({ length: 3000 }, (_, i) => `<p style="margin:0;height:20px">Row ${i}</p>`).join("");
+    const doc = await mountPage(`<body style="margin:0"><div style="width:40px"></div><img alt="">${rows}`, 1000, 700);
+    const timer = disturb(doc);
+    try {
+      const bp = await snapshot(doc, { maxLayers: 10000, maxHeight: 200000 });
+      const ys: number[] = [];
+      for (const t of texts(bp)) if (t.text.startsWith("Row ")) ys[Number(t.text.slice(4))] = t.box.y;
+      expect(ys).toHaveLength(3000);
+      // Rows read before and after a reflow would leave a gap (or an overlap) in the spacing.
+      expect(new Set(ys.slice(1).map((y, i) => Math.round(y - (ys[i] as number))))).toEqual(new Set([20]));
+    } finally {
+      clearTimeout(timer);
+      clearInterval(timer);
+    }
+  });
 });
 
 describe("snapshotHtml", () => {

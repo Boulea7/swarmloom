@@ -95,13 +95,13 @@ swarmloom render <file|url> [options]
 
 ### 录制证据
 
-用于可复核、可重复的录制。三个文件与 `--output` 必须是不同的文件。
+用于可复核、可重复的录制。三个文件与 `--output` 必须是不同的文件，且都不能是输入文件（经链接指向也不行）。
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `--audio-out <file>` | 关闭 | 另写一份音轨 WAV（48 kHz 立体声，与视频等长）；需要声音，不能与 `--no-sound`、GIF 或 WebP 同用 |
 | `--events-out <file>` | 关闭 | 另写一份声音事件日志 JSON：引擎毫秒、与帧同一时钟，并附每个事件的帧号 |
-| `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256（blueprint 里每次运行都会变的地址，如输入的服务路径和 `blob:` URL，先换成固定写法再求哈希）、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素 |
+| `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256（blueprint 里每次运行都会变的地址，如输入的服务路径和 `blob:` URL，先换成固定写法再求哈希）、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素。清单可直接分享：输出路径相对清单所在目录，程序只记文件名，不记工作目录，URL 的用户信息、查询串和片段写作 `redacted`；其他参数按原样记录，分享时宜用相对路径 |
 
 ### 程序与日志
 
@@ -123,7 +123,7 @@ swarmloom render ./README.md -o readme.mp4
 不指定 `-o` 时，下面的命令写出当前目录下的 `README.mp4`：
 
 ```bash
-swarmloom render ./docs/README.md
+swarmloom render ./examples/README.md
 ```
 
 导出无声音、固定种子的 WebM：
@@ -171,7 +171,7 @@ swarmloom snapshot <url|file.html> [options]
 本地 HTML 文件按不受信内容处理：
 
 - 页面自己的脚本不运行，捕获的是 HTML 和 CSS 本身的样子；
-- 只提供该文件和它旁边（含子目录）的图片、字体、样式表、音视频等资源，范围与 `render` 相同。同目录的其他文件和点文件（如 `.env`）不会提供；
+- 只提供该文件和它旁边（含子目录）的图片、字体、样式表、音视频等资源，范围与 `render` 相同。同目录的其他文件、点文件（如 `.env`），以及指向目录外或指向这类文件的符号链接不会提供；
 - 其他站点只加载 `https:` 图片和字体，其余请求一律拦截，结束时提示拦截数量，`--verbose` 会逐条列出。
 
 网页 URL 照常运行页面脚本。
@@ -188,7 +188,7 @@ swarmloom snapshot <url|file.html> [options]
 
 ```bash
 swarmloom snapshot https://example.com -o example.blueprint.json --width 1440
-swarmloom snapshot ./docs/index.html -o - > page.json
+swarmloom snapshot ./examples/html/landing.html -o - > page.json
 ```
 
 Blueprint 可能包含页面文字和图片引用。分享快照前应像分享原内容一样检查敏感信息。

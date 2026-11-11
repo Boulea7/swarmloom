@@ -5,6 +5,7 @@ import { blueprintOf, box, type Harness, harness, samplePage } from "./fakes";
 interface Result {
   median: number;
   p95: number;
+  /** Most cursors drawn in one timed frame. */
   agents: number;
   built: number;
 }
@@ -13,17 +14,19 @@ interface Result {
 function time(h: Harness, frames: number, before?: (f: number) => void): Result {
   const samples: number[] = [];
   const built = h.engine.progress.built;
+  let agents = 0;
   for (let f = 0; f < frames; f++) {
     before?.(f);
     const t0 = performance.now();
     h.clock.advance(1000 / 60);
     samples.push(performance.now() - t0);
+    agents = Math.max(agents, h.stage.lastDrawn);
   }
   samples.sort((a, b) => a - b);
   return {
     median: samples[samples.length >> 1] as number,
     p95: samples[Math.floor(samples.length * 0.95)] as number,
-    agents: h.stage.lastDrawn,
+    agents,
     built: h.engine.progress.built - built,
   };
 }

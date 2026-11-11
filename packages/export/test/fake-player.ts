@@ -4,8 +4,9 @@ type Listener = (e: PlayerEvent) => void;
 
 /**
  * Clock-driven fake: builds `total` layers evenly over `buildMs` of player time, logs a key sound per
- * layer and switches to "finale" when done. Like the engine, player time stops while paused and
- * sound events carry player time. Counts ready() calls so tests can check the step barrier.
+ * layer (and a fan-out on finish()) and switches to "finale" when done. Like the engine, player time
+ * stops while paused and sound events carry player time. Counts ready() calls so tests can check the
+ * step barrier.
  */
 export class ClockPlayer implements Player {
   state: PlayerState = "idle";
@@ -55,10 +56,12 @@ export class ClockPlayer implements Player {
   resume(): void {
     if (this.state === "paused") this.#set(this.#resumeState);
   }
-  /** Completes the remaining layers on the next tick. */
+  /** Logs a fan-out at once (as the engine does from its intro); the remaining layers complete on the next tick. */
   finish(): void {
     if (this.state === "paused") this.#set(this.#resumeState);
-    if (this.state === "building") this.#finishing = true;
+    if (this.state !== "building" || this.#finishing) return;
+    this.#finishing = true;
+    this.soundLog.push({ t: this.#pt, name: "fanout", pan: 0 });
   }
   setSpeed(): void {}
   setSound(): void {}

@@ -47,9 +47,10 @@ export interface Scrubber {
 /**
  * Creates the scrubber (decisions-v1 S05). The slider shows the player's position on the time
  * line `seek` uses, like a video position, and is redrawn on animation frames only while player
- * time advances. Input seeks at most once per frame, to the latest value, because a seek
- * re-simulates the build synchronously. The layer count and the plain bar (for players without
- * `seek`) follow progress events, rendered on the next frame.
+ * time advances. A seek back re-simulates the build from the start synchronously, so a pointer
+ * drag only previews its value and seeks once, when it is let go (like the core toolbar's seek
+ * bar); keys seek at most once per frame, to the latest value. The layer count and the plain bar
+ * (for players without `seek`) follow progress events, rendered on the next frame.
  */
 export function createScrubber(options: ScrubberOptions): Scrubber {
   const { i18n } = options;
@@ -59,6 +60,8 @@ export function createScrubber(options: ScrubberOptions): Scrubber {
   let state: PlayerState = "idle";
   let frame = 0;
   let seekPending = false;
+  /** The slider was dragged and not let go yet: it shows the dragged value, the seek waits. */
+  let held = false;
   let destroyed = false;
 
   const fill = h("span", { class: "progress-fill" });
@@ -89,7 +92,11 @@ export function createScrubber(options: ScrubberOptions): Scrubber {
       disabled: true,
     },
     on: {
-      input: () => requestSeek(),
+      input: () => {
+        held = true;
+        paintSlider();
+      },
+      change: () => requestSeek(),
       keydown: (event) => {
         const delta = KEY_STEPS[event.key];
         if (delta === undefined || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -118,7 +125,7 @@ export function createScrubber(options: ScrubberOptions): Scrubber {
       bar.setAttribute("aria-valuenow", String(Math.round(layers * 100)));
     }
     // A held thumb stays where the user put it until it is let go.
-    if (slider.hidden || seekPending || slider.matches(":active")) return;
+    if (slider.hidden || seekPending || held || slider.matches(":active")) return;
     const step = String(Math.round(options.position() * STEPS));
     if (slider.value !== step) {
       slider.value = step;
@@ -140,11 +147,24 @@ export function createScrubber(options: ScrubberOptions): Scrubber {
     if (!frame && !destroyed) frame = requestAnimationFrame(loop);
   };
   const requestSeek = () => {
+    held = false;
     if (slider.disabled) return;
     paintSlider();
     seekPending = true;
     wake();
   };
+  /**
+   * Ends a drag wherever the pointer is let go, also when no `change` follows (the thumb went back
+   * to where it started): release seeks to the dragged value, a cancelled pointer drops it.
+   */
+  const release = (event: PointerEvent) => {
+    if (!held) return;
+    if (event.type === "pointerup") return requestSeek();
+    held = false;
+    wake();
+  };
+  window.addEventListener("pointerup", release, true);
+  window.addEventListener("pointercancel", release, true);
 
   render();
   return {
@@ -152,6 +172,7 @@ export function createScrubber(options: ScrubberOptions): Scrubber {
     count,
     ready(canSeek) {
       seekPending = false;
+      held = false;
       slider.hidden = !canSeek;
       bar.hidden = canSeek;
       slider.value = "0";
@@ -178,6 +199,8 @@ export function createScrubber(options: ScrubberOptions): Scrubber {
     },
     destroy() {
       destroyed = true;
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
       cancelAnimationFrame(frame);
       frame = 0;
     },

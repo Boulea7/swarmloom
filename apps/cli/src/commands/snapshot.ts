@@ -34,7 +34,7 @@ them load; other files in that folder are not served, and only https images and 
 
 Examples:
   swarmloom snapshot https://example.com -o example.json
-  swarmloom snapshot docs/index.html --width 1440 -o - > page.json`;
+  swarmloom snapshot examples/html/landing.html --width 1440 -o - > page.json`;
 
 const OPTIONS = {
   output: { type: "string", short: "o" },

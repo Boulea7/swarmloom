@@ -2,18 +2,20 @@
 /**
  * End-to-end render tests: bundle the CLI, run it as a real process against a real browser and ffmpeg,
  * and inspect the result with ffprobe. Skipped (with the reason) when the machine lacks Chrome or ffmpeg;
- * the tests on the real render page also skip while its build is missing or older than the sources.
+ * the tests on the real render page also skip while its build is missing or older than its inputs.
+ * Under CI both fail instead (see ./real-deps), and a wrong SWARMLOOM_CHROME or SWARMLOOM_FFMPEG always does.
  */
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, type TestContext } from "vitest";
 import { findBrowser } from "../src/discovery/browser";
 import { findFfmpeg, systemFfmpegDeps } from "../src/discovery/ffmpeg";
 import { systemHost, which } from "../src/discovery/host";
+import { findOptional, inCi, renderPageProblem, skipReason } from "./real-deps";
 
 const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
 const REPO = path.resolve(CLI_DIR, "../..");
@@ -23,48 +25,27 @@ const EXPORT_RENDER_DIR = path.join(REPO, "packages/export/dist/render");
 const TIMEOUT = 240_000;
 
 const host = systemHost();
-const chrome = (() => {
-  try {
-    return findBrowser(host).path;
-  } catch {
-    return undefined;
-  }
-})();
-const ffmpeg = await findFfmpeg(systemFfmpegDeps(host)).then(
-  (found) => found.path,
-  () => undefined,
-);
+const chrome = (await findOptional("SWARMLOOM_CHROME", () => findBrowser(host)))?.path;
+const ffmpeg = (await findOptional("SWARMLOOM_FFMPEG", () => findFfmpeg(systemFfmpegDeps(host))))?.path;
 const ffprobe = ffmpeg ? siblingOrPath(ffmpeg, "ffprobe") : undefined;
-const missing = !chrome
-  ? "no Chrome/Chromium found (set SWARMLOOM_CHROME)"
-  : !ffmpeg
-    ? "no ffmpeg 4+ found (set SWARMLOOM_FFMPEG)"
-    : !ffprobe
-      ? "no ffprobe next to ffmpeg or on PATH"
-      : undefined;
+const missing = skipReason(
+  !chrome
+    ? "no Chrome/Chromium found (set SWARMLOOM_CHROME)"
+    : !ffmpeg
+      ? "no ffmpeg 4+ found (set SWARMLOOM_FFMPEG)"
+      : !ffprobe
+        ? "no ffprobe next to ffmpeg or on PATH"
+        : undefined,
+);
 
-/**
- * Why the real render page cannot be used: it is not built, or a file under packages/<name>/src changed
- * after the build. The page bundles every package from src/, so a stale build would test old code.
- */
-function renderPageProblem(): string | undefined {
-  const page = path.join(EXPORT_RENDER_DIR, "index.html");
-  const rebuild = "run pnpm -F @swarmloom/export build";
-  if (!existsSync(page)) return `render page not built yet: ${rebuild}`;
-  const builtAt = statSync(page).mtimeMs;
-  const packages = path.join(REPO, "packages");
-  for (const name of readdirSync(packages)) {
-    const src = path.join(packages, name, "src");
-    if (!existsSync(src)) continue;
-    const files = readdirSync(src, { recursive: true, encoding: "utf8" });
-    if (files.some((file) => statSync(path.join(src, file)).mtimeMs > builtAt)) {
-      return `render page is older than packages/${name}/src: ${rebuild}`;
-    }
-  }
-  return undefined;
+const renderPage = renderPageProblem(REPO);
+
+/** Skips a real render page test while the page is unusable; CI must have built it, so there it fails. */
+function requireRenderPage(ctx: TestContext): void {
+  if (!renderPage) return;
+  if (inCi()) throw new Error(`${renderPage} (CI must run pnpm build before pnpm test)`);
+  ctx.skip(renderPage);
 }
-
-const renderPage = renderPageProblem();
 
 function siblingOrPath(ffmpegPath: string, name: string): string | undefined {
   const ext = path.extname(ffmpegPath);
@@ -140,8 +121,7 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
   it(
     "renders a 2 s clip of examples/markdown/welcome.en.md to MP4 with video and audio",
     async (ctx) => {
-      if (renderPage) ctx.skip(renderPage);
-      if (!existsSync(WELCOME)) ctx.skip("examples/markdown/welcome.en.md is not in this checkout yet");
+      requireRenderPage(ctx);
       const args = ["render", WELCOME, "-o", "welcome.mp4", "--width", "640", "--height", "360"];
       const run = startCli([...args, "--fps", "15", "--max-duration", "2", "--quiet"], {
         SWARMLOOM_RENDER_DIR: EXPORT_RENDER_DIR,
@@ -162,7 +142,7 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
   it(
     "goes live after the build: an HTML loop keeps moving through the tail, the same in two runs",
     async (ctx) => {
-      if (renderPage) ctx.skip(renderPage);
+      requireRenderPage(ctx);
       const take = async (dir: string) => {
         const args = ["render", path.join(FIXTURES, "live/index.html"), "-o", `${dir}/live.mp4`, "--no-sound"];
         const extra = ["--width", "320", "--height", "200", "--fps", "10", "--tail", "3000", "--finale", "none"];
@@ -233,6 +213,8 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
       expect(events.events.map((e: { frame: number }) => e.frame)).toEqual([0, 10]);
       expect(a.outputs.events.sha256).toBe(b.outputs.events.sha256);
       expect(Number((await probe(path.join(work, "a/take.mp4"))).format.duration)).toBeCloseTo(1.5, 1);
+      // --audio-out matches the video's 15 frames, not the 1.4 s up to the last frame's start.
+      expect(Number((await probe(path.join(work, "a/take.wav"))).format.duration)).toBeCloseTo(1.5, 3);
     },
     TIMEOUT,
   );

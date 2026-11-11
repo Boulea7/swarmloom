@@ -116,6 +116,6 @@ Limits of the in-page export:
 
 ## Studio inside the extension
 
-The extension is planned to bundle the same Studio build for PDF, document, image and model links, and for restricted pages.
+The release build (`pnpm build:extension`) bundles the same Studio build into every extension package. It opens PDF, document, image and model links, and restricted pages through the notice page. Local builds made with `--without-studio` send these links to the hosted Studio instead.
 
 Extension mode uses relative assets and does not register a Service Worker. It keeps the same format pipelines and privacy boundaries without contacting a separate SwarmLoom service.

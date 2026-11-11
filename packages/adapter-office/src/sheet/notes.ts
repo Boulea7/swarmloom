@@ -16,8 +16,11 @@ export interface SheetNoteSource {
 /** Part-name prefixes of charts and pictures in XLSX and ODS packages. */
 const DRAWING_PARTS = ["xl/drawings/", "xl/charts/", "xl/media/", "Pictures/", "Object "];
 
-/** Builds the notes for `OfficeLoadedSource.notes` (empty when the workbook converted fully). */
-export function sheetNotes(wb: WorkbookModel, source: SheetNoteSource): string[] {
+/**
+ * Builds the notes for `OfficeLoadedSource.notes` (empty when the workbook converted fully).
+ * `doc` is the document the sheets are shown in; fonts it can draw are not reported.
+ */
+export function sheetNotes(wb: WorkbookModel, source: SheetNoteSource, doc: Document): string[] {
   const notes: string[] = [];
   let formulas = 0;
   const fonts = new FontLog();
@@ -35,7 +38,7 @@ export function sheetNotes(wb: WorkbookModel, source: SheetNoteSource): string[]
   if (source.zip?.names().some((name) => DRAWING_PARTS.some((prefix) => name.startsWith(prefix)))) {
     notes.push("Charts, pictures and embedded objects in the workbook are not shown.");
   }
-  const fontNote = fonts.note();
+  const fontNote = fonts.note(doc);
   if (fontNote) notes.push(fontNote);
   return notes;
 }

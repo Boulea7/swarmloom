@@ -4,12 +4,41 @@ import { LOTTIE_PLUGIN, PLAYER_TASK } from "../constants";
 import { type LottieRuntime, loadRuntime } from "../render/runtime";
 import { type AnimTarget, registerAnimTarget } from "../timeline/target";
 import { type PlayerSpec, readPlayer } from "./data";
-import { cycleMs, indexAt, indexAtTime, timeOfIndex } from "./timing";
+import { cycleMs, indexAt, indexAtTime, playsOn, timeOfIndex } from "./timing";
 
 /** Options of {@link createLottiePlugin}. */
 export interface LottiePluginOptions {
   /** Loads lottie-web. Default: the light SVG player, imported on first use. Tests pass a fake. */
   runtime?: () => Promise<LottieRuntime>;
+  /**
+   * Clock of playback once the stage goes live: "own" (default) plays on in wall time, since a
+   * realtime player stops its clock after go live; "player" stays on player time, for exports whose
+   * virtual clock keeps ticking after go live and must stay frame-exact.
+   */
+  liveClock?: "own" | "player";
+}
+
+/** Throws when `value` is not a {@link LottiePluginOptions.liveClock} value. */
+export function checkLiveClock(value: unknown, name: string): void {
+  if (value !== undefined && value !== "own" && value !== "player") {
+    throw new TypeError(`${name} must be "own" or "player"`);
+  }
+}
+
+/** Own clock of a live stage: player time at go live, continued by wall time. */
+interface LiveClock {
+  readonly win: Window;
+  /** Player time when the stage went live. */
+  readonly base: number;
+  /** `performance.now()` when the stage went live. */
+  readonly since: number;
+}
+
+/** The element whose `data-live` attribute marks a live stage world (its shadow host). */
+function worldOf(el: Element): Element | null {
+  if (!el.isConnected) return null;
+  const root = el.getRootNode();
+  return "host" in root ? ((root as ShadowRoot).host ?? null) : null;
 }
 
 /** A mounted lottie-web animation. */
@@ -36,6 +65,8 @@ interface PlayerState {
   from: number;
   view: View | null;
   readonly target: AnimTarget;
+  /** Called when the frame shown changes (the timeline's playhead follows it). */
+  readonly listeners: Set<() => void>;
 }
 
 /**
@@ -49,15 +80,26 @@ interface PlayerState {
  * once per engine tick (coalesced in a microtask), so fast-forward seeks stay cheap. When the
  * engine clock goes back (replay, seek), every player returns to the woven pose.
  *
+ * Once the stage goes live (`data-live` on the world host), a realtime player stops its clock, so
+ * with `liveClock: "own"` playback goes on from the player time at go live in wall time, one step
+ * per animation frame; exports pass "player" and stay on player time.
+ *
  * State lives in the instance, and every player gets its own (`Plugin.perPlayer`), so several
  * players of one loaded source never reset or redraw each other.
  */
 export function createLottiePlugin(options: LottiePluginOptions = {}): Plugin {
+  checkLiveClock(options.liveClock, "LottiePluginOptions.liveClock");
   const load = options.runtime ?? loadRuntime;
+  const ownClock = options.liveClock !== "player";
   const states = new Map<CustomLayer, PlayerState>();
   let lastNow = Number.NEGATIVE_INFINITY;
   let queued = false;
   let warned = false;
+  /** Set while the stage is live and playback runs on the own clock. */
+  let live: LiveClock | null = null;
+  /** Watches the world's `data-live` switch while a view is mounted (own clock only). */
+  let observer: MutationObserver | null = null;
+  let raf = 0;
 
   const apply = (s: PlayerState): void => {
     const view = s.view;
@@ -90,6 +132,74 @@ export function createLottiePlugin(options: LottiePluginOptions = {}): Plugin {
     s.index = s.spec.rest;
   };
 
+  /**
+   * Moves every playing player to time `now`; returns true while a mounted one still moves.
+   * Listeners hear of every frame change at once (the time is read from the state, not the view).
+   */
+  const advance = (now: number): boolean => {
+    let dirty = false;
+    let moving = false;
+    for (const s of states.values()) {
+      if (s.mode !== "play") continue;
+      s.startAt ??= now;
+      const index = indexAt(now - s.startAt, s.spec.timing, s.from);
+      if (s.view && playsOn(now - s.startAt, s.spec.timing, s.from)) moving = true;
+      if (index === s.index) continue;
+      s.index = index;
+      dirty = true;
+      for (const listener of s.listeners) listener();
+    }
+    if (dirty) schedule();
+    return moving;
+  };
+
+  const tick = (): void => {
+    raf = 0;
+    const clock = live;
+    if (clock && advance(clock.base + clock.win.performance.now() - clock.since)) {
+      raf = clock.win.requestAnimationFrame(tick);
+    }
+  };
+
+  /** Ticks the own clock again (after a mount or a play while live). */
+  const wake = (): void => {
+    if (live && !raf) raf = live.win.requestAnimationFrame(tick);
+  };
+
+  const stopTicks = (): void => {
+    if (raf) live?.win.cancelAnimationFrame(raf);
+    raf = 0;
+  };
+
+  const setLive = (on: boolean, win: Window): void => {
+    if (on === (live !== null)) return;
+    stopTicks();
+    live = on ? { win, base: Number.isFinite(lastNow) ? lastNow : 0, since: win.performance.now() } : null;
+    wake();
+  };
+
+  /** Starts watching the live switch once a view sits in the stage world (mounts get a detached container). */
+  const follow = (): void => {
+    if (!ownClock || observer) return;
+    for (const s of states.values()) {
+      const host = s.view?.host;
+      const world = host ? worldOf(host) : null;
+      const win = host?.ownerDocument.defaultView;
+      if (!world || !win) continue;
+      const read = (): void => setLive(world.hasAttribute("data-live"), win);
+      observer = new win.MutationObserver(read);
+      observer.observe(world, { attributes: true, attributeFilter: ["data-live"] });
+      read();
+      return;
+    }
+  };
+
+  /** Back on player time: the live switch is no longer watched (a new stage, or the engine restarted). */
+  const leaveLive = (): void => {
+    stopTicks();
+    live = null;
+  };
+
   const createState = (spec: PlayerSpec): PlayerState => {
     const duration = cycleMs(spec.timing);
     const s: PlayerState = {
@@ -114,13 +224,19 @@ export function createLottiePlugin(options: LottiePluginOptions = {}): Plugin {
           s.from = Math.min(duration, Math.max(0, Number.isFinite(t) ? t : 0));
           s.index = indexAtTime(s.from, spec.timing);
           schedule();
+          wake();
         },
         reset() {
           toStatic(s);
           schedule();
         },
         time: () => (s.mode === "static" ? null : timeOfIndex(s.index, spec.timing)),
+        subscribe(listener) {
+          s.listeners.add(listener);
+          return () => s.listeners.delete(listener);
+        },
       },
+      listeners: new Set(),
     };
     return s;
   };
@@ -172,6 +288,7 @@ export function createLottiePlugin(options: LottiePluginOptions = {}): Plugin {
           return;
         }
         apply(s);
+        follow();
       }, warn),
       dispose() {
         disposed = true;
@@ -198,11 +315,19 @@ export function createLottiePlugin(options: LottiePluginOptions = {}): Plugin {
         toStatic(s);
         schedule();
       }
+      // The stage reveals a view once it sits in the world (also when it remounts while live).
+      follow();
+      wake();
     },
     unmount(layer) {
       const s = states.get(layer);
       s?.view?.dispose();
       if (s) s.view = null;
+      if ([...states.values()].some((other) => other.view)) return;
+      // Nothing left to draw: stop ticking; a later mount watches the switch again.
+      observer?.disconnect();
+      observer = null;
+      stopTicks();
     },
   };
 
@@ -219,26 +344,20 @@ export function createLottiePlugin(options: LottiePluginOptions = {}): Plugin {
     setup() {
       // A host that hands this very instance to a new player: start from the woven pose.
       lastNow = Number.NEGATIVE_INFINITY;
+      leaveLive();
       for (const s of states.values()) toStatic(s);
     },
     frame(now) {
       if (now < lastNow - 1e-6) {
         // The engine restarted its clock (replay or seek): back to the woven pose.
+        leaveLive();
         for (const s of states.values()) toStatic(s);
         schedule();
       }
       lastNow = now;
-      let dirty = false;
-      for (const s of states.values()) {
-        if (s.mode !== "play") continue;
-        s.startAt ??= now;
-        const index = indexAt(now - s.startAt, s.spec.timing, s.from);
-        if (index !== s.index) {
-          s.index = index;
-          dirty = true;
-        }
-      }
-      if (dirty) schedule();
+      follow();
+      // Live on the own clock: wall time moves playback, whatever player time still arrives.
+      if (!live) advance(now);
     },
   };
 }

@@ -64,7 +64,7 @@
 <details>
 <summary>更多可開啟的格式</summary>
 
-OpenDocument（ODT / ODS / ODP）、EPUB、RTF、OFD、Jupyter Notebook、asciinema 終端機錄影、Patch / Diff，以及 XMind / FreeMind 心智圖。試算表支援 XLSX / CSV / ODS；3D 支援 GLB / glTF / OBJ / STL / PLY。[格式指南](https://boulea7.github.io/swarmloom/docs/en/formats.html)列出所有副檔名，以及每種格式的還原程度。
+OpenDocument（ODT / ODS / ODP）、EPUB、RTF、OFD、Jupyter Notebook、asciinema 終端機錄影、Patch / Diff、XMind / FreeMind 心智圖，以及 Lottie 動畫。試算表支援 XLSX / CSV / ODS；3D 支援 GLB / glTF / OBJ / STL / PLY。[格式指南](https://boulea7.github.io/swarmloom/docs/en/formats.html)列出所有副檔名，以及每種格式的還原程度。
 
 </details>
 
@@ -210,7 +210,7 @@ npm 套件 `@swarmloom/element` 尚未發布（規劃中），但元件本身已
 
 ## 發展藍圖
 
-- **目前**：線上 Studio、網頁及 19 種檔案格式、CLI 逐影格匯出，以及可從原始碼建置的 Chrome / Edge / Firefox / Safari 擴充功能。
+- **目前**：線上 Studio、網頁及 20 種檔案格式、CLI 逐影格匯出，以及可從原始碼建置的 Chrome / Edge / Firefox / Safari 擴充功能。
 - **接下來**：首個 GitHub Release 與 npm 套件、商店上架與擴充功能簽章、在 Studio 內匯出影片，以及手機與 Safari 裝置測試。
 - **之後**：更多格式與平台，不承諾時程。歡迎到 [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) 分享想法。
 

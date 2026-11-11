@@ -2,6 +2,7 @@ import type { Layer, TextLayer } from "@swarmloom/core";
 import { describe, expect, it } from "vitest";
 import { displayValue } from "../src/capture/form";
 import { domAdapter, snapshot, snapshotHtml } from "../src/index";
+import { fontFaceCss } from "../src/page/fonts";
 import { type DupNode, detectDuplicates } from "../src/post/duplicates";
 import { truncate } from "../src/post/order";
 import { rewriteUrls, splitTopLevel } from "../src/util/css";
@@ -130,5 +131,28 @@ describe("post-processing", () => {
     expect(layers[6]?.master).toBe("b0");
     expect(layers[7]?.master).toBe("t0");
     expect(layers[8]?.master).toBeUndefined();
+  });
+});
+
+describe("font faces", () => {
+  it("reads a style sheet shared by many shadow roots once", () => {
+    let reads = 0;
+    const face = {
+      type: 5,
+      style: { getPropertyValue: () => "Inter" },
+      cssText: '@font-face { font-family: Inter; src: url("inter.woff2"); }',
+    };
+    const shared = {
+      href: "https://example.org/app.css",
+      get cssRules() {
+        reads++;
+        return [face];
+      },
+    };
+    const roots = Array.from({ length: 50 }, () => ({ styleSheets: [], adoptedStyleSheets: [shared] }));
+    const doc = { styleSheets: [], adoptedStyleSheets: [shared] };
+    const css = fontFaceCss(doc as never, roots as never, new Set(["inter"]));
+    expect(css).toBe('@font-face { font-family: Inter; src: url("https://example.org/inter.woff2"); }');
+    expect(reads).toBe(1);
   });
 });

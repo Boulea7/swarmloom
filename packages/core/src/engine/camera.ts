@@ -51,7 +51,7 @@ export class Camera {
 
   /**
    * Next tour scroll position, or NaN when the tour should not move this frame.
-   * @param frontier Top edge of the earliest unfinished layer (Infinity when all are done).
+   * @param frontier Top of the seen part of the earliest unfinished layer (Infinity when none is left).
    * @param worldHeight Height of the world; the tour stops at the bottom.
    * @param lead How far below the top edge the frontier is kept, as a share of the viewport.
    */

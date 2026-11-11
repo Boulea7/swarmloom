@@ -191,7 +191,8 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     // A single frame never advanced the clock, so there is no soundtrack to render.
     if (job.settings.sound && formatHasAudio(job.format) && result.elapsedMs > 0) {
       progress.phase("rendering sound");
-      wav = await driver.audioWav();
+      // The whole video: the last frame lasts one frame past the elapsed time.
+      wav = await driver.audioWav(result.durationMs);
       if (wav) {
         progress.phase("adding sound");
         output = await writer.addAudio(output, wav, result.durationMs);

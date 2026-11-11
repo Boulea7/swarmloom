@@ -134,9 +134,13 @@ function inspectBytes(
   if (cfb) return { id: cfbFormat(cfb.names) ?? byExtension(ext, registry), encrypted: cfb.encrypted };
   const magic = magicFormat(bytes);
   if (magic) return { id: magic, encrypted: false };
-  const head = bytes.subarray(0, SNIFF_HEAD);
-  const sniffed = registry.find((f) => f.sniff?.(head, name));
-  return sniffed ? { id: sniffed.id, encrypted: false } : null;
+  const sniffed = sniff(bytes.subarray(0, SNIFF_HEAD), name, registry);
+  return sniffed ? { id: sniffed, encrypted: false } : null;
+}
+
+/** Id of the first registry entry whose custom `sniff` hook accepts `head`, or null. */
+function sniff(head: Uint8Array, name: string | undefined, registry: readonly FormatEntry[]): string | null {
+  return registry.find((f) => f.sniff?.(head, name))?.id ?? null;
 }
 
 /**
@@ -149,7 +153,8 @@ function inspectBytes(
  *     (WordDocument, Workbook, PowerPoint Document), falling back to the extension for unknown or
  *     encrypted packages;
  *  3. magic bytes (PDF, RTF, glTF/GLB, PLY, binary STL, PNG, JPEG, GIF, WebP, AVIF, BMP), then
- *     custom `sniff` hooks of the registry (Lottie JSON);
+ *     custom `sniff` hooks of the registry (Lottie JSON); text inputs reach the hooks as the
+ *     UTF-8 head, so decoded text and raw bytes of one file detect the same;
  *  4. file extension (name, else URL path), then MIME type (generic types such as text/plain and
  *     application/octet-stream are ignored);
  *  5. text heuristics on the decoded head (SVG/HTML prologs, notebooks, asciicasts, patches,
@@ -165,6 +170,10 @@ export function inspect(input: SourceInput, registry: readonly FormatEntry[] = f
   const bytes = input.bytes && input.bytes.length > 0 ? input.bytes : undefined;
   const binary = bytes ? inspectBytes(bytes, input.name, ext, registry) : null;
   if (binary) return { id: known(binary.id), encrypted: binary.encrypted };
+  if (!bytes && input.text) {
+    const sniffed = sniff(new TextEncoder().encode(input.text.slice(0, SNIFF_HEAD)), input.name, registry);
+    if (sniffed) return { id: sniffed, encrypted: false };
+  }
   const named = byExtension(ext, registry) ?? byMime(mimeOf(input.type), registry);
   if (named) return { id: named, encrypted: false };
   const text = input.text ?? (bytes ? decodeText(bytes) : undefined);

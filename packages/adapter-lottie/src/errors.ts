@@ -13,7 +13,8 @@ export type LottieErrorCode =
 
 /**
  * Error thrown by the Lottie adapter. `message` is written for end users (it says what was wrong
- * and, where possible, what to do); `code` lets callers branch without parsing it.
+ * and, where possible, what to do) in English; `code` lets callers branch or translate without
+ * parsing it (Studio maps each code to its own localized message).
  */
 export class LottieError extends Error {
   override readonly name = "LottieError";

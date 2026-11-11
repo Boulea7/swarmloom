@@ -95,4 +95,30 @@ describe("fetchMedia", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("throws in required mode when the lookup or a download fails", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const dir = await mkdtemp(join(tmpdir(), "sl-media-"));
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("Unavailable", { status: 503 })),
+      );
+      await expect(fetchMedia(dir)).resolves.toBe(0);
+      await expect(fetchMedia(dir, { required: true })).rejects.toThrow(/HTTP 503/);
+      const asset = { name: "clips-web.mp4", size: 4, browser_download_url: "https://github.com/a/clips-web.mp4" };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          url.includes("api.github.com")
+            ? Response.json({ assets: [asset] })
+            : new Response("Bad Gateway", { status: 502 }),
+        ),
+      );
+      await expect(fetchMedia(dir, { required: true })).rejects.toThrow(/clips-web\.mp4/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

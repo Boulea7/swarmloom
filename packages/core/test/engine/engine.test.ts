@@ -3,7 +3,7 @@ import { builtinPlugin, choreoHelpers } from "../../src/choreo/index";
 import { Agent } from "../../src/engine/agent";
 import { EXIT_MS, FINALE_SETTLE_MS, IDLE_RUSH_MS } from "../../src/engine/constants";
 import type { EngineSettings } from "../../src/engine/engine";
-import { autoAgentCount } from "../../src/engine/options";
+import { autoAgentCount, type FollowMode } from "../../src/engine/options";
 import { createRng } from "../../src/rng";
 import type { AgentApi, Layer, PlayerState, Plugin, Rect, StageApi, TaskFn, TaskGen } from "../../src/types";
 import { blueprintOf, box, harness, samplePage, testPlugin, text } from "./fakes";
@@ -74,6 +74,28 @@ describe("Engine", () => {
     h.run(30);
     expect(h.engine.soundLog).toEqual(first.log);
     expect(h.stage.hash.value).toBe(first.hash);
+  });
+
+  it("replay mid-build reproduces a tour run (no in-sight state leaks into the new run)", () => {
+    const page = blueprintOf(
+      Array.from({ length: 12 }, (_, i) => box(`b${i}`, 40, 40 + i * 260, 300, 200)),
+      { w: 800, h: 3160 },
+    );
+    const finish = (h: ReturnType<typeof harness>) => {
+      h.until(() => h.engine.state === "finale");
+      h.run(30);
+      return { hash: h.stage.hash.value, log: h.engine.soundLog.map((e) => ({ ...e })) };
+    };
+    const fresh = harness(page, { follow: "tour", seed: 5 });
+    void fresh.engine.play();
+    const expected = finish(fresh);
+    const h = harness(page, { follow: "tour", seed: 5 });
+    void h.engine.play();
+    h.run(200);
+    h.engine.replay();
+    const replayed = finish(h);
+    expect(replayed.log).toEqual(expected.log);
+    expect(replayed.hash).toBe(expected.hash);
   });
 
   it("fades the intro icon out from its current alpha after fan-out, then removes it", () => {
@@ -236,6 +258,27 @@ describe("Engine", () => {
     expect(ms - screenDoneAt).toBeLessThan(IDLE_RUSH_MS + 1500);
   });
 
+  it("sizes the crew from work in sight, not from work waiting out of sight", () => {
+    const top = (): Layer[] => [0, 1, 2, 3].map((i) => box(`t${i}`, 20 + i * 190, 40, 160, 120));
+    const below = (y0: number): Layer[] =>
+      Array.from({ length: 80 }, (_, i) => box(`b${i}`, (i % 10) * 78, y0 + Math.floor(i / 10) * 30, 60, 20));
+    // Most cursors drawn while the four layers in view are built.
+    const crew = (layers: Layer[], follow: FollowMode): number => {
+      const h = harness(blueprintOf(layers, { w: 800, h: 3000 }), { intro: false, agents: 20, follow });
+      void h.engine.play();
+      h.until(() => ["t0", "t1", "t2", "t3"].every((id) => h.stage.finished.includes(id)));
+      expect(h.stage.scrollY).toBe(0);
+      return Math.max(...h.stage.drawn);
+    };
+    for (const [follow, y0] of [
+      ["none", 650],
+      ["scroll", 650],
+      ["none", 2000],
+    ] as const) {
+      expect(crew([...top(), ...below(y0)], follow)).toBe(crew(top(), follow));
+    }
+  });
+
   it("reduced motion cross-fades layers in plan order without cursors", () => {
     const h = harness(samplePage(), { reducedMotion: true });
     void h.engine.play();
@@ -356,6 +399,16 @@ describe("Engine", () => {
     await Promise.resolve();
     expect(h.stage.live("halo")).toHaveLength(0);
     expect(h.stage.calls.goLive).toBe(1);
+  });
+
+  it("keeps player time equal to clock time over long ticks after goLive() (low-fps export tail)", () => {
+    const h = harness(samplePage(), { intro: false });
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    h.engine.goLive();
+    const t0 = h.engine.time;
+    h.clock.advance(250);
+    expect(h.engine.time - t0).toBeCloseTo(250, 6);
   });
 
   it("seek() fast-forwards the current run and replays only to go back or after finish()", () => {

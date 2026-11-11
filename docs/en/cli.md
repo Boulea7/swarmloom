@@ -95,13 +95,13 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 
 ### Capture evidence
 
-For takes that can be checked and repeated. These files and `--output` must all be different.
+For takes that can be checked and repeated. These files and `--output` must all be different, and none of them may be the input file (also through a link).
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
 | `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
-| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256 (the blueprint's addresses that change per run, such as the served input path and `blob:` URLs, are normalized first), player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels |
+| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256 (the blueprint's addresses that change per run, such as the served input path and `blob:` URLs, are normalized first), player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: output paths are relative to the manifest, programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted`. Other arguments are kept as typed, so prefer relative paths |
 
 ### Programs and logging
 
@@ -123,7 +123,7 @@ swarmloom render ./README.md -o readme.mp4
 Without `-o`, this writes `README.mp4` in the current directory:
 
 ```bash
-swarmloom render ./docs/README.md
+swarmloom render ./examples/README.md
 ```
 
 Export a silent WebM with a fixed seed:
@@ -171,7 +171,7 @@ Capture a web page as Blueprint JSON that the player, `<swarm-loom>` and Studio 
 Local HTML files are treated as untrusted:
 
 - The page's own scripts do not run; the capture shows what its HTML and CSS produce;
-- Only the file itself and the images, fonts, style sheets, media and similar assets next to it (subfolders included) are served, the same set `render` serves. Other files in that folder and dotfiles such as `.env` are not;
+- Only the file itself and the images, fonts, style sheets, media and similar assets next to it (subfolders included) are served, the same set `render` serves. Other files in that folder, dotfiles such as `.env`, and symlinks that point outside the folder or at such files are not;
 - From other sites only `https:` images and fonts load. Every other request is blocked; the CLI reports how many, and `--verbose` lists each one.
 
 Web page URLs run their scripts as usual.
@@ -188,7 +188,7 @@ Web page URLs run their scripts as usual.
 
 ```bash
 swarmloom snapshot https://example.com -o example.blueprint.json --width 1440
-swarmloom snapshot ./docs/index.html -o - > page.json
+swarmloom snapshot ./examples/html/landing.html -o - > page.json
 ```
 
 A Blueprint may contain page text and image references. Review it for sensitive content as carefully as the original before sharing.

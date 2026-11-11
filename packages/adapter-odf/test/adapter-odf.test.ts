@@ -77,7 +77,8 @@ describe("odf structure", () => {
     expect(css).toMatch(/color:#5B5BF7/i);
     expect(css).toContain("font-weight:bold");
     expect(css).toContain("Calibri, Carlito, ");
-    expect(loaded.notes?.[0]).toMatch(/Calibri -> Carlito/);
+    // Without canvas metrics font availability is unknown, so no substitution is claimed.
+    expect(loaded.notes?.join(" ") ?? "").not.toContain("Carlito");
     loaded.dispose?.();
   });
 

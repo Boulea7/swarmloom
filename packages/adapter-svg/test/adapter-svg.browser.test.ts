@@ -252,6 +252,41 @@ describe("SMIL replay (decision C04)", () => {
     world.remove();
   });
 
+  it("keeps the drawing's CSS animations on the replay's timeline, not on wall-clock time", async () => {
+    const css = shuttle.replace(
+      "</svg>",
+      '<style>.spin{animation:spin 0.9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style><rect class="spin" width="9" height="9"/></svg>',
+    );
+    const { blueprint, plugins } = await svgAdapter.load({ text: css }, ctx);
+    const smil = byKind(blueprint.layers, "custom").find((l) => l.task === SMIL_TASK) as CustomLayer;
+    const plugin = plugins?.[0];
+    const renderer = plugin?.renderers?.[SMIL_TASK];
+    const world = document.createElement("div");
+    document.body.append(world);
+    const container = document.createElement("div");
+    world.attachShadow({ mode: "open" }).append(container);
+    const wrapper = renderer?.mount(smil, container, { blueprint } as StageApi) as HTMLElement;
+    container.append(wrapper);
+    const spin = (): Animation | undefined => wrapper.shadowRoot?.querySelector(".spin")?.getAnimations()[0];
+    await new Promise((r) => setTimeout(r, 50));
+    // Held at 0 s until the replay starts, then seeked with the SMIL timeline: same frames every take.
+    plugin?.frame?.(1000, 16);
+    expect(spin()?.playState).toBe("paused");
+    expect(spin()?.currentTime).toBe(0);
+    renderer?.finish?.(smil);
+    plugin?.frame?.(5000, 16);
+    plugin?.frame?.(6500, 16);
+    expect(spin()?.playState).toBe("paused");
+    expect(spin()?.currentTime).toBeCloseTo(1500, 3);
+    // Live on its own clock: it runs on from that pose.
+    world.setAttribute("data-live", "");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(spin()?.playState).toBe("running");
+    expect(Number(spin()?.currentTime)).toBeGreaterThanOrEqual(1500);
+    renderer?.unmount?.(smil);
+    world.remove();
+  });
+
   it("adds a keyframe timeline under the drawing only when the host registers anim:timeline", async () => {
     const timeline: Plugin = {
       name: TIMELINE_PLUGIN,

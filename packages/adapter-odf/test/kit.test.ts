@@ -71,9 +71,28 @@ describe("F01 font fallbacks", () => {
     report.use("Calibri");
     report.use("calibri");
     report.use("Unknown Face");
-    expect(report.note()).toBe("Fonts shown with open substitutes when not installed: Calibri -> Carlito.");
+    expect(report.note(canvasDocument())).toBe(
+      "Fonts shown with open substitutes when not installed: Calibri -> Carlito.",
+    );
+    // An installed original is shown as is, so nothing was substituted.
+    expect(report.note(canvasDocument("Calibri"))).toBeUndefined();
   });
 });
+
+/** A document whose canvas draws the `installed` faces wider than the generic families. */
+function canvasDocument(...installed: string[]): Document {
+  const ctx = {
+    font: "",
+    measureText(): { width: number } {
+      const names = this.font
+        .replace(/^\d+px /, "")
+        .replace(/"/g, "")
+        .split(", ");
+      return { width: names.some((name) => installed.includes(name)) ? 120 : 100 };
+    },
+  };
+  return { createElement: () => ({ getContext: () => ctx }) } as unknown as Document;
+}
 
 describe("ContentBudget", () => {
   it("accepts the unit that crosses a limit and counts the rest as dropped", () => {

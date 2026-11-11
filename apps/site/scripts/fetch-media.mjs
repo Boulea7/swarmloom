@@ -8,9 +8,10 @@
  *   clips-<format>.mp4 | clips-<format>.webm | clips-<format>.avif            -> clips/<format>.<ext>
  *
  * Release ids match the media source folders; doc/docx share the site's word slot (DOCX wins),
- * sheet maps to sheets, and three maps to model. Unknown names are ignored. A missing release
- * error: the site falls back to its animated SVG scenes. Set SWARMLOOM_SKIP_MEDIA=1 to skip, and
- * GITHUB_TOKEN (or GH_TOKEN) to raise the API rate limit in CI.
+ * sheet maps to sheets, and three maps to model. Unknown names are ignored. A missing release or
+ * a failed download is not an error for local builds: the site falls back to its animated SVG
+ * scenes. Set SWARMLOOM_REQUIRE_MEDIA=1 (the Pages deploy does) to exit non-zero instead,
+ * SWARMLOOM_SKIP_MEDIA=1 to skip, and GITHUB_TOKEN (or GH_TOKEN) to raise the API rate limit in CI.
  */
 
 import { createWriteStream } from "node:fs";
@@ -128,45 +129,55 @@ async function download(asset, outDir) {
 }
 
 /**
- * Fetches the release and downloads every usable asset. Never throws: failures are logged.
- * @param {string} outDir Absolute path of public/media.
- * @returns {Promise<number>} Number of files present after the run.
+ * Reads the release metadata. Never throws: a failed lookup comes back as `error`.
+ * @returns {Promise<{ release?: unknown, error?: string, missing?: boolean }>}
  */
-export async function fetchMedia(outDir) {
+async function lookupRelease() {
   const api = `https://api.github.com/repos/${REPO_SLUG}/releases/tags/${MEDIA_TAG}`;
-  let release;
+  let response;
   try {
-    const response = await fetch(api, {
+    response = await fetch(api, {
       headers: headers("application/vnd.github+json"),
       signal: AbortSignal.timeout(20000),
     });
-    if (response.status === 404) {
-      console.log(`[fetch-media] no "${MEDIA_TAG}" release yet; the site uses its SVG scenes.`);
-      return 0;
-    }
-    if (!response.ok) {
-      console.warn(`[fetch-media] release lookup failed (HTTP ${response.status}); continuing without media.`);
-      return 0;
-    }
-    release = await response.json();
+    if (response.ok) return { release: await response.json() };
   } catch (error) {
-    console.warn(
-      `[fetch-media] release lookup failed (${error instanceof Error ? error.message : error}); continuing.`,
-    );
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  return { error: `HTTP ${response.status}`, missing: response.status === 404 };
+}
+
+/**
+ * Fetches the release and downloads every usable asset. By default failures are logged and the
+ * site keeps its SVG scenes. With `required` a failed lookup, a release without usable media or
+ * any failed download throws, so a deploy never ships with media silently missing.
+ * @param {string} outDir Absolute path of public/media.
+ * @param {{ required?: boolean }} [options]
+ * @returns {Promise<number>} Number of files present after the run.
+ */
+export async function fetchMedia(outDir, { required = false } = {}) {
+  const lookup = await lookupRelease();
+  if (lookup.error) {
+    if (required) throw new Error(`release "${MEDIA_TAG}" lookup failed (${lookup.error})`);
+    if (lookup.missing) console.log(`[fetch-media] no "${MEDIA_TAG}" release yet; the site uses its SVG scenes.`);
+    else console.warn(`[fetch-media] release lookup failed (${lookup.error}); continuing without media.`);
     return 0;
   }
-  const assets = selectAssets(release);
-  let present = 0;
+  const assets = selectAssets(lookup.release);
+  if (required && assets.length === 0) throw new Error(`release "${MEDIA_TAG}" lists no usable media`);
+  const failed = [];
   for (const asset of assets) {
     try {
       const result = await download(asset, outDir);
-      present++;
       console.log(`[fetch-media] ${result} ${asset.path} (${(asset.size / MB).toFixed(1)} MB)`);
     } catch (error) {
+      failed.push(asset.name);
       console.warn(`[fetch-media] skipped ${asset.name}: ${error instanceof Error ? error.message : error}`);
     }
   }
+  const present = assets.length - failed.length;
   console.log(`[fetch-media] ${present} of ${assets.length} media files ready.`);
+  if (required && failed.length > 0) throw new Error(`could not download ${failed.join(", ")}`);
   return present;
 }
 
@@ -176,6 +187,11 @@ if (isMain) {
     console.log("[fetch-media] skipped (SWARMLOOM_SKIP_MEDIA=1).");
   } else {
     const outDir = resolve(dirname(fileURLToPath(import.meta.url)), "../public/media");
-    await fetchMedia(outDir);
+    try {
+      await fetchMedia(outDir, { required: process.env.SWARMLOOM_REQUIRE_MEDIA === "1" });
+    } catch (error) {
+      console.error(`[fetch-media] ${error instanceof Error ? error.message : error}`);
+      process.exitCode = 1;
+    }
   }
 }

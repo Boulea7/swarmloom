@@ -71,6 +71,23 @@ function animatedSvgs(doc: Document): SVGSVGElement[] {
 }
 
 /**
+ * Stops every `<marquee>` of `doc` at its resting (unscrolled) pose, the pose the capture shows.
+ * Chromium scrolls a marquee with an animation inside its UA shadow tree, which neither
+ * `getAnimations()` nor the seek reaches, so it would scroll on wall time and `stop()` alone would
+ * keep a wall-time pose. A fresh copy is unscrolled until the start its insertion scheduled runs;
+ * stopping it right away cancels that start.
+ */
+function restMarquees(doc: Document): void {
+  for (const marquee of Array.from(doc.getElementsByTagName("marquee"))) {
+    // Marquees nested in one already replaced left the document with it.
+    if (!marquee.isConnected) continue;
+    const still = marquee.cloneNode(true) as HTMLMarqueeElement;
+    marquee.replaceWith(still);
+    for (const copy of [still, ...Array.from(still.getElementsByTagName("marquee"))]) copy.stop();
+  }
+}
+
+/**
  * Shows the live page over the stage, scrolled so it covers exactly the part of the world the stage
  * shows (the frame keeps its size, so nothing reflows). Returns why it could not, or null.
  */
@@ -113,7 +130,8 @@ export interface LiveStageOptions {
  * live page an adapter kept (the real HTML page, its animations frozen at the captured pose) over
  * the stage, and from then on every frame pauses all Web Animations (document, stage subtrees, live
  * page) and the live page's SVG documents and seeks them to the transport time, so frames never
- * depend on wall time. Plugin players (SMIL replay, Lottie) follow player time on their own.
+ * depend on wall time. The live page's `<marquee>` elements, which no seek reaches, stay still at
+ * their captured resting pose. Plugin players (SMIL replay, Lottie) follow player time on their own.
  */
 export class LiveStage {
   readonly #seeker = new AnimationSeeker();
@@ -143,6 +161,7 @@ export class LiveStage {
         this.#page = null;
         this.#o.onWarning?.(`the live page stays hidden: ${problem}`);
       } else {
+        restMarquees(page.document);
         this.#svgs = animatedSvgs(page.document);
       }
     }
