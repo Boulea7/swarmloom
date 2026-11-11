@@ -19,12 +19,15 @@ export function formatHasAudio(format: OutputFormat): boolean {
   return format === "mp4" || format === "webm" || format === "png-seq";
 }
 
+export type FrameImageType = "jpeg" | "png";
+
 /**
  * Screenshot encoding per output format: JPEG q90 is fast and fine for chroma-subsampled video,
- * PNG keeps flat colours exact where palettes or lossless frames are produced.
+ * PNG keeps flat colours exact where palettes or lossless frames are produced. `lossless` (set when a
+ * capture manifest hashes the frames) always picks PNG, so the hashes describe exact pixels.
  */
-export function frameImageType(format: OutputFormat): "jpeg" | "png" {
-  return format === "mp4" || format === "webm" ? "jpeg" : "png";
+export function frameImageType(format: OutputFormat, lossless = false): FrameImageType {
+  return !lossless && (format === "mp4" || format === "webm") ? "jpeg" : "png";
 }
 
 export interface VideoPlan {
@@ -68,6 +71,7 @@ export function planVideo(
   fps: number,
   tmpDir: string,
   caps: FfmpegCaps,
+  imageType: FrameImageType = frameImageType(format),
 ): VideoPlan {
   const input = [
     ...COMMON,
@@ -76,7 +80,7 @@ export function planVideo(
     "-framerate",
     String(fps),
     "-c:v",
-    frameImageType(format) === "jpeg" ? "mjpeg" : "png",
+    imageType === "jpeg" ? "mjpeg" : "png",
     "-i",
     "pipe:0",
     "-an",

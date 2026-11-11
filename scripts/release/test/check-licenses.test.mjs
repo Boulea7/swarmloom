@@ -59,6 +59,12 @@ test("parsePolicy requires a reason for every exception, and the shipped policy 
   assert.throws(() => parsePolicy({ allowed: [], exceptions: [] }), /allowed/);
   const shipped = parsePolicy(JSON.parse(readFileSync(new URL("../license-policy.json", import.meta.url), "utf8")));
   assert.ok(!shipped.allowed.some((id) => /GPL|MPL|OFL|SSPL|BUSL/.test(id)), "copyleft is never allowed globally");
+  // decisions L04: per-package exceptions exist only for MPL-2.0 and OFL-1.1; other licences need a replacement.
+  assert.deepEqual(
+    shipped.exceptions.filter((item) => !["MPL-2.0", "OFL-1.1"].includes(item.license)),
+    [],
+    "only MPL-2.0 and OFL-1.1 take per-package exceptions",
+  );
 });
 
 test("packagesFromPnpmReport flattens every version", () => {

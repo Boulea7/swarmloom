@@ -44,6 +44,20 @@ describe("frame loop", () => {
     expect(result).toMatchObject({ frames: 20, finished: false, durationMs: 2000 });
   });
 
+  it("captures exactly maxFrames with untilDone false and reports when the build completed", async () => {
+    let t = 0;
+    const source: FrameSource = {
+      async step(ms) {
+        t += ms;
+        const built = t >= 300 - 1e-6;
+        return { state: built ? "finale" : "building", built: built ? 1 : 0, total: 1, done: t >= 400 - 1e-6 };
+      },
+      capture: async () => new Uint8Array([0]),
+    };
+    const result = await runFrameLoop(source, async () => {}, { fps: 10, maxFrames: 12, untilDone: false });
+    expect(result).toMatchObject({ frames: 12, finished: true, builtAtMs: 300, durationMs: 1200 });
+  });
+
   it("throws InterruptedError once aborted", async () => {
     const controller = new AbortController();
     const sink = async (_f: Uint8Array, i: number) => {

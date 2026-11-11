@@ -87,6 +87,40 @@ describe("render page protocol", () => {
     expect(players).toHaveLength(2);
   });
 
+  it("applies cues on frame boundaries and keeps sound events on video time across a pause", async () => {
+    const { api, players, audio } = setup();
+    // 4 layers over 1000 ms of player time: one key event per 250 ms. Hold 300..500 ms, then finish at 600.
+    const info = await api.init({
+      ...base,
+      cues: [
+        { at: 600, action: "finish" },
+        { at: 300, action: "pause" },
+        { at: 500, action: "resume" },
+      ],
+    });
+    expect(info).toMatchObject({ layers: 0, blueprintSha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    const [player] = players as [ClockPlayer];
+    const states: string[] = [];
+    for (let i = 0; i < 20; i++) states.push((await api.step(50)).state);
+    // Step i reaches (i + 1) * 50 ms: paused from the step that reached 300 ms to the one that reached 500.
+    expect(states.slice(4, 10)).toEqual(["building", "paused", "paused", "paused", "paused", "building"]);
+    // finish() at 600 ms completes the remaining layers on the next tick (650 ms, player time 450).
+    expect(states.slice(11, 13)).toEqual(["building", "finale"]);
+    expect(player.soundLog.map((e) => e.t)).toEqual([250, 450, 450, 450]);
+    // The key at 250 sounded before the hold; the later ones move 200 ms later, onto the frame that shows them.
+    expect((await api.soundLog()).map((e) => e.t)).toEqual([250, 650, 650, 650]);
+    await api.audioWav();
+    expect(audio.mock.calls[0]?.[0].map((e) => e.t)).toEqual([250, 650, 650, 650]);
+
+    api.dispose();
+    const bad: [unknown, string][] = [
+      [{ ...base, cues: [{ at: 10, action: "rewind" }] }, "action must be one of pause, resume, finish"],
+      [{ ...base, cues: [{ at: -1, action: "pause" }] }, "at must be a number within 0..3600000"],
+      [{ ...base, cues: "pause" }, "cues must be an array"],
+    ];
+    for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
+  });
+
   it("renders silence when sound is off", async () => {
     const { api, audio } = setup();
     await api.init({ ...base, sound: false });

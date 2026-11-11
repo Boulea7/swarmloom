@@ -8,7 +8,7 @@
  * extension or the CLI.
  */
 
-export type { HtmlAdapterOptions, LiveFrame, LoadedHtml } from "./adapter";
+export type { HtmlAdapterOptions, HtmlLoadContext, LiveFrame, LoadedHtml } from "./adapter";
 export { createHtmlAdapter, htmlAdapter } from "./adapter";
 export { decodeHtml, isFullDocument, sniffMetaCharset } from "./detect";
 export type { FrameDocument, FrameOptions, FrozenAnimations } from "./frame";

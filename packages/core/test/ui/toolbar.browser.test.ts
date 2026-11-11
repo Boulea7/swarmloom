@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { createI18n } from "../../src/i18n/index";
 import type { Controls } from "../../src/internal";
@@ -12,10 +12,17 @@ const frames = (n = 3) =>
   });
 
 /** Mounts the toolbar the way the stage does: inside a full-viewport shadow root's UI layer. */
-async function mount(opts: { locale: string; state: "building" | "done"; soundLocked?: boolean; seekable?: boolean }) {
+async function mount(opts: {
+  locale: string;
+  state: "building" | "done";
+  soundLocked?: boolean;
+  finish?: boolean;
+  seekable?: boolean;
+}) {
   const fake = createFakePlayer(opts.state);
+  if (opts.finish) Object.assign(fake.player, { finish: vi.fn() });
   const seekable = opts.seekable ? { timeline: () => ({ elapsed: 4000, duration: 16_000 }) } : {};
-  if (opts.seekable) Object.assign(fake.player, { seek: () => {} });
+  if (opts.seekable) Object.assign(fake.player, { seek: vi.fn() });
   fake.setProgress(opts.state === "done" ? 40 : 12, 40);
   const stageHost = document.createElement("div");
   stageHost.style.cssText = "position:fixed;inset:0";
@@ -69,6 +76,16 @@ describe("toolbar layout in Chromium", () => {
     const bar = m.root.querySelector(".bar")?.getBoundingClientRect();
     expect(hint && bar && hint.bottom <= bar.top).toBe(true);
     expect(hint && hint.left >= 0 && hint.right <= 340).toBe(true);
+  });
+
+  it("keeps finish now on the one-row compact bar of a 390px phone while building", async () => {
+    await page.viewport(390, 844);
+    const m = await mount({ locale: "en", state: "building", finish: true });
+    controls = m.controls;
+    expect(m.element.hasAttribute("data-compact")).toBe(true);
+    expect(m.visibleButtons.map((el) => el.getAttribute("data-cmd"))).toContain("finish");
+    const bar = m.root.querySelector(".bar")?.getBoundingClientRect();
+    expect(bar?.height).toBeLessThan(2 * 44);
   });
 
   it("shows the labelled full layout with go live as primary on a wide screen when done", async () => {

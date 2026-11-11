@@ -17,7 +17,7 @@ CSS animations are posed before the capture: finite ones at their end state, inf
 Safe defaults:
 
 - Scripts never run. Script tags, event handlers and `javascript:` URLs are removed, and a page that had scripts gets a warning that it is shown as written.
-- Network: `network: "https"` (default) allows only `https:` images and fonts, sent without a referrer. `network: "none"` loads nothing remote. External style sheets, `@import`, media, frames, objects, forms and `connect` are always blocked. The CSP is `default-src 'none'; img-src https: blob: data:; font-src https: blob: data:; ...`.
+- Network: `network: "https"` (default) allows only `https:` images and fonts, sent without a referrer. `network: "none"` loads nothing remote. A host can also pass `network: "none"` in the load context (`HtmlLoadContext`) to turn remote loading off for one load; the stricter policy wins. External style sheets, `@import`, media, frames, objects, forms and `connect` are always blocked. The CSP is `default-src 'none'; img-src https: blob: data:; font-src https: blob: data:; ...`.
 - Relative URLs resolve against `baseUrl` (default: the input URL).
 - Limits: 8 MiB of input (`maxBytes`), 60 000 elements (`maxElements`), 10 s for the page and its resources (`loadTimeoutMs`). Errors name the limit that was hit.
 

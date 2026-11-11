@@ -51,6 +51,7 @@ export const ja: StudioCatalog = {
   "error.title": "開けませんでした",
   "error.unsupported": "この種類のファイルには対応していません。対応形式: {formats}",
   "error.tooLarge": "このファイルは {size} です。上限は {limit} です。",
+  "error.tooLargeFormat": "このファイルは {size} です。この形式（{format}）の上限は {limit} です。",
   "error.empty": "このファイルは空です。",
   "error.encrypted": "この文書はパスワードで保護されています。パスワードを外してから開いてください。",
   "error.fetch":
@@ -58,6 +59,7 @@ export const ja: StudioCatalog = {
   "error.adapter": "この形式の読み込みモジュールを読み込めませんでした。接続を確認して再試行してください。",
   "error.player": "プレーヤーを起動できませんでした: {message}",
   "error.generic": "問題が発生しました: {message}",
+  "error.tooComplex": "このファイルは大きすぎるか複雑すぎるため開けません。もっと小さいファイルでお試しください。",
   "error.share": "この共有リンクは壊れているか、不完全です。",
   "error.example": "「{id}」というサンプルはありません。",
   "error.file": "ローカルファイルはリンクから開き直せません。もう一度ファイルを開いてください。",
@@ -137,6 +139,8 @@ export const ja: StudioCatalog = {
   "export.cli.copy": "コマンドをコピー",
   "export.cli.copied": "コピーしました",
   "export.cli.save": "貼り付けた内容を先に {name} として保存してください。",
+  "export.cli.download":
+    "このリンクはそのままターミナルに貼り付けると安全ではありません。先に {name} としてダウンロードしてください。",
 
   "watch.play": "再生",
   "watch.pause": "一時停止",

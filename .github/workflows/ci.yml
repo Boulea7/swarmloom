@@ -33,6 +33,9 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: pnpm check:lockfile
+      # Same licence gate as the release pack and assets jobs (ubuntu), so a new dependency fails its PR, not the release.
+      - if: matrix.os == 'ubuntu-latest'
+        run: pnpm check:licenses
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

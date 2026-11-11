@@ -1,7 +1,8 @@
 /**
  * Restricted-page notice. Opened next to a tab SwarmLoom cannot script, it explains why and offers
- * three ways forward: open the page in Studio, import a file into Studio, or copy the link.
- * Query parameters are untrusted: `reason` must be a known reason and `url` is shown as text only.
+ * ways forward: open the page in Studio, import a file into Studio, or copy the link when Studio can
+ * open it. Query parameters are untrusted: `reason` must be a known reason and `url` is shown as
+ * text only.
  */
 
 import { BUILD_TARGET, engineOf } from "../shared/build-info";
@@ -71,12 +72,14 @@ onReady(async () => {
 
   byId<HTMLAnchorElement>("import").href = studioUrl(getURL, { importFile: true });
 
+  // The hint says to paste the link into Studio, which only takes web and file links: a chrome://
+  // or about: address would just be refused there, so the step is offered for loadable links only.
   const copyCard = byId("copy-card");
-  copyCard.hidden = !url;
+  copyCard.hidden = !src;
   const status = byId("copy-status");
   byId<HTMLButtonElement>("copy").addEventListener("click", async () => {
-    if (!url) return;
-    const ok = await copyText(url, byId("page-url"));
+    if (!src) return;
+    const ok = await copyText(src, byId("page-url"));
     status.textContent = tr.t(ok ? "noticeCopied" : "noticeCopyFailed");
   });
 });

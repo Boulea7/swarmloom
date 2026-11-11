@@ -1,3 +1,4 @@
+import { formatById } from "./formats-meta";
 import type { StudioI18n, StudioKey } from "./i18n";
 import { formatSize } from "./ui/dom";
 
@@ -33,6 +34,19 @@ export class StudioError extends Error {
 
 /** Byte limit for opened files and downloads; matches the formats package default. */
 export const MAX_INPUT_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Rejects input over the lower limit some adapters apply (e.g. 2 MB for code) with a `tooLarge`
+ * error that names the format, instead of letting the adapter throw an untranslated RangeError.
+ *
+ * @param size Byte length of binary input, or UTF-16 length of text (what the adapters measure).
+ * @param format Adapter id, when known before detection.
+ */
+export function checkFormatLimit(size: number, format: string | undefined): void {
+  if (!format) return;
+  const limit = formatById(format)?.maxBytes;
+  if (limit !== undefined && size > limit) throw new StudioError("tooLarge", { size, limit, format });
+}
 
 /** `@swarmloom/formats` SourceError codes mapped to Studio codes (duck-typed, no import needed). */
 const SOURCE_CODES: Record<string, StudioErrorCode> = {
@@ -94,6 +108,12 @@ export function describeError(error: unknown, i18n: StudioI18n, ctx: ErrorContex
   if (error instanceof StudioError) {
     const vars: Record<string, string | number> = { ...base, ...error.vars };
     if (typeof vars.size === "number") vars.size = formatSize(vars.size, i18n.locale);
+    if (typeof vars.limit === "number") vars.limit = formatSize(vars.limit, i18n.locale);
+    const format = typeof error.vars.format === "string" ? formatById(error.vars.format) : undefined;
+    if (error.code === "tooLarge" && format) {
+      vars.format = i18n.core(`format.${format.id}`, format.label);
+      return i18n.t("error.tooLargeFormat", vars);
+    }
     return i18n.t(KEYS[error.code], vars);
   }
   if (error instanceof Error && error.name === "SourceError") {
@@ -102,5 +122,7 @@ export function describeError(error: unknown, i18n: StudioI18n, ctx: ErrorContex
     if (code === "tooLarge") return error.message;
     if (code) return i18n.t(KEYS[code], base);
   }
+  // Adapters report their own size and complexity limits (bytes, elements, pixels) as RangeError.
+  if (error instanceof Error && error.name === "RangeError") return i18n.t("error.tooComplex", base);
   return i18n.t("error.generic", { message: messageOf(error) });
 }

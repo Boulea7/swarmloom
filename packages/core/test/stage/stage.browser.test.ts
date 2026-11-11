@@ -338,14 +338,18 @@ describe("stage: reveal semantics per kind", () => {
 });
 
 describe("stage: virtualization", () => {
-  it("mounts near the viewport, unmounts far idle layers and restores their state", () => {
+  /** 2000 boxes down a 100,000 px world, with the stage's mount counters. */
+  function tallPage(): { stage: Stage; layers: Layer[]; stats: () => NonNullable<ReturnType<typeof stageStats>> } {
     const layers: Layer[] = [];
     for (let i = 0; i < 2000; i++) {
       layers.push({ id: `b${i}`, kind: "box", box: { x: 0, y: i * 50, w: 400, h: 40 }, style: { background: "#ccc" } });
     }
     const { stage } = mount(layers, { size: { w: 800, h: 100_000 } });
-    const stats = (): NonNullable<ReturnType<typeof stageStats>> =>
-      stageStats(stage) as NonNullable<ReturnType<typeof stageStats>>;
+    return { stage, layers, stats: () => stageStats(stage) as NonNullable<ReturnType<typeof stageStats>> };
+  }
+
+  it("mounts near the viewport, unmounts far idle layers and restores their state", () => {
+    const { stage, stats } = tallPage();
     expect(stats().domLayers).toBe(2000);
     expect(stats().keepAll).toBe(false);
     const initial = stats().mounted;
@@ -371,6 +375,18 @@ describe("stage: virtualization", () => {
     expect(css(b0).visibility).toBe("visible");
     expect(outerOf(b0).querySelector(".sl-g")).toBeNull();
     expect(stats().peak).toBeLessThan(400);
+  });
+
+  it("a whole-page reveal (finish now, reduced motion) mounts only near the view", () => {
+    const { stage, layers, stats } = tallPage();
+    for (const l of layers) stage.reveal(l.id, 0.5);
+    expect(stats().mounted).toBeLessThan(100);
+    // A far layer comes back with its recorded progress once the view reaches it.
+    stage.scrollTo(50_000);
+    stage.render(16, []);
+    const fill = Number(css((stage.el("b1000") as HTMLElement).parentElement as HTMLElement).opacity);
+    expect(fill).toBeGreaterThan(0);
+    expect(fill).toBeLessThan(1);
   });
 
   it("reports user scrolls but not programmatic ones", async () => {

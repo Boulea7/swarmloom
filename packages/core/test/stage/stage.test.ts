@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Fade } from "../../src/stage/fade";
 import { Geometry } from "../../src/stage/geometry";
 import { LayerRegistry } from "../../src/stage/registry";
-import { sanitizeHtml } from "../../src/stage/sanitize";
+import { FragmentCache, sanitizeHtml } from "../../src/stage/sanitize";
 import { BRAND, resolveTheme } from "../../src/theme";
 import type { Blueprint, Layer } from "../../src/types";
 
@@ -131,5 +131,20 @@ describe("sanitizeHtml", () => {
     );
     expect(out).not.toMatch(/script|onclick|onerror|javascript:/i);
     expect(out).toContain("x.png");
+  });
+});
+
+describe("FragmentCache", () => {
+  it("returns fresh sanitized copies and evicts the least recently used entry", () => {
+    const cache = new FragmentCache(document, 2);
+    const a = cache.copy("a", '<b onclick="x()">A</b>');
+    expect(a.textContent).toBe("A");
+    expect((a.firstChild as Element).hasAttribute("onclick")).toBe(false);
+    expect(cache.copy("a", "ignored").firstChild).not.toBe(a.firstChild);
+    cache.copy("b", "B");
+    cache.copy("a", "ignored");
+    cache.copy("c", "C");
+    expect(cache.size).toBe(2);
+    expect([cache.has("a"), cache.has("b"), cache.has("c")]).toEqual([true, false, true]);
   });
 });

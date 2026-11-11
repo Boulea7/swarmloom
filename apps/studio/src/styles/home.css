@@ -250,19 +250,30 @@
   }
 }
 
+/*
+ * A narrow drop zone has no room beside its text, so the two cursors get a band of their own above
+ * it: a long or wrapped translation of the title, the hint or the buttons never runs under them.
+ * The band fits a cursor (about 34px) plus its drift (6px up, 8px down).
+ */
 @media (max-width: 719px) {
+  .dropzone {
+    padding-top: 56px;
+  }
+
   .decor-3 {
     display: none;
   }
 
+  .decor-1,
+  .decor-2 {
+    top: 10px;
+  }
+
   .decor-1 {
-    top: 9%;
     left: 6%;
   }
 
   .decor-2 {
-    top: auto;
-    bottom: 9%;
     right: 6%;
   }
 }

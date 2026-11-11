@@ -45,7 +45,10 @@ export interface Plan {
   readonly rank: Float64Array;
   /** Dense rank of Layer.priority per task (0 when no layer sets a priority). */
   readonly tier: Float64Array;
-  /** A task becomes available once the unlock boundary reaches this y (per node). */
+  /**
+   * A task becomes available once the unlock boundary reaches this y (per node): its top edge,
+   * pulled up to its earliest dependent's and capped at the world's bottom edge.
+   */
   readonly unlockY: Float64Array;
   /** Estimated task duration at speed 1, engine ms (per task). */
   readonly estimate: Float64Array;
@@ -196,8 +199,11 @@ export function buildPlan(blueprint: Blueprint, opts: PlanOptions): Plan {
 
   const topo = topologicalOrder(graph, rank, n, layers, diagnostics);
 
+  // No camera scrolls past the world's bottom edge, so an unlock line below it (a layer outside
+  // the world) would never be reached and the build would never finish: cap it at that edge.
+  const worldBottom = finiteOr(blueprint.size.h, Number.POSITIVE_INFINITY);
   const unlockY = new Float64Array(nodeCount).fill(Number.POSITIVE_INFINITY);
-  unlockY.set(y);
+  for (let i = 0; i < n; i++) unlockY[i] = Math.min(y[i] as number, worldBottom);
   for (let k = nodeCount - 1; k >= 0; k--) {
     const v = topo[k] as number;
     for (const dependent of graph.outs[v] as number[]) {

@@ -3,8 +3,9 @@ import type { Player, PlayerEvent, PlayerOptions, PlayerState, SoundEvent, Virtu
 type Listener = (e: PlayerEvent) => void;
 
 /**
- * Clock-driven fake: builds `total` layers evenly over `buildMs` of clock time, logs a key sound per
- * layer and switches to "finale" when done. Counts ready() calls so tests can check the step barrier.
+ * Clock-driven fake: builds `total` layers evenly over `buildMs` of player time, logs a key sound per
+ * layer and switches to "finale" when done. Like the engine, player time stops while paused and
+ * sound events carry player time. Counts ready() calls so tests can check the step barrier.
  */
 export class ClockPlayer implements Player {
   state: PlayerState = "idle";
@@ -16,6 +17,9 @@ export class ClockPlayer implements Player {
   readonly #clock: VirtualClockLike;
   readonly #buildMs: number;
   #listeners = new Map<string, Set<Listener>>();
+  #pt = 0;
+  #finishing = false;
+  #resumeState: PlayerState = "building";
 
   constructor(options: PlayerOptions, buildMs = 1000) {
     if (!options.clock || !("advance" in options.clock)) throw new Error("needs a VirtualClock");
@@ -27,9 +31,13 @@ export class ClockPlayer implements Player {
   play(): Promise<void> {
     this.#set("building");
     return new Promise((resolve) => {
-      const off = this.#clock.onTick((_dt, now) => {
-        const built = Math.min(this.progress.total, Math.floor((now / this.#buildMs) * this.progress.total));
-        for (let i = this.progress.built; i < built; i++) this.soundLog.push({ t: now, name: "key", pan: 0 });
+      const off = this.#clock.onTick((dt) => {
+        if (this.state === "paused") return;
+        this.#pt += dt;
+        const pt = this.#pt;
+        const total = this.progress.total;
+        const built = this.#finishing ? total : Math.min(total, Math.floor((pt / this.#buildMs) * total));
+        for (let i = this.progress.built; i < built; i++) this.soundLog.push({ t: pt, name: "key", pan: 0 });
         this.progress = { ...this.progress, built };
         if (built === this.progress.total) {
           off();
@@ -39,8 +47,19 @@ export class ClockPlayer implements Player {
       });
     });
   }
-  pause(): void {}
-  resume(): void {}
+  pause(): void {
+    if (this.state !== "building") return;
+    this.#resumeState = this.state;
+    this.#set("paused");
+  }
+  resume(): void {
+    if (this.state === "paused") this.#set(this.#resumeState);
+  }
+  /** Completes the remaining layers on the next tick. */
+  finish(): void {
+    if (this.state === "paused") this.#set(this.#resumeState);
+    if (this.state === "building") this.#finishing = true;
+  }
   setSpeed(): void {}
   setSound(): void {}
   setFollow(): void {}
@@ -64,8 +83,13 @@ export class ClockPlayer implements Player {
     return Promise.resolve();
   }
 
+  /** Delivers `event` to its listeners, as the engine would. */
+  emit(event: PlayerEvent): void {
+    for (const fn of this.#listeners.get(event.type) ?? []) fn(event);
+  }
+
   #set(state: PlayerState): void {
     this.state = state;
-    for (const fn of this.#listeners.get("state") ?? []) fn({ type: "state", state });
+    this.emit({ type: "state", state });
   }
 }

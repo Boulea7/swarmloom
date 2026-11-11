@@ -95,6 +95,12 @@ export class Mounter {
     return slot.view;
   }
 
+  /** True when `slot` lies in the band a pass for the visible stage band [top, bottom] mounts. */
+  near(slot: Slot, top: number, bottom: number): boolean {
+    const m = Math.max(1, bottom - top) * MOUNT_MARGIN;
+    return slot.bottom >= top - m && slot.top <= bottom + m;
+  }
+
   /**
    * One virtualization pass for the visible stage band [top, bottom] (stage px): mounts layers
    * within the mount margin with one DOM insertion, then unmounts far idle layers.

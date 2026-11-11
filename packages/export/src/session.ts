@@ -10,20 +10,41 @@ export interface SessionStatus {
   done: boolean;
 }
 
+/** A player action at a fixed session time (see {@link RenderSessionOptions.cues}). */
+export interface SessionCue {
+  /** Session time in ms; the cue applies at the end of the first step that reaches it. */
+  at: number;
+  action: "pause" | "resume" | "finish";
+}
+
 /** Options for {@link RenderSession}. */
 export interface RenderSessionOptions {
   /** Player options; the session supplies its own `VirtualClock`. */
   player: Omit<PlayerOptions, "clock">;
   /** Time to keep running after the build completes (finale), ms. Default 0. */
   tailMs?: number;
+  /**
+   * Player actions at fixed session times, applied in time order (ties in the given order).
+   * While paused the session keeps counting time, so {@link RenderSession.soundLog} shifts later
+   * events by the paused time and stays aligned with the frames.
+   */
+  cues?: readonly SessionCue[];
   /** Player factory. Default `createPlayer` from `@swarmloom/core`. */
   createPlayer?: (options: PlayerOptions) => Player;
+  /**
+   * Called for each player "error" event. The engine reports recoverable problems this way
+   * (blueprint diagnostics, a failed layer task, sound) and keeps playing, so they do not stop the
+   * session; throw from this callback to make them fatal.
+   */
+  onWarning?: (error: Error) => void;
 }
 
 /** States that mean the build itself has completed. */
 const BUILT: ReadonlySet<PlayerState> = new Set(["finale", "done", "live"]);
 /** Largest single step; longer jumps would skip choreography and are almost certainly a driver bug. */
 export const MAX_STEP_MS = 10_000;
+/** Float slack when comparing summed frame steps with cue times. */
+const TIME_EPSILON = 1e-6;
 
 function toError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error(String(reason));
@@ -44,21 +65,33 @@ export class RenderSession {
   #elapsed = 0;
   #builtAt: number | null = null;
   #error: Error | null = null;
+  readonly #warnings: Error[] = [];
+  readonly #onWarning: ((error: Error) => void) | undefined;
   #started = false;
   #disposed = false;
   readonly #unsubscribe: (() => void)[];
+  readonly #cues: readonly SessionCue[];
+  #nextCue = 0;
+  /** Session time at which the player was paused by a cue, or null while it runs. */
+  #pausedAt: number | null = null;
+  /** Sound log shifts: events from index `from` on are moved `shift` ms later (sorted by `from`). */
+  readonly #shifts: { from: number; shift: number }[] = [];
 
   constructor(options: RenderSessionOptions) {
     const tail = options.tailMs ?? 0;
     if (!Number.isFinite(tail) || tail < 0) throw new RangeError(`tailMs must be a finite number >= 0, got ${tail}`);
     this.tailMs = tail;
+    this.#cues = [...(options.cues ?? [])].sort((a, b) => a.at - b.at);
+    const bad = this.#cues.find((cue) => !Number.isFinite(cue.at) || cue.at < 0);
+    if (bad) throw new RangeError(`cue time must be a finite number >= 0, got ${bad.at}`);
+    this.#onWarning = options.onWarning;
     const create = options.createPlayer ?? coreCreatePlayer;
     this.player = create({ ...options.player, clock: this.clock });
     this.#unsubscribe = [
       this.player.on("state", (e) => {
         if (BUILT.has(e.state)) this.#markBuilt();
       }),
-      this.player.on("error", (e) => this.#fail(e.error)),
+      this.player.on("error", (e) => this.#warn(e.error)),
     ];
   }
 
@@ -72,8 +105,24 @@ export class RenderSession {
     return this.#builtAt;
   }
 
+  /** Recoverable errors the player reported so far, in order. */
+  get warnings(): readonly Error[] {
+    return this.#warnings;
+  }
+
+  /**
+   * Sound events in session time. The player times events in its own time, which stops while it
+   * is paused; events after a cued pause are shifted by the paused time so they match the frames.
+   */
   get soundLog(): readonly SoundEvent[] {
-    return this.player.soundLog;
+    const log = this.player.soundLog;
+    if (this.#shifts.length === 0) return log;
+    let k = -1;
+    return log.map((event, i) => {
+      while (k + 1 < this.#shifts.length && (this.#shifts[k + 1]?.from ?? Infinity) <= i) k++;
+      const shift = k >= 0 ? (this.#shifts[k]?.shift ?? 0) : 0;
+      return shift === 0 ? event : { ...event, t: event.t + shift };
+    });
   }
 
   /** Starts the intro and build at time 0 and resolves when the first frame is ready to capture. */
@@ -86,13 +135,15 @@ export class RenderSession {
       () => this.#markBuilt(),
       (error: unknown) => this.#fail(error),
     );
+    this.#applyCues();
     return this.#settle();
   }
 
   /**
    * Advances engine time by `ms` and resolves once the resulting frame is ready.
    *
-   * @throws RangeError for a negative, non-finite or over-long step; the player's error when playback failed.
+   * @throws RangeError for a negative, non-finite or over-long step; the reason when `play()` rejected
+   *   or `onWarning` threw.
    */
   async step(ms: number): Promise<SessionStatus> {
     this.#assertActive();
@@ -103,6 +154,7 @@ export class RenderSession {
     // Update elapsed first: state listeners fired during advance() read it.
     this.#elapsed += ms;
     this.clock.advance(ms);
+    this.#applyCues();
     return this.#settle();
   }
 
@@ -127,12 +179,42 @@ export class RenderSession {
     return this.status();
   }
 
+  /** Applies every cue due by the current session time, then records any pause it started or ended. */
+  #applyCues(): void {
+    for (;;) {
+      const cue = this.#cues[this.#nextCue];
+      if (!cue || cue.at > this.#elapsed + TIME_EPSILON) break;
+      this.#nextCue++;
+      if (cue.action === "pause") this.player.pause();
+      else if (cue.action === "resume") this.player.resume();
+      else this.player.finish?.();
+      // The player ignores actions that do not fit its state, so follow what it actually did.
+      const paused = this.player.state === "paused";
+      if (paused && this.#pausedAt === null) {
+        this.#pausedAt = this.#elapsed;
+      } else if (!paused && this.#pausedAt !== null) {
+        const before = this.#shifts.at(-1)?.shift ?? 0;
+        this.#shifts.push({ from: this.player.soundLog.length, shift: before + this.#elapsed - this.#pausedAt });
+        this.#pausedAt = null;
+      }
+    }
+  }
+
   #markBuilt(): void {
     this.#builtAt ??= this.#elapsed;
   }
 
   #fail(reason: unknown): void {
     this.#error ??= toError(reason);
+  }
+
+  #warn(error: Error): void {
+    this.#warnings.push(error);
+    try {
+      this.#onWarning?.(error);
+    } catch (reason) {
+      this.#fail(reason);
+    }
   }
 
   #assertActive(): void {

@@ -16,7 +16,7 @@ Owner: ui zone. The built-in toolbar (`createControls`, see `../internal.ts` "ui
 
 While audio is locked, the first press on the sound button only unlocks it: the lock state is read when the press starts, because the sound engine resumes audio from its own page-wide listener before the click arrives.
 
-The seek bar is opt-in: it appears only when the shell passes the `timeline` seam (`createPlayer({ scrubber: true })` does) and the player implements `seek()`. It is a native range input across the top of the pill, its own tab stop. Dragging previews the position and seeks on release (each seek replays the build from the start); arrows step 1 s, Page Up/Down 10 %, Home/End jump to the ends, and steps within one frame collapse into one seek. The length shown is the build's estimated length, which only grows within a run so the thumb does not slide back when the ETA is revised.
+The seek bar is opt-in: it appears only when the shell passes the `timeline` seam (`createPlayer({ scrubber: true })` does) and the player implements `seek()`. It is a native range input across the top of the pill, its own tab stop. Dragging previews the position and seeks on release (a seek back replays the build from the start); arrows step 1 s, Page Up/Down 10 %, Home/End jump to the ends, and steps within one frame collapse into one seek. The length shown is the build's estimated length, which only grows within a run so the thumb does not slide back when the ETA is revised.
 
 The toolbar has no finale menu; `Player.setFinale()` is left to shells that offer one.
 

@@ -115,6 +115,44 @@ export function sanitizeFragment(doc: Document, html: string): DocumentFragment 
   return tpl.content;
 }
 
+/**
+ * Sanitized fragments by key, least recently used first out. Bounded so a large page does not keep
+ * a parsed copy of every text layer it ever mounted; an evicted entry is simply sanitized again.
+ */
+export class FragmentCache {
+  readonly #doc: Document;
+  readonly #limit: number;
+  /** Map iteration order is insertion order: the first key is the least recently used. */
+  readonly #map = new Map<string, DocumentFragment>();
+
+  constructor(doc: Document, limit: number) {
+    this.#doc = doc;
+    this.#limit = Math.max(1, Math.floor(limit));
+  }
+
+  get size(): number {
+    return this.#map.size;
+  }
+
+  has(key: string): boolean {
+    return this.#map.has(key);
+  }
+
+  /** A fresh copy of the sanitized `html` cached under `key` (parsed on a miss). */
+  copy(key: string, html: string): DocumentFragment {
+    const map = this.#map;
+    let frag = map.get(key);
+    if (frag) {
+      map.delete(key);
+    } else {
+      frag = sanitizeFragment(this.#doc, html);
+      if (map.size >= this.#limit) map.delete(map.keys().next().value as string);
+    }
+    map.set(key, frag);
+    return this.#doc.importNode(frag, true);
+  }
+}
+
 const PROP = /^(?:--[\w-]+|-?[a-z][a-z0-9-]*)$/;
 /** Declarations that would move the layer out of its box or break export determinism. */
 const STRUCTURAL = new Set([
