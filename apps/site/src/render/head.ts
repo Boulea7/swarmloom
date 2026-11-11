@@ -8,7 +8,7 @@ import { esc } from "./html";
 /**
  * The one self-hosted face: Bricolage Grotesque (OFL-1.1, latin subset, weight axis, ~41 KB), the
  * typeface of the SwarmLoom logotype. Body text uses the system UI stack. Copied from
- * @fontsource-variable by the Vite plugin.
+ * @fontsource-variable by the Vite plugin, together with its licence as fonts/OFL.txt.
  */
 export const DISPLAY_FONT_FILE = "fonts/bricolage-grotesque-latin-wght-normal.woff2";
 

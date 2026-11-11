@@ -1,7 +1,7 @@
 /**
  * Vite plugin that turns the build-time renderer into pages: it replaces the placeholder HTML
  * entries with the rendered documents, inlines the early bootstrap script, copies the display font
- * and the brand assets, and emits sitemap.xml and robots.txt. Node-only.
+ * with its OFL licence and the brand assets, and emits sitemap.xml and robots.txt. Node-only.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -43,10 +43,31 @@ export interface SitePluginOptions {
   brandDir: string;
 }
 
-function fontSource(root: string): string {
+/**
+ * Licence text shipped next to the display font. OFL-1.1 requires every copy of the font to carry
+ * its copyright notice and the licence, so the site deploys the package's LICENSE with the woff2.
+ */
+export const DISPLAY_FONT_LICENSE_FILE = "fonts/OFL.txt";
+
+function fontPackage(root: string): string {
   const require = createRequire(join(root, "package.json"));
-  const pkg = dirname(require.resolve("@fontsource-variable/bricolage-grotesque/package.json"));
-  return join(pkg, "files", DISPLAY_FONT_FILE.replace(/^fonts\//, ""));
+  return dirname(require.resolve("@fontsource-variable/bricolage-grotesque/package.json"));
+}
+
+function fontSource(root: string): string {
+  return join(fontPackage(root), "files", DISPLAY_FONT_FILE.replace(/^fonts\//, ""));
+}
+
+/**
+ * The font package's LICENSE (copyright line plus the full OFL text).
+ * @throws Error when the package ships no OFL text, so the font is never deployed without it.
+ */
+export function displayFontLicense(root: string): string {
+  const file = join(fontPackage(root), "LICENSE");
+  const text = existsSync(file) ? readFileSync(file, "utf8") : "";
+  if (!text.includes("SIL OPEN FONT LICENSE"))
+    throw new Error(`${file}: the OFL-1.1 text of the display font is missing`);
+  return text;
 }
 
 function earlyScript(root: string): string {
@@ -140,6 +161,11 @@ function pagesPlugin(options: SitePluginOptions): Plugin {
         const path = url.startsWith(config.base) ? url.slice(config.base.length) : null;
         let file: string | null = null;
         if (path === DISPLAY_FONT_FILE) file = fontSource(root);
+        if (path === DISPLAY_FONT_LICENSE_FILE) {
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.end(displayFontLicense(root));
+          return;
+        }
         const brand = path?.startsWith("brand/") ? path.slice(6) : null;
         if (brand && (BRAND_FILES as readonly string[]).includes(brand)) file = join(brandDir, brand);
         if (brand === "favicon.svg" && file && !existsSync(file)) {
@@ -155,6 +181,7 @@ function pagesPlugin(options: SitePluginOptions): Plugin {
     },
     generateBundle() {
       this.emitFile({ type: "asset", fileName: DISPLAY_FONT_FILE, source: readFileSync(fontSource(root)) });
+      this.emitFile({ type: "asset", fileName: DISPLAY_FONT_LICENSE_FILE, source: displayFontLicense(root) });
       for (const name of BRAND_FILES) {
         const file = join(brandDir, name);
         if (existsSync(file)) this.emitFile({ type: "asset", fileName: `brand/${name}`, source: readFileSync(file) });
