@@ -66,7 +66,7 @@ describe("pdf adapter on the brochure sample", () => {
     }
     expect(crops.find((c) => c.meta?.text === "SwarmLoom")?.role).toBe("heading");
     expect(crops.find((c) => String(c.meta?.text).startsWith("Every cursor"))?.role).toBe("paragraph");
-    expect(crops.find((c) => c.meta?.text === "layers per second")?.reveal).toBe("sweep");
+    expect(crops.find((c) => c.meta?.text === "example value")?.reveal).toBe("sweep");
     expect(crops.filter((c) => c.reveal === "type").length).toBeGreaterThan(40);
 
     // Two-column notes build column by column (stream order), not interleaved row by row.
