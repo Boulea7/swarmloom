@@ -153,12 +153,24 @@ export function createBackground(api: ExtensionApi, opts: BackgroundOptions = {}
    */
   function openInStudio(src: string | undefined, opener?: Tab, importFile = false): Promise<void> {
     const source = studioSource(src);
+    if (source?.startsWith("file:")) return openLocalInStudio(source, opener);
     if (source && android) return openTab(studioUrl(getURL, { src: source, importFile: true }), opener);
-    const remote = source !== null && !source.startsWith("file:");
+    const remote = source !== null;
     const granted = remote ? requestSourceAccess(api, source) : Promise.resolve(false);
     return granted.then((ok) =>
       openTab(studioUrl(getURL, { src: source ?? undefined, importFile: importFile || (remote && !ok) }), opener),
     );
+  }
+
+  /**
+   * Studio, an extension page, can read a `file:` URL only where the browser gives the extension
+   * file access (Chromium's "Allow access to file URLs"); Safari and Firefox never do. Without it
+   * Studio opens on its file picker instead of a link it cannot load, and with it the picker stays
+   * the fallback should the read still fail.
+   */
+  async function openLocalInStudio(source: string, opener?: Tab): Promise<void> {
+    const readable = (await fileAccessState(api, target)) === "granted";
+    await openTab(studioUrl(getURL, { src: readable ? source : undefined, importFile: true }), opener);
   }
 
   async function clearBadge(tabId: number, t?: Translator): Promise<void> {

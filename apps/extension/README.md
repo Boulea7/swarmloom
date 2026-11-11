@@ -9,7 +9,10 @@ stop. There is no popup.
 - Pages an extension cannot script (`chrome://`, `about:`, web stores, the PDF viewer, local files
   without access): a badge with the reason, plus a notice tab with the next steps: open in
   Studio, import a file, and copy the link when Studio can open it (not for `chrome://` or
-  `about:` addresses). Never a silent failure.
+  `about:` addresses, nor local files). Never a silent failure.
+- Local documents (a `file://` PDF or a local link) open Studio on its file picker: Studio can
+  read `file://` only where the browser gives the extension file access (Chromium's "Allow
+  access to file URLs"; never Safari or Firefox), and then it loads the file directly.
 - Leaving or changing the page (route change, back/forward, bfcache) ends the swarm and restores
   the page.
 - Options page: speed, cursors, labels, theme, sound and sound pack, volume, finale, reduced motion,
