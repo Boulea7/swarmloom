@@ -201,11 +201,13 @@ async function bundle(target, out, studioEntry) {
  * @param {string} out
  * @param {import("esbuild").Metafile[]} metafiles
  * @param {readonly string[]} studioPackages dependency closure of the bundled Studio, or none
+ * @returns {number} third-party entries written (one per name@version)
  */
 function writeNotices(out, metafiles, studioPackages) {
   const notices = collectNotices([...bundledPackages(metafiles, root), ...studioPackages]);
   writeFileSync(join(out, NOTICES_FILE), renderNotices(notices));
   cpSync(join(repo, "LICENSE"), join(out, LICENSE_COPY));
+  return notices.length;
 }
 
 /**
@@ -269,14 +271,14 @@ for (const target of targets) {
   writeLocales(out, catalogs, messageKeys(manifest));
   const generatedIcons = writeIcons(out);
   const metafiles = await bundle(target, out, studioEntry);
-  writeNotices(out, metafiles, studioPackages);
+  const noticeCount = writeNotices(out, metafiles, studioPackages);
   writeFileSync(join(out, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   validate(out, manifest, target, catalogs);
 
   let line = `built ${relative(root, out)} (${(dirSize(out) / 1024).toFixed(0)} KiB`;
   if (generatedIcons > 0) line += ", placeholder icons";
   if (studio) line += ", bundled Studio";
-  line += ")";
+  line += `, ${noticeCount} third-party notices)`;
   if (!e2e && values["no-zip"] !== true) {
     const zipPath = join(outRoot, `${target}.zip`);
     const zip = zipEntries(directoryEntries(out), { mtime: sourceDateEpoch(process.env.SOURCE_DATE_EPOCH) });
