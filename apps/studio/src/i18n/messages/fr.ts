@@ -73,6 +73,10 @@ export const fr: StudioCatalog = {
   "error.generic": "Un problème est survenu : {message}",
   "error.tooComplex":
     "Ce fichier est trop volumineux ou trop complexe pour être ouvert. Essayez avec un fichier plus petit.",
+  "error.lottieInvalid": "Ce fichier n’est pas une animation Lottie valide, ou il est endommagé.",
+  "error.lottieRender": "Impossible de dessiner cette animation Lottie. Essayez de l’exporter à nouveau.",
+  "error.lottieExpressions":
+    "Cette animation ne bouge que grâce à des expressions After Effects. Studio n’exécute pas les expressions, donc rien ne bougerait. Dans After Effects, sélectionnez les propriétés avec expressions, choisissez « Animation > Assistant d’image clé > Convertir l’expression en images-clés », puis exportez à nouveau.",
   "error.share": "Ce lien de partage est endommagé ou incomplet.",
   "error.example": "Aucun exemple ne s’appelle « {id} ».",
   "error.file": "Un fichier local ne peut pas être rouvert depuis un lien. Ouvrez à nouveau le fichier.",

@@ -79,6 +79,10 @@ export const en = {
   "error.player": "The player couldn't start: {message}",
   "error.generic": "Something went wrong: {message}",
   "error.tooComplex": "This file is too large or complex to open. Try a smaller file.",
+  "error.lottieInvalid": "This isn't a valid Lottie animation, or the file is damaged.",
+  "error.lottieRender": "This Lottie animation couldn't be drawn. Try exporting it again.",
+  "error.lottieExpressions":
+    "This animation moves only through After Effects expressions. Studio doesn't run expressions, so nothing would move. In After Effects, select the properties with expressions, choose Animation > Keyframe Assistant > Convert Expression To Keyframes, then export again.",
   "error.share": "This share link is damaged or incomplete.",
   "error.example": 'There is no example called "{id}".',
   "error.file": "Local files can't be reopened from a link. Open the file again.",

@@ -69,6 +69,10 @@ export const ja: StudioCatalog = {
   "error.player": "プレーヤーを起動できませんでした: {message}",
   "error.generic": "問題が発生しました: {message}",
   "error.tooComplex": "このファイルは大きすぎるか複雑すぎるため開けません。もっと小さいファイルでお試しください。",
+  "error.lottieInvalid": "有効な Lottie アニメーションではないか、ファイルが壊れています。",
+  "error.lottieRender": "この Lottie アニメーションを描画できませんでした。もう一度書き出してみてください。",
+  "error.lottieExpressions":
+    "このアニメーションは After Effects のエクスプレッションだけで動いています。Studio はエクスプレッションを実行しないため、何も動きません。After Effects でエクスプレッションのあるプロパティを選択し、「アニメーション／キーフレーム補助／エクスプレッションをキーフレームに変換」を選んでから、もう一度書き出してください。",
   "error.share": "この共有リンクは壊れているか、不完全です。",
   "error.example": "「{id}」というサンプルはありません。",
   "error.file": "ローカルファイルはリンクから開き直せません。もう一度ファイルを開いてください。",

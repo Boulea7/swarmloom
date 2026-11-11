@@ -67,6 +67,10 @@ export const zhCN: StudioCatalog = {
   "error.player": "播放器无法启动：{message}",
   "error.generic": "出了点问题：{message}",
   "error.tooComplex": "这个文件太大或太复杂，无法打开。请换一个小一些的文件。",
+  "error.lottieInvalid": "这不是有效的 Lottie 动画，或者文件已损坏。",
+  "error.lottieRender": "无法绘制这个 Lottie 动画。请尝试重新导出。",
+  "error.lottieExpressions":
+    "这个动画只靠 After Effects 表达式运动。Studio 不运行表达式，所以画面不会动。请在 After Effects 中选中带表达式的属性，选择“动画 > 关键帧辅助 > 将表达式转换为关键帧”，然后重新导出。",
   "error.share": "这个分享链接已损坏或不完整。",
   "error.example": "没有名为“{id}”的示例。",
   "error.file": "无法通过链接重新打开本地文件，请再次打开该文件。",

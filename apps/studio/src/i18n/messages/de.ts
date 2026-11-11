@@ -73,6 +73,10 @@ export const de: StudioCatalog = {
   "error.player": "Der Player konnte nicht starten: {message}",
   "error.generic": "Etwas ist schiefgelaufen: {message}",
   "error.tooComplex": "Diese Datei ist zu groß oder zu komplex zum Öffnen. Versuche es mit einer kleineren Datei.",
+  "error.lottieInvalid": "Das ist keine gültige Lottie-Animation, oder die Datei ist beschädigt.",
+  "error.lottieRender": "Diese Lottie-Animation konnte nicht gezeichnet werden. Versuche, sie erneut zu exportieren.",
+  "error.lottieExpressions":
+    "Diese Animation bewegt sich nur durch After-Effects-Expressions. Studio führt keine Expressions aus, daher würde sich nichts bewegen. Markiere in After Effects die Eigenschaften mit Expressions, wähle „Animation > Keyframe-Assistent > Expression in Keyframes umwandeln“ und exportiere erneut.",
   "error.share": "Dieser Link ist beschädigt oder unvollständig.",
   "error.example": "Es gibt kein Beispiel namens „{id}“.",
   "error.file": "Lokale Dateien lassen sich nicht über einen Link erneut öffnen. Öffne die Datei noch einmal.",

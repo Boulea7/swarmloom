@@ -35,4 +35,15 @@ describe("describeError", () => {
     const message = describeError(new RangeError("svg: 900000 elements, over the 200000 limit"), i18n, ctx);
     expect(message).toBe(zhCN["error.tooComplex"]);
   });
+
+  it("translates Lottie adapter errors by code instead of showing their English message", () => {
+    // Shape of `LottieError` from @swarmloom/adapter-lottie (name + code; English message).
+    const lottie = (code: string) =>
+      Object.assign(new Error("This animation moves only through After Effects expressions."), {
+        name: "LottieError",
+        code,
+      });
+    expect(describeError(lottie("unsupported"), i18n, ctx)).toBe(zhCN["error.lottieExpressions"]);
+    expect(describeError(lottie("too-large"), i18n, ctx)).toBe(zhCN["error.tooComplex"]);
+  });
 });
