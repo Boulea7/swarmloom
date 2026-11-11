@@ -1,4 +1,12 @@
-import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from "mediabunny";
+import {
+  ALL_FORMATS,
+  AudioBufferSink,
+  BlobSource,
+  CanvasSink,
+  Input,
+  type InputAudioTrack,
+  type InputVideoTrack,
+} from "mediabunny";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import emblem from "../../../examples/svg/emblem.svg?raw";
 import { VideoFileWriter } from "../src/browser/encode";
@@ -73,6 +81,19 @@ async function decodeFrames(track: InputVideoTrack, indices: number[]): Promise<
   return frames;
 }
 
+/** Decoded length in seconds and loudest absolute sample of an audio track. */
+async function decodeAudio(track: InputAudioTrack): Promise<{ seconds: number; peak: number }> {
+  let seconds = 0;
+  let peak = 0;
+  for await (const { buffer, duration } of new AudioBufferSink(track).buffers()) {
+    seconds += duration;
+    for (let c = 0; c < buffer.numberOfChannels; c++) {
+      for (const sample of buffer.getChannelData(c)) peak = Math.max(peak, Math.abs(sample));
+    }
+  }
+  return { seconds, peak };
+}
+
 /** Summed RGB difference of two RGBA images at byte offset `i`. */
 function pixelDiff(a: Uint8ClampedArray, b: Uint8ClampedArray, i: number): number {
   return Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
@@ -115,8 +136,15 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
     expect(meanDiff(decoded[k], pixels)).toBeLessThan(3);
     expect(meanDiff(decoded[k], pixels, moved)).toBeLessThan(24);
   }
+  // Chromium encodes Opus in either container, so sound=true always gets a soundtrack here.
+  expect(first.plan.audio).not.toBeNull();
   const audio = await input.getPrimaryAudioTrack();
-  expect(audio?.codec ?? null).toBe(first.plan.audio);
+  expect(audio?.codec).toBe(first.plan.audio);
+  if (!audio) throw new Error("No audio track");
+  // It covers the whole clip and is not silent.
+  const sound = await decodeAudio(audio);
+  expect(sound.seconds).toBeCloseTo(2, 1);
+  expect(sound.peak).toBeGreaterThan(0.01);
 
   const second = await exportClip();
   expect(second.frameSha256).toEqual(first.frameSha256);
