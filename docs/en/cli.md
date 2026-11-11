@@ -67,7 +67,7 @@ Render a file or web page to a video of the swarm building it, with sound by def
 | `--width <px>` | `1280` | Viewport width in CSS px, 16–7680 |
 | `--height <px>` | `720` | Viewport height in CSS px, 16–7680 |
 | `--scale <n>` | `1` | Pixels per CSS px; the video is width and height times this value, 0.25–4. Neither side may exceed 8192 px |
-| `--fps <n>` | `30` | Frames per second, 1–120; each frame advances `1000 / fps` ms |
+| `--fps <n>` | `30` | Frames per second, 1–120; each frame advances `1000 / fps` ms. The player steps once per frame, so another fps gives a slightly different build, not every other frame of the same one |
 | `--max-duration <s>` | `120` | Stop the video at this many seconds, 1–3600; warns when the build has not finished |
 | `--duration <s>` | Off | Exact video length, 0.1–3600 s: keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
 
