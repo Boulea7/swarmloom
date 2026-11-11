@@ -1,6 +1,8 @@
 // @ts-check
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -10,7 +12,7 @@ import {
   runtimeImports,
   synthesizedMitLicense,
 } from "../lib/notices.mjs";
-import { expectedLicenseFiles } from "../third-party-notices.mjs";
+import { expectedLicenseFiles, pagesLicenseFiles } from "../third-party-notices.mjs";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -70,4 +72,15 @@ test("every published package that bundles third-party code gets generated notic
   const paths = expected.map((item) => `${item.pkg.dir}/LICENSE.md`);
   const tracked = execFileSync("git", ["ls-files", "--", ...paths], { cwd: root, encoding: "utf8" });
   assert.equal(tracked.trim(), "", "generated LICENSE.md files must not be committed");
+});
+
+test("every app deployed to Pages gets the licences of what it bundles or inlines", () => {
+  const byDir = new Map(pagesLicenseFiles(root, "_site").map((item) => [item.pkg.dir, item]));
+  // The report: the site inlines Phosphor SVG paths (read from disk, not imported); Studio bundles lottie-web.
+  assert.match(byDir.get("apps/site")?.contents ?? "", /Copyright \(c\) \d{4} Phosphor Icons/);
+  assert.equal(byDir.get("apps/site")?.path, join(root, "_site", "LICENSE.md"));
+  assert.match(byDir.get("apps/studio")?.contents ?? "", /Copyright \(c\) 2015 Bodymovin/);
+  assert.equal(byDir.get("apps/studio")?.path, join(root, "_site", "studio", "LICENSE.md"));
+  const workflow = readFileSync(join(root, ".github/workflows/pages.yml"), "utf8");
+  assert.match(workflow, /third-party-notices\.mjs --pages _site\b/);
 });

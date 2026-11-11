@@ -24,13 +24,15 @@
  * package the notices do not cover):
  * - default: write the LICENSE.md files (and delete generated ones no longer needed);
  * - `--check`: write nothing; also fails when a generated LICENSE.md on disk is stale;
- * - `--clean`: delete the generated LICENSE.md files after a local release.
+ * - `--clean`: delete the generated LICENSE.md files after a local release;
+ * - `--pages <dir>`: write a LICENSE.md into each app folder of the assembled GitHub Pages artifact
+ *   instead (PAGES_APPS); the npm packages are left alone.
  *
- * Usage: node scripts/release/third-party-notices.mjs [--check | --clean]
+ * Usage: node scripts/release/third-party-notices.mjs [--check | --clean | --pages <dir>]
  */
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { readWorkspacePackages } from "./check-packages.mjs";
@@ -57,6 +59,8 @@ import {
  * @typedef {object} WholeTreeBuild
  * @property {string} where the outputs that bundle the tree
  * @property {readonly string[]} external third-party dependencies the build leaves to npm
+ * @property {readonly string[]} [inlined] third-party packages whose files the build reads from disk
+ *   (require.resolve, fs) instead of importing them, so the source scan cannot see them
  */
 
 /** @type {ReadonlyMap<string, WholeTreeBuild>} Public packages whose build bundles the whole runtime tree. */
@@ -74,6 +78,33 @@ export const BUNDLES_DEPENDENCIES = new Map([
     { where: "dist/swarm-loom.global.js, dist/swarm-loom.adapters.js and dist/chunks are CDN builds", external: [] },
   ],
   ["@swarmloom/export", { where: "dist/render is the headless render page with every adapter", external: [] }],
+]);
+
+/**
+ * @typedef {object} PagesApp
+ * @property {string} path folder of the Pages artifact the app's dist/ is copied to ("" for the root)
+ * @property {WholeTreeBuild} build
+ */
+
+/**
+ * Private apps deployed to GitHub Pages (.github/workflows/pages.yml). They are Vite or esbuild app
+ * builds, so each bundles its whole runtime tree; their LICENSE.md lands next to the app's index.html.
+ * @type {ReadonlyMap<string, PagesApp>}
+ */
+export const PAGES_APPS = new Map([
+  [
+    "@swarmloom/site",
+    {
+      path: "",
+      build: {
+        where: "the page inlines the Phosphor SVG icons and copies the Bricolage Grotesque font",
+        external: [],
+        inlined: ["@phosphor-icons/core", "@fontsource-variable/bricolage-grotesque"],
+      },
+    },
+  ],
+  ["@swarmloom/studio", { path: "studio", build: { where: "the Studio PWA with every adapter", external: [] } }],
+  ["@swarmloom/bookmarklet", { path: "bm", build: { where: "bm/swarm.js and its install page", external: [] } }],
 ]);
 
 /**
@@ -164,10 +195,10 @@ function resolvePackage(fromDir, name) {
  * @param {WorkspacePackage} pkg
  * @param {ReadonlyMap<string, WorkspacePackage>} workspace by package name
  * @param {string} root repository root
+ * @param {WholeTreeBuild} [wholeTree] how the package bundles its tree; default from BUNDLES_DEPENDENCIES
  * @returns {Map<string, string>} real package directory -> package name
  */
-export function bundledPackages(pkg, workspace, root) {
-  const wholeTree = BUNDLES_DEPENDENCIES.get(String(pkg.manifest.name));
+export function bundledPackages(pkg, workspace, root, wholeTree = BUNDLES_DEPENDENCIES.get(String(pkg.manifest.name))) {
   const external = wholeTree?.external ?? [];
   /** @type {Map<string, string>} */
   const found = new Map();
@@ -223,6 +254,7 @@ export function bundledPackages(pkg, workspace, root) {
 
   if (wholeTree) {
     addWholeTree(pkg);
+    for (const name of wholeTree.inlined ?? []) addThirdParty(join(root, pkg.dir), name, false);
     return found;
   }
   const dir = join(root, pkg.dir);
@@ -266,39 +298,76 @@ export function noticeEntry(dir) {
 }
 
 /**
+ * @typedef {object} LicenseFile
+ * @property {WorkspacePackage} pkg
+ * @property {string} path where the LICENSE.md goes
+ * @property {string | null} contents null when the package bundles no third-party code
+ * @property {Set<string>} covered names of the packages the file covers
+ */
+
+/**
+ * LICENSE.md of one workspace package: the repository licence, then every bundled third-party package.
+ * @param {WorkspacePackage} pkg
+ * @param {ReadonlyMap<string, WorkspacePackage>} workspace by package name
+ * @param {string} root repository root
+ * @param {string} path where the file goes
+ * @param {WholeTreeBuild} [wholeTree] see bundledPackages
+ * @returns {LicenseFile}
+ */
+function licenseFile(pkg, workspace, root, path, wholeTree) {
+  /** @type {Map<string, NoticeEntry>} */
+  const entries = new Map();
+  for (const dir of bundledPackages(pkg, workspace, root, wholeTree).keys()) {
+    const entry = noticeEntry(dir);
+    entries.set(`${entry.name}\n${entry.text}`, entry);
+    for (const [name, embedded] of EMBEDDED_PACKAGES) {
+      if (embedded.host !== entry.name) continue;
+      const note = `Pre-bundled inside ${embedded.host}, which ships no separate licence file for it.`;
+      const text = mitLicense(embedded.copyright, note);
+      entries.set(`${name}\n${text}`, { name, license: embedded.license, source: embedded.source, text });
+    }
+  }
+  const list = [...entries.values()];
+  const ownLicense = readFileSync(join(root, "LICENSE"), "utf8");
+  return {
+    pkg,
+    path,
+    contents: list.length ? renderLicenseFile(String(pkg.manifest.name), ownLicense, list) : null,
+    covered: new Set(list.map((entry) => entry.name)),
+  };
+}
+
+/** @param {string} root */
+function workspaceByName(root) {
+  const packages = readWorkspacePackages(root);
+  return { packages, workspace: new Map(packages.map((pkg) => [String(pkg.manifest.name), pkg])) };
+}
+
+/**
  * Expected LICENSE.md contents of every public workspace package (null: the package needs none).
  * @param {string} root
- * @returns {{ pkg: WorkspacePackage; path: string; contents: string | null; covered: Set<string> }[]}
+ * @returns {LicenseFile[]}
  */
 export function expectedLicenseFiles(root) {
-  const packages = readWorkspacePackages(root);
-  const workspace = new Map(packages.map((pkg) => [String(pkg.manifest.name), pkg]));
-  const ownLicense = readFileSync(join(root, "LICENSE"), "utf8");
+  const { packages, workspace } = workspaceByName(root);
   return packages
     .filter((pkg) => pkg.manifest.private !== true)
-    .map((pkg) => {
-      const dirs = [...bundledPackages(pkg, workspace, root).keys()];
-      /** @type {Map<string, NoticeEntry>} */
-      const entries = new Map();
-      for (const dir of dirs) {
-        const entry = noticeEntry(dir);
-        entries.set(`${entry.name}\n${entry.text}`, entry);
-        for (const [name, embedded] of EMBEDDED_PACKAGES) {
-          if (embedded.host !== entry.name) continue;
-          const note = `Pre-bundled inside ${embedded.host}, which ships no separate licence file for it.`;
-          const text = mitLicense(embedded.copyright, note);
-          entries.set(`${name}\n${text}`, { name, license: embedded.license, source: embedded.source, text });
-        }
-      }
-      const list = [...entries.values()];
-      const name = String(pkg.manifest.name);
-      return {
-        pkg,
-        path: join(root, pkg.dir, LICENSE_FILE),
-        contents: list.length ? renderLicenseFile(name, ownLicense, list) : null,
-        covered: new Set(list.map((entry) => entry.name)),
-      };
-    });
+    .map((pkg) => licenseFile(pkg, workspace, root, join(root, pkg.dir, LICENSE_FILE)));
+}
+
+/**
+ * LICENSE.md of every app in PAGES_APPS, placed in the app's folder of the Pages artifact.
+ * @param {string} root
+ * @param {string} siteDir the assembled artifact, absolute or relative to `root`
+ * @returns {LicenseFile[]}
+ */
+export function pagesLicenseFiles(root, siteDir) {
+  const { workspace } = workspaceByName(root);
+  return [...PAGES_APPS].map(([name, app]) => {
+    const pkg = workspace.get(name);
+    if (!pkg) throw new Error(`${name} (PAGES_APPS) is not a workspace package`);
+    return licenseFile(pkg, workspace, root, resolve(root, siteDir, app.path, LICENSE_FILE), app.build);
+  });
 }
 
 /**
@@ -317,6 +386,50 @@ export function uncoveredInDist(distDir, covered, workspaceNames) {
     }
   }
   return [...missing].sort(compareCodeUnits);
+}
+
+/**
+ * Problems for every third-party package a built dist/ bundles without a notice.
+ * @param {WorkspacePackage} pkg
+ * @param {string} root
+ * @param {ReadonlySet<string>} covered
+ * @param {ReadonlySet<string>} workspaceNames
+ * @returns {string[]}
+ */
+function uncoveredProblems(pkg, root, covered, workspaceNames) {
+  return uncoveredInDist(join(root, pkg.dir, "dist"), covered, workspaceNames).map(
+    (item) =>
+      `${pkg.dir}/dist bundles ${item}, which the notices do not cover; add it to the sources, ` +
+      "BUNDLES_DEPENDENCIES, PAGES_APPS or EMBEDDED_PACKAGES, or stop bundling it",
+  );
+}
+
+/**
+ * Writes the LICENSE.md of every PAGES_APPS app into the assembled Pages artifact.
+ * @param {string} root
+ * @param {string} siteDir
+ * @param {ReadonlySet<string>} workspaceNames
+ * @returns {string[]} problems
+ */
+function writePagesLicenseFiles(root, siteDir, workspaceNames) {
+  /** @type {string[]} */
+  const problems = [];
+  /** @param {string} path */
+  const shown = (path) => (relative(root, path).startsWith("..") ? path : relative(root, path) || ".");
+  for (const { pkg, path, contents, covered } of pagesLicenseFiles(root, siteDir)) {
+    if (!existsSync(dirname(path))) {
+      problems.push(`${shown(dirname(path))} does not exist; copy ${pkg.dir}/dist into the Pages artifact first`);
+      continue;
+    }
+    problems.push(...uncoveredProblems(pkg, root, covered, workspaceNames));
+    if (contents === null) {
+      console.log(`third-party-notices: ${pkg.dir} bundles no third-party code, no ${LICENSE_FILE} needed`);
+      continue;
+    }
+    writeFileSync(path, contents);
+    console.log(`third-party-notices: wrote ${shown(path)} (${covered.size} packages)`);
+  }
+  return problems;
 }
 
 /**
@@ -339,17 +452,29 @@ export function cleanLicenseFiles(root) {
 
 function main() {
   const { values } = parseArgs({
-    options: { check: { type: "boolean", default: false }, clean: { type: "boolean", default: false } },
+    options: {
+      check: { type: "boolean", default: false },
+      clean: { type: "boolean", default: false },
+      pages: { type: "string" },
+    },
   });
-  if (values.check && values.clean) throw new Error("--check and --clean cannot be combined");
+  if ([values.check, values.clean, values.pages !== undefined].filter(Boolean).length > 1) {
+    throw new Error("--check, --clean and --pages cannot be combined");
+  }
   const root = fileURLToPath(new URL("../..", import.meta.url));
+  const workspaceNames = new Set(readWorkspacePackages(root).map((pkg) => String(pkg.manifest.name)));
+  if (values.pages !== undefined) {
+    if (!values.pages) throw new Error("--pages needs the folder of the assembled Pages artifact");
+    const problems = writePagesLicenseFiles(root, values.pages, workspaceNames);
+    for (const problem of problems) console.error(`error: ${problem}`);
+    return problems.length > 0 ? 1 : 0;
+  }
   if (values.clean) {
     const cleaned = cleanLicenseFiles(root);
     console.log(`third-party-notices: removed ${LICENSE_FILE} from ${cleaned.join(", ") || "no package"}`);
     return 0;
   }
   const expected = expectedLicenseFiles(root);
-  const workspaceNames = new Set(readWorkspacePackages(root).map((pkg) => String(pkg.manifest.name)));
   /** @type {string[]} */
   const problems = [];
   for (const { pkg, path, contents, covered } of expected) {
@@ -358,12 +483,7 @@ function main() {
       problems.push(`${pkg.dir}/${LICENSE_FILE} exists but was not generated; remove or rename it`);
       continue;
     }
-    for (const item of uncoveredInDist(join(root, pkg.dir, "dist"), covered, workspaceNames)) {
-      problems.push(
-        `${pkg.dir}/dist bundles ${item}, which the notices do not cover; add it to the sources, ` +
-          "BUNDLES_DEPENDENCIES or EMBEDDED_PACKAGES, or stop bundling it",
-      );
-    }
+    problems.push(...uncoveredProblems(pkg, root, covered, workspaceNames));
     if (values.check) {
       // Missing files are expected: they are written right before packing. A leftover one must be current.
       if (current !== null && current !== contents) {
