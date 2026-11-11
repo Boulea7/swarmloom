@@ -74,11 +74,7 @@ def draw_weave(width: int = 960, height: int = 300) -> bytes:
         for c in range(cols):
             if (r + c) % 2 == 1:
                 warp(c, y - 12, y + 12)
-    # A small arrow cursor drawing the last thread, outlined in paper white.
-    tip = (width - 210, height - 96)
-    arrow = [tip, (tip[0], tip[1] + 64), (tip[0] + 16, tip[1] + 50), (tip[0] + 28, tip[1] + 76),
-             (tip[0] + 40, tip[1] + 70), (tip[0] + 28, tip[1] + 45), (tip[0] + 48, tip[1] + 45)]
-    draw.polygon(arrow, fill=rgb(INK), outline=rgb(PAPER), width=4)
+    # No pointer in the picture: a drawn arrow reads as a stray system cursor next to the swarm's own.
     indexed = image.quantize(colors=16, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     out = io.BytesIO()
     indexed.save(out, format="PNG", optimize=True)
