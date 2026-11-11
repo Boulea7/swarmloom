@@ -1,6 +1,6 @@
 import type { LoadedSource, PlayerOptions, RenderOfflineOptions, SoundEvent, SourceInput } from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { base64ToBytes, bytesToBase64, createRenderApi, type RenderInit } from "../src/index";
+import { base64ToBytes, bytesToBase64, createRenderApi, type RenderDeps, type RenderInit } from "../src/index";
 import { ClockPlayer } from "./fake-player";
 
 const blueprint = {
@@ -12,7 +12,7 @@ const blueprint = {
 };
 const base: RenderInit = { input: { name: "a.md", text: "# Hi" }, width: 320, height: 200, fps: 25, tail: 200 };
 
-function setup() {
+function setup(deps: Pick<RenderDeps, "awaitPaint"> = {}) {
   const players: ClockPlayer[] = [];
   const loads: { input: SourceInput; format?: string; width: number }[] = [];
   const dispose = vi.fn();
@@ -30,6 +30,7 @@ function setup() {
       return player;
     },
     renderAudioWav: audio,
+    ...deps,
   });
   return { api, players, loads, dispose, audio };
 }
@@ -149,8 +150,8 @@ describe("render page protocol", () => {
     expect(goLive).toHaveBeenCalledTimes(calls);
   });
 
-  it("resolves init and each step only after the page's next animation frame", async () => {
-    const { api } = setup();
+  it("resolves init and each step only after the page's next animation frame when it awaits paint", async () => {
+    const { api } = setup({ awaitPaint: true });
     const frames: FrameRequestCallback[] = [];
     const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
     let stepped = false;

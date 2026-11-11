@@ -33,11 +33,6 @@ function provisionalName(ctx: AppContext, ref: SourceRef): string {
   }
 }
 
-function clock(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
-
 /**
  * Player: the source title bar, a full-bleed inline stage (core player with its own toolbar), a
  * Studio scrubber, share and export. Loading, ready and error states render over the stage.
@@ -47,7 +42,6 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   // the view without touching the session that is playing.
   let phase: SessionPhase = "opening";
   let scheme = ctx.scheme;
-  let recTimer = 0;
   /** Error behind the "error" phase, kept to render the card again in another language. */
   let lastError: unknown;
   /** Autoplay links start the first time the player is ready, never again after a rebuild. */
@@ -110,23 +104,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     seek: (fraction) => session.seek(fraction),
     position: () => session.position,
   });
-  const recLabel = h("span", { class: "rec-time" });
-  const recDot = h("span", { class: "rec-dot", attrs: { "aria-hidden": "true" } });
-  const stopButton = () =>
-    button({
-      label: ctx.i18n.t("export.record.stop"),
-      icon: "stop",
-      variant: "ghost",
-      onClick: () => exporter.stopRecording(),
-    });
-  const recPill = h(
-    "div",
-    { class: "rec-pill", attrs: { hidden: true, role: "status" } },
-    recDot,
-    recLabel,
-    stopButton(),
-  );
-  const foot = h("div", { class: "player-foot" }, scrubber.root, scrubber.count, recPill);
+  const foot = h("div", { class: "player-foot" }, scrubber.root, scrubber.count);
 
   const root = h(
     "main",
@@ -137,24 +115,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     foot,
   );
 
-  const exporter = createExporter({
-    ctx,
-    opened: () => session.opened,
-    target: () => host,
-    restart: () => session.rebuild(true),
-    onRecording: (rec) => {
-      window.clearInterval(recTimer);
-      recPill.hidden = !rec;
-      if (!rec) return;
-      const tick = () => {
-        recLabel.textContent = ctx.i18n.t("export.record.recording", {
-          time: clock(performance.now() - rec.startedAt),
-        });
-      };
-      tick();
-      recTimer = window.setInterval(tick, 1000);
-    },
-  });
+  const exporter = createExporter({ ctx, opened: () => session.opened });
   root.append(exporter.panel.root);
 
   const renderOverlay = (error?: unknown) => {
@@ -371,7 +332,6 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     if (!notice.hidden) showTruncated();
     renderOverlay(lastError);
     scrubber.relabel(ctx.i18n);
-    recPill.replaceChildren(recDot, recLabel, stopButton());
     exporter.relabel();
   };
 
@@ -410,7 +370,6 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     },
     schemeChanged: applyScheme,
     destroy() {
-      window.clearInterval(recTimer);
       scrubber.destroy();
       exporter.destroy();
       session.destroy();

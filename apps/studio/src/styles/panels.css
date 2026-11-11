@@ -257,9 +257,38 @@
   gap: 10px;
 }
 
+.export-choices {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.export-choices:disabled {
+  opacity: 0.6;
+}
+
+.export-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.export-progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 160ms linear;
+}
+
 .export-status {
   color: var(--ink-2);
   font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .export-status:empty {

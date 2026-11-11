@@ -104,13 +104,13 @@ export interface RenderStep {
 /** The protocol the CLI drives through Playwright on `dist/render/index.html`. */
 export interface RenderApi {
   /**
-   * Loads the input with a VirtualClock and controls off; the first frame (t = 0) is ready, and the
-   * page has had an animation frame to paint it, when it resolves.
+   * Loads the input with a VirtualClock and controls off; the first frame (t = 0) is ready when it
+   * resolves (and painted, on the CLI's render page, which waits for an animation frame).
    */
   init(o: RenderInit): Promise<RenderInfo>;
   /**
-   * Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame and
-   * the page has had an animation frame to paint it.
+   * Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame (and,
+   * on the CLI's render page, once the page has had an animation frame to paint it).
    */
   step(ms: number): Promise<RenderStep>;
   /** Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for the elapsed duration. */

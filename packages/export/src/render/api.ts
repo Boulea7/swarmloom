@@ -32,6 +32,12 @@ export interface RenderDeps {
   renderAudioWav(events: readonly SoundEvent[], durationMs: number, opts?: RenderOfflineOptions): Promise<Uint8Array>;
   /** Document the stage is mounted in. Default `globalThis.document`. */
   document?: Document;
+  /**
+   * Resolve `init()` and each `step()` only in the page's next animation frame, so the browser paints
+   * the new state in its regular frame before the driver takes a screenshot (the CLI). Default false:
+   * a driver that draws the frames itself (Studio's in-page export) needs no paint.
+   */
+  awaitPaint?: boolean;
 }
 
 const SAMPLE_RATE = 48_000;
@@ -45,7 +51,8 @@ interface Active {
   session: RenderSession;
   live: LiveStage;
   host: HTMLElement;
-  view: Window;
+  /** Window whose animation frame init() and step() wait for, or null when they do not wait. */
+  paint: Window | null;
 }
 
 function toSourceInput({ input }: ParsedInit): { source: SourceInput; format?: string } {
@@ -222,8 +229,9 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         session = started;
         await session.start();
         const sha = await blueprintSha256(loaded.blueprint, init.input.url);
-        active = { init, loaded, session, live: stage, host, view };
-        await nextFrame(view);
+        const paint = deps.awaitPaint ? view : null;
+        active = { init, loaded, session, live: stage, host, paint };
+        await nextFrame(paint);
         const eta = session.player.eta();
         return {
           estimatedMs: Math.round((Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail),
@@ -242,10 +250,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
     },
 
     async step(ms: number): Promise<RenderStep> {
-      const { session, live, view } = activeRender();
+      const { session, live, paint } = activeRender();
       const status = await session.step(ms);
       live.sync(session.elapsed);
-      await nextFrame(view);
+      await nextFrame(paint);
       return status;
     },
 

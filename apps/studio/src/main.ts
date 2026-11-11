@@ -1,7 +1,7 @@
 import "./styles/studio.css";
 import rawManifest from "virtual:studio-examples";
 import * as core from "@swarmloom/core";
-import { canRecordElement, recordElement } from "@swarmloom/export";
+import { isExportFrame } from "@swarmloom/export";
 import { formats, load } from "@swarmloom/formats";
 import { mountStudio } from "./app";
 import { blockRemoteAssets } from "./csp";
@@ -79,48 +79,54 @@ function localStore(): Storage | undefined {
   }
 }
 
-const target = __STUDIO_TARGET__;
-const queue = launchQueue();
+/** Builds the services and mounts Studio into #app. */
+function boot(): void {
+  const target = __STUDIO_TARGET__;
+  const queue = launchQueue();
 
-const services: StudioServices = {
-  target,
-  manifest: sanitizeManifest(rawManifest),
-  examplesBase: new URL(`${import.meta.env.BASE_URL}examples/`, window.location.href).href,
-  onlineGallery: target === "extension" ? HOSTED_STUDIO : undefined,
-  load: (input, ctx) => load(input, ctx, { maxBytes: MAX_INPUT_BYTES }),
-  formats: formats.map((entry) => entry.id),
-  createPlayer: (options) => core.createPlayer(options),
-  recordElement,
-  canRecord: () => canRecordElement(),
-  coreI18n,
-  fetch: window.fetch.bind(window),
-  storage: localStore(),
-  readStored: target === "extension" ? readStored : undefined,
-  readInbox: (id) => readInbox(id, new URL(import.meta.env.BASE_URL, window.location.href).href),
-  onLaunch: queue
-    ? (consumer) =>
-        queue.setConsumer((params) => {
-          void Promise.all(params.files.map((handle) => handle.getFile())).then(consumer, (error: unknown) =>
-            console.warn("[studio] launch files unreadable", error),
-          );
-        })
-    : undefined,
-  receiveHandoff: (signal) => receiveHandoff(window, signal),
-  blockRemoteAssets: () => blockRemoteAssets(document),
-};
+  const services: StudioServices = {
+    target,
+    manifest: sanitizeManifest(rawManifest),
+    examplesBase: new URL(`${import.meta.env.BASE_URL}examples/`, window.location.href).href,
+    onlineGallery: target === "extension" ? HOSTED_STUDIO : undefined,
+    load: (input, ctx) => load(input, ctx, { maxBytes: MAX_INPUT_BYTES }),
+    formats: formats.map((entry) => entry.id),
+    createPlayer: (options) => core.createPlayer(options),
+    loadExporter: () => import("@swarmloom/export/browser"),
+    coreI18n,
+    fetch: window.fetch.bind(window),
+    storage: localStore(),
+    readStored: target === "extension" ? readStored : undefined,
+    readInbox: (id) => readInbox(id, new URL(import.meta.env.BASE_URL, window.location.href).href),
+    onLaunch: queue
+      ? (consumer) =>
+          queue.setConsumer((params) => {
+            void Promise.all(params.files.map((handle) => handle.getFile())).then(consumer, (error: unknown) =>
+              console.warn("[studio] launch files unreadable", error),
+            );
+          })
+      : undefined,
+    receiveHandoff: (signal) => receiveHandoff(window, signal),
+    blockRemoteAssets: () => blockRemoteAssets(document),
+  };
 
-const root = document.getElementById("app");
-if (!root) throw new Error("#app element is missing from index.html");
+  const root = document.getElementById("app");
+  if (!root) throw new Error("#app element is missing from index.html");
 
-mountStudio(root, services).then(
-  (app) => {
-    if (target === "web" && import.meta.env.PROD) registerServiceWorker(window, app.toast, () => app.context.i18n);
-  },
-  (error: unknown) => {
-    console.error("[studio] failed to start", error);
-    const message = document.createElement("p");
-    message.className = "boot-error";
-    message.textContent = "SwarmLoom Studio could not start. Reload the page to try again.";
-    root.replaceChildren(message);
-  },
-);
+  mountStudio(root, services).then(
+    (app) => {
+      if (target === "web" && import.meta.env.PROD) registerServiceWorker(window, app.toast, () => app.context.i18n);
+    },
+    (error: unknown) => {
+      console.error("[studio] failed to start", error);
+      const message = document.createElement("p");
+      message.className = "boot-error";
+      message.textContent = "SwarmLoom Studio could not start. Reload the page to try again.";
+      root.replaceChildren(message);
+    },
+  );
+}
+
+// The hidden export frame loads the render page module, which shares this entry's chunk in a
+// production build: there the entry must only provide modules, never start Studio.
+if (!isExportFrame()) boot();
