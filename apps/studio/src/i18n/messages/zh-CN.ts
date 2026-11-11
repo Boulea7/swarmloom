@@ -169,6 +169,7 @@ export const zhCN: StudioCatalog = {
   "export.web.partial": "视频在 10 分钟处截止。",
   "export.web.cancelled": "已取消导出。",
   "export.web.failed": "导出失败：{message}",
+  "export.web.loadFailed": "导出工具加载失败。请检查网络，刷新页面后重试。",
   "export.web.noCodec": "这个浏览器无法按这个尺寸编码视频。请换小一点的尺寸，或使用命令行。",
   "export.cli.title": "用命令行渲染",
   "export.cli.body": "使用相同的种子逐帧渲染，视频和这里的预览一致。需要 Node.js 和 Chrome。",

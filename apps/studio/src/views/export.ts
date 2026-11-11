@@ -97,7 +97,10 @@ export function createExporter(deps: ExportDeps): Exporter {
   const supported = () => Boolean(ctx.services.loadExporter) && canEncodeInBrowser();
   const soundOn = () => sound ?? ctx.settings.sound;
 
-  /** Loads the exporter once; a failed load (offline) is tried again next time. */
+  /**
+   * Loads the exporter once. A failed load (offline) is tried again next time, though Chromium
+   * keeps failing a module it could not fetch until the page reloads, hence `export.web.loadFailed`.
+   */
   const loadExporter = (): Promise<BrowserExporter> => {
     const load = ctx.services.loadExporter;
     if (!load) return Promise.reject(new Error("The exporter is not available"));
@@ -361,11 +364,12 @@ export function createExporter(deps: ExportDeps): Exporter {
     render();
     if (moveFocus) ui.cancel?.focus();
     const { signal } = controller;
+    let exporter: BrowserExporter | null = null;
     let result: BrowserExportResult | null = null;
     try {
       // Cancel answers at once, also while the exporter or the hidden frame still loads; the
       // exporter notices the signal at its next step and cleans up after itself.
-      const exporter = await untilAborted(loadExporter(), signal);
+      exporter = await untilAborted(loadExporter(), signal);
       result = await untilAborted(
         exporter.exportVideo({
           input: renderInputOf(opened, exporter.bytesToBase64),
@@ -388,7 +392,11 @@ export function createExporter(deps: ExportDeps): Exporter {
       );
     } catch (error) {
       if (signal.aborted) note = () => ctx.i18n.t("export.web.cancelled");
-      else if ((error as { name?: string }).name === "UnsupportedExportError")
+      else if (!exporter) {
+        // The browser's own message names the chunk URL in English; say what to do instead.
+        console.warn("[studio] exporter unavailable", error);
+        note = () => ctx.i18n.t("export.web.loadFailed");
+      } else if ((error as { name?: string }).name === "UnsupportedExportError")
         note = () => ctx.i18n.t("export.web.noCodec");
       else {
         console.warn("[studio] export failed", error);

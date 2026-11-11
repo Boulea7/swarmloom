@@ -278,6 +278,37 @@ describe("Studio in a browser", () => {
     expect([start.hidden, cancel.hidden]).toEqual([false, true]);
   });
 
+  it("explains an exporter that cannot load and keeps a long error on a phone screen", async () => {
+    await page.viewport(390, 844);
+    try {
+      const url = `${location.origin}/assets/${"exporterchunk".repeat(8)}.js`;
+      const { root, services } = await mount("?example=svg-chart&lang=zh-CN", false, {
+        bytesToBase64: () => "",
+        exportVideo: () => Promise.reject(new Error(`could not read ${url}`)),
+      });
+      const online = services.loadExporter;
+      // Offline before the first export: the browser's own message names the chunk in English.
+      services.loadExporter = () =>
+        Promise.reject(new TypeError(`Failed to fetch dynamically imported module: ${url}`));
+      const { dialog, start, status } = await openExport(root);
+      start.click();
+      await until(() => !start.hidden);
+      expect(status.textContent).toBe("导出工具加载失败。请检查网络，刷新页面后重试。");
+
+      // Back online, a failure the exporter reports keeps its URL, wrapped inside the dialog.
+      services.loadExporter = online;
+      start.click();
+      await until(() => !start.hidden);
+      const body = dialog.querySelector<HTMLElement>(".panel-body");
+      expect([status.textContent?.startsWith("导出失败："), body && body.scrollWidth <= body.clientWidth]).toEqual([
+        true,
+        true,
+      ]);
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
   it("leaves Esc to an open export dialog and opens no panel behind it", async () => {
     await page.viewport(1280, 800);
     try {

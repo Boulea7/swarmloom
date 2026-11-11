@@ -175,6 +175,8 @@ export const ja: StudioCatalog = {
   "export.web.partial": "動画は 10 分で終わります。",
   "export.web.cancelled": "書き出しをキャンセルしました。",
   "export.web.failed": "書き出しに失敗しました: {message}",
+  "export.web.loadFailed":
+    "書き出し機能を読み込めませんでした。接続を確認し、ページを再読み込みしてからもう一度お試しください。",
   "export.web.noCodec":
     "このブラウザはこのサイズの動画をエンコードできません。小さいサイズかコマンドラインを使ってください。",
   "export.cli.title": "コマンドラインでレンダリング",

@@ -205,6 +205,7 @@ export const en = {
   "export.web.partial": "The video stops at 10 minutes.",
   "export.web.cancelled": "Export cancelled.",
   "export.web.failed": "Export failed: {message}",
+  "export.web.loadFailed": "The exporter couldn't load. Check your connection, then reload the page and try again.",
   "export.web.noCodec": "This browser can't encode video at this size. Try a smaller size or the command line.",
   "export.cli.title": "Render with the command line",
   "export.cli.body":

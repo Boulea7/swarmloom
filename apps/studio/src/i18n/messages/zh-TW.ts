@@ -170,6 +170,7 @@ export const zhTW: StudioCatalog = {
   "export.web.partial": "影片在 10 分鐘處截止。",
   "export.web.cancelled": "已取消匯出。",
   "export.web.failed": "匯出失敗：{message}",
+  "export.web.loadFailed": "匯出工具載入失敗。請檢查網路，重新整理頁面後重試。",
   "export.web.noCodec": "這個瀏覽器無法以這個尺寸編碼影片。請改用較小的尺寸，或使用命令列。",
   "export.cli.title": "用命令列算繪",
   "export.cli.body": "使用相同的種子逐格算繪，影片和這裡的預覽一致。需要 Node.js 和 Chrome。",

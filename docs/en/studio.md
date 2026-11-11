@@ -89,8 +89,8 @@ The Studio page carries a Content-Security-Policy that backs up every format's s
 
 Studio always has an ordinary responsive layout. Supported Chromium environments can add dual-screen enhancements through Viewport Segments:
 
-- Horizontal dual screen: the full stage on one segment and settings on the other.
-- Vertical dual screen: stage above, controls below.
+- Horizontal dual screen: the full stage on one segment, settings and dialogs on the other.
+- Vertical dual screen: stage above, controls and dialogs below.
 - Fold or rotate: recompute presentation without resetting the seed or timeline.
 
 `?watch=1` or a watch-sized screen (up to 320 × 400) uses the tiny player; a narrow window on a bigger screen and `?import=1` links keep the normal Studio. It shows a static poster first, is muted by default, and has a large play button, progress and **Open on phone**. It does not depend on poorly supported round-display media queries.

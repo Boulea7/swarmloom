@@ -170,6 +170,8 @@ export const ko: StudioCatalog = {
   "export.web.partial": "영상은 10분에서 끝납니다.",
   "export.web.cancelled": "내보내기를 취소했습니다.",
   "export.web.failed": "내보내기 실패: {message}",
+  "export.web.loadFailed":
+    "내보내기 도구를 불러오지 못했습니다. 연결을 확인한 뒤 페이지를 새로 고치고 다시 시도하세요.",
   "export.web.noCodec": "이 브라우저는 이 크기의 영상을 인코딩할 수 없습니다. 더 작은 크기나 명령줄을 사용하세요.",
   "export.cli.title": "명령줄로 렌더링",
   "export.cli.body":

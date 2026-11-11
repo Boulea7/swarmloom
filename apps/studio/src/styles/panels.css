@@ -287,10 +287,13 @@
   transition: width 160ms linear;
 }
 
+/* `anywhere`, not `break-word`: an error naming a long URL must also shrink the grid track,
+   or it widens the dialog past a phone screen. */
 .export-status {
   color: var(--ink-2);
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .export-status:empty {

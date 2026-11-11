@@ -200,6 +200,8 @@ export const de: StudioCatalog = {
   "export.web.partial": "Das Video endet nach 10 Minuten.",
   "export.web.cancelled": "Export abgebrochen.",
   "export.web.failed": "Export fehlgeschlagen: {message}",
+  "export.web.loadFailed":
+    "Der Exporter konnte nicht geladen werden. Prüfe die Verbindung, lade die Seite neu und versuche es erneut.",
   "export.web.noCodec":
     "Dieser Browser kann Video in dieser Größe nicht kodieren. Wähle eine kleinere Größe oder die Kommandozeile.",
   "export.cli.title": "Mit der Kommandozeile rendern",

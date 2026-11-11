@@ -59,6 +59,20 @@
     box-shadow: none;
     animation: none;
   }
+
+  /* Dialogs (export, shortcuts): centred in the right pane, also in a narrow window, where they
+     would otherwise be a bottom sheet across both panes. */
+  .panel-dialog {
+    inset: 0 0 0 env(viewport-segment-left 1 0, 50vw);
+    width: min(560px, calc(var(--seg-b) - 32px));
+    max-height: min(760px, calc(100dvh - 48px));
+    padding-bottom: 0;
+    border-radius: var(--radius-xl);
+  }
+
+  .panel-dialog[open] {
+    animation-name: panel-in;
+  }
 }
 
 @media (vertical-viewport-segments: 2) {
@@ -81,6 +95,19 @@
     border-top: 1px solid var(--line);
     box-shadow: none;
     animation: none;
+  }
+
+  /* Dialogs: centred in the bottom pane, with the controls and settings. */
+  .panel-dialog {
+    inset: var(--seg-bottom-top) 0 0;
+    width: min(560px, calc(100vw - 32px));
+    max-height: min(760px, calc(var(--seg-bottom) - 32px));
+    padding-bottom: 0;
+    border-radius: var(--radius-xl);
+  }
+
+  .panel-dialog[open] {
+    animation-name: panel-in;
   }
 }
 

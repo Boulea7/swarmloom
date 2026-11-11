@@ -199,6 +199,8 @@ export const es: StudioCatalog = {
   "export.web.partial": "El vídeo se corta a los 10 minutos.",
   "export.web.cancelled": "Exportación cancelada.",
   "export.web.failed": "La exportación falló: {message}",
+  "export.web.loadFailed":
+    "No se pudo cargar el exportador. Comprueba la conexión, recarga la página y vuelve a intentarlo.",
   "export.web.noCodec":
     "Este navegador no puede codificar vídeo de este tamaño. Prueba un tamaño menor o la línea de comandos.",
   "export.cli.title": "Renderizar con la línea de comandos",
