@@ -1,4 +1,4 @@
-import { svgAdapter } from "@swarmloom/adapter-svg";
+import { createSvgAdapter } from "@swarmloom/adapter-svg";
 import type { Adapter, AdapterContext, Blueprint, LoadedSource, Plugin, SourceInput } from "@swarmloom/core";
 import { assembleLayers, layoutFor } from "./blueprint";
 import { LIMITS, LOTTIE_ADAPTER_ID, LOTTIE_PLUGIN } from "./constants";
@@ -44,6 +44,8 @@ export interface LottieLoadedSource extends LoadedSource {
 const SANDBOX_SIDE = 1024;
 /** Layers the adapter adds to the woven pose (player and timeline). */
 const OWN_LAYERS = 2;
+/** Converts the chosen frame, already laid out in world space, at exactly the world width. */
+const frameAdapter = createSvgAdapter({ fit: "width" });
 
 interface Animation {
   parsed: ParsedLottie;
@@ -169,7 +171,7 @@ export function createLottieAdapter(options: LottieAdapterOptions = {}): Adapter
       }
 
       const limit = Math.min(maxLayers, ctx.maxLayers ?? maxLayers) - OWN_LAYERS;
-      const woven = await svgAdapter.load(
+      const woven = await frameAdapter.load(
         { text: markup, name: input.name },
         { document: ctx.document, width: layout.world.w, theme: ctx.theme, maxLayers: limit, signal },
       );
