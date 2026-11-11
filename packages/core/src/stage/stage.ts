@@ -401,8 +401,7 @@ export class SwarmStage implements Stage {
     if (this.#destroyed) return Promise.resolve();
     this.#phase++;
     const dom = this.#dom;
-    dom.rootEl.removeAttribute("data-live");
-    dom.world.removeAttribute("data-live");
+    dom.setLive(false);
     this.#overlay.setHidden(false);
     if (this.#mode === "inline") {
       this.#fade.set(1);
@@ -444,6 +443,8 @@ export class SwarmStage implements Stage {
   reset(): void {
     if (this.#destroyed) return;
     this.#phase++;
+    // Before the views go: focus on a link of the live content moves to the stage, not to <body>.
+    this.#dom.setLive(false);
     this.#scroll.cancel();
     // Fresh views are the only state guaranteed to carry nothing over from the previous build.
     this.#mounter.unmountAll();
@@ -458,8 +459,6 @@ export class SwarmStage implements Stage {
     overlay.clearOverlays();
     overlay.setHidden(false);
     overlay.setRulers(false, true);
-    this.#dom.rootEl.removeAttribute("data-live");
-    this.#dom.world.removeAttribute("data-live");
     if (this.#fade.active) this.#fade.set(this.#fade.value);
     this.#passDirty = true;
   }
@@ -472,9 +471,8 @@ export class SwarmStage implements Stage {
     overlay.setRulers(false, true);
     overlay.setHidden(true);
     if (this.#mode === "inline") {
-      // Content stays; it becomes a page again (selectable text, usable links, running animations).
-      dom.rootEl.setAttribute("data-live", "");
-      dom.world.setAttribute("data-live", "");
+      // Content stays; it becomes a page again (readable, focusable links, selectable text, running animations).
+      dom.setLive(true);
       return;
     }
     // The page takes input again the moment the dissolve starts.
