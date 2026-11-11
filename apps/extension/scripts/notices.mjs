@@ -6,6 +6,7 @@
 // are SwarmLoom's own code, covered by its MIT licence (LICENSE.txt in the package).
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** File names the packages carry: the third-party notices and SwarmLoom's own licence. */
 export const NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
@@ -47,7 +48,8 @@ const RULE = "=".repeat(80);
  */
 
 /** Full SIL Open Font License 1.1 text, shared with the npm notices (amo-source.mjs ships it). */
-const OFL_1_1 = new URL("../../../scripts/release/licenses/OFL-1.1.txt", import.meta.url);
+// Resolved as a path: under Vitest's DOM environment the global URL resolves relative to the page.
+const OFL_1_1 = resolve(dirname(fileURLToPath(import.meta.url)), "../../../scripts/release/licenses/OFL-1.1.txt");
 
 /**
  * Code and assets that a dependency ships pre-bundled inside its own files under another licence than
