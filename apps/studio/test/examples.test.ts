@@ -32,6 +32,8 @@ describe("examples manifest", () => {
       ),
     ).toEqual(["ofd", "notebook", "terminal", "diff"]);
     expect(["mindmap/loom.xmind", "mindmap/release-plan.mm"].map(formatOf)).toEqual(["mindmap", "mindmap"]);
+    // One Lottie card, the archive: the gallery goes by name, and .json files outside code/ are not listed.
+    expect(["lottie/shuttle-loop.lottie", "lottie/shuttle-loop.json"].map(formatOf)).toEqual(["lottie", undefined]);
     // "sheet" covers CSV text and binary workbooks: only the text gets a snippet.
     expect(byPath.get("sheet/cities.csv")?.snippet).toBeTruthy();
     expect(byPath.get("sheet/sales.xlsx")?.snippet).toBeUndefined();

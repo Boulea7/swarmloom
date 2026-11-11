@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,28 +6,30 @@ import type { Page } from "playwright-core";
 import { expectPositionals, parseCommand, readInt } from "../args";
 import { locateAssets, requireSnapshotBundle } from "../assets";
 import { launchBrowser, newContext, watchPage } from "../browser/launch";
+import { applyNetworkPolicy } from "../browser/network";
 import { snapshotPage } from "../browser/snapshot";
 import { findBrowser } from "../discovery/browser";
 import { systemHost } from "../discovery/host";
 import { installedPlaywright } from "../discovery/playwright";
 import { UsageError } from "../errors";
 import { warn } from "../io";
-import { isWebUrl } from "../pipeline/input";
-import { startStaticServer } from "../server/static";
+import { inputBase, isSiblingAsset, isWebUrl } from "../pipeline/input";
+import { type StaticServer, startStaticServer } from "../server/static";
 import { Cleanup } from "../util/async";
 import type { Command, CommandContext } from "./types";
 
 const HELP = `Usage: swarmloom snapshot <url|file.html> [options]
 
 Capture a web page as a SwarmLoom Blueprint (JSON) that the player, <swarm-loom> and Studio can replay.
-Local HTML files are served from their own folder so relative images and styles load.
+Local HTML files open with their scripts turned off. The images, fonts, style sheets and media next to
+them load; other files in that folder are not served, and only https images and fonts load from other sites.
 
   -o, --output <file>   Output file, or - for stdout. Default: blueprint.json
       --width <px>      Viewport width in CSS px (16-7680). Default: 1280
       --height <px>     Viewport height in CSS px (16-7680). Default: 720
       --chrome <path>   Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then auto-detect
   -q, --quiet           Errors only
-      --verbose         Echo the page's console to stderr
+      --verbose         Echo the page's console and blocked requests to stderr
   -h, --help            Show this help
 
 Examples:
@@ -45,6 +48,12 @@ const OPTIONS = {
 
 const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);
 const PAGE_TIMEOUT_MS = 60_000;
+
+/**
+ * Sent with every file of a local page. Its own scripts never run, so it cannot read what is published
+ * next to it; the snapshot script is evaluated over DevTools, which the page's CSP does not limit.
+ */
+const LOCAL_PAGE_HEADERS = { "Content-Security-Policy": "script-src 'none'; object-src 'none'" };
 
 export interface SnapshotOptions {
   input: string;
@@ -96,6 +105,23 @@ async function localHtmlFile(input: string, cwd: string): Promise<string | null>
   return file;
 }
 
+/**
+ * Publishes a local HTML file on a loopback server the way render publishes its input: the file itself
+ * plus the images, fonts, style sheets and media next to it (no dotfiles, documents or scripts), under
+ * a random path other local processes cannot guess.
+ * @returns The server and the page URL.
+ */
+async function serveLocalPage(file: string): Promise<{ server: StaticServer; url: string }> {
+  const base = inputBase(randomBytes(12).toString("base64url"));
+  const page = base + encodeURIComponent(path.basename(file));
+  const server = await startStaticServer({
+    files: new Map([[page, file]]),
+    mounts: [{ prefix: base, dir: path.dirname(file), accept: isSiblingAsset }],
+    headers: LOCAL_PAGE_HEADERS,
+  });
+  return { server, url: new URL(page, server.url).href };
+}
+
 async function run(argv: string[], ctx: CommandContext): Promise<number> {
   const { io } = ctx;
   const opts = parseSnapshotOptions(argv, ctx.cwd);
@@ -113,9 +139,9 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   try {
     let url = opts.input;
     if (file) {
-      const server = await startStaticServer({ root: path.dirname(file) });
-      cleanup.defer(() => server.close());
-      url = server.url + encodeURIComponent(path.basename(file));
+      const local = await serveLocalPage(file);
+      cleanup.defer(() => local.server.close());
+      url = local.url;
     }
     const browser = await launchBrowser(browserPath);
     cleanup.defer(() => browser.close());
@@ -125,8 +151,17 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       scale: 1,
       colorScheme: "light",
       locale: "en-US",
-      bypassCSP: true,
+      // Web pages: inject regardless of their CSP. Local pages keep the script block they are served with.
+      bypassCSP: !file,
     });
+    let blockedRequests = 0;
+    if (file) {
+      // Decision C03: the loopback server plus https images and fonts; nothing else leaves the machine.
+      await applyNetworkPolicy(context, { localOrigin: new URL(url).origin, remoteAssets: true }, (blocked, type) => {
+        blockedRequests += 1;
+        if (opts.verbose) io.err(`[network] blocked ${type} ${blocked}`);
+      });
+    }
     const watch = (page: Page) => watchPage(page, opts.quiet ? { ...io, err: () => {} } : io, opts.verbose);
     const { blueprint, status } = await snapshotPage(context, {
       url,
@@ -141,6 +176,9 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
     else await writeFile(opts.output, `${json}\n`);
     if (!opts.quiet) {
       if (status >= 400) warn(io, `the page answered HTTP ${status}; the snapshot shows that response`);
+      if (blockedRequests > 0 && !opts.verbose) {
+        warn(io, `blocked ${blockedRequests} request(s) the page made to other sites (see --verbose)`);
+      }
       if (blueprint.truncated) {
         warn(io, `content was dropped (${blueprint.truncated.dropped} layers): ${blueprint.truncated.reason}`);
       }

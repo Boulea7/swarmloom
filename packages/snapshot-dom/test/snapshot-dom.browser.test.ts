@@ -273,6 +273,43 @@ describe("edge cases", () => {
   });
 });
 
+describe("long pages", () => {
+  /** Rows of 100 px, with fixed help UI nested in a footer at the end of the DOM. */
+  function longPage(rows: number): string {
+    const body = Array.from({ length: rows }, (_, i) => `<div class="row">Row ${i}</div>`).join("");
+    return (
+      "<!doctype html><html><head><style>body{margin:0}.row{height:100px;border-bottom:1px solid #ccc}</style></head>" +
+      `<body>${body}<footer><div><span style="position:fixed;right:8px;bottom:8px">Help</span></div></footer></body></html>`
+    );
+  }
+
+  it("walks in time slices, so an abort from another task stops it", async () => {
+    const doc = await mountPage(longPage(3000));
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 0);
+    await expect(snapshot(doc, { maxHeight: 1e9, signal: ctrl.signal })).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it.each([{ maxHeight: 2000 }, { maxLayers: 10 }])(
+    "skips paint reads past the cut of %j and keeps fixed UI",
+    async (opts) => {
+      const doc = await mountPage(longPage(1000));
+      const view = doc.defaultView as Window;
+      const read = view.getComputedStyle.bind(view);
+      let pseudoReads = 0;
+      view.getComputedStyle = (el: Element, pseudo?: string | null) => {
+        if (pseudo) pseudoReads++;
+        return read(el, pseudo);
+      };
+      const bp = await snapshot(doc, opts);
+      expect(textWith(bp, "Help")).toBeDefined();
+      expect(bp.truncated?.dropped).toBeGreaterThan(0);
+      // A fully walked row reads its ::before and ::after; rows past the cut are not read at all.
+      expect(pseudoReads).toBeLessThan(600);
+    },
+  );
+});
+
 describe("snapshotHtml", () => {
   it("lays out a fragment in a sandbox with its origin at (0,0) and cleans up", async () => {
     const w = window as Window & { __pwned?: number };

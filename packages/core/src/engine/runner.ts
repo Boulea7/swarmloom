@@ -38,6 +38,10 @@ export class ScopedStage implements TaskStage {
     return this.#stage.blueprint;
   }
 
+  get reducedMotion(): boolean {
+    return this.#stage.reducedMotion === true;
+  }
+
   layer(id: string): Layer | undefined {
     return this.#stage.layer(id);
   }

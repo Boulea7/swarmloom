@@ -1,8 +1,8 @@
 import type { BoxLayer, Rect, TextLayer } from "@swarmloom/core";
 import { FORM_TAGS, IGNORE_ATTR, isElement, isText, MEDIA_ATTR, MEDIA_TAGS, SKIP_TAGS } from "../dom/env";
-import { throwIfAborted } from "../util/abort";
 import { px } from "../util/css";
 import { inset, intersect, isIdentity, multiplyLinear, parseLinear } from "../util/geom";
+import { now } from "../util/slice";
 import { emitBox, emitRule, emitSides } from "./box";
 import { emitFormControl } from "./form";
 import { classify, hasVisibleText, inlineFacts, isFlexOrGrid, isMath, isTextLeaf, isVerbatim } from "./inline";
@@ -26,6 +26,12 @@ import {
 import { borderInsets, containerTextStyle, contentInsets, paintsBox, textPropsOf, visualOf } from "./styles";
 import { emitTextLeaf, emitTextRun, floatBox, textRole } from "./text";
 import { emitBackdrop, isTopLayer, TOP_LAYER_KEY } from "./top-layer";
+
+/**
+ * A walk step. The walk is a generator so snapshot() can run it in time slices: it yields
+ * (at element boundaries) once the slice deadline in `cap.slice` has passed.
+ */
+export type Walk<T = void> = Generator<void, T, void>;
 
 /** Initial walk context: viewport -> world offset (dx, dy) and an optional world clip. */
 export function rootContext(dx: number, dy: number, clip: Rect | null): Ctx {
@@ -254,13 +260,13 @@ function childContext(
 }
 
 /** Walks one element subtree. */
-export function visit(cap: Capture, el: Element, ctx: Ctx): void {
+export function* visit(cap: Capture, el: Element, ctx: Ctx): Walk {
+  if (now() >= cap.slice.deadline) yield;
   if (cap.visited >= cap.maxElements) {
     cap.elementCapHit = true;
     return;
   }
   cap.visited++;
-  if ((cap.visited & 127) === 0) throwIfAborted(cap.opts.signal);
   const tag = el.localName;
   if (SKIP_TAGS.has(tag) || el.hasAttribute(IGNORE_ATTR)) return;
   const info = infoOf(cap, el);
@@ -271,19 +277,133 @@ export function visit(cap: Capture, el: Element, ctx: Ctx): void {
   const place = placeElement(cap, own, info);
   const rec = openNode(cap, el, place.box);
   try {
-    render(cap, own, info, place, own.paintKey !== ctx.paintKey, topLayer);
+    const newKey = own.paintKey !== ctx.paintKey;
+    if (paintIsDropped(cap, own, place.box)) yield* visitDropped(cap, own, info, place, newKey, topLayer);
+    else yield* render(cap, own, info, place, newKey, topLayer);
   } finally {
     closeNode(cap, rec);
   }
 }
 
-function render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: boolean, topLayer: boolean): void {
+/**
+ * True when emit() would refuse everything the element paints itself: its box starts below
+ * maxHeight, or the capture is past the hard layer limit and the element is not fixed UI.
+ */
+function paintIsDropped(cap: Capture, own: Ctx, box: Rect): boolean {
+  if (box.y >= cap.opts.maxHeight) return true;
+  return !own.inFixed && cap.layers.length >= cap.hardLimit;
+}
+
+/** Counts one layer that a skipped element would most likely have produced. */
+function countDropped(cap: Capture, belowHeight: boolean): void {
+  if (belowHeight) cap.droppedHeight++;
+  else cap.overflow++;
+}
+
+/** The walk follows the element's children (replaced content and form controls have none). */
+function descends(info: ElInfo): boolean {
+  const el = info.el;
+  const tag = el.localName;
+  if (el.hasAttribute(MEDIA_ATTR) || MEDIA_TAGS.has(tag) || FORM_TAGS.has(tag) || isMath(el)) return false;
+  return info.cs.getPropertyValue("content-visibility") !== "hidden";
+}
+
+/** An element under a skipped element; its walk contexts are only computed when a descendant needs them. */
+interface LightNode {
+  readonly info: ElInfo;
+  readonly parent: LightNode | null;
+  readonly index: number;
+  /** Absolutely positioned descendants are laid out inside the skipped area (a positioned ancestor). */
+  readonly anchored: boolean;
+  /** Context for the children (null: clipped away); undefined until resolved. */
+  kids: Ctx | null | undefined;
+}
+
+function kidsOf(cap: Capture, node: LightNode): Ctx | null {
+  if (node.kids !== undefined) return node.kids;
+  let kids: Ctx | null = null;
+  const ctx = node.parent ? kidsOf(cap, node.parent) : null;
+  if (ctx) {
+    const own = ownContext(cap, ctx, node.info, node.index, false);
+    const place = placeElement(cap, own, node.info);
+    kids = childContext(cap, own, node.info, place, null, own.paintKey !== ctx.paintKey, false);
+  }
+  node.kids = kids;
+  return kids;
+}
+
+/**
+ * Skims the subtree of an element whose own painting, text and in-flow content emit() would drop
+ * (below maxHeight, or past the hard layer limit). Per descendant only the basic style facts of
+ * infoOf() are read; rects, text, box visuals and pseudo-elements are not. Descendants that can
+ * escape the skipped area get a full visit with exact contexts: fixed elements (screen UI) and
+ * absolutely positioned elements whose containing block lies outside it. Each skipped element
+ * counts as one dropped layer. Skimmed elements have their own budget (`maxSkimmed`), so fixed UI
+ * late in a huge DOM is still reached after the full-walk budget would have run out.
+ */
+function* visitDropped(
+  cap: Capture,
+  own: Ctx,
+  info: ElInfo,
+  place: Placement,
+  newKey: boolean,
+  topLayer: boolean,
+): Walk {
+  const belowHeight = place.box.y >= cap.opts.maxHeight;
+  if (place.box.w > 0 && place.box.h > 0) countDropped(cap, belowHeight);
+  if (!descends(info)) return;
+  const kids = childContext(cap, own, info, place, null, newKey, topLayer);
+  if (!kids) return;
+  const root: LightNode = { info, parent: null, index: 0, anchored: info.position !== "static", kids };
+  // Iterative depth-first walk in document order: no generator per skipped element.
+  const stack: { node: LightNode; children: FlatChild[]; next: number }[] = [
+    { node: root, children: childrenOf(cap, info), next: 0 },
+  ];
+  while (stack.length > 0) {
+    const top = stack[stack.length - 1] as (typeof stack)[number];
+    const child = top.children[top.next++];
+    if (!child) {
+      stack.pop();
+      continue;
+    }
+    const el = child.node;
+    if (!isElement(el) || SKIP_TAGS.has(el.localName) || el.hasAttribute(IGNORE_ATTR)) continue;
+    const ci = infoOf(cap, el);
+    if (ci.display === "none") continue;
+    const pos = ci.position;
+    const pastLimit = cap.layers.length >= cap.hardLimit;
+    if (pos === "fixed" || (pos === "absolute" && !top.node.anchored && !pastLimit)) {
+      const ctx = kidsOf(cap, top.node);
+      if (ctx) yield* visit(cap, el, ctx);
+      continue;
+    }
+    if (now() >= cap.slice.deadline) yield;
+    if (cap.skimmed >= cap.maxSkimmed) {
+      cap.elementCapHit = true;
+      return;
+    }
+    cap.skimmed++;
+    if (ci.opacity <= 0.001) continue;
+    if (ci.visibility === "visible") countDropped(cap, belowHeight);
+    if (!descends(ci)) continue;
+    const node: LightNode = {
+      info: ci,
+      parent: top.node,
+      index: ++cap.treeIndex,
+      anchored: top.node.anchored || pos !== "static",
+      kids: undefined,
+    };
+    stack.push({ node, children: childrenOf(cap, ci), next: 0 });
+  }
+}
+
+function* render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: boolean, topLayer: boolean): Walk {
   const el = info.el;
   const tag = el.localName;
   const visible = info.visibility === "visible";
   if (el.hasAttribute(MEDIA_ATTR) || MEDIA_TAGS.has(tag)) {
     if (!visible) return;
-    if ((tag === "iframe" || tag === "frame") && visitFrame(cap, own, info, place)) return;
+    if ((tag === "iframe" || tag === "frame") && (yield* visitFrame(cap, own, info, place))) return;
     emitMedia(cap, own, info, place);
     return;
   }
@@ -314,15 +434,15 @@ function render(cap: Capture, own: Ctx, info: ElInfo, place: Placement, newKey: 
   const kids = childContext(cap, own, info, place, boxId, newKey, topLayer);
   if (!kids) return;
   if (visible) emitPositionedPseudo(cap, kids, info, "before", place.box);
-  renderContent(cap, kids, info);
+  yield* renderContent(cap, kids, info);
   if (visible) emitPositionedPseudo(cap, kids, info, "after", place.box);
 }
 
-function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
+function* renderContent(cap: Capture, kids: Ctx, info: ElInfo): Walk {
   if (isTextLeaf(cap, info)) {
     const content = placeInset(cap, kids, info, contentInsets(info.cs));
     const res = emitTextLeaf(cap, kids, info, content);
-    for (const o of res.outflow) visit(cap, o, kids);
+    for (const o of res.outflow) yield* visit(cap, o, kids);
     return;
   }
   let content: Rect | null = null;
@@ -334,14 +454,14 @@ function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
   let segText = false;
   let sawBlock = false;
   let prevBlock: FlatChild | undefined;
-  const flush = (atEnd: boolean, next?: FlatChild): void => {
+  const flush = function* (atEnd: boolean, next?: FlatChild): Walk {
     if (seg.length === 0) return;
     if (segText) {
       const neighbours = { prev: prevBlock, next };
       const res = emitTextRun(cap, kids, info, seg, contentBox(), { before: !sawBlock, after: atEnd }, neighbours);
-      for (const o of res.outflow) visit(cap, o, kids);
+      for (const o of res.outflow) yield* visit(cap, o, kids);
     } else {
-      for (const ch of seg) if (isElement(ch.node)) visit(cap, ch.node, kids);
+      for (const ch of seg) if (isElement(ch.node)) yield* visit(cap, ch.node, kids);
     }
     seg = [];
     segText = false;
@@ -351,14 +471,14 @@ function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
     if (cls === "skip") continue;
     const node = child.node;
     if (cls === "outflow") {
-      if (isElement(node)) visit(cap, node, kids);
+      if (isElement(node)) yield* visit(cap, node, kids);
       continue;
     }
     if (cls === "block") {
-      flush(false, child);
+      yield* flush(false, child);
       sawBlock = true;
       prevBlock = child;
-      if (isElement(node)) visit(cap, node, kids);
+      if (isElement(node)) yield* visit(cap, node, kids);
       continue;
     }
     seg.push(child);
@@ -370,7 +490,7 @@ function renderContent(cap: Capture, kids: Ctx, info: ElInfo): void {
       }
     }
   }
-  flush(true);
+  yield* flush(true);
 }
 
 /** A display-math or block-level verbatim element: one text layer holding the whole element. */
@@ -406,7 +526,7 @@ function frameBackground(cap: Capture, doc: Document): string | null {
 }
 
 /** Captures a same-origin iframe document in place. Returns false when it must become a placeholder. */
-function visitFrame(cap: Capture, own: Ctx, info: ElInfo, place: Placement): boolean {
+function* visitFrame(cap: Capture, own: Ctx, info: ElInfo, place: Placement): Walk<boolean> {
   if (own.frameDepth >= 3 || own.linear) return false;
   let doc: Document | null = null;
   try {
@@ -454,6 +574,6 @@ function visitFrame(cap: Capture, own: Ctx, info: ElInfo, place: Placement): boo
     );
   cap.bgSources.add(root);
   if (body) cap.bgSources.add(body);
-  visit(cap, root, { ...fctx, parentId: bgId ?? fctx.parentId });
+  yield* visit(cap, root, { ...fctx, parentId: bgId ?? fctx.parentId });
   return true;
 }

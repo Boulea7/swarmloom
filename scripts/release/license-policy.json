@@ -26,7 +26,7 @@
     {
       "package": "mediabunny",
       "license": "MPL-2.0",
-      "reason": "In-browser video export (product-spec A.4); shipped unmodified, source location in THIRD_PARTY_NOTICES.md"
+      "reason": "In-browser video export (product-spec A.4); shipped unmodified, source location in the generated LICENSE.md of each package that bundles it (scripts/release/third-party-notices.mjs)"
     },
     {
       "package": "web-ext",

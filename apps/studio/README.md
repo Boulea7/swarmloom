@@ -4,7 +4,7 @@ SwarmLoom Studio is the installable web app (PWA). Open or drop a file, paste te
 
 ## What it does
 
-- **Home:** a drop zone, a file picker, paste (with a format choice; notebooks, asciicasts, patches, FreeMind maps and RTF are recognised by content), a URL field, and a gallery of every sample in the repository's `examples/` folder, copied in at build time with static thumbnails. Licence notes next to the samples (such as `examples/doc/SOURCES.md`) are copied too, without a tile.
+- **Home:** a drop zone, a file picker, paste (with a format choice; notebooks, asciicasts, patches, FreeMind maps, RTF and Lottie JSON are recognised by content), a URL field, and a gallery of every sample in the repository's `examples/` folder, copied in at build time with static thumbnails. Licence notes next to the samples (such as `examples/doc/SOURCES.md`) are copied too, without a tile.
 - **Player:** a full-bleed inline stage, a scrubber (a seek slider on the player's time line when the player has `seek(t)`, a progress bar otherwise), a settings drawer (a bottom sheet on phones), export (record in the browser, or copy the `npx` command), and share links that carry small text files inside the URL hash.
 - **Layouts:** desktop, tablet, phone, foldables (two panes via Viewport Segments, refined by Device Posture when available) and a watch face.
 - **PWA:** installable, a share target for files and text, an OS file handler, and a hand-written service worker. At install it caches the shell and every format reader with the chunks it imports, so local files open offline. The worker's version hashes the content of every cached file, so a change to the page, the manifest or an icon alone still reaches installed copies.
@@ -41,7 +41,7 @@ Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `
 | `pnpm -F @swarmloom/studio build:web` | `dist/`: the PWA with examples, manifest, icons and `sw.js`. |
 | `pnpm -F @swarmloom/studio build:extension` (or `STUDIO_TARGET=extension`) | `dist-extension/studio.html`: relative paths, no service worker, no examples. Files arrive through `?src=` or `?key=`. |
 
-App icons are drawn from the mark in `src/ui/mark.ts` at build time; no image files are checked in. The gallery picks up new files in `examples/` automatically. A new format also needs an entry in `src/formats-meta.ts` (test/formats-meta.test.ts keeps it in step with the `@swarmloom/formats` registry), and a name in the Studio catalog until core translates it. Formats whose adapter ships separately are marked `optional` there: Lottie stays hidden until the registry provides it.
+App icons are drawn from the mark in `src/ui/mark.ts` at build time; no image files are checked in. The gallery picks up new files in `examples/` automatically. A new format also needs an entry in `src/formats-meta.ts` (test/formats-meta.test.ts keeps it in step with the `@swarmloom/formats` registry), and a name in the Studio catalog until core translates it. Formats whose adapter may be missing from a custom registry are marked `optional` there and stay hidden until the registry provides them. Lottie is one; the bundled registry includes it.
 
 ## Tests and screenshots
 

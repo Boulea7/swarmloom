@@ -25,6 +25,7 @@ const LOADERS: Record<string, () => Promise<Adapter>> = {
   terminal: () => import("@swarmloom/adapter-terminal").then((m) => m.terminalAdapter),
   diff: () => import("@swarmloom/adapter-diff").then((m) => m.diffAdapter),
   mindmap: () => import("@swarmloom/adapter-mindmap").then((m) => m.mindmapAdapter),
+  lottie: () => import("@swarmloom/adapter-lottie").then((m) => m.lottieAdapter),
 };
 
 /** Every supported format with a lazy `import()` of its adapter. */

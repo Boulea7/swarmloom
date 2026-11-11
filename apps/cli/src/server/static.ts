@@ -46,8 +46,8 @@ export function contentType(file: string): string {
 }
 
 export interface StaticServerOptions {
-  /** Directory to serve. Nothing outside it is ever readable. */
-  root: string;
+  /** Directory to serve under `base`. Nothing outside it is ever readable. Omit to serve only `files` and `mounts`. */
+  root?: string;
   /** Interface to bind. Default 127.0.0.1 (loopback only). */
   host?: string;
   /** Port; 0 picks a free one. */
@@ -63,6 +63,8 @@ export interface StaticServerOptions {
   files?: ReadonlyMap<string, string | Uint8Array>;
   /** Extra directories, each published under its own URL prefix and limited to the files it accepts. */
   mounts?: readonly StaticMount[];
+  /** Extra headers on every file response, e.g. a Content-Security-Policy for served pages. */
+  headers?: Readonly<Record<string, string>>;
 }
 
 /** A directory outside `root` published read-only under `prefix` (no listings, no index files). */
@@ -116,13 +118,21 @@ async function fileStats(file: string): Promise<Stats | null> {
 
 const HEADERS = { "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" } as const;
 
-async function sendExtra(req: IncomingMessage, res: ServerResponse, urlPath: string, body: string | Uint8Array) {
+type Headers = Readonly<Record<string, string>>;
+
+async function sendExtra(
+  req: IncomingMessage,
+  res: ServerResponse,
+  urlPath: string,
+  body: string | Uint8Array,
+  headers: Headers,
+) {
   const size = typeof body === "string" ? (await fileStats(body))?.size : body.byteLength;
   if (size === undefined) {
     res.writeHead(404).end("Not found");
     return;
   }
-  res.writeHead(200, { ...HEADERS, "Content-Type": contentType(urlPath), "Content-Length": size });
+  res.writeHead(200, { ...headers, "Content-Type": contentType(urlPath), "Content-Length": size });
   if (req.method === "HEAD") res.end();
   else if (typeof body === "string") streamFile(body, res);
   else res.end(body);
@@ -133,7 +143,13 @@ function hasDotSegment(relative: string): boolean {
   return relative.split(/[\\/]/).some((segment) => segment.startsWith("."));
 }
 
-async function sendMounted(req: IncomingMessage, res: ServerResponse, mount: StaticMount, urlPath: string) {
+async function sendMounted(
+  req: IncomingMessage,
+  res: ServerResponse,
+  mount: StaticMount,
+  urlPath: string,
+  headers: Headers,
+) {
   const file = resolveRequestPath(mount.dir, mount.prefix, urlPath);
   const relative = file ? path.relative(path.resolve(mount.dir), file) : "";
   const stats = file && !hasDotSegment(relative) && mount.accept(file) ? await fileStats(file) : null;
@@ -141,7 +157,7 @@ async function sendMounted(req: IncomingMessage, res: ServerResponse, mount: Sta
     res.writeHead(404).end("Not found");
     return;
   }
-  res.writeHead(200, { ...HEADERS, "Content-Type": contentType(file), "Content-Length": stats.size });
+  res.writeHead(200, { ...headers, "Content-Type": contentType(file), "Content-Length": stats.size });
   if (req.method === "HEAD") res.end();
   else streamFile(file, res);
 }
@@ -158,9 +174,10 @@ function streamFile(file: string, res: ServerResponse): void {
  * @throws Error from `listen` (for example EADDRINUSE) so callers can report it.
  */
 export async function startStaticServer(opts: StaticServerOptions): Promise<StaticServer> {
-  const root = path.resolve(opts.root);
+  const root = opts.root === undefined ? undefined : path.resolve(opts.root);
   const base = normalizeBase(opts.base);
   const host = opts.host ?? "127.0.0.1";
+  const headers: Headers = { ...HEADERS, ...opts.headers };
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.method !== "GET" && req.method !== "HEAD") {
@@ -170,20 +187,20 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
     const urlPath = new URL(req.url ?? "/", "http://localhost").pathname;
     const extra = opts.files?.get(urlPath);
     if (extra !== undefined) {
-      await sendExtra(req, res, urlPath, extra);
+      await sendExtra(req, res, urlPath, extra, headers);
       return;
     }
     const mount = opts.mounts?.find((m) => urlPath.startsWith(m.prefix));
     if (mount) {
-      await sendMounted(req, res, mount, urlPath);
+      await sendMounted(req, res, mount, urlPath, headers);
       return;
     }
     if (base !== "/" && (urlPath === "/" || urlPath === base.slice(0, -1))) {
       res.writeHead(302, { Location: base }).end();
       return;
     }
-    let file = resolveRequestPath(root, base, urlPath);
-    if (!file) {
+    let file = root ? resolveRequestPath(root, base, urlPath) : null;
+    if (!root || !file) {
       res.writeHead(404).end("Not found");
       return;
     }
@@ -200,7 +217,7 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
       res.writeHead(404).end("Not found");
       return;
     }
-    res.writeHead(200, { ...HEADERS, "Content-Type": contentType(file), "Content-Length": stats.size });
+    res.writeHead(200, { ...headers, "Content-Type": contentType(file), "Content-Length": stats.size });
     if (req.method === "HEAD") res.end();
     else streamFile(file, res);
   }

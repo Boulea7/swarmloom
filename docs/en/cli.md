@@ -6,86 +6,110 @@ description: The swarmloom render, snapshot, serve, formats and doctor commands.
 # CLI
 
 ::: warning Current status
-The CLI package has not been published. The current source supports only `--help` and `--version`; every subcommand reports “not implemented yet”. The commands and options below are the planned v1 interface fixed in the shell contract.
+`render`, `snapshot`, `serve`, `formats` and `doctor` are implemented, but the `swarmloom` npm package has not been published yet, so for now you build it from source. The output of `swarmloom <command> --help` is the reference for each command's options.
 :::
 
 The CLI drives local Chrome/Chromium frame by frame on a virtual clock, captures each frame, and passes the result to ffmpeg. It is intended for batch export, fixed-size recordings and reproducible builds.
 
 ## Requirements and installation
 
-Once published, the planned invocation is:
+Build from source (Node.js 22.12 or later):
 
 ```bash
-npx swarmloom --help
-npx swarmloom render ./demo.md -o demo.mp4
+git clone https://github.com/Boulea7/swarmloom.git
+cd swarmloom
+corepack enable
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install
+pnpm build
+node apps/cli/dist/cli.js --help
 ```
 
-Or install globally:
+`pnpm build` bundles the render page, the snapshot script and Studio into `apps/cli/dist/`. In a source checkout, read `swarmloom` below as `node apps/cli/dist/cli.js`.
+
+Once the npm package is published you can run it directly or install it globally; the CLI itself then needs only Node.js 20 or later:
 
 ```bash
+npx swarmloom render ./demo.md -o demo.mp4
 npm install -g swarmloom
 ```
 
-The CLI requires Node.js 20 or later. Source-workspace development requires Node.js 22.12 or later.
+Rendering also needs:
 
-Video and animated-image encoding also require:
+- A Chromium-based browser: Chrome, Chromium, Edge or Brave. The CLI never downloads a browser itself. The Chrome Headless Shell that matches the `playwright-core` version is recommended, because it renders the same frames on every machine;
+- ffmpeg 4 or later for MP4, WebM, GIF and WebP. PNG sequences do not need ffmpeg.
 
-- Chrome or Chromium;
-- A modern ffmpeg. PNG sequences do not need ffmpeg muxing.
-
-The planned `swarmloom doctor` command checks both dependencies and prints fixes.
+Run `swarmloom doctor` to check these and print the exact install commands and fixes.
 
 ## Global options
 
 | Option | Purpose |
 | --- | --- |
-| `-h, --help` | Show global or command help |
+| `-h, --help` | Show the global help; `swarmloom <command> --help` or `swarmloom help <command>` shows a command's help |
 | `-v, --version` | Show the CLI version |
-| `--quiet` | Hide render progress; errors still go to stderr |
+
+Without arguments the help goes to stderr and the exit code is 1. `--quiet` and `--verbose` belong to `render` and `snapshot`; they are not global options, and `swarmloom --quiet ...` is rejected.
 
 ## `render`
 
 ```text
-swarmloom render <file|url> [-o out.mp4]
-  [--format mp4|webm|gif|webp|png-seq]
-  [--width 1280] [--height 720] [--scale 1] [--fps 30]
-  [--agents auto] [--speed 1] [--seed 1]
-  [--theme auto] [--labels names] [--finale flock]
-  [--no-sound] [--tail 2500] [--max-duration 120 | --duration <s>]
-  [--bpm 112] [--cue <at>:<action> ...]
-  [--audio-out <wav>] [--events-out <json>] [--manifest-out <json>]
-  [--chrome <path>] [--ffmpeg <path>] [--quiet]
+swarmloom render <file|url> [options]
 ```
 
-### Arguments and options
+Render a file or web page to a video of the swarm building it, with sound by default. Frames are captured one by one on a virtual clock, so the result does not depend on machine speed.
 
-| Argument | Default | Description |
+### Output
+
+| Option | Default | Description |
 | --- | --- | --- |
-| `<file\|url>` | Required | Local file or remote URL; quote paths containing spaces |
-| `-o <path>` | `out.mp4` | Output file; use an output directory for PNG sequences |
-| `--format <format>` | `mp4` | `mp4`, `webm`, `gif`, `webp` or `png-seq` |
-| `--width <px>` | `1280` | Viewport and output width in CSS px |
-| `--height <px>` | `720` | Viewport and output height in CSS px |
-| `--scale <number>` | `1` | Device scale factor; changes pixel density, not CSS layout dimensions |
-| `--fps <number>` | `30` | Frames per second; each frame advances `1000 / fps` ms |
-| `--agents <n\|auto>` | `auto` | Cursor count; `auto` scales to the scene |
-| `--speed <number>` | `1` | Build-speed multiplier; must be above 0 |
-| `--seed <number>` | `1` | Random seed; reuse it with identical input and settings |
-| `--theme <mode>` | `auto` | `auto`, `light` or `dark` |
+| `<file\|url>` | Required | Local file or `http(s)` URL; quote paths containing spaces. See [`formats`](#formats) for the file types |
+| `-o, --output <path>` | `<input name>.<format>` | Output file, written to the current directory by default. `png-seq` writes a directory, `<input name>-frames` by default. For URLs the input name is the host name plus the last path segment |
+| `-f, --format <format>` | From the `--output` extension, else `mp4` | `mp4`, `webm`, `gif`, `webp` or `png-seq`. When neither is given and no ffmpeg is found, it falls back to `png-seq` with a warning |
+| `--width <px>` | `1280` | Viewport width in CSS px, 16–7680 |
+| `--height <px>` | `720` | Viewport height in CSS px, 16–7680 |
+| `--scale <n>` | `1` | Pixels per CSS px; the video is width and height times this value, 0.25–4. Neither side may exceed 8192 px |
+| `--fps <n>` | `30` | Frames per second, 1–120; each frame advances `1000 / fps` ms |
+| `--max-duration <s>` | `120` | Stop the video at this many seconds, 1–3600; warns when the build has not finished |
+| `--duration <s>` | Off | Exact video length, 0.1–3600 s: keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
+
+Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are silent animations. `png-seq` writes into a missing or empty directory, numbering frames from `frame-000001.png`, with the sound in `audio.wav` (not written with `--no-sound`).
+
+### Swarm
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--agents <n\|auto>` | `auto` | Number of cursors, 1–256; `auto` scales to the scene |
+| `--speed <n>` | `1` | Build-speed multiplier, 0.05–16 |
+| `--seed <n>` | `1` | Random seed, 0–4294967295; the same input, settings and seed give the same video |
+| `--theme <theme>` | `auto` | `auto`, `light` or `dark` |
 | `--labels <mode>` | `names` | `names`, `agents`, `roles` or `none` |
-| `--finale <mode>` | `flock` | `flock`, `halo` or `none` |
-| `--no-sound` | Sound enabled | Disable the soundtrack and sound-event output |
-| `--tail <ms>` | `2500` | Hold time after the build completes |
-| `--max-duration <s>` | `120` | Maximum engine duration in seconds; prevents endless renders |
-| `--duration <s>` | Off | Exact video length (0.1–3600 s): keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
-| `--bpm <number>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid, 40–240) |
-| `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`); `<action>` is `pause` (every cursor holds), `resume` or `finish` (complete the build quickly). Applied on the first frame at or after `<at>`; same-time cues run in the order given |
-| `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video) |
+| `--finale <finale>` | `flock` | `flock`, `halo` or `none` |
+| `--follow <mode>` | `tour` | `tour` scrolls the page along with the build; `none` does not scroll |
+| `--tail <ms>` | `2500` | Hold time after the build finishes, 0–60000 ms: the finale, then the page goes live, the cursors leave and the page's own animations (CSS, SVG SMIL, Lottie) play on video time; an HTML document swaps in the real page |
+| `--no-live` | Go live | Keep the finale through the whole tail instead of going live |
+| `--locale <tag>` | `en-US` | Language of the toolbar strings and the page, a BCP 47 tag such as `zh-CN` |
+| `--bpm <n>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid), 40–240 |
+| `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume` or `finish` (complete the build quickly). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
+| `--no-sound` | Sound on | Leave out the soundtrack; GIF and WebP never have one |
+| `--no-remote` | Loaded | Do not load `https:` images and fonts the input links to. Scripts, style sheets, data requests and `http:` files from other sites are never loaded |
+
+### Capture evidence
+
+For takes that can be checked and repeated. These files and `--output` must all be different.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
 | `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
 | `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256, player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels |
-| `--chrome <path>` | Auto-discover | Chrome/Chromium executable |
-| `--ffmpeg <path>` | Auto-discover | ffmpeg executable |
-| `--quiet` | Off | Hide frame and ETA progress |
+
+### Programs and logging
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--chrome <path>` | Auto-detect | Chrome/Chromium/Edge/Brave executable; see [`doctor`](#doctor) for the search order |
+| `--ffmpeg <path>` | Auto-detect | ffmpeg 4+ executable |
+| `-q, --quiet` | Off | Errors only: no progress, warnings or summary |
+| `--verbose` | Off | Echo the render page's console and every blocked request to stderr |
 
 ### Examples
 
@@ -95,11 +119,22 @@ Export a 1280×720, 30 fps MP4:
 swarmloom render ./README.md -o readme.mp4
 ```
 
+Without `-o`, this writes `README.mp4` in the current directory:
+
+```bash
+swarmloom render ./docs/README.md
+```
+
 Export a silent WebM with a fixed seed:
 
 ```bash
-swarmloom render https://example.com -o site.webm \
-  --format webm --seed 42 --no-sound
+swarmloom render https://example.com -o site.webm --seed 42 --no-sound
+```
+
+Export a 15 fps, 960×540 GIF:
+
+```bash
+swarmloom render ./deck.pptx -o deck.gif --fps 15 --width 960 --height 540
 ```
 
 Export a 2× PNG sequence for editing:
@@ -116,22 +151,43 @@ swarmloom render ./model.glb -o model.mp4 \
   --max-duration 15 --chrome /path/to/chromium --ffmpeg /path/to/ffmpeg
 ```
 
+Render exactly 24 seconds, hold on beat 26, finish on beat 28 and keep evidence that can be checked later:
+
+```bash
+swarmloom render ./logo.svg -o take.mp4 --duration 24 --bpm 90 \
+  --cue 26b:pause --cue 28b:resume --cue 28b:finish \
+  --audio-out take.wav --events-out events.json --manifest-out manifest.json
+```
+
 ## `snapshot`
 
 ```text
-swarmloom snapshot <url|file> [-o blueprint.json] [--width 1280]
+swarmloom snapshot <url|file.html> [options]
 ```
 
-Convert a page or file into Blueprint JSON for layer inspection, adapter development or later playback.
+Capture a web page as Blueprint JSON that the player, `<swarm-loom>` and Studio can replay, or use it to inspect layers and develop adapters. Use `render` for documents, images and other files.
 
-| Argument | Default | Description |
+Local HTML files are treated as untrusted:
+
+- The page's own scripts do not run; the capture shows what its HTML and CSS produce;
+- Only the file itself and the images, fonts, style sheets, media and similar assets next to it (subfolders included) are served, the same set `render` serves. Other files in that folder and dotfiles such as `.env` are not;
+- From other sites only `https:` images and fonts load. Every other request is blocked; the CLI reports how many, and `--verbose` lists each one.
+
+Web page URLs run their scripts as usual.
+
+| Option | Default | Description |
 | --- | --- | --- |
-| `<url\|file>` | Required | Source to capture |
-| `-o <path>` | `blueprint.json` | Output JSON file |
-| `--width <px>` | `1280` | Layout and capture viewport width |
+| `<url\|file.html>` | Required | An `http(s)` URL, or a local `.html`, `.htm` or `.xhtml` file |
+| `-o, --output <file>` | `blueprint.json` | Output file; `-` writes to stdout |
+| `--width <px>` | `1280` | Viewport width in CSS px, 16–7680 |
+| `--height <px>` | `720` | Viewport height in CSS px, 16–7680 |
+| `--chrome <path>` | Auto-detect | Browser executable |
+| `-q, --quiet` | Off | Errors only |
+| `--verbose` | Off | Echo the page's console and every blocked request to stderr |
 
 ```bash
 swarmloom snapshot https://example.com -o example.blueprint.json --width 1440
+swarmloom snapshot ./docs/index.html -o - > page.json
 ```
 
 A Blueprint may contain page text and image references. Review it for sensitive content as carefully as the original before sharing.
@@ -139,52 +195,67 @@ A Blueprint may contain page text and image references. Review it for sensitive 
 ## `serve`
 
 ```text
-swarmloom serve [--port 0] [--open]
+swarmloom serve [--port 0] [--host 127.0.0.1] [--open]
 ```
 
-Serve the Studio build bundled with the CLI on the local machine.
+Serve the Studio build bundled with the CLI on this machine. The address goes to stdout; stop it with Ctrl+C.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--port <port>` | `0` | Listening port; `0` selects a free port |
-| `--open` | Off | Open the default browser after startup |
+| `--port <n>` | `0` | Listening port; `0` picks a free port |
+| `--host <addr>` | `127.0.0.1` | Interface to bind; the default allows this machine only |
+| `--open` | Off | Open Studio in the default browser after startup |
 
 ```bash
 swarmloom serve --port 4173 --open
 ```
 
-This is a local workflow. Do not expose it directly as a public service for untrusted files.
+Binding to a non-loopback address prints a warning, because other machines on the network can then open Studio. This is a local workflow. Do not expose it directly as a public service for untrusted files.
 
 ## `formats`
 
 ```text
-swarmloom formats
+swarmloom formats [--json]
 ```
 
-Print adapter IDs, labels, extensions and MIME types from the registry actually bundled in the current CLI. Treat this command as the authoritative list after new adapters land.
+List the input formats SwarmLoom can build, with label, ID and extensions; the last row is the web page (`dom`), which takes any `http(s)` URL. The list comes from the format registry actually bundled in the CLI; treat its output as authoritative.
+
+```text
+FORMAT                 ID        EXTENSIONS
+Markdown               markdown  .md .markdown .mdown .mkd
+HTML                   html      .html .htm .xhtml
+…
+Web page               dom       any http(s) URL
+```
+
+`--json` prints a JSON array of `id`, `label`, `extensions` and `mime` for scripts.
 
 ## `doctor`
 
 ```text
-swarmloom doctor
+swarmloom doctor [--chrome <path>] [--ffmpeg <path>]
 ```
 
-Check browser and ffmpeg discovery, and print versions, paths and fixes for missing dependencies.
+Check the Node.js version, whether the browser starts, the ffmpeg version and which video formats this machine can export, and confirm that the render page, the snapshot script and Studio are bundled. Missing items come with a fix. `--chrome` and `--ffmpeg` check the given executable instead of the auto-detected one.
+
+The exit code is 0 when Node.js 20+, the browser, ffmpeg and the render page all work, and 2 otherwise. A missing snapshot script or Studio is only a warning.
 
 Browser discovery order:
 
 1. `--chrome`;
 2. `SWARMLOOM_CHROME`;
-3. chromium-headless-shell in the Playwright cache;
-4. System Chrome, Chromium or Edge.
+3. chromium-headless-shell in the Playwright browser cache (honours `PLAYWRIGHT_BROWSERS_PATH`);
+4. Installed Chrome, Chromium, Edge or Brave: `CHROME_PATH`, commands on `PATH` on Linux, then each system's default install locations, with snap packages last;
+5. Playwright's full Chromium build.
 
-When none is found, `doctor` suggests `npx playwright install chromium-headless-shell`.
+When `--chrome` or `SWARMLOOM_CHROME` points to a missing file, the CLI stops with an error instead of searching further. When nothing is found, `doctor` suggests `npx playwright@<playwright-core version> install chromium-headless-shell`.
 
 ffmpeg discovery order:
 
 1. `--ffmpeg`;
 2. `SWARMLOOM_FFMPEG`;
-3. `PATH`.
+3. `ffmpeg` on `PATH`; versions older than 4 are skipped;
+4. An `ffmpeg-static` package you installed yourself.
 
 The CLI does not ship ffmpeg; install it yourself.
 
@@ -196,25 +267,18 @@ swarmloom doctor
 
 ## Output and exit codes
 
-Normal progress, including frames and ETA, goes to stderr and does not contaminate file data. Planned exit codes:
+Progress goes to stderr and never mixes with file data: a progress bar with the time left on terminals, one line per quarter otherwise. The first Ctrl+C stops the render, closes the browser, stops ffmpeg and removes temporary files; a second one exits at once. The CLI only ends processes it started. With `SWARMLOOM_DEBUG=1`, unexpected errors include a stack trace.
 
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Command or argument usage error |
-| `2` | Missing browser, ffmpeg or another dependency |
-| `3` | Parsing, rendering or encoding failure |
-
-Render exactly 24 seconds, hold on beat 26, finish on beat 28 and keep evidence that can be checked later:
-
-```bash
-swarmloom render ./logo.svg -o take.mp4 --duration 24 --bpm 90 \
-  --cue 26b:pause --cue 28b:resume --cue 28b:finish \
-  --audio-out take.wav --events-out events.json --manifest-out manifest.json
-```
+| `1` | Usage error: invalid arguments, or a missing or unsupported input |
+| `2` | Missing dependency: no browser, no usable ffmpeg or encoder, or a bundled page is missing |
+| `3` | Render failure: the page, the browser or ffmpeg failed |
+| `130` | Interrupted by Ctrl+C or SIGTERM |
 
 ## Determinism
 
-The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once its resources are ready, without relying on the browser's BeginFrame. Sound events render offline to WAV and are muxed with the video; muxing does not use `-shortest`, so audio and video have the same length.
+The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once it is ready, without relying on the browser's BeginFrame. Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
 
 Deterministic validation compares raw frames and PCM, not MP4/WebM bytes; the per-frame PNG hashes and the sound log hash that `--manifest-out` records can be compared across two runs directly. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.

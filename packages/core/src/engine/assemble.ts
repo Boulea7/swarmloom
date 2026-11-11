@@ -65,14 +65,22 @@ function isManualClock(clock: Clock): boolean {
   return typeof (clock as { advance?: unknown }).advance === "function";
 }
 
+function isPlugin(p: unknown): p is Plugin {
+  return typeof p === "object" && p !== null && typeof (p as Plugin).name === "string";
+}
+
+/** Validates the plugin list and swaps in each plugin's own instance for this player (`perPlayer`). */
 function checkPlugins(plugins: unknown): Plugin[] {
   if (plugins === undefined) return [];
   if (!Array.isArray(plugins)) throw new TypeError("plugins must be an array");
   return plugins.map((p: unknown, i) => {
-    if (typeof p !== "object" || p === null || typeof (p as Plugin).name !== "string") {
-      throw new TypeError(`plugins[${i}] must be an object with a name`);
+    if (!isPlugin(p)) throw new TypeError(`plugins[${i}] must be an object with a name`);
+    if (typeof p.perPlayer !== "function") return p;
+    const own: unknown = p.perPlayer();
+    if (!isPlugin(own) || own.name !== p.name) {
+      throw new TypeError(`plugins[${i}].perPlayer() must return a plugin named "${p.name}"`);
     }
-    return p as Plugin;
+    return own;
   });
 }
 

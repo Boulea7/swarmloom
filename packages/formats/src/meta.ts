@@ -1,4 +1,5 @@
 import type { Adapter } from "@swarmloom/core";
+import { isLottieJsonBytes } from "./text";
 
 /** Static metadata of a format (everything but the adapter code). */
 export interface FormatMeta {
@@ -211,5 +212,14 @@ export const FORMAT_META: readonly FormatMeta[] = [
     label: "Mind map",
     extensions: ["xmind", "mm"],
     mime: ["application/vnd.xmind.workbook", "application/x-freemind", "application/x-xmind"],
+  },
+  {
+    // dotLottie archives go by their ZIP entries (detect.ts); Lottie JSON keeps the .json name and
+    // is recognised by content, before the name sends it to the code adapter.
+    id: "lottie",
+    label: "Lottie animation",
+    extensions: ["lottie"],
+    mime: ["application/json+lottie", "application/zip+dotlottie"],
+    sniff: isLottieJsonBytes,
   },
 ];

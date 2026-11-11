@@ -52,7 +52,8 @@ export function parseBlueprint(json: string): Blueprint {
  * captures the page as a Blueprint (images inlined, lazy content pre-scrolled, a viewport screenshot
  * supplied for WebGL canvases, videos and cross-origin frames). The page is closed afterwards.
  *
- * @param context Should be created with bypassCSP so the script can be injected into any page.
+ * The snapshot script is evaluated over DevTools, so it runs even where the page's CSP blocks scripts.
+ * @param context Create it with bypassCSP for web pages, so their CSP does not hold back the capture.
  * @throws RenderError when the page cannot be loaded or the snapshot fails.
  */
 export async function snapshotPage(context: BrowserContext, opts: PageSnapshotOptions): Promise<PageSnapshot> {
@@ -87,7 +88,8 @@ export async function snapshotPage(context: BrowserContext, opts: PageSnapshotOp
     const view = await page.evaluate(() => ({ x: scrollX, y: scrollY, dpr: devicePixelRatio, title: document.title }));
 
     try {
-      await page.addScriptTag({ content: opts.bundle });
+      // Not a <script> element: a page served with `script-src 'none'` must still accept it.
+      await page.evaluate(`${opts.bundle}\n;undefined`);
     } catch (error) {
       throw fail("Could not inject the snapshot script", error);
     }

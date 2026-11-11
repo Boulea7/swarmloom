@@ -5,8 +5,8 @@ description: createPlayer, format adapters, DOM snapshots, clocks and choreograp
 
 # JavaScript API
 
-::: warning Current status
-The public TypeScript contracts are defined; `createPlayer()`, adapters and exporters are still being implemented. These examples describe the target API, and current stubs throw “not implemented yet”.
+::: info Current status
+Everything on this page is implemented: `createPlayer()` (`@swarmloom/core`), `load()` and the built-in adapters (`@swarmloom/formats`), `snapshot()` (`@swarmloom/snapshot-dom`), and `exportFrames()`, `renderAudioWav()` and `recordElement()` (`@swarmloom/export`). See [Formats](./formats.md) for how mature each format is. The packages are not on npm yet; use them from a source checkout for now.
 :::
 
 ## From input to player
@@ -108,6 +108,9 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `goLive()` | Return to the live page or final static content |
 | `ready()` | Wait for images and fonts on currently mounted layers |
 | `eta()` | Estimated remaining build time in ms at current speed |
+| `finish()` | Optional: completes the remaining build within about a second, then starts the finale (toolbar "finish", key F) |
+| `seek(t)` | Optional: jumps to `t` ms after `play()`; later times fast-forward, earlier ones replay from the start, with nothing drawn or played meanwhile |
+| `setFinale(mode)` | Optional: changes the finale; applies immediately while it runs |
 | `on(type, fn)` | Subscribe; returns an unsubscribe function |
 | `destroy()` | Release player, stage, audio and plugin resources |
 
@@ -125,7 +128,7 @@ Unsubscribe application listeners during teardown and handle `play()` rejection 
 
 ## Format loading and adapters
 
-### `load(input, ctx?, registry?)`
+### `load(input, ctx?, options?)`
 
 `@swarmloom/formats` detects the input, dynamically imports its adapter, and returns a `LoadedSource`:
 
@@ -150,7 +153,9 @@ Outside a browser, pass `ctx.document` explicitly. `AdapterContext` contains:
 | `maxLayers` | Layer budget; reaching it sets `Blueprint.truncated` |
 | `signal` | Optional cancellation signal |
 
-Unknown formats throw. Adapter errors for invalid input, missing assets and decoding failures propagate as well.
+The third argument is `LoadOptions`: `registry` (a custom registry, default `formats`), `format` (skip detection and name the adapter id, extension or MIME type), `maxBytes` (default 50 MB), `fetch` (URL-only inputs are downloaded first by default; `false` hands them to the adapter untouched) and `signal`. A registry array is accepted as shorthand for `{ registry }`.
+
+Unknown formats, inputs over the size limit, empty inputs, encrypted documents and failed downloads reject with a `SourceError` whose `code` says why. Adapter errors for invalid input, missing assets and decoding failures propagate unchanged.
 
 ### Register an adapter
 
@@ -288,6 +293,8 @@ Choreography rules:
 - Use `agent.rng`, not `Math.random()` or `Date.now()`.
 - Remove overlays, release presses and call `stage.finish()` in `finally`.
 - `setup()` may return cleanup; `frame(now, dt)` uses engine time.
+- A plugin that keeps state provides `perPlayer()`: every player calls it once and uses the fresh instance, so one `LoadedSource` can drive several players at once.
+- `stage.reducedMotion` is true when the player builds without motion; keep still poses then instead of starting animations.
 - Avoid per-frame DOM allocation and repeated layout reads.
 
 ## Clocks and randomness
@@ -308,12 +315,30 @@ virtual.stop();
 
 The same seed and clock are only part of determinism. Fonts, input, viewport, adapters and plugin versions must also be fixed.
 
-## Frame and audio export <Badge type="warning" text="Planned" />
+## Frame and audio export
 
-`@swarmloom/export` is planned to provide:
+`@swarmloom/export` provides:
 
-- `exportFrames(playerOptions, frameOptions)`: virtual-clock frames with `onFrame(index, timeMs)` capture;
-- `renderAudioWav(events, durationMs, options?)`: a complete WAV from a sound-event log;
-- `recordElement(target, options?)`: live browser region capture without a determinism guarantee.
+- `exportFrames(playerOptions, { fps, onFrame, tailMs?, maxDurationMs?, onWarning?, signal? })`: drives a player frame by frame on a `VirtualClock`. It calls `onFrame(index, timeMs)` once each frame's assets are ready; frame `n` shows engine time `n * 1000 / fps`. It returns `{ frames, durationMs, soundLog, warnings }`. Recoverable player errors go to `onWarning` and `warnings` and the export continues; throw from `onWarning` to abort;
+- `renderAudioWav(soundLog, durationMs, options?)`: renders the sound-event log with `OfflineAudioContext` to WAV bytes as long as the video;
+- `recordElement(target, options?)`: call it from a click handler. It asks to share the current tab, crops the capture to the element and records live with `MediaRecorder`. It is not deterministic; `canRecordElement()` reports support, and failures throw a `RecordingError` with a `code`.
+
+```ts
+import { exportFrames, renderAudioWav } from "@swarmloom/export";
+
+const { frames, durationMs, soundLog } = await exportFrames(
+  { blueprint: source.blueprint, plugins: source.plugins, host, mode: "inline", seed: 7 },
+  {
+    fps: 30,
+    tailMs: 2000,
+    onFrame: async (index) => {
+      await captureFrame(index); // e.g. take a screenshot or hand a canvas to an encoder
+    },
+  },
+);
+const wav = await renderAudioWav(soundLog, durationMs);
+```
+
+The `swarmloom render` command uses the same frame-by-frame pipeline; see [CLI](./cli.md).
 
 Core also exports `renderOffline()` and `encodeWav()` for custom audio pipelines. Video exporters should always await `player.ready()` so fonts and images cannot be captured before decoding.
