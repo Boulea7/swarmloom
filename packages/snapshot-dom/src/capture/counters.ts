@@ -254,12 +254,26 @@ function sheetRules(sheet: CSSStyleSheet): CSSRuleList | null {
   }
 }
 
+/**
+ * Per capture, whether each style sheet looked at puts a counter into generated content. A sheet
+ * that many shadow roots adopt is scanned once per snapshot; a later snapshot looks again, since
+ * sheets can change in between.
+ */
+const sheetVerdicts = new WeakMap<Capture, WeakMap<CSSStyleSheet, boolean>>();
+
 /** True when a readable style sheet of the root puts a counter into generated content. */
-function sheetsUseCounters(root: Document | ShadowRoot): boolean {
+function sheetsUseCounters(cap: Capture, root: Document | ShadowRoot): boolean {
+  const verdicts = sheetVerdicts.get(cap) ?? new WeakMap<CSSStyleSheet, boolean>();
+  sheetVerdicts.set(cap, verdicts);
   const sheets = [...Array.from(root.styleSheets ?? []), ...(root.adoptedStyleSheets ?? [])];
   return sheets.some((sheet) => {
-    const rules = sheetRules(sheet);
-    return rules !== null && rulesUseCounters(rules, 0);
+    let uses = verdicts.get(sheet);
+    if (uses === undefined) {
+      const rules = sheetRules(sheet);
+      uses = rules !== null && rulesUseCounters(rules, 0);
+      verdicts.set(sheet, uses);
+    }
+    return uses;
   });
 }
 
@@ -272,7 +286,7 @@ function indexOf(cap: Capture, el: Element): CounterIndex {
   let index = cap.counters.get(root);
   if (!index) {
     index = { root, values: new Map(), progress: new Map(), stacks: new Map(), open: 0, path: [], started: false };
-    if (sheetsUseCounters(root)) start(index);
+    if (sheetsUseCounters(cap, root)) start(index);
     cap.counters.set(root, index);
   }
   return index;

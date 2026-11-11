@@ -246,6 +246,29 @@ describe("edge cases", () => {
     expect(Math.max(worst, reads - seen)).toBeLessThan(200);
   });
 
+  it("looks for counters once in a style sheet that many shadow roots adopt", async () => {
+    const doc = await mountPage("<body></body>");
+    const shared = new (doc.defaultView as typeof globalThis).CSSStyleSheet();
+    shared.replaceSync("p{color:teal}");
+    for (let i = 0; i < 20; i++) {
+      const root = doc.body.appendChild(doc.createElement("div")).attachShadow({ mode: "open" });
+      root.adoptedStyleSheets = [shared];
+      root.innerHTML = `<p>Part ${i}</p>`;
+    }
+    const rule = shared.cssRules[0] as CSSStyleRule;
+    const style = rule.style;
+    let reads = 0;
+    Object.defineProperty(rule, "style", {
+      get: () => {
+        reads++;
+        return style;
+      },
+    });
+    const bp = await snapshot(doc);
+    expect(textWith(bp, "Part 19")).toBeDefined();
+    expect(reads).toBe(1);
+  });
+
   it("captures an open modal dialog and its backdrop into the screen layer", async () => {
     const doc = await mountPage(
       '<body style="margin:0;height:3000px"><div style="transform:translateX(10px);overflow:hidden;height:40px">' +
