@@ -4,7 +4,7 @@
  * The CLI serves `@swarmloom/export/dist/render/` on 127.0.0.1 and drives `window.__swarmloom`
  * through Playwright. These types mirror that contract; the CLI only depends on this shape.
  */
-import type { Blueprint } from "@swarmloom/core";
+import type { Blueprint, SoundEvent } from "@swarmloom/core";
 
 export interface RenderInput {
   name: string;
@@ -12,6 +12,12 @@ export interface RenderInput {
   base64?: string;
   text?: string;
   url?: string;
+}
+
+/** A player action at a fixed video time, ms (applied on the first frame at or after it). */
+export interface RenderCue {
+  at: number;
+  action: "pause" | "resume" | "finish";
 }
 
 export interface RenderInit {
@@ -38,6 +44,8 @@ export interface RenderInit {
   bpm?: number;
   /** Sound pack id ("studio", "soft", "8bit", "silent-keys"). */
   pack?: string;
+  /** Player actions at fixed video times (pause, resume, finish). */
+  cues?: RenderCue[];
   /**
    * Optional CLI extension: a blueprint captured from a live page by the CLI (http/https URLs).
    * A render page that supports it plays this blueprint instead of loading `input`; one that does not
@@ -53,11 +61,20 @@ export interface StepResult {
   done: boolean;
 }
 
+/** What init() reports; render pages older than the capture evidence only send `estimatedMs`. */
+export interface RenderInfo {
+  estimatedMs: number;
+  layers?: number;
+  blueprintSha256?: string;
+}
+
 export interface RenderApi {
-  init(o: RenderInit): Promise<{ estimatedMs: number }>;
+  init(o: RenderInit): Promise<RenderInfo>;
   step(ms: number): Promise<StepResult>;
   /** Base64 WAV of the sound log rendered offline for the elapsed duration. */
   audioWav(): Promise<string>;
+  /** Every sound event logged so far, on the frames' clock (optional: older render pages lack it). */
+  soundLog?(): Promise<SoundEvent[]>;
   dispose(): void;
 }
 
@@ -76,4 +93,35 @@ export function asStepResult(value: unknown): StepResult {
     total: Number.isFinite(v.total) ? Number(v.total) : 0,
     done: v.done,
   };
+}
+
+/** Validates init()'s result (untrusted JSON); unknown or malformed fields are dropped. */
+export function asRenderInfo(value: unknown): RenderInfo {
+  const v = (value ?? {}) as Partial<RenderInfo>;
+  const estimate = Number(v.estimatedMs);
+  const info: RenderInfo = { estimatedMs: Number.isFinite(estimate) && estimate > 0 ? estimate : 0 };
+  if (Number.isInteger(v.layers) && Number(v.layers) >= 0) info.layers = Number(v.layers);
+  if (typeof v.blueprintSha256 === "string" && /^[0-9a-f]{64}$/.test(v.blueprintSha256)) {
+    info.blueprintSha256 = v.blueprintSha256;
+  }
+  return info;
+}
+
+/**
+ * Validates soundLog() output (untrusted JSON) into events with a fixed key order, so the same
+ * run always serialises to the same bytes.
+ * @throws TypeError when it is not a list of events.
+ */
+export function asSoundEvents(value: unknown): SoundEvent[] {
+  if (!Array.isArray(value)) throw new TypeError("render page returned an invalid soundLog() result");
+  return value.map((raw, i) => {
+    const e = raw as Partial<SoundEvent> | null;
+    if (!e || typeof e.name !== "string" || typeof e.t !== "number" || !Number.isFinite(e.t)) {
+      throw new TypeError(`render page returned an invalid sound event at index ${i}`);
+    }
+    const event: SoundEvent = { t: e.t, name: e.name, pan: typeof e.pan === "number" ? e.pan : 0 };
+    if (typeof e.pitch === "number") event.pitch = e.pitch;
+    if (typeof e.vel === "number") event.vel = e.vel;
+    return event;
+  });
 }
