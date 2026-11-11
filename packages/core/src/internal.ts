@@ -17,6 +17,7 @@ import type {
   Blueprint,
   CursorShape,
   Layer,
+  OverlayLevel,
   Player,
   Plugin,
   Point,
@@ -88,6 +89,8 @@ export interface StageOptions {
   initialScroll?: number;
   /** Seeded RNG for any visual jitter; the stage must never call Math.random or Date.now. */
   rng: () => number;
+  /** Editing marks drawn on the overlay canvas. Default "full". */
+  overlays?: OverlayLevel;
 }
 
 /**

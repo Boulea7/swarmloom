@@ -1,4 +1,4 @@
-import type { Blueprint, LabelMode, SoundEvent } from "@swarmloom/core";
+import type { Blueprint, LabelMode, OverlayLevel, SoundEvent } from "@swarmloom/core";
 
 /** Input of a render: what `SourceInput` carries, serialisable across the driver boundary. */
 export interface RenderInput {
@@ -41,6 +41,11 @@ export interface RenderInit {
   seed?: number;
   theme?: "auto" | "light" | "dark";
   labels?: LabelMode;
+  /**
+   * Editing marks drawn while building: "full" (default), "minimal" (no size badges, distance
+   * labels, guide lines or rulers) or "none" (cursors, name tags and content only).
+   */
+  overlays?: OverlayLevel;
   /** Default true. `false` renders a silent soundtrack. */
   sound?: boolean;
   finale?: "flock" | "halo" | "none";
@@ -127,6 +132,7 @@ declare global {
 }
 
 const LABELS = ["names", "agents", "roles", "none"] as const;
+const OVERLAYS = ["full", "minimal", "none"] as const;
 const THEMES = ["auto", "light", "dark"] as const;
 const FINALES = ["flock", "halo", "none"] as const;
 const FOLLOWS = ["tour", "none"] as const;
@@ -241,6 +247,7 @@ export function parseInit(raw: unknown): ParsedInit {
     seed: number(raw, "seed", -(2 ** 31), 2 ** 32, true) ?? 1,
     theme: oneOf(raw, "theme", THEMES) ?? "auto",
     labels: oneOf(raw, "labels", LABELS),
+    overlays: oneOf(raw, "overlays", OVERLAYS),
     sound: sound ?? true,
     finale: oneOf(raw, "finale", FINALES),
     locale: optionalString(raw, "locale"),

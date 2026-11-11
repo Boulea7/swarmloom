@@ -204,7 +204,7 @@ export class SwarmStage implements Stage {
     this.#fade = new Fade(this.#opacity);
     this.#guard = new PageGuard(doc);
     try {
-      this.#overlay = new OverlayLayer(dom.canvas, o.theme, this.#reduced);
+      this.#overlay = new OverlayLayer(dom.canvas, o.theme, this.#reduced, o.overlays);
       this.#guides = new GuideLines(this.#registry, this.#overlay.guides, this.#reduced);
       this.#scroll = new ScrollController(dom.scroller, this.#geo, this.#reduced);
       this.#scroll.onScroll = () => this.#afterScroll();

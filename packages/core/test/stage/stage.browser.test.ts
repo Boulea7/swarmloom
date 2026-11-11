@@ -522,6 +522,24 @@ describe("stage: overlays and canvas", () => {
     }).not.toThrow();
   });
 
+  it.each([
+    ["full", true, true],
+    ["minimal", false, true],
+    ["none", false, false],
+  ] as const)("overlays %s: draws guides %s, empty frames %s", (overlays, guides, frames) => {
+    const { stage } = mount([], { overlays });
+    const canvas = stage.root.querySelector("canvas") as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+    const dpr = canvas.width / Number.parseFloat(canvas.style.width);
+    const inked = (x: number, y: number, w: number): boolean =>
+      ctx.getImageData(Math.round(x * dpr), Math.round(y * dpr), Math.round(w * dpr), 1).data.some((v) => v > 0);
+    stage.overlay("guide", { axis: "x", pos: 500 });
+    stage.overlay("ghost-rect", { x: 100, y: 100, w: 200, h: 100, fill: true });
+    stage.render(16, []);
+    expect(inked(490, 400, 20)).toBe(guides);
+    expect(inked(190, 150, 20)).toBe(frames);
+  });
+
   it("draws 48 agents at DPR 2 and reports the render cost", () => {
     const desc = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
     Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });

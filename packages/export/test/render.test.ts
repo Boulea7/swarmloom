@@ -200,6 +200,7 @@ describe("render page protocol", () => {
       [{ ...base, width: 0 }, "width must be a number within 16..8192"],
       [{ ...base, fps: Number.NaN }, "fps must be a number"],
       [{ ...base, theme: "neon" }, "theme must be one of auto, light, dark"],
+      [{ ...base, overlays: "some" }, "overlays must be one of full, minimal, none"],
       [{ ...base, live: "yes" }, "live must be a boolean"],
       [{ ...base, input: { name: "a", base64: "%%%" } }, "not valid base64"],
       [{ ...base, blueprint: { version: 2, size: { w: 1, h: 1 }, layers: [] } }, "blueprint must be a version 1"],

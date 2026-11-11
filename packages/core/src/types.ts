@@ -452,6 +452,14 @@ export type PlayerState = "idle" | "intro" | "building" | "paused" | "finale" | 
 
 export type LabelMode = "names" | "agents" | "roles" | "none";
 
+/**
+ * Editing marks drawn while building. "full" draws all of them. "minimal" leaves out the measuring
+ * marks: size badges, distance labels, guide lines and rulers. "none" also leaves out selections,
+ * empty frames, pen lines and anchors, carets and the cursors' status bubbles, so only the cursors,
+ * their name tags and the content remain. The intro icon and the halo finale are always drawn.
+ */
+export type OverlayLevel = "full" | "minimal" | "none";
+
 export interface ThemeSpec {
   /** Cursor colours, cycled across agents. */
   palette?: string[];
@@ -481,6 +489,8 @@ export interface PlayerOptions {
   sound?: boolean | SoundOptions;
   theme?: "auto" | "light" | "dark" | ThemeSpec;
   labels?: LabelMode | string[];
+  /** Optional. Editing marks drawn while building (see {@link OverlayLevel}). Default "full". */
+  overlays?: OverlayLevel;
   /** "scroll": swarm follows user scrolling; "tour": auto-scroll at build pace; "none": static. */
   follow?: "scroll" | "tour" | "none";
   /** "auto" follows prefers-reduced-motion: quick cross-fade build, no flocking. */

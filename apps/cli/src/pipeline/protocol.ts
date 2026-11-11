@@ -32,6 +32,8 @@ export interface RenderInit {
   seed?: number;
   theme?: "auto" | "light" | "dark";
   labels?: "names" | "agents" | "roles" | "none";
+  /** Editing marks drawn while building (render pages without it draw them all). */
+  overlays?: "full" | "minimal" | "none";
   sound?: boolean;
   finale?: "flock" | "halo" | "none";
   locale?: string;

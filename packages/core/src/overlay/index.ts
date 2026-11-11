@@ -1,6 +1,6 @@
 import { type BubbleChrome, CursorPainter } from "../cursor";
 import type { AgentView, ResolvedTheme } from "../internal";
-import type { OverlayHandle } from "../types";
+import type { OverlayHandle, OverlayLevel } from "../types";
 import { type GuideLine, type OverlayRecord, PAINTERS, type PaintEnv, paintGuideLines, RANKS } from "./kinds";
 import type { Props } from "./props";
 import { RULER_SIZE, Rulers } from "./rulers";
@@ -27,6 +27,14 @@ interface ImageEntry {
 
 const NOOP_HANDLE: OverlayHandle = { update() {}, remove() {} };
 
+const MEASURING_KINDS = ["size-badge", "measure", "guide"];
+/** Overlay kinds left out per {@link OverlayLevel}; "full" also draws guide lines and rulers. */
+const HIDDEN_KINDS: Readonly<Record<OverlayLevel, ReadonlySet<string>>> = {
+  full: new Set(),
+  minimal: new Set(MEASURING_KINDS),
+  none: new Set([...MEASURING_KINDS, "selection", "ghost-rect", "rubber-band", "anchor", "caret"]),
+};
+
 /**
  * The single DPR-aware canvas above the content: blueprint guide layers, transient overlays,
  * rulers and the swarm, repainted once per render(). Nothing is drawn (and nothing cleared
@@ -46,14 +54,17 @@ export class OverlayLayer {
   readonly #env: PaintEnv;
   readonly #records: OverlayRecord[] = [];
   readonly #images = new Map<string, ImageEntry>();
+  readonly #level: OverlayLevel;
   #seq = 0;
   #hidden = false;
   #dirty = true;
   #lastNow = Number.NaN;
 
-  constructor(canvas: HTMLCanvasElement, theme: ResolvedTheme, reducedMotion: boolean) {
+  /** `level` picks the editing marks drawn (see {@link OverlayLevel}); cursors and name tags always are. */
+  constructor(canvas: HTMLCanvasElement, theme: ResolvedTheme, reducedMotion: boolean, level: OverlayLevel = "full") {
     const doc = canvas.ownerDocument;
     this.#canvas = canvas;
+    this.#level = HIDDEN_KINDS[level] ? level : "full";
     this.#ctx = canvas.getContext("2d");
     this.tokens = deriveTokens(theme);
     this.#rulers = new Rulers(doc, this.tokens);
@@ -126,7 +137,7 @@ export class OverlayLayer {
 
   /** Space currently covered by the rulers along the top and left edges, CSS px. */
   get rulerInset(): number {
-    return this.#rulers.visible * RULER_SIZE;
+    return this.#level === "full" ? this.#rulers.visible * RULER_SIZE : 0;
   }
 
   /**
@@ -155,13 +166,14 @@ export class OverlayLayer {
   render(now: number, agents: readonly AgentView[]): number {
     const dt = Number.isFinite(this.#lastNow) ? now - this.#lastNow : 0;
     this.#lastNow = now;
-    const rulers = this.#rulers.step(dt);
+    const marks = this.#level === "full";
+    const rulers = marks ? this.#rulers.step(dt) : 0;
     this.#env.rulerInset = rulers * RULER_SIZE;
     const ctx = this.#ctx;
     if (!ctx) return 0;
     const v = this.view;
-    const busy =
-      !this.#hidden && (this.#records.length > 0 || this.guideCount > 0 || agents.length > 0 || rulers > 0.001);
+    const guides = marks ? this.guideCount : 0;
+    const busy = !this.#hidden && (this.#records.length > 0 || guides > 0 || agents.length > 0 || rulers > 0.001);
     if (!busy && !this.#dirty) return 0;
     ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
     ctx.globalAlpha = 1;
@@ -169,11 +181,12 @@ export class OverlayLayer {
     this.#dirty = busy;
     if (!busy) return 0;
 
-    paintGuideLines(ctx, this.guides, this.guideCount, v, this.#env);
+    paintGuideLines(ctx, this.guides, guides, v, this.#env);
+    const hidden = HIDDEN_KINDS[this.#level];
     const list = this.#records;
     for (let i = 0; i < list.length; i++) {
       const rec = list[i];
-      if (!rec) continue;
+      if (!rec || hidden.has(rec.kind)) continue;
       if (rec.changed || !Number.isFinite(rec.changedAt)) {
         rec.changed = false;
         rec.changedAt = now;
@@ -189,8 +202,8 @@ export class OverlayLayer {
         ctx.setLineDash([]);
       }
     }
-    this.#rulers.draw(ctx, v, list, this.guides, this.guideCount);
-    return this.#cursors.draw(ctx, agents, v);
+    if (marks) this.#rulers.draw(ctx, v, list, this.guides, this.guideCount);
+    return this.#cursors.draw(ctx, agents, v, this.#level !== "none");
   }
 
   /** Settles when overlay images requested so far have loaded or failed. */

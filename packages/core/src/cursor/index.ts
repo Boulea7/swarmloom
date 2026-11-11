@@ -72,8 +72,8 @@ export class CursorPainter {
     this.#agents.clear();
   }
 
-  /** Draws visible agents; returns how many were drawn. */
-  draw(ctx: CanvasRenderingContext2D, agents: readonly AgentView[], view: ViewTransform): number {
+  /** Draws visible agents (with their status bubbles unless `bubbles` is false); returns how many were drawn. */
+  draw(ctx: CanvasRenderingContext2D, agents: readonly AgentView[], view: ViewTransform, bubbles = true): number {
     const dpr = view.dpr;
     if (dpr !== this.#dpr) {
       this.clear();
@@ -114,7 +114,7 @@ export class CursorPainter {
         const ty = Math.round((cy + def.tag.y * size) * dpr) / dpr;
         ctx.drawImage(cache.tag.canvas, tx, ty, cache.tag.w, cache.tag.h);
       }
-      if (cache.bubbleSprite) {
+      if (bubbles && cache.bubbleSprite) {
         const b = cache.bubbleSprite;
         const bx = Math.round((cx + 6 - b.ax) * dpr) / dpr;
         const by = Math.round((cy - 6 - b.ay) * dpr) / dpr;

@@ -134,6 +134,7 @@ function playerOptions(
   if (init.agents !== undefined) options.agents = init.agents;
   if (init.speed !== undefined) options.speed = init.speed;
   if (init.labels !== undefined) options.labels = init.labels;
+  if (init.overlays !== undefined) options.overlays = init.overlays;
   if (init.finale !== undefined) options.finale = init.finale;
   if (init.locale !== undefined) options.locale = init.locale;
   return options;

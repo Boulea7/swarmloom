@@ -82,6 +82,7 @@ swarmloom render <file|url> [options]
 | `--seed <n>` | `1` | 随机种子，范围 0–4294967295；相同输入、配置和种子得到相同视频 |
 | `--theme <theme>` | `auto` | `auto`、`light` 或 `dark` |
 | `--labels <mode>` | `names` | `names`、`agents`、`roles` 或 `none` |
+| `--overlays <level>` | `full` | 构建时画出的编辑标记。`minimal` 不画尺寸角标、间距标注、参考线和标尺；`none` 再去掉选框、占位框、钢笔线、插入符和状态气泡，只留光标、名牌和内容 |
 | `--finale <finale>` | `flock` | `flock`、`halo` 或 `none` |
 | `--follow <mode>` | `tour` | `tour` 随构建滚动页面；`none` 不滚动 |
 | `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面 |

@@ -22,6 +22,7 @@ import {
   isFinaleMode,
   isFollowMode,
   resolveLabels,
+  resolveOverlays,
   resolveSound,
 } from "./options";
 import { streamRng } from "./streams";
@@ -148,6 +149,7 @@ export function assemblePlayer(options: PlayerOptions, zones: PlayerZones): Play
   const soundOptions: SoundOptions & { seed: number } = { ...resolveSound(options.sound), seed: settings.seed };
   const clock = options.clock ?? new RealtimeClock();
   const initialScroll = mode === "overlay" && typeof window !== "undefined" ? window.scrollY || 0 : 0;
+  const overlays = resolveOverlays(options.overlays);
   const scrubber = options.scrubber ?? false;
   if (typeof scrubber !== "boolean") throw new TypeError("scrubber must be a boolean");
   const theme = zones.resolveTheme(options.theme, blueprint, matches("(prefers-color-scheme: dark)"));
@@ -165,6 +167,7 @@ export function assemblePlayer(options: PlayerOptions, zones: PlayerZones): Play
       reducedMotion: settings.reducedMotion,
       initialScroll,
       rng: streamRng(settings.seed, "stage"),
+      overlays,
     });
     const soundEngine = zones.createSound(soundOptions);
     sound = soundEngine;

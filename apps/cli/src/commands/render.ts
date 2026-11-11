@@ -64,6 +64,9 @@ Swarm:
       --seed <n>          Random seed; the same seed gives the same video (0-4294967295). Default: 1
       --theme <theme>     auto | light | dark. Default: auto
       --labels <mode>     names | agents | roles | none. Default: names
+      --overlays <level>  full | minimal | none. minimal hides size badges, distance labels, guide
+                          lines and rulers; none also hides selections, frames, pen lines, carets
+                          and status bubbles. Default: full
       --finale <finale>   flock | halo | none. Default: flock
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
@@ -126,6 +129,7 @@ const OPTIONS = {
   seed: { type: "string" },
   theme: { type: "string" },
   labels: { type: "string" },
+  overlays: { type: "string" },
   finale: { type: "string" },
   follow: { type: "string" },
   tail: { type: "string" },
@@ -201,6 +205,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     seed: readInt("seed", values.seed, 1, 0, 0xffffffff),
     theme: readEnum("theme", values.theme, ["auto", "light", "dark"], "auto"),
     labels: readEnum("labels", values.labels, ["names", "agents", "roles", "none"], "names"),
+    overlays: readEnum("overlays", values.overlays, ["full", "minimal", "none"], "full"),
     finale: readEnum("finale", values.finale, ["flock", "halo", "none"], "flock"),
     follow: readEnum("follow", values.follow, ["tour", "none"], "tour"),
     tail: readInt("tail", values.tail, 2500, 0, 60_000),
