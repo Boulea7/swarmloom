@@ -49,8 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      - name: Release script tests
-        run: pnpm test:release
+      # The release script tests (pnpm test:release) run in ci.yml on every PR, not behind this path filter.
       # Studio in extension mode first, then every extension target (scripts/release/build-extension.mjs).
       - run: pnpm build:extension
       # web-ext comes from the lockfile (apps/extension devDependencies), not a fresh download.

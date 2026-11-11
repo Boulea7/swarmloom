@@ -36,6 +36,10 @@ jobs:
       # Same licence gate as the release pack and assets jobs (ubuntu), so a new dependency fails its PR, not the release.
       - if: matrix.os == 'ubuntu-latest'
         run: pnpm check:licenses
+      # Here and not in the path-filtered Extension workflow: these tests also read files outside its filter
+      # (.github/workflows/pages.yml, .github/release.yml, .changeset/), so a PR touching only those runs them too.
+      - if: matrix.os == 'ubuntu-latest'
+        run: pnpm test:release
       - run: pnpm lint
       - run: pnpm typecheck
       # Build before the tests: apps/cli/test/render.test.ts drives the built render page
