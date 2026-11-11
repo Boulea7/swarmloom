@@ -22,7 +22,7 @@ const SNIPPET_LINES = 18;
 const TITLE_LIMIT = 80;
 
 /** Formats whose thumbnails are drawn from a text snippet (SVG and HTML render themselves). */
-const SNIPPET_FORMATS = new Set(["markdown", "code", "sheet"]);
+const SNIPPET_FORMATS = new Set(["markdown", "code", "sheet", "diff"]);
 
 function walk(dir: string, root: string, out: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -66,16 +66,59 @@ export function titleOf(format: string, text: string | null, group: string): str
       /<title[^>]*>([\s\S]{1,300}?)<\/title>/i.exec(text)?.[1] ?? /<h1[^>]*>([\s\S]{1,300}?)<\/h1>/i.exec(text)?.[1];
   } else if (format === "svg") {
     found = /<title[^>]*>([\s\S]{1,300}?)<\/title>/i.exec(text)?.[1];
+  } else if (format === "diff") {
+    // `git format-patch` mail: the commit subject (folded lines included), without the [PATCH n/m] tag.
+    found = /^Subject:\s*(?:\[[^\]\n]*\]\s*)?(.+(?:\n[ \t].+)*)/m.exec(text)?.[1];
+  } else if (format === "terminal") {
+    // asciicast header line: {"version":2,...,"title":"..."}
+    found = jsonString(/^\{.*"title"\s*:\s*("(?:\\.|[^"\\])*")/.exec(text)?.[1]);
+  } else if (format === "notebook") {
+    found = notebookTitle(text);
   }
   const title = found ? clean(found) : "";
   return title || fallback;
 }
 
-/** First lines of a text example, trimmed for a thumbnail. */
-export function snippetOf(text: string): string {
-  return text
-    .replace(/^﻿/, "")
-    .replace(/\r\n?/g, "\n")
+/** Decodes a JSON string literal; undefined when it is missing or invalid. */
+function jsonString(literal: string | undefined): string | undefined {
+  if (literal === undefined) return undefined;
+  try {
+    const value: unknown = JSON.parse(literal);
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The heading of a notebook's first Markdown cell, read from the raw JSON (the head of a large
+ * notebook is not valid JSON on its own). Comment lines of code cells never count.
+ */
+function notebookTitle(text: string): string | undefined {
+  const markdown = /"cell_type"\s*:\s*"markdown"/.exec(text);
+  if (!markdown) return undefined;
+  const rest = text.slice(markdown.index + markdown[0].length);
+  const next = rest.search(/"cell_type"\s*:/);
+  const cell = next < 0 ? rest : rest.slice(0, next);
+  const line = jsonString(/"#{1,3}[ \t](?:\\.|[^"\\])*"/.exec(cell)?.[0]);
+  return line?.replace(/^#+\s*|\s+$/g, "");
+}
+
+/** YAML front matter at the very start of a Markdown file. */
+const FRONT_MATTER = /^---\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/;
+/** First line of the diff proper in a patch (after any `git format-patch` mail header). */
+const DIFF_START = /^(?:diff --git |--- |@@ )/m;
+
+/**
+ * First lines of a text example, trimmed for a thumbnail: Markdown without its front matter,
+ * patches from their first diff line.
+ */
+export function snippetOf(text: string, format?: string): string {
+  let body = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  if (format === "markdown") body = body.replace(FRONT_MATTER, "");
+  if (format === "diff") body = body.slice(Math.max(0, body.search(DIFF_START)));
+  return body
+    .slice(0, SNIPPET_BYTES)
     .split("\n")
     .slice(0, SNIPPET_LINES)
     .map((line) => line.replace(/\t/g, "  ").slice(0, 120))
@@ -83,9 +126,20 @@ export function snippetOf(text: string): string {
     .trimEnd();
 }
 
-function readHead(file: string, bytes: number): string {
+/**
+ * The head of a file as UTF-8 text, or null when it is binary (a NUL byte or invalid UTF-8): textual
+ * formats such as "sheet" also cover binary workbooks, whose bytes must not become a snippet.
+ */
+export function readHead(file: string, bytes: number): string | null {
   const buffer = readFileSync(file);
-  return new TextDecoder("utf-8").decode(buffer.subarray(0, Math.min(buffer.length, bytes)));
+  const head = buffer.subarray(0, Math.min(buffer.length, bytes));
+  if (head.includes(0)) return null;
+  try {
+    // `stream` tolerates a multi-byte character cut off at the end of the head.
+    return new TextDecoder("utf-8", { fatal: true }).decode(head, { stream: true });
+  } catch {
+    return null;
+  }
 }
 
 export interface ScanResult {
@@ -127,7 +181,7 @@ export function scanExamples(root: string): ScanResult {
       group: c.group,
     };
     if (c.lang) entry.lang = c.lang;
-    if (text && SNIPPET_FORMATS.has(c.format)) entry.snippet = snippetOf(text.slice(0, SNIPPET_BYTES));
+    if (text && SNIPPET_FORMATS.has(c.format)) entry.snippet = snippetOf(text, c.format);
     if (c.poster) entry.poster = c.poster;
     return entry;
   });
@@ -150,6 +204,11 @@ const MIME: Record<string, string> = {
   ".json": "application/json",
   ".glb": "model/gltf-binary",
   ".gltf": "model/gltf+json",
+  ".epub": "application/epub+zip",
+  ".ipynb": "application/x-ipynb+json",
+  ".patch": "text/x-diff; charset=utf-8",
+  ".diff": "text/x-diff; charset=utf-8",
+  ".rtf": "application/rtf",
 };
 
 export interface ExamplesPluginOptions {

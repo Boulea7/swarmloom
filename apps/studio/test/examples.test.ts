@@ -16,6 +16,26 @@ describe("examples manifest", () => {
     expect(files).toContain("markdown/welcome.en.md");
   });
 
+  it("lists the second-wave formats and draws snippets from text only", () => {
+    const { manifest } = scanExamples(resolve(import.meta.dirname, "../../../examples"));
+    const byPath = new Map(manifest.entries.map((e) => [e.path, e]));
+    const formatOf = (path: string) => byPath.get(path)?.format;
+    expect(
+      ["epub/loom-notes.epub", "odf/report.odt", "odf/deck.odp", "odf/budget.ods", "rtf/loom-letter.rtf"].map(formatOf),
+    ).toEqual(["epub", "odf", "odf", "sheet", "rtf"]);
+    expect(
+      ["ofd/loom-receipt.ofd", "notebook/loom-tour.ipynb", "terminal/session.cast", "diff/core-index.patch"].map(
+        formatOf,
+      ),
+    ).toEqual(["ofd", "notebook", "terminal", "diff"]);
+    expect(["mindmap/loom.xmind", "mindmap/release-plan.mm"].map(formatOf)).toEqual(["mindmap", "mindmap"]);
+    // "sheet" covers CSV text and binary workbooks: only the text gets a snippet.
+    expect(byPath.get("sheet/cities.csv")?.snippet).toBeTruthy();
+    expect(byPath.get("sheet/sales.xlsx")?.snippet).toBeUndefined();
+    expect(byPath.get("markdown/welcome.en.md")?.snippet).not.toMatch(/^---/);
+    expect(byPath.get("diff/core-index.patch")?.snippet).toMatch(/^diff --git /);
+  });
+
   it.each([
     ["image/scene.webp", false],
     ["markdown/images/figure.png", true],

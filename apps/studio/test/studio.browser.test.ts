@@ -9,6 +9,7 @@ import {
   planExamples,
   sortEntries,
 } from "../src/examples/manifest";
+import { availableFormats } from "../src/formats-meta";
 import { fakeServices } from "./fakes";
 
 /** Every file of the repository's examples folder, as the build would see it (paths only). */
@@ -67,7 +68,8 @@ describe("Studio in a browser", () => {
     expect(MANIFEST.entries.length).toBeGreaterThanOrEqual(4);
     const ids = [...root.querySelectorAll<HTMLAnchorElement>(".card")].map((card) => card.dataset.example);
     // One card per example group: language and file-type variants share a card.
-    expect(ids).toEqual(entriesForLocale(MANIFEST, "en").map((e) => e.id));
+    expect(ids).toEqual(entriesForLocale(MANIFEST, "en", availableFormats()).map((e) => e.id));
+    expect(root.querySelector('.card[data-example="epub-loom-notes"] .card-sub')?.textContent).toMatch(/^EPUB/);
   });
 
   it("opens an example into the inline stage", async () => {
