@@ -118,6 +118,7 @@ const MAX_TICK_TOTAL_MS = 60_000;
 const SEEK_FRAME_MS = 1000 / 60;
 /** Longest seek target accepted, ms. */
 const MAX_SEEK_MS = 60 * 60 * 1000;
+const DEFER_SCROLL = { defer: true } as const;
 /** Stereo spread of sound events: cursor x weighs 0.7, layer centre 0.3, scaled to +-0.7. */
 const PAN_SPREAD = 0.7;
 const FALLBACK_VIEWPORT: Readonly<Rect> = { x: 0, y: 0, w: 1280, h: 800 };
@@ -363,6 +364,8 @@ export class Engine implements Player {
       if (!forward) this.replay();
       else if (paused) this.resume();
       while (this.#pt + 1e-6 < target && !this.#ended()) {
+        // Every seek frame starts with the read phase of a tick, before its tasks write.
+        this.#measure();
         this.#frame(Math.min(SEEK_FRAME_MS, target - this.#pt), false);
         // Undrawn, but the stage still ages task touches and virtualizes as in a drawn frame.
         this.#guard(() => this.#stage.skipFrame?.());
@@ -692,11 +695,7 @@ export class Engine implements Player {
     const s = this.#state;
     if (s === "idle" || s === "destroyed") return;
     // Read phase first: the layout is clean until this tick's tasks write to the DOM.
-    try {
-      this.#stage.measure?.();
-    } catch (error) {
-      this.#report(error);
-    }
+    this.#measure();
     const wasLive = s === "live";
     let left = Number.isFinite(dt) ? clamp(dt, 0, MAX_TICK_TOTAL_MS) : 0;
     do {
@@ -704,6 +703,15 @@ export class Engine implements Player {
       left -= slice;
       this.#frame(slice, left <= 0);
     } while (left > 0 && !this.#endedDuringTick(wasLive));
+  }
+
+  /** The stage's read phase (caret blocks of typed text), taken before a frame's DOM writes. */
+  #measure(): void {
+    try {
+      this.#stage.measure?.();
+    } catch (error) {
+      this.#report(error);
+    }
   }
 
   /** True once the player was destroyed, or went live during a tick that started before live. */
@@ -774,7 +782,9 @@ export class Engine implements Player {
       const lead = this.#nothingInSight ? TOUR_STARVED_LEAD_SHARE : TOUR_LEAD_SHARE;
       const y = this.#camera.tour(vp, schedule.frontier(vp.y), this.#stage.blueprint.size.h, speed, dt, this.#pt, lead);
       if (Number.isFinite(y)) {
-        this.#guard(() => this.#stage.scrollTo(y));
+        // A seek writes the scroller once, when it draws: each write here would land after the
+        // last frame's task writes and force a layout.
+        this.#guard(() => this.#stage.scrollTo(y, this.#seeking ? DEFER_SCROLL : undefined));
         vp = this.#readViewport();
       }
     }

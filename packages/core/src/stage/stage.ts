@@ -369,9 +369,9 @@ export class SwarmStage implements Stage {
     return (g.scrollLeft - g.offsetX) / g.scale;
   }
 
-  scrollTo(y: number, opts?: { smooth?: boolean }): void {
+  scrollTo(y: number, opts?: { smooth?: boolean; defer?: boolean }): void {
     if (this.#destroyed || typeof y !== "number" || !Number.isFinite(y)) return;
-    this.#scroll.scrollTo(y, opts?.smooth === true);
+    this.#scroll.scrollTo(y, opts?.smooth === true, undefined, opts?.defer === true);
   }
 
   onUserScroll(fn: (y: number) => void): () => void {

@@ -109,7 +109,12 @@ export interface Stage extends StageApi {
   /** Current scroll offset of the visible viewport inside the world, stage px. */
   readonly scrollY: number;
   readonly scrollX: number;
-  scrollTo(y: number, opts?: { smooth?: boolean }): void;
+  /**
+   * `defer`: the position (scrollY, viewport()) changes at once, the scroller is written in the
+   * next render. A seek fast-forwards frames it does not draw, and a scroller write after the last
+   * frame's DOM writes would force a layout every frame.
+   */
+  scrollTo(y: number, opts?: { smooth?: boolean; defer?: boolean }): void;
   /** User-initiated scrolls only (wheel/touch/keys), not programmatic scrollTo. */
   onUserScroll(fn: (y: number) => void): () => void;
   /** Resize of the visible viewport. */

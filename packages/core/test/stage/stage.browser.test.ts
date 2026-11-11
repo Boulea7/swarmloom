@@ -479,6 +479,30 @@ describe("stage: virtualization", () => {
     expect(stage.scrollY).toBeGreaterThan(800);
     expect(seen.at(-1)).toBeCloseTo(stage.scrollY, 3);
   });
+
+  it("a tour seek writes the scroller once, when it draws", () => {
+    const { stage } = tallPage();
+    const scroller = stage.root.querySelector(".scroller") as HTMLElement;
+    const h = harness(stage.blueprint, { follow: "tour", intro: false, agents: 12 }, { stage });
+    void h.engine.play();
+    const own = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop") as PropertyDescriptor;
+    let writes = 0;
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      get: () => own.get?.call(scroller),
+      set: (v: number) => {
+        writes++;
+        own.set?.call(scroller, v);
+      },
+    });
+    h.engine.seek(20_000);
+    expect(stage.scrollY).toBeGreaterThan(1000);
+    // A write per undrawn frame landed after that frame's task writes and forced a layout.
+    expect(writes).toBe(1);
+    const world = stage.root.querySelector(".world") as HTMLElement;
+    expect(world.getBoundingClientRect().top).toBeCloseTo(stage.toClient({ x: 0, y: 0 }).y, 0);
+    h.engine.destroy();
+  });
 });
 
 describe("stage: overlays and canvas", () => {
