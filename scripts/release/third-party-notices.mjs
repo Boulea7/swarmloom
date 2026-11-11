@@ -110,27 +110,67 @@ export const PAGES_APPS = new Map([
 /**
  * @typedef {object} EmbeddedPackage
  * @property {string} host installed package whose files contain this one, pre-bundled
- * @property {string} license
+ * @property {string} files where in the host the embedded code lives
+ * @property {"MIT" | "Apache-2.0"} license
  * @property {string} source
- * @property {string} copyright the copyright line the embedded code carries
+ * @property {string} copyright the copyright line of the embedded code (from its files or its upstream sources)
  */
 
 /**
- * MIT packages that a dependency ships pre-bundled inside its own files, so they are never installed and
- * have no licence file to read. Listed whenever their host is bundled.
+ * Packages that a dependency ships pre-bundled inside its own files, so they are never installed and have
+ * no licence file to read. Listed whenever their host is bundled.
  * @type {ReadonlyMap<string, EmbeddedPackage>}
  */
 export const EMBEDDED_PACKAGES = new Map([
   [
     "core-js",
     {
-      host: "pdfjs-dist", // legacy/build/*.mjs; the copyright string is in the core-js shared-store code
+      host: "pdfjs-dist",
+      files: "legacy/build/*.mjs", // the copyright string is in the core-js shared-store code
       license: "MIT",
       source: "https://github.com/zloirock/core-js",
       copyright: "2013–2025 Denis Pushkarev (zloirock.ru), 2025–2026 CoreJS Company (core-js.io)",
     },
   ],
+  [
+    "draco3d",
+    {
+      host: "three",
+      files: "examples/jsm/libs/draco/", // DRACOLoader's decoders; Vite emits the .js and .wasm files
+      license: "Apache-2.0",
+      source: "https://github.com/google/draco",
+      copyright: "2016 The Draco Authors", // the line of the Draco sources; the repository has no NOTICE
+    },
+  ],
+  [
+    "meshoptimizer",
+    {
+      host: "three",
+      files: "examples/jsm/libs/meshopt_decoder.module.js", // GLTFLoader's EXT_meshopt_compression decoder
+      license: "MIT",
+      source: "https://github.com/zeux/meshoptimizer",
+      copyright: "2016-2026 Arseny Kapoulkine",
+    },
+  ],
 ]);
+
+/** Full Apache License 2.0 text (as in google/draco's LICENSE) for embedded Apache-2.0 packages. */
+const APACHE_2_0 = new URL("./licenses/Apache-2.0.txt", import.meta.url);
+
+/**
+ * Notice entry of a package pre-bundled inside another one.
+ * @param {string} name
+ * @param {EmbeddedPackage} embedded
+ * @returns {NoticeEntry}
+ */
+export function embeddedEntry(name, embedded) {
+  const note = `Pre-bundled inside ${embedded.host} (${embedded.files}), which ships no separate licence file for it.`;
+  const text =
+    embedded.license === "Apache-2.0"
+      ? `Copyright ${embedded.copyright}\n\n${readFileSync(APACHE_2_0, "utf8").trimEnd()}\n\n(${note})`
+      : mitLicense(embedded.copyright, note);
+  return { name, license: embedded.license, source: embedded.source, text };
+}
 
 export const LICENSE_FILE = "LICENSE.md";
 const SOURCE_FILE = /\.(?:[cm]?[jt]sx?|html|css)$/;
@@ -322,9 +362,8 @@ function licenseFile(pkg, workspace, root, path, wholeTree) {
     entries.set(`${entry.name}\n${entry.text}`, entry);
     for (const [name, embedded] of EMBEDDED_PACKAGES) {
       if (embedded.host !== entry.name) continue;
-      const note = `Pre-bundled inside ${embedded.host}, which ships no separate licence file for it.`;
-      const text = mitLicense(embedded.copyright, note);
-      entries.set(`${name}\n${text}`, { name, license: embedded.license, source: embedded.source, text });
+      const inner = embeddedEntry(name, embedded);
+      entries.set(`${name}\n${inner.text}`, inner);
     }
   }
   const list = [...entries.values()];

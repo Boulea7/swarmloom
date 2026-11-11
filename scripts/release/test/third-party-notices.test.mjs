@@ -66,6 +66,12 @@ test("every published package that bundles third-party code gets generated notic
     assert.ok(byDir.get(dir)?.covered.has("katex"), dir);
     assert.ok(byDir.get(dir)?.contents?.startsWith(GENERATED_MARKER), dir);
   }
+  // Three ships the Draco (Apache-2.0) and meshoptimizer (MIT) decoders in examples/jsm/libs, and Vite emits them.
+  for (const dir of ["apps/cli", "packages/element", "packages/export"]) {
+    const contents = byDir.get(dir)?.contents ?? "";
+    assert.match(contents, /Copyright 2016 The Draco Authors\n\n\s*Apache License\s+Version 2\.0/, dir);
+    assert.match(contents, /Copyright \(c\) 2016-2026 Arseny Kapoulkine/, dir);
+  }
   // A library that bundles nothing gets no file and keeps the repository LICENSE from pnpm pack.
   assert.equal(byDir.get("packages/core")?.contents, null);
   // Generated at pack time only: a committed copy would go stale with every dependency update.

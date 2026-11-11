@@ -58,7 +58,7 @@ SwarmLoom 源码以 [MIT License](https://github.com/Boulea7/swarmloom/blob/main
 | docx-preview | DOCX 样式优先导入 | Apache-2.0 |
 | Mammoth | DOCX 语义导入 | BSD-2-Clause |
 | PDF.js | PDF 文本、绘制信息与页面位图 | Apache-2.0 |
-| three.js | glTF、OBJ、STL、PLY 与 WebGL 舞台 | MIT |
+| three.js | glTF、OBJ、STL、PLY 与 WebGL 舞台 | MIT；随附的 Draco 解码器为 Apache-2.0，meshoptimizer 解码器为 MIT |
 | SheetJS Community Edition | 工作簿读取 | Apache-2.0；不使用独立许可的 Pro |
 | Papa Parse | CSV / TSV | MIT |
 | cfb | 旧版 DOC 的 Compound File Binary 读取 | Apache-2.0 |

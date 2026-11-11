@@ -58,7 +58,7 @@ These libraries are the main implementation routes selected during research. The
 | docx-preview | Style-first DOCX import | Apache-2.0 |
 | Mammoth | Semantic DOCX import | BSD-2-Clause |
 | PDF.js | PDF text, drawing information and page bitmaps | Apache-2.0 |
-| three.js | glTF, OBJ, STL, PLY and WebGL stage | MIT |
+| three.js | glTF, OBJ, STL, PLY and WebGL stage | MIT; its bundled Draco decoder is Apache-2.0 and its meshoptimizer decoder MIT |
 | SheetJS Community Edition | Workbook reading | Apache-2.0; no separately licensed Pro code |
 | Papa Parse | CSV / TSV | MIT |
 | cfb | Compound File Binary reading for legacy DOC | Apache-2.0 |
