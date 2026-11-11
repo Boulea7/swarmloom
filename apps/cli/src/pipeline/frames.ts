@@ -16,6 +16,8 @@ export interface FrameLoopOptions {
   fps: number;
   /** Hard cap on captured frames (the --max-duration guard). */
   maxFrames: number;
+  /** Stop at the frame the page reports done (default). False captures exactly `maxFrames` (--duration). */
+  untilDone?: boolean;
   signal?: AbortSignal;
   /** Called after every captured frame. */
   onFrame?(index: number, step: StepResult): void;
@@ -29,8 +31,13 @@ export interface FrameLoopResult {
   elapsedMs: number;
   /** False when the loop stopped at maxFrames before the page reported done. */
   finished: boolean;
+  /** Engine time of the first frame that showed the build complete, or null if none did. */
+  builtAtMs: number | null;
   last: StepResult;
 }
+
+/** Player states after the build itself has completed. */
+const BUILT_STATES: ReadonlySet<string> = new Set(["finale", "done", "live"]);
 
 /** Engine time of frame `n`, computed from the index so steps never accumulate rounding drift. */
 export function frameTime(n: number, fps: number): number {
@@ -39,7 +46,8 @@ export function frameTime(n: number, fps: number): number {
 
 /**
  * Captures frame 0 at engine time 0, then alternates step(1000 / fps) and capture until the page
- * reports `done` (that frame is included) or `maxFrames` is reached.
+ * reports `done` (that frame is included) or `maxFrames` is reached; with `untilDone: false` it always
+ * captures `maxFrames` frames.
  *
  * @throws InterruptedError when `signal` aborts; whatever the source or sink throws.
  */
@@ -48,22 +56,26 @@ export async function runFrameLoop(
   sink: FrameSink,
   opts: FrameLoopOptions,
 ): Promise<FrameLoopResult> {
+  const untilDone = opts.untilDone ?? true;
   let last: StepResult = { state: "init", built: 0, total: 0, done: false };
   let frames = 0;
+  let builtAtMs: number | null = null;
   for (;;) {
     throwIfAborted(opts.signal);
     await sink(await source.capture(), frames);
     frames += 1;
     opts.onFrame?.(frames - 1, last);
-    if (last.done || frames >= opts.maxFrames) break;
+    if ((untilDone && last.done) || frames >= opts.maxFrames) break;
     throwIfAborted(opts.signal);
     last = await source.step(frameTime(frames, opts.fps) - frameTime(frames - 1, opts.fps));
+    if (builtAtMs === null && BUILT_STATES.has(last.state)) builtAtMs = frameTime(frames, opts.fps);
   }
   return {
     frames,
     durationMs: frameTime(frames, opts.fps),
     elapsedMs: frameTime(frames - 1, opts.fps),
-    finished: last.done,
+    finished: last.done || builtAtMs !== null,
+    builtAtMs,
     last,
   };
 }
