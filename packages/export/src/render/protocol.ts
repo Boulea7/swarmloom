@@ -45,8 +45,16 @@ export interface RenderInit {
   sound?: boolean;
   finale?: "flock" | "halo" | "none";
   locale?: string;
-  /** Hold time after the build completes (finale), ms. Default 2500. */
+  /** Hold time after the build completes (finale, then the live page), ms. Default 2500. */
   tail?: number;
+  /**
+   * Go live once the finale settles, as the player's go live does: the cursors leave, the stage
+   * becomes the finished page and its own animations (CSS, SMIL, plugin players such as Lottie)
+   * play through the rest of the tail on the frame clock. An HTML document shows its live page
+   * (the adapter's `keepLive` frame). Default true; ignored with `reducedMotion`, which keeps the
+   * end state.
+   */
+  live?: boolean;
   /** Scroll mode during export: "tour" (default; follows the build) or "none". */
   follow?: "tour" | "none";
   /** Quick cross-fade build without flocking. Default false: exports never inherit the host preference. */
@@ -182,7 +190,7 @@ function blueprintOf(raw: unknown): Blueprint | undefined {
 
 /** Init options after validation, with defaults filled in. */
 export type ParsedInit = RenderInit &
-  Required<Pick<RenderInit, "seed" | "tail" | "sound" | "follow" | "reducedMotion" | "theme" | "cues">>;
+  Required<Pick<RenderInit, "seed" | "tail" | "live" | "sound" | "follow" | "reducedMotion" | "theme" | "cues">>;
 
 /**
  * Validates untrusted init options (they cross a process boundary) and fills defaults.
@@ -210,6 +218,8 @@ export function parseInit(raw: unknown): ParsedInit {
   if (sound !== undefined && typeof sound !== "boolean") fail("sound must be a boolean");
   const reducedMotion = raw.reducedMotion;
   if (reducedMotion !== undefined && typeof reducedMotion !== "boolean") fail("reducedMotion must be a boolean");
+  const live = raw.live;
+  if (live !== undefined && typeof live !== "boolean") fail("live must be a boolean");
   const blueprint = blueprintOf(raw.blueprint);
   return {
     input: source,
@@ -225,6 +235,7 @@ export function parseInit(raw: unknown): ParsedInit {
     finale: oneOf(raw, "finale", FINALES),
     locale: optionalString(raw, "locale"),
     tail: number(raw, "tail", 0, 600_000) ?? 2500,
+    live: live ?? true,
     follow: oneOf(raw, "follow", FOLLOWS) ?? "tour",
     reducedMotion: reducedMotion ?? false,
     bpm: number(raw, "bpm", 20, 400),

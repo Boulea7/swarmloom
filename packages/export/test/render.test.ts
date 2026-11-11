@@ -130,6 +130,25 @@ describe("render page protocol", () => {
     expect(info.layers).toBe(1);
   });
 
+  it.each([
+    [{}, 1],
+    [{ live: false }, 0],
+    [{ reducedMotion: true }, 0],
+  ])("goes live once the finale settles (%j: %i call)", async (options, calls) => {
+    const { api, players } = setup();
+    await api.init({ ...base, ...options, tail: 2000 });
+    const [player] = players as [ClockPlayer];
+    const goLive = vi.spyOn(player, "goLive");
+    for (let i = 0; i < 30; i++) await api.step(40);
+    expect(player.state).toBe("finale");
+    expect(goLive).not.toHaveBeenCalled();
+    // The engine moves a settled finale to "done".
+    player.state = "done";
+    await api.step(40);
+    await api.step(40);
+    expect(goLive).toHaveBeenCalledTimes(calls);
+  });
+
   it("renders silence when sound is off", async () => {
     const { api, audio } = setup();
     await api.init({ ...base, sound: false });
@@ -146,6 +165,7 @@ describe("render page protocol", () => {
       [{ ...base, width: 0 }, "width must be a number within 16..8192"],
       [{ ...base, fps: Number.NaN }, "fps must be a number"],
       [{ ...base, theme: "neon" }, "theme must be one of auto, light, dark"],
+      [{ ...base, live: "yes" }, "live must be a boolean"],
       [{ ...base, input: { name: "a", base64: "%%%" } }, "not valid base64"],
       [{ ...base, blueprint: { version: 2, size: { w: 1, h: 1 }, layers: [] } }, "blueprint must be a version 1"],
     ];
