@@ -79,6 +79,20 @@ describe("parseLottie", () => {
     ["no layers", JSON.stringify(lottie({ layers: undefined })), "invalid"],
     ["a layer without a type", JSON.stringify(lottie({ layers: [{ ks: {}, ip: 0, op: 60 }] })), "invalid"],
     ["a precomposition that contains itself", JSON.stringify(lottie(cycle)), "invalid"],
+    [
+      // lottie-web draws the first asset with the id, the precomposition, not the checked image.
+      "an image layer whose id first names a precomposition",
+      JSON.stringify(
+        lottie({
+          assets: [
+            { id: "x", layers: [], e: 1, p: "https://example.invalid/x.png" },
+            { id: "x", e: 1, p: "data:image/png;base64,iVBORw0KGgo=" },
+          ],
+          layers: [shapeLayer(), { ty: 2, refId: "x", ks: {}, ip: 0, op: 60 }],
+        }),
+      ),
+      "invalid",
+    ],
     ["an hour-long animation", JSON.stringify(lottie({ fr: 1, op: 3600 })), "too-large"],
     ["hostile nesting", `{"v":"5.0.0","x":${"[".repeat(300)}${"]".repeat(300)}}`, "too-large"],
     [
@@ -108,7 +122,10 @@ describe("parseLottie", () => {
     const parsed = parseLottie(
       JSON.stringify(
         lottie({
-          assets: [{ id: "img", u: "https://cdn.example/", p: "a.png", w: 10, h: 10 }],
+          assets: [
+            { id: "img", u: "https://cdn.example/", p: "a.png", w: 10, h: 10 },
+            { id: "comp", layers: [], u: "https://cdn.example/", p: "b.png" },
+          ],
           fonts: {
             list: [{ fName: "Web", fFamily: "Web<script>", fPath: "https://fonts.example/web.css", origin: 1 }],
           },

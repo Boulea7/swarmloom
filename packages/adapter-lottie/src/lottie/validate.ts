@@ -96,14 +96,26 @@ function sanitizeAssets(data: Json, state: SanitizeState): void {
   const kept: unknown[] = [];
   let external = 0;
   let footage = 0;
+  let repeated = 0;
   for (const asset of data.assets) {
     if (!isRecord(asset) || (typeof asset.id !== "string" && typeof asset.id !== "number")) continue;
     const id = String(asset.id);
+    // lottie-web resolves a layer's refId to the first asset whose id is strictly equal, so only
+    // that one is kept, with a string id: the asset checked here is the one lottie-web draws, and
+    // an image layer cannot pass on a checked image yet draw a precomposition that shares its id.
+    if (state.precomps.has(id) || state.images.has(id)) {
+      repeated++;
+      continue;
+    }
+    asset.id = id;
     // lottie-web merges `slots[sid].p` into the asset an image layer points to when it draws the
-    // image, after this check. Precompositions lose it too: an image layer finds the first asset
-    // with its id, which can be a precomposition that shares the id.
+    // image, after this check.
     delete asset.sid;
     if (Array.isArray(asset.layers)) {
+      // A precomposition is never drawn as an image: no image path of its own stays in the JSON.
+      delete asset.p;
+      delete asset.u;
+      delete asset.e;
       state.precomps.set(id, asset.layers);
       state.stats.precomps++;
       kept.push(asset);
@@ -141,6 +153,7 @@ function sanitizeAssets(data: Json, state: SanitizeState): void {
   data.assets = kept;
   if (external > 0) state.notes.add(`${external} image(s) are not embedded in the file and were left out.`);
   if (footage > 0) state.notes.add(`${footage} audio or data asset(s) were removed.`);
+  if (repeated > 0) state.notes.add(`${repeated} asset(s) that repeat an earlier asset's id were removed.`);
 }
 
 /** Asset keys lottie-web builds an image URL from; property and text slots never carry them. */
@@ -280,6 +293,7 @@ function resolveOptions(opts: ParseLottieOptions): ResolvedOptions {
  *
  *  - structure: version, frame rate, in/out points, size, layers with types, transforms and
  *    in/out points, resolvable precomposition and image references, no precomposition cycles;
+ *    an asset id that repeats is dropped, as lottie-web only ever resolves the first one;
  *  - limits: size, nesting depth, layer and keyframe counts, duration, embedded image size;
  *  - expressions are removed (the light player never evaluates them); an animation whose motion
  *    comes only from expressions is rejected, because it would not move at all;
