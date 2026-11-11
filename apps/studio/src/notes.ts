@@ -4,8 +4,8 @@ import type { StudioI18n, StudioKey } from "./i18n";
  * The font note of the document adapters (decisions-v1 F01) in each wording they use (OpenDocument,
  * Office, DOCX and DOC): "Fonts ...: Calibri -> Carlito, SimSun → Noto Serif SC and 2 more."
  */
-const FONT_NOTE = /^Fonts\b[^:]*:\s*(.+?)(?: and (\d+) more)?\.?$/;
-const FONT_PAIR = /^(.+?)\s*(?:->|→)\s*(.+)$/;
+const FONT_NOTE = /^Fonts\b/;
+const FONT_MORE = / and (\d+) more$/;
 /** DOCX names a font without an open substitute by its generic family: "a serif font" is shown as "serif". */
 const GENERIC_FONT = /^an? (\S+) font$/;
 
@@ -37,19 +37,38 @@ function listOf(locale: string, items: string[]): string {
   }
 }
 
+/**
+ * One "Calibri -> Carlito" item as [font, substitute], or null. The substitute comes from the
+ * adapters' own tables, while the font name is the document's and may hold anything (arrows, long
+ * runs of spaces), so the item is split at its last arrow by index rather than with a backtracking
+ * pattern, which took seconds to minutes on crafted names.
+ */
+function fontPair(item: string): readonly [string, string] | null {
+  const arrow = item.lastIndexOf("->");
+  const at = Math.max(arrow, item.lastIndexOf("→"));
+  if (at < 0) return null;
+  const from = item.slice(0, at).trim();
+  const to = item.slice(at + (at === arrow ? 2 : 1)).trim();
+  return from && to ? [from, to] : null;
+}
+
 /** A font substitution note in the UI language (font names stay as they are), or null. */
 function localizeFonts(note: string, i18n: StudioI18n): string | null {
-  const match = FONT_NOTE.exec(note);
-  if (!match) return null;
+  const colon = note.indexOf(":");
+  if (colon < 0 || !FONT_NOTE.test(note)) return null;
+  let list = note.slice(colon + 1).trim();
+  if (list.endsWith(".")) list = list.slice(0, -1);
+  const more = FONT_MORE.exec(list);
+  if (more) list = list.slice(0, more.index);
   const pairs: string[] = [];
-  for (const item of (match[1] ?? "").split(/,\s*/)) {
-    const pair = FONT_PAIR.exec(item);
+  for (const item of list.split(/,\s*/)) {
+    const pair = fontPair(item);
     if (!pair) return null;
-    const [, from = "", to = ""] = pair;
+    const [from, to] = pair;
     pairs.push(`${from} → ${GENERIC_FONT.exec(to)?.[1] ?? to}`);
   }
-  const more = Number(match[2] ?? 0);
-  if (more > 0) pairs.push(i18n.t("player.fonts.more", { count: more }));
+  const count = Number(more?.[1] ?? 0);
+  if (count > 0) pairs.push(i18n.t("player.fonts.more", { count }));
   return i18n.t("player.fonts", { fonts: listOf(i18n.locale, pairs) });
 }
 
