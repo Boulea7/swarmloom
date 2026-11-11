@@ -8,13 +8,11 @@
 
 <h1 align="center">SwarmLoom · 群织</h1>
 
-<p align="center"><strong>让一群光标，把它织出来。</strong><br/>网页、文档、代码、图片与 3D，由光标群当面重建，并导出带声音的视频。</p>
+<p align="center"><strong>让一群光标，把它织出来。</strong><br/>网页、文档、代码、图片和 3D 模型，由一群光标当面一块块搭出来，还能导出带声音的视频。<br/>它是一段本地的可视化重放，不是 AI 智能体编排器。</p>
 
 <p align="center">
-  <a href="https://github.com/Boulea7/swarmloom/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Boulea7/swarmloom/actions/workflows/ci.yml/badge.svg?branch=main&amp;style=flat-square" /></a>
-  <a href="https://github.com/Boulea7/swarmloom/releases"><img alt="Release planned" src="https://img.shields.io/badge/release-planned-5B5BF7?style=flat-square" /></a>
+  <a href="https://github.com/Boulea7/swarmloom/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Boulea7/swarmloom/ci.yml?branch=main&amp;style=flat-square&amp;label=CI" /></a>
   <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/license-MIT-5B5BF7?style=flat-square" /></a>
-  <a href="./apps/cli"><img alt="npm package planned" src="https://img.shields.io/badge/npm-planned-5B5BF7?style=flat-square" /></a>
   <a href="./CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-5B5BF7?style=flat-square" /></a>
 </p>
 
@@ -30,39 +28,43 @@
 
 <!-- VIDEO:main -->
 
-从空白舞台到光标群重建，再到带声音的视频。主片正在制作；现在就可以在[在线 Studio](https://boulea7.github.io/swarmloom/studio/) 播放同样的真实示例，或查看[图文指南](https://boulea7.github.io/swarmloom/docs/getting-started.html)。
+主片制作中，完成后会在这里直接播放。
+
+<!-- /VIDEO:main -->
+
+不用安装任何东西，就能在[在线 Studio](https://boulea7.github.io/swarmloom/studio/) 打开下面的同一批示例；也可以先看[图文指南](https://boulea7.github.io/swarmloom/docs/getting-started.html)。
 
 ## 支持的格式
 
-每张动图都来自 SwarmLoom 的真实渲染；点击打开对应的 Studio 示例。
+每张动图都是 SwarmLoom 的真实渲染，点击即可在 Studio 播放同一个示例。
 
 <table>
   <tr>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=web-demo"><img alt="光标群重建网页" src="./docs/assets/formats/web.webp" width="300" /></a><br/>网页 · DOM 快照</td>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=html-landing"><img alt="HTML 页面逐块搭建" src="./docs/assets/formats/html.webp" width="300" /></a><br/>HTML / CSS</td>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=svg-emblem"><img alt="SVG 路径描绘" src="./docs/assets/formats/svg.webp" width="300" /></a><br/>SVG · 路径与填充</td>
+    <td align="center" width="33%"><a href="https://boulea7.github.io/swarmloom/studio/?example=web-demo"><img alt="光标群重建网页" src="./docs/assets/formats/web.webp" width="100%" /></a><br/>网页</td>
+    <td align="center" width="33%"><a href="https://boulea7.github.io/swarmloom/studio/?example=html-landing"><img alt="HTML 页面逐块搭建" src="./docs/assets/formats/html.webp" width="100%" /></a><br/>HTML</td>
+    <td align="center" width="33%"><a href="https://boulea7.github.io/swarmloom/studio/?example=svg-emblem"><img alt="SVG 路径逐笔描绘" src="./docs/assets/formats/svg.webp" width="100%" /></a><br/>SVG</td>
   </tr>
   <tr>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=markdown-welcome.zh"><img alt="Markdown 标题与正文重建" src="./docs/assets/formats/markdown.webp" width="300" /></a><br/>Markdown / GFM / 数学公式</td>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=docx-report"><img alt="DOCX 文档重建" src="./docs/assets/formats/docx.webp" width="300" /></a><br/>DOCX · 样式与表格</td>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=doc-report"><img alt="DOC 正文重建" src="./docs/assets/formats/doc.webp" width="300" /></a><br/>DOC · 文本模式</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=markdown-welcome.zh"><img alt="Markdown 标题与正文重建" src="./docs/assets/formats/markdown.webp" width="100%" /></a><br/>Markdown</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=docx-report"><img alt="Word 文档重建" src="./docs/assets/formats/docx.webp" width="100%" /></a><br/>DOCX</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=doc-report"><img alt="旧版 Word 文档重建" src="./docs/assets/formats/doc.webp" width="100%" /></a><br/>DOC</td>
   </tr>
   <tr>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=pdf-brochure"><img alt="PDF 页面重建" src="./docs/assets/formats/pdf.webp" width="300" /></a><br/>PDF · 固定版式</td>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=slides-pitch"><img alt="PPTX 幻灯片重建" src="./docs/assets/formats/slides.webp" width="300" /></a><br/>PPTX · 幻灯片</td>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=sheet-sales"><img alt="电子表格逐行搭建" src="./docs/assets/formats/sheet.webp" width="300" /></a><br/>XLSX / CSV / ODS</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=pdf-brochure"><img alt="PDF 页面重建" src="./docs/assets/formats/pdf.webp" width="100%" /></a><br/>PDF</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=slides-pitch"><img alt="幻灯片重建" src="./docs/assets/formats/slides.webp" width="100%" /></a><br/>幻灯片</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=sheet-sales"><img alt="表格逐行搭建" src="./docs/assets/formats/sheet.webp" width="100%" /></a><br/>表格</td>
   </tr>
   <tr>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=code-swarm"><img alt="源码逐词输入" src="./docs/assets/formats/code.webp" width="300" /></a><br/>代码 / TXT</td>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=image-scene"><img alt="位图线稿与色块重建" src="./docs/assets/formats/image.webp" width="300" /></a><br/>PNG / JPEG / WebP / AVIF</td>
-    <td><a href="https://boulea7.github.io/swarmloom/studio/?example=3d-shuttle-glb"><img alt="3D 模型网格与材质重建" src="./docs/assets/formats/three.webp" width="300" /></a><br/>3D · GLB / OBJ / STL / PLY</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=code-swarm"><img alt="源码逐词输入" src="./docs/assets/formats/code.webp" width="100%" /></a><br/>代码</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=image-scene"><img alt="图片先描线再上色" src="./docs/assets/formats/image.webp" width="100%" /></a><br/>图片</td>
+    <td align="center"><a href="https://boulea7.github.io/swarmloom/studio/?example=3d-shuttle-glb"><img alt="3D 模型的网格与材质逐步搭建" src="./docs/assets/formats/three.webp" width="100%" /></a><br/>3D 模型</td>
   </tr>
 </table>
 
 <details>
-<summary>更多已实现的输入</summary>
+<summary>还能打开的格式</summary>
 
-OpenDocument、EPUB、RTF、OFD、Jupyter Notebook、asciinema 终端录制、Patch / Diff、XMind / FreeMind 也已进入同一注册表。完整扩展名与保真边界见[格式文档](https://boulea7.github.io/swarmloom/docs/formats.html)。
+OpenDocument（ODT / ODS / ODP）、EPUB、RTF、OFD、Jupyter Notebook、asciinema 终端录屏、Patch / Diff、XMind / FreeMind 思维导图；表格支持 XLSX / CSV / ODS，3D 支持 GLB / glTF / OBJ / STL / PLY。每种格式的扩展名和还原程度见[格式文档](https://boulea7.github.io/swarmloom/docs/formats.html)。
 
 </details>
 
@@ -70,16 +72,16 @@ OpenDocument、EPUB、RTF、OFD、Jupyter Notebook、asciinema 终端录制、Pa
 
 <table>
   <tr>
-    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/web-dark.svg" /><img alt="网页重建卡片" src="./assets/brand/cards/web-light.svg" width="420" /></picture><br/><b>原页重建</b><br/>扩展捕获当前标签页或选区；结束后交还原页面。</td>
-    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/docs-dark.svg" /><img alt="多格式文档卡片" src="./assets/brand/cards/docs-light.svg" width="420" /></picture><br/><b>多格式，同一舞台</b><br/>文档、代码、图片与 3D 统一转成 Blueprint。</td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/web-dark.svg" /><img alt="网页卡片" src="./assets/brand/cards/web-light.svg" width="100%" /></picture><br/><b>在原页面上重建</b><br/>扩展重建当前标签页或选中的区域，结束后原页面照常可用。</td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/docs-dark.svg" /><img alt="文档卡片" src="./assets/brand/cards/docs-light.svg" width="100%" /></picture><br/><b>多种格式，同一个舞台</b><br/>文档、表格、幻灯片、代码、图片和 3D 都用同一套光标来搭。</td>
   </tr>
   <tr>
-    <td><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/video-dark.svg" /><img alt="视频导出卡片" src="./assets/brand/cards/video-light.svg" width="420" /></picture><br/><b>可复现导出</b><br/>固定 seed 与虚拟时钟；逐帧输出画面和同步声音。</td>
-    <td><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/platforms-dark.svg" /><img alt="多设备卡片" src="./assets/brand/cards/platforms-light.svg" width="420" /></picture><br/><b>跨设备播放</b><br/>Studio PWA、扩展与精简手表播放器共享核心。</td>
+    <td><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/video-dark.svg" /><img alt="视频导出卡片" src="./assets/brand/cards/video-light.svg" width="100%" /></picture><br/><b>导出带声音的视频</b><br/>CLI 逐帧导出 MP4、WebM、GIF；参数相同，画面和声音也相同。</td>
+    <td><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/platforms-dark.svg" /><img alt="多平台卡片" src="./assets/brand/cards/platforms-light.svg" width="100%" /></picture><br/><b>多个平台</b><br/>Chrome、Edge、Firefox、Safari 扩展和 Studio PWA；手表上有精简播放器。</td>
   </tr>
   <tr>
-    <td><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/code-dark.svg" /><img alt="代码与自动化卡片" src="./assets/brand/cards/code-light.svg" width="420" /></picture><br/><b>可嵌入、可自动化</b><br/>使用 <code>&lt;swarm-loom&gt;</code>、JavaScript API 或 CLI。</td>
-    <td><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/html-svg-dark.svg" /><img alt="HTML 与 SVG 卡片" src="./assets/brand/cards/html-svg-light.svg" width="420" /></picture><br/><b>隔离解析，按需加载</b><br/>HTML / SVG 不执行脚本；大型格式解析器独立分包。</td>
+    <td><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/html-svg-dark.svg" /><img alt="HTML 与 SVG 动画卡片" src="./assets/brand/cards/html-svg-light.svg" width="100%" /></picture><br/><b>保留原有动画</b><br/>SVG 动画在织完后接着播放；点“上线”后，CSS 动画也会恢复。</td>
+    <td><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/brand/cards/code-dark.svg" /><img alt="代码卡片" src="./assets/brand/cards/code-light.svg" width="100%" /></picture><br/><b>嵌入网站，接入脚本</b><br/>用 <code>&lt;swarm-loom&gt;</code> 组件、JavaScript API 或 CLI。</td>
   </tr>
 </table>
 
@@ -88,31 +90,43 @@ OpenDocument、EPUB、RTF、OFD、Jupyter Notebook、asciinema 终端录制、Pa
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/how-it-works-dark.svg" />
-    <img alt="捕获输入、生成 Blueprint、编排光标并播放或导出" src="./docs/assets/how-it-works-light.svg" width="760" />
+    <img alt="读取网页或文件，按阅读顺序安排光标，然后现场播放或导出视频" src="./docs/assets/how-it-works-light.svg" width="760" />
   </picture>
 </p>
 
-适配器或 DOM 快照把输入转成统一 Blueprint；播放器按阅读顺序编排光标。Studio 实时播放，CLI 按虚拟时钟逐帧导出。
+先把网页或文件拆成图层，再按阅读顺序把图层分给每只光标。Studio 现场播放；CLI 一帧一帧截图并合成声音，所以导出结果不受机器快慢影响。
 
 ## 快速开始
 
-### 无需安装：Studio
+### 在线试用
 
-打开[在线 Studio](https://boulea7.github.io/swarmloom/studio/)，选择示例、拖入本地文件、粘贴文本或输入 URL。本地文件只在浏览器中处理；远程 URL 会由浏览器直接请求目标站点，并受 CORS 与访问权限限制。
+打开[在线 Studio](https://boulea7.github.io/swarmloom/studio/)，选一个示例，或拖入本地文件、粘贴文本、输入 URL。本地文件只在浏览器里处理；输入 URL 时，浏览器会直接请求那个网站，能否读取取决于对方是否允许跨域访问。
+
+### 从源码构建
+
+GitHub Release、npm 包和商店版都还在计划中，目前请从源码构建。需要 Node.js 22.12+，pnpm 版本由 `packageManager` 固定。
+
+```bash
+git clone https://github.com/Boulea7/swarmloom.git
+cd swarmloom
+corepack enable
+pnpm install
+pnpm build
+```
 
 ### CLI
 
-CLI 源码已可运行。完成下方的源码构建后，在仓库根目录执行：
+在仓库根目录把一个文件导出成视频：
 
 ```bash
-node apps/cli/dist/cli.js render examples/svg/emblem.svg -o emblem.mp4 --seed 7 --fps 30
+node apps/cli/dist/cli.js render examples/svg/emblem.svg -o emblem.mp4
 ```
 
-运行需要 Node.js 20+、Chrome/Chromium；MP4、WebM、GIF、WebP 还需要 FFmpeg 4+。`node apps/cli/dist/cli.js doctor` 会检查环境。`npx swarmloom@latest ...` 是 npm 发布后的计划入口，目前尚未发布。
+需要 Chrome 或 Chromium；导出 MP4、WebM、GIF、WebP 还需要 FFmpeg 4+。运行 `node apps/cli/dist/cli.js doctor` 检查环境。npm 发布后可以直接用 `npx swarmloom`（计划中）。
 
 ### Web Component
 
-`pnpm add @swarmloom/element` 为计划中的 npm 安装方式；当前可用 `pnpm --filter @swarmloom/element build` 从源码构建。组件接口已经实现：
+npm 包 `@swarmloom/element` 还没发布（计划中）。组件本身已经可用，写法如下：
 
 ```html
 <script type="module">
@@ -125,73 +139,62 @@ node apps/cli/dist/cli.js render examples/svg/emblem.svg -o emblem.mp4 --seed 7 
   type="markdown"
   agents="24"
   seed="7"
-  theme="auto"
-  labels="names"
   autoplay
   controls>
 </swarm-loom>
 ```
 
-完整属性、事件与 SSR 说明见[组件文档](https://boulea7.github.io/swarmloom/docs/element.html)。
+全部属性和事件见[组件文档](https://boulea7.github.io/swarmloom/docs/element.html)。
 
 ## 按平台安装
 
-商店条目与签名安装包尚未发布。当前扩展需从源码构建开发包；仓库要求 Node.js 22.12+，pnpm 版本由 `packageManager` 固定。
-
-```bash
-git clone https://github.com/Boulea7/swarmloom.git
-cd swarmloom
-corepack enable
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install
-pnpm build
-pnpm --filter @swarmloom/extension build
-```
+商店版和签名安装包尚未发布。下面的方式都使用上一步 `pnpm build` 生成的开发包。
 
 <details>
-<summary>Chrome / Edge / Brave / Opera：加载开发包</summary>
+<summary>Chrome / Edge / Brave / Opera</summary>
 
-- Chrome：`chrome://extensions` → 开发者模式 → 加载已解压的扩展程序 → `apps/extension/dist/chrome/`。
-- Edge：`edge://extensions`，选择 `apps/extension/dist/edge/`。
-- Brave / Opera：在各自的扩展管理页开启开发者模式，复用 `dist/chrome/`。
-- 点击工具栏图标或按 Alt+Shift+W 重建普通网页；浏览器内部页、商店页与内建 PDF 查看器不能注入。
+- Chrome：打开 `chrome://extensions`，开启开发者模式，点“加载已解压的扩展程序”，选择 `apps/extension/dist/chrome/`。
+- Edge：打开 `edge://extensions`，选择 `apps/extension/dist/edge/`。
+- Brave / Opera：在各自的扩展页开启开发者模式，同样选择 `dist/chrome/`。
+- 在普通网页上点工具栏图标或按 Alt+Shift+W 开始。浏览器内部页、商店页和内置 PDF 查看器不允许扩展运行。
 
 </details>
 
 <details>
-<summary>Firefox 桌面与 Android：临时调试，正式签名计划中</summary>
+<summary>Firefox 桌面与 Android（签名版计划中）</summary>
 
-桌面打开 `about:debugging#/runtime/this-firefox` → 临时载入附加组件 → `apps/extension/dist/firefox/manifest.json`；重启后会被移除。Android 复用同一个包，开发验证需要 web-ext、ADB 与调试设备；正式安装需要 AMO 签名。移动真机验证前建议使用 Studio PWA。
+桌面：打开 `about:debugging#/runtime/this-firefox`，点“临时载入附加组件”，选择 `apps/extension/dist/firefox/manifest.json`；重启 Firefox 后会被移除。Android 使用同一个包，调试需要 web-ext、ADB 和一台开启调试的设备。长期安装要等 AMO 签名版；在此之前，手机上建议使用 Studio PWA。
 
 </details>
 
 <details>
-<summary>Safari macOS / iOS / iPadOS / visionOS：源码构建；真机与签名计划中</summary>
+<summary>Safari macOS / iOS / iPadOS / visionOS（真机测试和签名计划中）</summary>
 
-在装有 Xcode 的 macOS 上运行 `pnpm --filter @swarmloom/extension package:safari`，然后在 Xcode 中打开 `apps/extension/build/safari/`，选择团队、签名并运行容器 App，最后在系统设置中启用扩展。真机分发需要 Apple Developer Program；各系统尚未完成真机验收。
+在装有 Xcode 的 Mac 上运行 `pnpm --filter @swarmloom/extension package:safari`，用 Xcode 打开 `apps/extension/build/safari/`，选择开发团队并运行容器 App，再到系统设置里启用扩展。装到真机需要 Apple Developer Program；这些系统上的真机测试还没完成。
 
 </details>
 
 <details>
 <summary>PWA：桌面、Android、iOS / iPadOS</summary>
 
-Chrome / Edge 打开 Studio 后使用地址栏或菜单中的“安装应用”；macOS Safari 用“添加到 Dock”；Android 用“安装应用”或“添加到主屏幕”；iOS / iPadOS 在 Safari 的分享菜单中选择“添加到主屏幕”。Firefox 桌面请直接使用普通标签页。
+Chrome / Edge 打开 Studio 后，用地址栏或菜单里的“安装应用”；macOS Safari 用“添加到程序坞”；Android 用“安装应用”或“添加到主屏幕”；iOS / iPadOS 在 Safari 分享菜单里选“添加到主屏幕”。Firefox 桌面版直接在普通标签页里使用。
 
 </details>
 
 <details>
-<summary>折叠屏与手表：诚实的边界</summary>
+<summary>折叠屏与手表</summary>
 
-折叠屏无需单独安装；支持 Viewport Segments 时启用双栏或上下布局，否则回退普通响应式布局。手表没有扩展，也不承诺完整 PWA：打开 `?watch=1` 使用默认静音的精简播放器，`?round=1` 启用圆屏安全布局；复杂内容请在其他设备生成后导出。
+折叠屏不用单独安装：浏览器支持 Viewport Segments 时，Studio 会分成左右或上下两栏，否则使用普通布局。手表没有扩展，也不承诺完整 PWA：打开 `?watch=1` 是默认静音的精简播放器，`?round=1` 适配圆形表盘。复杂内容请在其他设备上导出后再看。
 
 </details>
 
 ## 与 Swarm Rebuild 相比
 
-| 方向 | SwarmLoom 增加的能力 |
+| 方面 | SwarmLoom 多了什么 |
 | --- | --- |
-| 输入 | 从当前网页扩展到文档、代码、位图与 3D 模型。 |
-| 载体 | 从浏览器扩展到 Studio PWA、CLI、Web Component 与手表查看。 |
-| 输出 | 增加确定性逐帧导出、同步音轨与可校验的渲染清单。 |
+| 输入 | 不只当前网页，还有文档、代码、图片和 3D 模型。 |
+| 平台 | 不只 Chrome 扩展，还有 Studio PWA、CLI、Web Component 和手表播放器。 |
+| 输出 | 可以导出带声音的视频，参数相同，结果相同。 |
 
 ## 文档
 
@@ -199,29 +202,31 @@ Chrome / Edge 打开 Studio 后使用地址栏或菜单中的“安装应用”�
 
 ## FAQ
 
-1. **这是 AI 智能体编排器吗？** 不是。光标是确定性的本地动画，重放的是内容的视觉构建过程，不会操作智能体；重建阶段也不会执行文档或 HTML 输入中的脚本。
-2. **本地文件会上传吗？** 不会上传到 SwarmLoom 服务器。只有主动打开远程 URL 时浏览器才请求目标站点；HTML 引用的网络图片和字体也可在 Studio 设置中关闭。详见[隐私说明](./PRIVACY.md)。
-3. **为什么某些页面不能原地重建？** 浏览器禁止向内部页、商店页和内建 PDF 查看器注入脚本。可改在 Studio 中导入文件；需要登录态的普通页面可使用扩展。
-4. **相同 seed 会得到逐字节相同的 MP4 吗？** 不保证。相同输入、浏览器、字体、系统与参数可复现原始帧和 PCM；编码器版本与线程仍可能改变压缩字节。
-5. **手机和手表能安装扩展吗？** 手机使用 Studio PWA；Firefox Android 的签名扩展仍在计划与验证中。手表只提供精简播放器，不提供扩展或后台播放。
+1. **光标背后是 AI 吗？** 不是。光标是按固定种子运行的本地动画，不调用任何模型，也不会执行文档或 HTML 里的脚本。
+2. **本地文件会上传吗？** 不会。文件只在你的浏览器里处理。只有你打开远程 URL 时，浏览器才会访问那个网站；HTML 引用的网络图片和字体可以在 Studio 设置里关掉。详见[隐私说明](./PRIVACY.md)。
+3. **为什么有些页面不能直接重建？** 浏览器不允许扩展在内部页、商店页和内置 PDF 查看器里运行。可以把文件拖进 Studio；需要登录才能看的普通网页，用扩展重建即可。
+4. **同样的参数会导出完全相同的 MP4 吗？** 画面和声音逐帧相同（同一输入、浏览器、字体、系统和参数）；MP4 文件本身可能因编码器版本不同而有字节差异。
+5. **手机和手表能装扩展吗？** 手机先用 Studio PWA，Firefox Android 签名版还在计划中。手表只有精简播放器，没有扩展和后台播放。
 
 ## Roadmap
 
-- **当前**：在线 Studio、19 类输入适配器、CLI 逐帧导出，以及 Chrome / Edge / Firefox / Safari 的源码构建。
-- **下一步**：首个 GitHub Release 与 npm 包，扩展签名分发，以及移动端和 Safari 真机验收。
-- **探索中**：更多格式与平台增强；不承诺日期。欢迎到 [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) 提建议。
+- **现在**：在线 Studio，网页加 19 类文件格式，CLI 逐帧导出，Chrome / Edge / Firefox / Safari 扩展可从源码构建。
+- **下一步**：首个 GitHub Release 和 npm 包，扩展上架与签名，Studio 内直接导出视频，手机和 Safari 真机测试。
+- **以后**：更多格式和平台，不承诺日期。欢迎到 [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) 提建议。
 
 ## 贡献与支持
 
-- 代码、文档、翻译与示例：先读 [CONTRIBUTING](./CONTRIBUTING.md) 和[行为准则](./CODE_OF_CONDUCT.md)。
-- 使用问题：[Discussions Q&A](https://github.com/Boulea7/swarmloom/discussions/categories/q-a)；可复现缺陷：[Bug Report](https://github.com/Boulea7/swarmloom/issues/new?template=bug_report.yml)。
-- 新格式建议：[Format Request](https://github.com/Boulea7/swarmloom/issues/new?template=format_request.yml)。
-- 安全漏洞：只按 [SECURITY](./SECURITY.md) 私密报告，不要创建公开 issue。
+- 代码、文档、翻译和示例：先读 [CONTRIBUTING](./CONTRIBUTING.md) 和[行为准则](./CODE_OF_CONDUCT.md)。
+- 使用问题：[Discussions Q&A](https://github.com/Boulea7/swarmloom/discussions/categories/q-a)；能复现的问题：[Bug Report](https://github.com/Boulea7/swarmloom/issues/new?template=bug_report.yml)。
+- 想支持新格式：[Format Request](https://github.com/Boulea7/swarmloom/issues/new?template=format_request.yml)。
+- 安全漏洞：按 [SECURITY](./SECURITY.md) 私下报告，不要开公开 issue。
 
-## 致谢与 clean-room 边界
+## 致谢
 
-灵感来自 Joel Califa 的 Swarm 与 Dhvanil Patel 的 Swarm Rebuild。SwarmLoom 是独立的 clean-room 实现，未复用其代码、常量表或视觉资产，也与二者无隶属关系。光标、配色、图标、声音与实现均为原创或具有清晰许可；第三方说明见[素材与依赖清单](https://boulea7.github.io/swarmloom/docs/credits.html)。
+灵感来自 Joel Califa 的 Swarm 和 Dhvanil Patel 的 Swarm Rebuild。SwarmLoom 是独立的 clean-room 实现，没有复用它们的代码、常量表或视觉素材，也与两者没有隶属关系。光标、配色、图标、声音和代码都是原创或有明确许可，第三方清单见[素材与依赖](https://boulea7.github.io/swarmloom/docs/credits.html)。
+
+宣传视频里担任指挥的 Clawd 是 Claude Code 吉祥物的同人形象，与 Anthropic 无关联。
 
 ## License
 
-[MIT](./LICENSE) © 2026 Boulea7 and SwarmLoom contributors。
+[MIT](./LICENSE) © 2026 Boulea7 and SwarmLoom contributors
