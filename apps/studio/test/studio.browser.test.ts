@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { page } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import {
@@ -120,5 +121,31 @@ describe("Studio in a browser", () => {
     // "full" overrides a system reduce preference, matching what the player gets.
     app?.context.updateSettings({ reducedMotion: "full" });
     expect(iterations()).toBe("infinite");
+  });
+
+  it("keeps the drop zone's cursors clear of a long German title on a 320px phone", async () => {
+    await page.viewport(320, 568);
+    try {
+      const { root } = await mount("?lang=de");
+      const inner = await until(() => root.querySelector<HTMLElement>(".dropzone-inner"));
+      const content = inner.getBoundingClientRect();
+      const cursors = [...root.querySelectorAll<HTMLElement>(".dropzone .decor-cursor")].filter(
+        (el) => el.getClientRects().length > 0,
+      );
+      expect(cursors.length).toBeGreaterThan(0);
+      const drift = 10; // the most the drift keyframes move a cursor, in px
+      for (const cursor of cursors) {
+        cursor.style.animation = "none";
+        const r = cursor.getBoundingClientRect();
+        const clear =
+          r.bottom + drift <= content.top ||
+          r.top - drift >= content.bottom ||
+          r.right + drift <= content.left ||
+          r.left - drift >= content.right;
+        expect(clear, cursor.textContent ?? "").toBe(true);
+      }
+    } finally {
+      await page.viewport(414, 896);
+    }
   });
 });
