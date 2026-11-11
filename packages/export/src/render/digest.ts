@@ -26,14 +26,20 @@ function servedDir(inputUrl: string | undefined, pageOrigin: string | undefined)
   }
 }
 
+/** The render page's own origin plus "/" when it is http(s) (the driver's loopback server), else "". */
+function pageRoot(pageOrigin: string | undefined): string {
+  return pageOrigin && /^https?:\/\//i.test(pageOrigin) ? `${pageOrigin}/` : "";
+}
+
 /**
  * SHA-256 (hex) of the blueprint's JSON with the addresses that change from run to run replaced:
  * the directory the driver served the input from (a random path on a random port, on the render
- * page's origin) becomes "input:/", and every blob: URL becomes "blob:sha256-" plus the hash of its
- * bytes ("blob:gone-n", numbered by first use, when it cannot be read). Remote URLs stay. The same
- * input then hashes the same in every run.
+ * page's origin) becomes "input:/", every blob: URL becomes "blob:sha256-" plus the hash of its
+ * bytes ("blob:gone-n", numbered by first use, when it cannot be read), and any other address on the
+ * render page's origin, such as a footnote link resolved against the page, starts with "page:/".
+ * Remote URLs stay. The same input then hashes the same in every run.
  *
- * @param pageOrigin Origin of the render page; the input directory is normalized only on this origin.
+ * @param pageOrigin Origin of the render page; only addresses on this origin are normalized.
  * @returns "" when the page has no Web Crypto (not a secure context).
  */
 export async function blueprintSha256(
@@ -56,5 +62,8 @@ export async function blueprintSha256(
     }
   }
   if (names.size) json = json.replace(BLOB_URL, (url) => names.get(url) ?? url);
+  // After the blob: URLs, which embed the same origin and are read by their full address.
+  const root = pageRoot(pageOrigin);
+  if (root) json = json.split(root).join("page:/");
   return hex(await subtle.digest("SHA-256", new TextEncoder().encode(json)));
 }

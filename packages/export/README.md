@@ -7,7 +7,7 @@ Deterministic video and audio export for SwarmLoom: the CLI's render page, the s
 `dist/render/index.html` is a headless page, also exported as `@swarmloom/export/render/*`. It sets `window.__swarmloom` and marks `<html data-swarmloom="ready">`. A driver such as the `swarmloom render` CLI over CDP calls:
 
 1. `init({ input, width, height, fps, seed?, agents?, speed?, theme?, labels?, overlays?, sound?, tail?, live?, follow?, reducedMotion?, bpm?, pack?, cues?, blueprint? })`, which returns `{ estimatedMs, layers, blueprintSha256 }`.
-   - `blueprintSha256` hashes the blueprint JSON after replacing what changes from run to run: the directory the input was served from becomes `input:/` and each `blob:` URL becomes `blob:sha256-` plus the hash of its bytes. The same input gives the same hash.
+   - `blueprintSha256` hashes the blueprint JSON after replacing what changes from run to run: the directory the input was served from becomes `input:/`, each `blob:` URL becomes `blob:sha256-` plus the hash of its bytes, and other addresses on the render page's own origin (such as footnote links resolved against the page) start with `page:/`. Remote URLs stay. The same input gives the same hash.
    - `overlays` is `full` (default), `minimal` (no size badges, distance labels, guide lines or rulers) or `none` (cursors, name tags and content only).
    - `input` is `{ name, type?, base64? | text? | url? }`. If `type` contains a slash it is a MIME type; otherwise it is an adapter id or extension that overrides detection.
    - `blueprint` (optional) is a blueprint the driver already captured, such as the CLI's live snapshot of a web page. It is played as is and `input` is not loaded.

@@ -101,7 +101,7 @@ For takes that can be checked and repeated. These files and `--output` must all 
 | --- | --- | --- |
 | `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
 | `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
-| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256 (the blueprint's addresses that change per run, such as the served input path and `blob:` URLs, are normalized first), player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: output paths are relative to the manifest, programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted`. Other arguments are kept as typed, so prefer relative paths |
+| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256 (the blueprint's addresses that change per run, such as the served input path, links resolved against the render page and `blob:` URLs, are normalized first), player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: output paths are relative to the manifest, programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted`. Other arguments are kept as typed, so prefer relative paths |
 
 ### Programs and logging
 

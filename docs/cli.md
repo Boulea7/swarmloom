@@ -101,7 +101,7 @@ swarmloom render <file|url> [options]
 | --- | --- | --- |
 | `--audio-out <file>` | 关闭 | 另写一份音轨 WAV（48 kHz 立体声，与视频等长）；需要声音，不能与 `--no-sound`、GIF 或 WebP 同用 |
 | `--events-out <file>` | 关闭 | 另写一份声音事件日志 JSON：引擎毫秒、与帧同一时钟，并附每个事件的帧号 |
-| `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256（blueprint 里每次运行都会变的地址，如输入的服务路径和 `blob:` URL，先换成固定写法再求哈希）、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素。清单可直接分享：输出路径相对清单所在目录，程序只记文件名，不记工作目录，URL 的用户信息、查询串和片段写作 `redacted`；其他参数按原样记录，分享时宜用相对路径 |
+| `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256（blueprint 里每次运行都会变的地址，如输入的服务路径、相对渲染页解析出的链接和 `blob:` URL，先换成固定写法再求哈希）、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素。清单可直接分享：输出路径相对清单所在目录，程序只记文件名，不记工作目录，URL 的用户信息、查询串和片段写作 `redacted`；其他参数按原样记录，分享时宜用相对路径 |
 
 ### 程序与日志
 

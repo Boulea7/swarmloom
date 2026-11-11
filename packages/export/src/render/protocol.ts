@@ -90,7 +90,8 @@ export interface RenderInfo {
   /**
    * SHA-256 (hex) of the blueprint's JSON, so a capture can record exactly what was played. Addresses
    * that differ between runs are normalized first (the directory the driver served the input from,
-   * blob: URLs), so the same input and settings give the same hash every time. Empty without Web Crypto.
+   * other addresses on the render page's origin, blob: URLs), so the same input and settings give the
+   * same hash every time. Empty without Web Crypto.
    */
   blueprintSha256: string;
 }

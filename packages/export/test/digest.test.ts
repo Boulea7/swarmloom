@@ -34,4 +34,14 @@ describe("blueprintSha256", () => {
     expect(c).not.toBe(a);
     expect(gone).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  it("drops the render page's random port from links resolved against it (footnotes) and from the input folder", async () => {
+    const take = (port: number) => {
+      const page = `http://127.0.0.1:${port}`;
+      const html = `<a href="${page}/index.html#fn-1">1</a><img src="${page}/input/t${port}/a.png">`;
+      const blueprint = { ...withImage("x.png"), css: html };
+      return blueprintSha256(blueprint, `${page}/input/t${port}/a.md`, page, read);
+    };
+    expect(await take(4001)).toBe(await take(4002));
+  });
 });
