@@ -10,12 +10,14 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-/** Base64 data URL of raw bytes. */
+/**
+ * Base64 data URL of raw bytes. The bytes may come from another realm (the export frame's font
+ * faces), where `instanceof ArrayBuffer` is false, so the checks look at the brand instead.
+ */
 export function bytesToDataUrl(bytes: ArrayBuffer | ArrayBufferView, type: string): Promise<string> {
-  const view =
-    bytes instanceof ArrayBuffer
-      ? new Uint8Array(bytes)
-      : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const view = ArrayBuffer.isView(bytes)
+    ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    : new Uint8Array(bytes as ArrayBuffer);
   return blobToDataUrl(new Blob([view.slice()], { type }));
 }
 
