@@ -27,7 +27,7 @@
   .btn.ghost { border-color: var(--line); background: var(--card); color: var(--ink); }
   .btn.small { height: 36px; padding: 0 14px; font-size: 14px; }
 
-  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 56px 0 72px; }
+  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding-block: 56px 72px; }
   .pill {
     display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 650;
     color: var(--indigo); background: rgba(91, 91, 247, 0.1);
@@ -56,7 +56,7 @@
   .cursor.b { left: 22%; top: 210px; animation-delay: -1.3s; }
   .cursor.c { left: 70%; top: 236px; animation-delay: -2.6s; }
 
-  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 8px 0 72px; }
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding-block: 8px 72px; }
   .card { padding: 24px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); animation: rise 700ms ease-out both; }
   .card:nth-child(2) { animation-delay: 120ms; }
   .card:nth-child(3) { animation-delay: 240ms; }
@@ -64,7 +64,7 @@
   .card p { margin: 0; color: var(--muted); font-size: 15px; }
   .icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; }
 
-  .steps { padding: 0 0 80px; }
+  .steps { padding-bottom: 80px; }
   .steps h2 { margin: 0 0 24px; font-size: 32px; letter-spacing: -0.02em; }
   .steps ol { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; counter-reset: step; }
   .steps li { counter-increment: step; padding-top: 16px; border-top: 2px solid var(--line); color: var(--ink-2); }
