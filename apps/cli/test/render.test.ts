@@ -2,8 +2,8 @@
 /**
  * End-to-end render tests: bundle the CLI, run it as a real process against a real browser and ffmpeg,
  * and inspect the result with ffprobe. Skipped (with the reason) when the machine lacks Chrome or ffmpeg;
- * the tests on the real render page also skip while its build is missing or older than its inputs,
- * except under CI, which builds before testing: there that is a broken pipeline and the tests fail.
+ * the tests on the real render page also skip while its build is missing or older than its inputs.
+ * Under CI both fail instead (see ./real-deps), and a wrong SWARMLOOM_CHROME or SWARMLOOM_FFMPEG always does.
  */
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it, type TestContext } from "vit
 import { findBrowser } from "../src/discovery/browser";
 import { findFfmpeg, systemFfmpegDeps } from "../src/discovery/ffmpeg";
 import { systemHost, which } from "../src/discovery/host";
-import { renderPageProblem } from "./real-deps";
+import { findOptional, inCi, renderPageProblem, skipReason } from "./real-deps";
 
 const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
 const REPO = path.resolve(CLI_DIR, "../..");
@@ -25,33 +25,25 @@ const EXPORT_RENDER_DIR = path.join(REPO, "packages/export/dist/render");
 const TIMEOUT = 240_000;
 
 const host = systemHost();
-const chrome = (() => {
-  try {
-    return findBrowser(host).path;
-  } catch {
-    return undefined;
-  }
-})();
-const ffmpeg = await findFfmpeg(systemFfmpegDeps(host)).then(
-  (found) => found.path,
-  () => undefined,
-);
+const chrome = (await findOptional("SWARMLOOM_CHROME", () => findBrowser(host)))?.path;
+const ffmpeg = (await findOptional("SWARMLOOM_FFMPEG", () => findFfmpeg(systemFfmpegDeps(host))))?.path;
 const ffprobe = ffmpeg ? siblingOrPath(ffmpeg, "ffprobe") : undefined;
-const missing = !chrome
-  ? "no Chrome/Chromium found (set SWARMLOOM_CHROME)"
-  : !ffmpeg
-    ? "no ffmpeg 4+ found (set SWARMLOOM_FFMPEG)"
-    : !ffprobe
-      ? "no ffprobe next to ffmpeg or on PATH"
-      : undefined;
+const missing = skipReason(
+  !chrome
+    ? "no Chrome/Chromium found (set SWARMLOOM_CHROME)"
+    : !ffmpeg
+      ? "no ffmpeg 4+ found (set SWARMLOOM_FFMPEG)"
+      : !ffprobe
+        ? "no ffprobe next to ffmpeg or on PATH"
+        : undefined,
+);
 
 const renderPage = renderPageProblem(REPO);
-const IN_CI = /^(1|true)$/i.test(process.env.CI ?? "");
 
 /** Skips a real render page test while the page is unusable; CI must have built it, so there it fails. */
 function requireRenderPage(ctx: TestContext): void {
   if (!renderPage) return;
-  if (IN_CI) throw new Error(`${renderPage} (CI must run pnpm build before pnpm test)`);
+  if (inCi()) throw new Error(`${renderPage} (CI must run pnpm build before pnpm test)`);
   ctx.skip(renderPage);
 }
 

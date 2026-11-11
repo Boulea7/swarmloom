@@ -1,8 +1,44 @@
 /**
- * Gates of the CLI tests that drive a real browser and ffmpeg: whether the built render page is current.
+ * Gates of the CLI tests that drive a real browser and ffmpeg: finding those programs, deciding whether a
+ * missing one skips or fails the tests, and whether the built render page is current.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
+
+type Env = Record<string, string | undefined>;
+
+/** True on a CI runner (`CI=1` or `CI=true`). */
+export function inCi(env: Env = process.env): boolean {
+  return /^(1|true)$/i.test(env.CI ?? "");
+}
+
+/**
+ * Finds a program a test needs. A path the run set in `envName` that does not work always throws, so a
+ * misconfigured run fails; a program that is simply not installed resolves to undefined.
+ */
+export async function findOptional<T>(
+  envName: string,
+  find: () => T | Promise<T>,
+  env: Env = process.env,
+): Promise<T | undefined> {
+  try {
+    return await find();
+  } catch (error) {
+    if (env[envName]) throw error;
+    return undefined;
+  }
+}
+
+/**
+ * Returns why the tests skip, or throws it where the programs are required: under CI, unless the job sets
+ * SWARMLOOM_TEST_DEPS=optional because it does not provide them (CI's e2e job does and runs these tests).
+ */
+export function skipReason(missing: string | undefined, env: Env = process.env): string | undefined {
+  if (missing && inCi(env) && env.SWARMLOOM_TEST_DEPS !== "optional") {
+    throw new Error(`${missing}; CI requires it (a job without it sets SWARMLOOM_TEST_DEPS=optional)`);
+  }
+  return missing;
+}
 
 /**
  * Why the built render page (packages/export/dist/render) cannot be used: it is not built, or one of its build

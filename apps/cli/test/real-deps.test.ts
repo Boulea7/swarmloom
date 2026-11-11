@@ -3,7 +3,24 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { renderPageProblem } from "./real-deps";
+import { findOptional, renderPageProblem, skipReason } from "./real-deps";
+
+describe("real browser and ffmpeg gates", () => {
+  const notFound = () => {
+    throw new Error("Browser not found at /missing/chromium (from SWARMLOOM_CHROME)");
+  };
+
+  it("fails a wrong explicit path and a missing program under CI, and skips only when it is optional", async () => {
+    await expect(findOptional("SWARMLOOM_CHROME", notFound, { SWARMLOOM_CHROME: "/missing/chromium" })).rejects.toThrow(
+      "/missing/chromium",
+    );
+    expect(await findOptional("SWARMLOOM_CHROME", notFound, {})).toBeUndefined();
+    expect(() => skipReason("no ffmpeg", { CI: "true" })).toThrow("no ffmpeg");
+    expect(skipReason("no ffmpeg", { CI: "1", SWARMLOOM_TEST_DEPS: "optional" })).toBe("no ffmpeg");
+    expect(skipReason("no ffmpeg", {})).toBe("no ffmpeg");
+    expect(skipReason(undefined, { CI: "1" })).toBeUndefined();
+  });
+});
 
 describe("renderPageProblem", () => {
   let repo = "";

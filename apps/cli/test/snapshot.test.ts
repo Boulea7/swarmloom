@@ -1,6 +1,7 @@
 /**
  * `swarmloom snapshot` of a local HTML file against a real browser, with the test double of the snapshot
- * script. Skipped (with the reason) when the machine has no Chrome.
+ * script. Skipped (with the reason) when the machine has no Chrome; under CI that fails instead (see
+ * ./real-deps), and a wrong SWARMLOOM_CHROME always does.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -12,17 +13,13 @@ import { describe, expect, it } from "vitest";
 import { snapshotCommand } from "../src/commands/snapshot";
 import { findBrowser } from "../src/discovery/browser";
 import { systemHost } from "../src/discovery/host";
+import { findOptional, skipReason } from "./real-deps";
 
 const SNAPSHOT_DOUBLE = path.join(import.meta.dirname, "fixtures/snapshot.js");
-const chrome = (() => {
-  try {
-    return findBrowser(systemHost()).path;
-  } catch {
-    return undefined;
-  }
-})();
+const chrome = (await findOptional("SWARMLOOM_CHROME", () => findBrowser(systemHost())))?.path;
+const missing = skipReason(chrome ? undefined : "no Chrome/Chromium found (set SWARMLOOM_CHROME)");
 
-describe.skipIf(!chrome)(`snapshot of a local file${chrome ? "" : " (skipped: no Chrome/Chromium found)"}`, () => {
+describe.skipIf(missing)(`snapshot of a local file${missing ? ` (skipped: ${missing})` : ""}`, () => {
   it("keeps the page's scripts and requests away from the folder and other sites", async () => {
     const hits: string[] = [];
     const listener = createServer((req, res) => {
