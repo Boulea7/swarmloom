@@ -1,6 +1,6 @@
 import type { ShadowWatch } from "../../render/live";
 import type { FontWatch } from "./fonts";
-import { ResourceCache } from "./resources";
+import { networkGate, ResourceCache, type ResourcePolicy } from "./resources";
 import { type SnapshotStats, snapshotFrame } from "./snapshot";
 import { readBaseline, type StyleBaseline } from "./styles";
 
@@ -14,6 +14,11 @@ export interface RasterizerOptions {
   fonts: FontWatch;
   /** Fetches resources to embed. Default the global `fetch`. */
   fetch?: typeof fetch;
+  /**
+   * What may be fetched to embed, as the frame's network policy allows it to load: "https" (the
+   * default) or "none". The page's own origin, data: and blob: URLs are always allowed.
+   */
+  network?: ResourcePolicy;
   onWarning?: (message: string) => void;
 }
 
@@ -38,8 +43,10 @@ export class FrameRasterizer {
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
-    this.#resources = new ResourceCache(options.fetch ?? globalThis.fetch.bind(globalThis), (message) =>
-      options.onWarning?.(message),
+    this.#resources = new ResourceCache(
+      options.fetch ?? globalThis.fetch.bind(globalThis),
+      (message) => options.onWarning?.(message),
+      networkGate(options.network ?? "https", options.document.baseURI),
     );
   }
 

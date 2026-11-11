@@ -19,7 +19,10 @@ export interface BrowserExportOptions {
   height: number;
   fps: number;
   settings?: ExportSettings;
-  /** What document adapters may fetch: https images and fonts (default) or nothing. */
+  /**
+   * What document adapters may fetch, and what the frame rasterizer may fetch to embed: https
+   * images and fonts (default) or nothing from the web.
+   */
   network?: "https" | "none";
   /** Stop after this much video even if the build is not done, ms. Default 600000 (10 min). */
   maxDurationMs?: number;
@@ -191,7 +194,15 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     const info = await api.init({ ...settings, input: o.input, width, height, fps, tail });
     if (signal?.aborted) throw abortError(signal);
 
-    const rasterizer = new FrameRasterizer({ document: win.document, width, height, shadows, fonts, onWarning: warn });
+    const rasterizer = new FrameRasterizer({
+      document: win.document,
+      width,
+      height,
+      shadows,
+      fonts,
+      network: o.network ?? "https",
+      onWarning: warn,
+    });
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
