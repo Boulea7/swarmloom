@@ -37,7 +37,7 @@ Full-quality videos and captions: [promo-v1](https://github.com/Boulea7/swarmloo
 <!-- VIDEO:more -->
 
 <details>
-<summary>More videos by format (11)</summary>
+<summary>More videos by format (12)</summary>
 
 **Web**
 
@@ -82,6 +82,10 @@ https://github.com/user-attachments/assets/e525ae40-dd06-4986-bb0e-899f82900aaf
 **Platforms**
 
 https://github.com/user-attachments/assets/cf9eaea2-e9b3-436b-a40a-2daf376bd8f8
+
+**CLI**
+
+https://github.com/user-attachments/assets/c989168a-deba-4bee-ab15-5f287bbddb43
 
 </details>
 

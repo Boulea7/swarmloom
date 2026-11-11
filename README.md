@@ -37,7 +37,7 @@ https://github.com/user-attachments/assets/8933469f-4ce9-42f4-be3a-8c1b59dd278c
 <!-- VIDEO:more -->
 
 <details>
-<summary>按方向看更多视频（11 集）</summary>
+<summary>按方向看更多视频（12 集）</summary>
 
 **网页**
 
@@ -82,6 +82,10 @@ https://github.com/user-attachments/assets/a09fac82-9f73-47db-b41e-5d9c281aacb0
 **平台**
 
 https://github.com/user-attachments/assets/fb538bef-ae52-4868-a467-bc63b654507c
+
+**CLI**
+
+https://github.com/user-attachments/assets/59eaf3ca-5d7f-4cad-84e6-ad9d432010ce
 
 </details>
 

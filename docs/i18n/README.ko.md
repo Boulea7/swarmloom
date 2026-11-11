@@ -37,7 +37,7 @@ https://github.com/user-attachments/assets/47a365d6-58af-49b0-9c03-dda84e5e3d16
 <!-- VIDEO:more -->
 
 <details>
-<summary>형식별 영상 더 보기(11개)</summary>
+<summary>형식별 영상 더 보기(12개)</summary>
 
 **웹 페이지**
 
@@ -82,6 +82,10 @@ https://github.com/user-attachments/assets/e525ae40-dd06-4986-bb0e-899f82900aaf
 **플랫폼**
 
 https://github.com/user-attachments/assets/cf9eaea2-e9b3-436b-a40a-2daf376bd8f8
+
+**CLI**
+
+https://github.com/user-attachments/assets/c989168a-deba-4bee-ab15-5f287bbddb43
 
 </details>
 
