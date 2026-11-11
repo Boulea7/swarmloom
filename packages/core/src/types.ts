@@ -382,6 +382,11 @@ export type OverlayKind =
 /** Stage operations available to choreographies. */
 export interface StageApi {
   readonly blueprint: Blueprint;
+  /**
+   * True when the player builds without motion (reduced motion): plugins keep still poses rather
+   * than starting animations of their own. Optional for stand-in stages; absent means false.
+   */
+  readonly reducedMotion?: boolean;
   layer(id: string): Layer | undefined;
   /** DOM element of a mounted layer (null when virtualized away or not DOM-rendered). */
   el(id: string): HTMLElement | SVGElement | null;
@@ -431,6 +436,12 @@ export interface Plugin {
   frame?(now: number, dt: number): void;
   /** Map a stage point to a screen point (3D projection). Default identity. */
   project?(p: Point): Point;
+  /**
+   * Optional: a fresh instance for one player. When present, every player calls it once at creation
+   * and uses the result (same `name`) for its tasks, renderers, setup and frame, so plugins that keep
+   * state can serve several players created from the same LoadedSource at once.
+   */
+  perPlayer?(): Plugin;
 }
 
 /* ------------------------------------------------------------------ */

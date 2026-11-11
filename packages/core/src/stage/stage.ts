@@ -246,6 +246,10 @@ export class SwarmStage implements Stage {
 
   /* ------------------------------------------------------------ StageApi */
 
+  get reducedMotion(): boolean {
+    return this.#reduced;
+  }
+
   layer(id: string): Layer | undefined {
     return this.#registry.get(id)?.layer;
   }

@@ -100,6 +100,30 @@ describe("assemblePlayer", () => {
     expect(sounds[0]?.destroyed).toBe(true);
   });
 
+  it("gives every player its own instance of a plugin with perPlayer()", () => {
+    const { zones } = fakeZones();
+    const made: Plugin[] = [];
+    const shared: Plugin = {
+      name: "anim",
+      perPlayer: () => {
+        const own: Plugin = { name: "anim" };
+        made.push(own);
+        return own;
+      },
+    };
+    const players = [1, 2].map(() =>
+      assemblePlayer({ blueprint: samplePage(), host: document.createElement("div"), plugins: [shared] }, zones),
+    );
+    const used = zones.createStage.mock.calls.map((call) => call[0].plugins[1]);
+    expect(made).toHaveLength(2);
+    expect(used[0]).toBe(made[0]);
+    expect(used[1]).toBe(made[1]);
+    for (const player of players) player.destroy();
+    const renamed: Plugin = { name: "anim", perPlayer: () => ({ name: "other" }) };
+    const options = { blueprint: samplePage(), host: document.createElement("div"), plugins: [renamed] };
+    expect(() => assemblePlayer(options, zones)).toThrow('perPlayer() must return a plugin named "anim"');
+  });
+
   it("gives the toolbar a timeline when the shell asks for a scrubber, and seeking follows it", () => {
     const { zones, controls } = fakeZones();
     const clock = new VirtualClock();
