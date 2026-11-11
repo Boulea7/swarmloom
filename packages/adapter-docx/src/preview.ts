@@ -62,6 +62,7 @@ export async function renderPreview(
   adjustPageBreaks(model?.documentPart?.body, options.savedPageBreaks, breakBeforeStyles(model?.stylesPart?.styles));
   unwrapNoteReferenceRuns(model?.documentPart?.body);
   inheritHeadersAndFooters(model?.documentPart?.body);
+  applyDefaultParagraphStyle([model?.documentPart?.body, ...partRoots(model?.parts)], model?.stylesPart?.styles);
   const numbering = tagPageNumbers(model?.documentPart?.body, model?.parts);
   const nodes = await renderDocument(parsed, settings);
   styles.replaceChildren();
@@ -174,10 +175,7 @@ export interface SectionNumbering {
  * Returns each section's page numbering, by section index.
  */
 export function tagPageNumbers(body: unknown, parts: unknown): SectionNumbering[] {
-  const roots = Array.isArray(parts)
-    ? parts.flatMap((p) => (isNode(p) && isNode(p.rootElement) ? [p.rootElement] : []))
-    : [];
-  for (const root of [body, ...roots]) tagFieldResults(root);
+  for (const root of [body, ...partRoots(parts)]) tagFieldResults(root);
   if (!isNode(body) || !Array.isArray(body.children)) return [];
   const sections = sectionsOf(body);
   let index = 0;
@@ -284,6 +282,34 @@ function formatPageNumber(n: number, format: string | undefined): string {
     default:
       return String(n);
   }
+}
+
+/** Root elements of the parsed parts that have one (headers and footers). */
+function partRoots(parts: unknown): ModelNode[] {
+  return Array.isArray(parts) ? parts.flatMap((p) => (isNode(p) && isNode(p.rootElement) ? [p.rootElement] : [])) : [];
+}
+
+/**
+ * docx-preview writes the run formatting of the default paragraph style (usually Normal) as
+ * `.docx p, p.docx_normal span`, so runs in paragraphs without a style fall back to the document
+ * defaults (`w:docDefaults`, applied to every span): body text took the theme font instead of Normal's.
+ * Gives those paragraphs the default style explicitly (in place), as Word does.
+ */
+export function applyDefaultParagraphStyle(roots: readonly unknown[], styles: unknown): void {
+  type Style = { id?: unknown; target?: unknown; isDefault?: unknown };
+  const fallback = Array.isArray(styles)
+    ? (styles as Style[]).find((s) => isNode(s) && s.isDefault === true && s.target === "p")?.id
+    : undefined;
+  if (typeof fallback !== "string" || !fallback) return;
+  const visit = (node: ModelNode, depth: number): void => {
+    if (depth > MAX_MODEL_DEPTH || !Array.isArray(node.children)) return;
+    for (const child of node.children) {
+      if (!isNode(child)) continue;
+      if (child.type === "paragraph" && !child.styleName) child.styleName = fallback;
+      visit(child, depth + 1);
+    }
+  };
+  for (const root of roots) if (isNode(root)) visit(root, 0);
 }
 
 /** Ids of paragraph styles with "page break before", following w:basedOn, from docx-preview's parsed styles. */

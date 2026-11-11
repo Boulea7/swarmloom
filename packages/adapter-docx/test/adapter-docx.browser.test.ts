@@ -2,7 +2,7 @@ import type { Blueprint, BoxLayer, Layer, TextLayer } from "@swarmloom/core";
 import * as snapshotDom from "@swarmloom/snapshot-dom";
 import { beforeAll, describe, expect, it } from "vitest";
 import { type DocxLoadedSource, loadDocx } from "../src/index";
-import { DESK, PAGE_GAP } from "../src/paged/index";
+import { createSandbox, DESK, PAGE_GAP } from "../src/paged/index";
 import { fakeSnapshotHtml, type SnapshotCall } from "./fake-snapshot";
 
 const SAMPLE = new URL("../../../examples/docx/report.docx", import.meta.url);
@@ -114,6 +114,19 @@ describe.each(["preview", "plain"] as const)("DOCX sample with the %s renderer",
   it("turns list numbering into real text", () => {
     if (renderer === "preview") expect(calls[0].html).toContain("swl-marker");
     expect(allText(loaded.blueprint)).toMatch(/(^|\n)(1\.|•)/);
+  });
+
+  it("sets unstyled paragraphs in the Normal style's font, not the document default", () => {
+    if (renderer !== "preview") return;
+    const sandbox = createSandbox(document, 1000);
+    try {
+      sandbox.addCss(calls[0].opts.css ?? "");
+      sandbox.root.innerHTML = calls[0].html;
+      const run = Array.from(sandbox.root.querySelectorAll("span")).find((s) => s.textContent === "rebuilds");
+      expect(run && getComputedStyle(run).fontFamily).toMatch(/^Calibri\b/);
+    } finally {
+      sandbox.dispose();
+    }
   });
 });
 

@@ -30,6 +30,7 @@ import {
 import { PLAIN_PAGE, renderPlain } from "../src/plain";
 import {
   adjustPageBreaks,
+  applyDefaultParagraphStyle,
   fitSheets,
   inheritHeadersAndFooters,
   lengthPx,
@@ -340,6 +341,9 @@ describe("page breaks handed to docx-preview", () => {
       inheritHeadersAndFooters({ children: [{ type: "paragraph", sectionProps: 1 }], props: null }),
     ).not.toThrow();
     expect(() => unwrapNoteReferenceRuns("x")).not.toThrow();
+    expect(() =>
+      applyDefaultParagraphStyle([null, { children: [3] }], [null, { isDefault: true, target: "p" }]),
+    ).not.toThrow();
     expect(tagPageNumbers({ children: [null, run({ type: "complexField", charType: "end" })] }, [null, {}])).toEqual(
       [],
     );
