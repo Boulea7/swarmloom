@@ -19,6 +19,7 @@
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit -p . && pnpm -r --filter \"./packages/**\" --filter \"./apps/**\" typecheck",
     "bench": "node scripts/bench.mjs",
+    "test:bench": "node --test \"scripts/bench/test/*.test.mjs\"",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "check:lockfile": "node scripts/check-lockfile.mjs",
