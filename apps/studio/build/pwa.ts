@@ -125,13 +125,13 @@ function cold(sources: readonly string[] = []): boolean {
 }
 
 /**
- * Lazy chunks the worker fetches ahead at install so every format opens offline: each adapter or
- * locale entry together with everything it imports statically, their CSS and the files they load
- * by URL (pdf.js's worker script), since the reader fails offline if any of them is missing. Size
- * is no limit: pdf.js's worker and its main-thread fallback (a lazy entry of its own) are both
- * over 1 MiB. An entry is warmed whole or not at all: when a chunk it imports is cold, the entry
- * is left to the runtime cache too. A cold file loaded by URL is an alternative build and is
- * skipped alone.
+ * Lazy chunks the worker fetches ahead at install so every format opens offline: each adapter,
+ * locale or in-browser video exporter entry together with everything it imports statically, their
+ * CSS and the files they load by URL (pdf.js's worker script), since the reader fails offline if
+ * any of them is missing. Size is no limit: pdf.js's worker and its main-thread fallback (a lazy
+ * entry of its own) are both over 1 MiB. An entry is warmed whole or not at all: when a chunk it
+ * imports is cold, the entry is left to the runtime cache too. A cold file loaded by URL is an
+ * alternative build and is skipped alone.
  */
 export function warmFiles(bundle: Record<string, ChunkLike>, shell: readonly string[]): string[] {
   const skip = new Set(shell);

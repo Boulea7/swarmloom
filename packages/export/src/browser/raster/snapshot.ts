@@ -415,13 +415,16 @@ async function fontCss(walk: Walk, source: SnapshotSource, docs: readonly Docume
 
 /** Style sheet of the snapshot: the reset every clone starts from, pseudo-elements and fonts. */
 function sheet(rules: readonly string[], fonts: string): string {
-  const css = `${fonts}\n*{all:unset}\nstyle{display:none!important}\n${rules.join("\n")}`;
+  // Only the clones inside the foreignObject: resetting the wrapping `<svg>` and `<foreignObject>`
+  // would turn their width and height (geometry properties) to `auto`, and Firefox then draws
+  // nothing of the foreignObject.
+  const css = `${fonts}\nforeignObject *{all:unset}\nstyle{display:none!important}\n${rules.join("\n")}`;
   return `<style><![CDATA[${css.replace(/]]>/g, "]]]]><![CDATA[>")}]]></style>`;
 }
 
 /**
  * Serialises what the frame document shows into one SVG image: the flattened tree (shadow roots,
- * slots, same-origin frames) as XHTML in a `foreignObject`, every element reset with `all: unset`
+ * slots, same-origin frames) as XHTML in a `foreignObject`, every clone reset with `all: unset`
  * and given back the computed values that differ, and every resource (images, canvases, fonts)
  * embedded as a data URL, since an SVG image loads nothing else.
  *
