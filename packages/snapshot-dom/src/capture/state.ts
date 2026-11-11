@@ -2,6 +2,7 @@ import type { Layer, Rect } from "@swarmloom/core";
 import { isElement, isText, viewOf } from "../dom/env";
 import type { ResolvedOptions } from "../options";
 import { contains, intersect, type Linear, outwardRect, roundRect } from "../util/geom";
+import type { CounterIndex } from "./counters";
 import type { BoxVisual } from "./styles";
 
 /** A child in the flat (composed) tree together with the element its inherited styles come from. */
@@ -118,6 +119,8 @@ export interface Capture {
   readonly layers: Layer[];
   readonly keys: (readonly number[])[];
   readonly infos: Map<Element, ElInfo>;
+  /** CSS counter values per document or shadow root, built on first use. */
+  readonly counters: Map<Node, CounterIndex>;
   readonly nodes: NodeRec[];
   readonly rootNode: NodeRec;
   readonly floats: FloatRec[];
@@ -167,6 +170,7 @@ export function createCapture(
     layers: [],
     keys: [],
     infos: new Map(),
+    counters: new Map(),
     nodes: [rootNode],
     rootNode,
     floats: [],

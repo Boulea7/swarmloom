@@ -249,7 +249,7 @@ function writeMath(s: Ser, el: Element, depth: number): void {
 }
 
 function writePseudo(s: Ser, info: ElInfo, which: "before" | "after", parentProps: TextProps): void {
-  const p = pseudoOf(info, which);
+  const p = pseudoOf(s.cap, info, which);
   if (!p || !isInlinePseudo(p)) return;
   const v = readBoxVisual(p.cs);
   const visibleText = hasVisibleText(p.text);

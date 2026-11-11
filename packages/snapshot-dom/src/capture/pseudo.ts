@@ -42,7 +42,7 @@ export function emitPositionedPseudo(
   hostBox: Rect,
 ): void {
   if (host.position === "static" || ctx.linear) return;
-  const p = pseudoOf(host, which);
+  const p = pseudoOf(cap, host, which);
   if (p?.position !== "absolute") return;
   const cs = p.cs;
   const w = cs.width;

@@ -194,6 +194,21 @@ describe("edge cases", () => {
     }
   });
 
+  it("evaluates CSS counters in generated content", async () => {
+    const doc = await mountPage(
+      "<style>body{margin:0;font:16px sans-serif}ol{list-style:none}.s{counter-reset:step}.s li{counter-increment:step}" +
+        '.s li::before{content:"0" counter(step) ". "}.n{counter-reset:sec 3}' +
+        '.n p::before{content:counters(sec, "-", upper-roman) " ";counter-increment:sec}' +
+        '.m li::before{content:counter(list-item) ") "}</style>' +
+        '<ol class="s"><li>Pick</li><li>Plan</li></ol>' +
+        '<div class="n"><p>Alpha</p><div style="counter-reset:sec"><p>Beta</p></div></div>' +
+        '<ol class="m" start="4"><li>Four</li><li>Five</li></ol>',
+    );
+    const bp = await snapshot(doc);
+    const expected = ["01. Pick", "02. Plan", "IV Alpha", "IV-I Beta", "4) Four", "5) Five"];
+    for (const want of expected) expect(textWith(bp, want.split(" ").at(-1) as string)?.text).toContain(want);
+  });
+
   it("captures an open modal dialog and its backdrop into the screen layer", async () => {
     const doc = await mountPage(
       '<body style="margin:0;height:3000px"><div style="transform:translateX(10px);overflow:hidden;height:40px">' +

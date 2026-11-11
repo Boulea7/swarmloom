@@ -103,7 +103,7 @@ export function inlineFacts(cap: Capture, info: ElInfo): InlineFacts {
   const facts: InlineFacts = { onlyInline: true, hasText: false };
   info.facts = facts;
   for (const which of ["before", "after"] as const) {
-    const p = pseudoOf(info, which);
+    const p = pseudoOf(cap, info, which);
     if (p && isInlinePseudo(p) && hasVisibleText(p.text)) facts.hasText = true;
   }
   for (const child of childrenOf(cap, info)) {

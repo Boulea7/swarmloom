@@ -1,8 +1,10 @@
 /**
  * Parser for computed `content` values of ::before/::after.
- * Supports strings (with CSS escapes), url(), attr(), quotes and the `/ alt` suffix.
- * Counters cannot be evaluated from outside the cascade and contribute nothing.
+ * Supports strings (with CSS escapes), url(), attr(), counter(), counters(), quotes and the `/ alt` suffix.
  */
+import { splitTopLevel } from "../util/css";
+import type { CounterReader } from "./counters";
+
 export interface PseudoContent {
   text: string;
   /** First url() image, if any. */
@@ -56,9 +58,14 @@ function matchParen(value: string, open: number): number {
 
 /**
  * Parses a computed `content` value. Returns null for `none`/`normal` (no box is generated).
- * `getAttr` resolves attr() references against the host element.
+ * `getAttr` resolves attr() references against the host element; `counter` resolves counter() and
+ * counters() (without it they contribute nothing).
  */
-export function parsePseudoContent(value: string, getAttr: (name: string) => string | null): PseudoContent | null {
+export function parsePseudoContent(
+  value: string,
+  getAttr: (name: string) => string | null,
+  counter?: CounterReader,
+): PseudoContent | null {
   const v = value.trim();
   if (v === "" || v === "none" || v === "normal") return null;
   let text = "";
@@ -93,6 +100,10 @@ export function parsePseudoContent(value: string, getAttr: (name: string) => str
       } else if (word === "attr") {
         const name = inner.split(/[\s,]/)[0] ?? "";
         text += getAttr(name) ?? "";
+      } else if (counter && (word === "counter" || word === "counters")) {
+        const [name = "", ...rest] = splitTopLevel(inner);
+        const separator = word === "counters" ? readString(rest.shift() ?? '""', 0)[0] : null;
+        text += counter(name, separator, rest[0] || "decimal");
       }
       i = close + 1;
       continue;
