@@ -228,6 +228,30 @@ describe("SMIL replay (decision C04)", () => {
     world.remove();
   });
 
+  it('stays on player time after go live with liveClock "player" (exports)', async () => {
+    expect(() => createSvgAdapter({ liveClock: "wall" as "own" })).toThrow(TypeError);
+    const { blueprint, plugins } = await createSvgAdapter({ liveClock: "player" }).load({ text: shuttle }, ctx);
+    const smil = byKind(blueprint.layers, "custom").find((l) => l.task === SMIL_TASK) as CustomLayer;
+    const plugin = plugins?.[0];
+    const renderer = plugin?.renderers?.[SMIL_TASK];
+    const world = document.createElement("div");
+    document.body.append(world);
+    const container = document.createElement("div");
+    world.attachShadow({ mode: "open" }).append(container);
+    const wrapper = renderer?.mount(smil, container, { blueprint } as StageApi) as HTMLElement;
+    container.append(wrapper);
+    const svg = wrapper.shadowRoot?.querySelector("svg") as SVGSVGElement;
+    renderer?.finish?.(smil);
+    plugin?.frame?.(1000, 16);
+    world.setAttribute("data-live", "");
+    await new Promise((r) => setTimeout(r, 0));
+    plugin?.frame?.(3500, 16);
+    expect(svg.animationsPaused()).toBe(true);
+    expect(svg.getCurrentTime()).toBeCloseTo(2.5, 3);
+    renderer?.unmount?.(smil);
+    world.remove();
+  });
+
   it("adds a keyframe timeline under the drawing only when the host registers anim:timeline", async () => {
     const timeline: Plugin = {
       name: TIMELINE_PLUGIN,

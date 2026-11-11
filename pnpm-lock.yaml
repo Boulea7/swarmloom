@@ -558,6 +558,12 @@ importers:
 
   packages/export:
     dependencies:
+      '@swarmloom/adapter-html':
+        specifier: workspace:*
+        version: link:../adapter-html
+      '@swarmloom/adapter-svg':
+        specifier: workspace:*
+        version: link:../adapter-svg
       '@swarmloom/core':
         specifier: workspace:*
         version: link:../core

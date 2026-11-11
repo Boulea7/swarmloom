@@ -27,7 +27,7 @@ npx swarmloom doctor
 | `formats` | Lists the supported input formats (`--json` for scripts). |
 | `doctor` | Checks Node.js, the browser, ffmpeg and the bundled pages. |
 
-Every command has `--help`. Common `render` options: `--width`/`--height` (CSS px, default 1280x720), `--scale` (device pixel ratio of the frames), `--fps` (default 30), `--agents`, `--speed`, `--seed`, `--theme`, `--labels`, `--finale`, `--tail` (hold after the build, ms), `--no-sound`, `--no-remote`, `--max-duration` (seconds, default 120; the video stops there even if the build is not done) and `--quiet`.
+Every command has `--help`. Common `render` options: `--width`/`--height` (CSS px, default 1280x720), `--scale` (device pixel ratio of the frames), `--fps` (default 30), `--agents`, `--speed`, `--seed`, `--theme`, `--labels`, `--finale`, `--tail` (hold after the build, ms: the finale, then the page goes live and its own animations play), `--no-live` (keep the finale instead), `--no-sound`, `--no-remote`, `--max-duration` (seconds, default 120; the video stops there even if the build is not done) and `--quiet`.
 
 For repeatable takes timed to music: `--duration` (exact length in seconds, keeps capturing after the build), `--bpm` (tempo the placement notes snap to), `--cue <at>:<action>` (pause, resume or finish at a time in seconds, ms or beats; repeatable), and the evidence outputs `--audio-out` (WAV), `--events-out` (sound log JSON on the frames' clock) and `--manifest-out` (arguments, input and blueprint hashes, program versions, fonts and per-frame PNG hashes).
 

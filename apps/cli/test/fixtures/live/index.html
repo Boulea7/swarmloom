@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Live loop</title>
+    <style>
+      body {
+        margin: 0;
+        background: #fafafc;
+        color: #16161f;
+        font: 16px/1.4 sans-serif;
+      }
+      h1 {
+        margin: 16px;
+        font-size: 20px;
+      }
+      .slide {
+        position: absolute;
+        left: 16px;
+        top: 80px;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background: #5b5bf7;
+        animation: slide 2s linear infinite;
+      }
+      @keyframes slide {
+        to {
+          transform: translateX(200px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Live loop</h1>
+    <div class="slide"></div>
+  </body>
+</html>

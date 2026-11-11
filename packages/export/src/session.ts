@@ -24,6 +24,13 @@ export interface RenderSessionOptions {
   /** Time to keep running after the build completes (finale), ms. Default 0. */
   tailMs?: number;
   /**
+   * Go live once the finale settles (player state "done"), as the toolbar's go live does: the
+   * cursors leave and the stage turns into the finished page, whose own animations then play on
+   * through the rest of the tail. The player goes live at the end of the step that reached "done".
+   * Default false (the finale runs through the whole tail).
+   */
+  live?: boolean;
+  /**
    * Player actions at fixed session times, applied in time order (ties in the given order).
    * While paused the session keeps counting time, so {@link RenderSession.soundLog} shifts later
    * events by the paused time and stays aligned with the frames.
@@ -62,6 +69,8 @@ export class RenderSession {
   readonly clock = new VirtualClock();
   readonly player: Player;
   readonly tailMs: number;
+  readonly #live: boolean;
+  #wentLive = false;
   #elapsed = 0;
   #builtAt: number | null = null;
   #error: Error | null = null;
@@ -81,6 +90,7 @@ export class RenderSession {
     const tail = options.tailMs ?? 0;
     if (!Number.isFinite(tail) || tail < 0) throw new RangeError(`tailMs must be a finite number >= 0, got ${tail}`);
     this.tailMs = tail;
+    this.#live = options.live ?? false;
     this.#cues = [...(options.cues ?? [])].sort((a, b) => a.at - b.at);
     const bad = this.#cues.find((cue) => !Number.isFinite(cue.at) || cue.at < 0);
     if (bad) throw new RangeError(`cue time must be a finite number >= 0, got ${bad.at}`);
@@ -155,6 +165,7 @@ export class RenderSession {
     this.#elapsed += ms;
     this.clock.advance(ms);
     this.#applyCues();
+    this.#goLiveWhenDone();
     return this.#settle();
   }
 
@@ -198,6 +209,13 @@ export class RenderSession {
         this.#pausedAt = null;
       }
     }
+  }
+
+  /** Goes live once, outside the engine's frame, when the finale has settled. */
+  #goLiveWhenDone(): void {
+    if (!this.#live || this.#wentLive || this.player.state !== "done") return;
+    this.#wentLive = true;
+    this.player.goLive();
   }
 
   #markBuilt(): void {

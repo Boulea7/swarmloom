@@ -34,6 +34,11 @@ export interface SvgAdapterOptions {
   anchorsPerPath?: number;
   /** Maximum time spent waiting for web fonts and embedded images, ms (default 1500). */
   assetTimeout?: number;
+  /**
+   * Clock of the SMIL replay once the stage goes live: "own" (default) lets the drawing run on its
+   * own clock, "player" keeps it on player time (frame-exact exports, whose clock keeps ticking).
+   */
+  liveClock?: "own" | "player";
 }
 
 /**
@@ -211,6 +216,9 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
   for (const [name, v] of Object.entries({ maxLayers, maxBytes, maxElements, anchorsPerPath, assetTimeout })) {
     if (!(Number.isFinite(v) && v >= 1)) throw new RangeError(`SvgAdapterOptions.${name} must be a number >= 1`);
   }
+  if (options.liveClock !== undefined && options.liveClock !== "own" && options.liveClock !== "player") {
+    throw new TypeError('SvgAdapterOptions.liveClock must be "own" or "player"');
+  }
 
   return {
     id: "svg",
@@ -351,7 +359,7 @@ export function createSvgAdapter(options: SvgAdapterOptions = {}): Adapter {
           layers.push(smilLayer);
         }
         const usesPlugin = layers.some((l) => l.kind === "custom" && (l.task === DEFS_TASK || l.task === SMIL_TASK));
-        if (usesPlugin) plugins.push(replay ? createSvgPlugin() : svgPlugin);
+        if (usesPlugin) plugins.push(replay ? createSvgPlugin({ liveClock: options.liveClock }) : svgPlugin);
         if (timeline && timelinePlugin) plugins.push(timelinePlugin);
 
         const reasons: string[] = [];

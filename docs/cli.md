@@ -84,7 +84,8 @@ swarmloom render <file|url> [options]
 | `--labels <mode>` | `names` | `names`、`agents`、`roles` 或 `none` |
 | `--finale <finale>` | `flock` | `flock`、`halo` 或 `none` |
 | `--follow <mode>` | `tour` | `tour` 随构建滚动页面；`none` 不滚动 |
-| `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒 |
+| `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面 |
+| `--no-live` | go live | 整个停留时间都保持收尾动画，不 go live |
 | `--locale <tag>` | `en-US` | 工具栏文字和页面的语言，BCP 47 标签，例如 `zh-CN` |
 | `--bpm <n>` | `112` | 放置音符、散开音与完成和弦对齐的速度（八分音符网格），范围 40–240 |
 | `--cue <at>:<action>` | 无 | 在固定视频时间执行播放器动作，可重复。`<at>` 为秒（`12.5`）、毫秒（`12500ms`）或按 `--bpm` 计的拍数（`26b`，需要显式给出 `--bpm`）；`<action>` 为 `pause`（全部光标停住）、`resume` 或 `finish`（快速完成构建）。在不早于 `<at>` 的第一帧生效，同一时间的动作按给出顺序执行；`<at>` 必须早于视频结尾 |

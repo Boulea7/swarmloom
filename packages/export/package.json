@@ -28,6 +28,8 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@swarmloom/adapter-html": "workspace:*",
+    "@swarmloom/adapter-svg": "workspace:*",
     "@swarmloom/core": "workspace:*",
     "@swarmloom/formats": "workspace:*"
   }

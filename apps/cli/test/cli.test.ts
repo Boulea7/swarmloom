@@ -62,9 +62,11 @@ describe("render options", () => {
         labels: "names",
         finale: "flock",
         tail: 2500,
+        live: true,
         sound: true,
       },
     });
+    expect(parseRenderOptions(["a.md", "--no-live"], cwd)).toMatchObject({ settings: { live: false } });
   });
 
   it.each([
