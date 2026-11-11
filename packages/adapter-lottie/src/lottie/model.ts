@@ -66,13 +66,8 @@ export interface ParseLottieOptions {
   /** Largest embedded image, bytes. Default 32 MiB. */
   maxImageBytes?: number;
   /**
-   * Keep image assets that point to absolute https: URLs (they are fetched by the browser when
-   * played). Default false: only embedded (data:) images are kept, others are left out with a note.
-   */
-  remoteImages?: boolean;
-  /**
    * Resolves a non-embedded image asset path (`u + p`) to a data URL, e.g. from a dotLottie
-   * archive. Returning undefined falls back to the rules above.
+   * archive. Unresolved images that are not embedded (data:image/*) are left out with a note.
    */
   resolveImage?: (path: string) => string | undefined;
 }

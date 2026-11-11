@@ -84,7 +84,11 @@ interface Manifest {
 
 function readManifest(bytes: Uint8Array | undefined): Manifest {
   if (!bytes) return { animations: [] };
-  const data = parseJson(new TextDecoder().decode(bytes), { maxBytes: 1024 * 1024, maxDepth: 64 }, "dotLottie manifest");
+  const data = parseJson(
+    new TextDecoder().decode(bytes),
+    { maxBytes: 1024 * 1024, maxDepth: 64 },
+    "dotLottie manifest",
+  );
   if (!isRecord(data)) throw new LottieError("archive", "The .lottie manifest is not a JSON object.");
   const animations: ManifestEntry[] = [];
   if (Array.isArray(data.animations)) {
@@ -120,14 +124,18 @@ export async function unpackDotLottie(bytes: Uint8Array, options: DotLottieOptio
   const maxJson = options.maxBytes ?? LIMITS.maxBytes;
   const maxImage = options.maxImageBytes ?? LIMITS.maxImageBytes;
   if (bytes.length > maxArchive) {
-    throw new LottieError("too-large", `The .lottie file is ${formatBytes(bytes.length)} (the limit is ${formatBytes(maxArchive)}).`);
+    throw new LottieError(
+      "too-large",
+      `The .lottie file is ${formatBytes(bytes.length)} (the limit is ${formatBytes(maxArchive)}).`,
+    );
   }
   const { unzipSync } = await import("fflate");
 
   let entries = 0;
   let unpacked = 0;
   const filter = (file: UnzipFileInfo): boolean => {
-    if (++entries > maxEntries) throw new LottieError("too-large", `The .lottie archive has more than ${maxEntries} entries.`);
+    if (++entries > maxEntries)
+      throw new LottieError("too-large", `The .lottie archive has more than ${maxEntries} entries.`);
     assertSafeName(file.name);
     const isManifest = file.name === MANIFEST;
     const isAnimation = ANIMATION.test(file.name);
@@ -135,13 +143,19 @@ export async function unpackDotLottie(bytes: Uint8Array, options: DotLottieOptio
     if (!isManifest && !isAnimation && !isImage) return false;
     const cap = isImage ? maxImage : maxJson;
     if (file.originalSize > cap) {
-      throw new LottieError("too-large", `"${file.name}" unpacks to ${formatBytes(file.originalSize)} (the limit is ${formatBytes(cap)}).`);
+      throw new LottieError(
+        "too-large",
+        `"${file.name}" unpacks to ${formatBytes(file.originalSize)} (the limit is ${formatBytes(cap)}).`,
+      );
     }
     if (file.originalSize > RATIO_FLOOR && file.originalSize / Math.max(1, file.size) > LIMITS.maxRatio) {
       throw new LottieError("archive", `"${file.name}" is compressed suspiciously well; the archive was rejected.`);
     }
     if (file.compression !== 0 && file.compression !== 8) {
-      throw new LottieError("archive", `"${file.name}" uses an unsupported ZIP compression method (${file.compression}).`);
+      throw new LottieError(
+        "archive",
+        `"${file.name}" uses an unsupported ZIP compression method (${file.compression}).`,
+      );
     }
     unpacked += file.originalSize;
     if (unpacked > maxUnpacked) {
@@ -167,7 +181,8 @@ export async function unpackDotLottie(bytes: Uint8Array, options: DotLottieOptio
   if (available.size === 0) throw new LottieError("archive", "The .lottie archive contains no animation.");
 
   const wanted = [options.animationId, manifest.active, ...manifest.animations.map((a) => a.id)];
-  const id = wanted.find((w): w is string => typeof w === "string" && available.has(w)) ?? [...available.keys()].sort()[0];
+  const id =
+    wanted.find((w): w is string => typeof w === "string" && available.has(w)) ?? [...available.keys()].sort()[0];
   if (id === undefined) throw new LottieError("archive", "The .lottie archive contains no animation.");
   if (options.animationId && id !== options.animationId) {
     throw new LottieError("archive", `The .lottie archive has no animation "${options.animationId}".`);

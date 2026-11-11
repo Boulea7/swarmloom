@@ -38,7 +38,7 @@ export function loadRuntime(): Promise<LottieRuntime> {
     register("rd", round.default);
     register("zz", zigzag.default);
     register("op", offset.default);
-    return { loadAnimation: (params) => manager.default.loadAnimation(params) };
+    return { loadAnimation: (params: AnimationConfigWithData<"svg">) => manager.default.loadAnimation(params) };
   })().catch((err: unknown) => {
     runtime = null;
     throw err;

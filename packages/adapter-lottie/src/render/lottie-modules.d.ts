@@ -5,6 +5,7 @@
 
 declare module "lottie-web/player/js/animation/AnimationManager" {
   import type { AnimationConfigWithData, AnimationItem } from "lottie-web";
+
   const animationManager: { loadAnimation(params: AnimationConfigWithData<"svg">): AnimationItem };
   export default animationManager;
 }

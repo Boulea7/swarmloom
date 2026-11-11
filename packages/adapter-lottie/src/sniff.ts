@@ -23,7 +23,7 @@ function ascii(head: Uint8Array, limit = head.length): string {
  */
 export function looksLikeLottieText(text: string): boolean {
   const head = text.slice(0, TEXT_HEAD);
-  if (!/^﻿?\s*\{/.test(head)) return false;
+  if (!/^\uFEFF?\s*\{/.test(head)) return false;
   return (
     /"v"\s*:\s*"\d+\.\d+/.test(head) &&
     /"fr"\s*:/.test(head) &&

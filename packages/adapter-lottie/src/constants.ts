@@ -39,10 +39,5 @@ export const LIMITS = {
   maxFrameChars: 16 * MiB,
 } as const;
 
-/** Neutral colours from the brand sheet (contracts/brand.md). */
-export const NEUTRALS = {
-  ink: "#0B0B12",
-  paper: "#FAFAFC",
-  lineLight: "rgba(11,11,18,.12)",
-  lineDark: "rgba(255,255,255,.14)",
-} as const;
+/** Neutral paper colour of the brand sheet (contracts/brand.md): the stage behind compositions without a canvas. */
+export const NEUTRALS = { paper: "#FAFAFC" } as const;

@@ -20,7 +20,8 @@ export const BLANK_PNG =
 
 function required(data: Json, key: string): number {
   const v = data[key];
-  if (!finite(v)) throw new LottieError("invalid", `This JSON is not a Lottie animation: "${key}" is missing or not a number.`);
+  if (!finite(v))
+    throw new LottieError("invalid", `This JSON is not a Lottie animation: "${key}" is missing or not a number.`);
   return v;
 }
 
@@ -46,7 +47,10 @@ function readInfo(data: Json): LottieInfo {
   const frames = op - ip;
   const seconds = frames / fr;
   if (seconds > LIMITS.maxDurationSeconds) {
-    throw new LottieError("too-large", `The animation lasts ${Math.round(seconds)} s (the limit is ${LIMITS.maxDurationSeconds} s).`);
+    throw new LottieError(
+      "too-large",
+      `The animation lasts ${Math.round(seconds)} s (the limit is ${LIMITS.maxDurationSeconds} s).`,
+    );
   }
   const info: LottieInfo = { version: data.v, fr, ip, op, w, h, frames, duration: (frames / fr) * 1000 };
   if (typeof data.nm === "string" && data.nm.trim()) info.name = data.nm.trim().slice(0, 200);
@@ -107,28 +111,25 @@ function sanitizeAssets(data: Json, state: SanitizeState): void {
       footage++;
       continue;
     }
-    let embedded = asset.e === 1 || asset.p.startsWith("data:");
-    const path = `${typeof asset.u === "string" ? asset.u : ""}${asset.p}`;
+    let src = asset.p;
+    let embedded = asset.e === 1 || src.startsWith("data:");
+    const path = `${typeof asset.u === "string" ? asset.u : ""}${src}`;
     const resolved = embedded ? undefined : state.opts.resolveImage?.(path);
     if (resolved !== undefined) {
-      asset.u = "";
-      asset.p = resolved;
-      asset.e = 1;
+      src = resolved;
       embedded = true;
     }
-    if (embedded && EMBEDDED_IMAGE.test(asset.p)) {
-      if (asset.p.length > state.opts.maxImageBytes * 1.37) {
+    if (embedded && EMBEDDED_IMAGE.test(src)) {
+      if (src.length > state.opts.maxImageBytes * 1.37) {
         throw new LottieError("too-large", `Image "${id}" is larger than ${formatBytes(state.opts.maxImageBytes)}.`);
       }
-    } else if (!embedded && state.opts.remoteImages && /^https:\/\//i.test(path)) {
-      asset.u = "";
-      asset.p = path;
     } else {
       external++;
-      asset.u = "";
-      asset.p = BLANK_PNG;
-      asset.e = 1;
+      src = BLANK_PNG;
     }
+    asset.u = "";
+    asset.p = src;
+    asset.e = 1;
     state.images.add(id);
     state.stats.images++;
     kept.push(asset);
@@ -161,6 +162,22 @@ function sanitizeFonts(data: Json, state: SanitizeState): void {
   if (replaced > 0) state.notes.add(`${replaced} web font(s) were replaced by locally installed fonts.`);
 }
 
+/**
+ * Text animators with "randomize order" (`s.rn: 1`) shuffle letters with `Math.random` in
+ * lottie-web, so two plays (or a play and its export) would differ. They get the fixed order.
+ */
+function fixTextOrder(layer: Json, state: SanitizeState): void {
+  const animators = isRecord(layer.t) && Array.isArray(layer.t.a) ? layer.t.a : [];
+  let fixed = 0;
+  for (const animator of animators) {
+    if (isRecord(animator) && isRecord(animator.s) && animator.s.rn === 1) {
+      animator.s.rn = 0;
+      fixed++;
+    }
+  }
+  if (fixed > 0) state.notes.add("Text animators with a random letter order play in a fixed order.");
+}
+
 /** Validates one layer list in place; drops audio/data layers. */
 function sanitizeLayers(list: unknown[], where: string, state: SanitizeState): unknown[] {
   const kept: unknown[] = [];
@@ -177,10 +194,16 @@ function sanitizeLayers(list: unknown[], where: string, state: SanitizeState): u
       continue;
     }
     if (VISUAL_TYPES.has(layer.ty) && !isRecord(layer.ks)) {
-      throw new LottieError("invalid", `Layer "${String(layer.nm ?? layer.ind ?? "?")}" in ${where} has no transform ("ks").`);
+      throw new LottieError(
+        "invalid",
+        `Layer "${String(layer.nm ?? layer.ind ?? "?")}" in ${where} has no transform ("ks").`,
+      );
     }
     if (!finite(layer.ip) || !finite(layer.op)) {
-      throw new LottieError("invalid", `Layer "${String(layer.nm ?? layer.ind ?? "?")}" in ${where} has no in/out point.`);
+      throw new LottieError(
+        "invalid",
+        `Layer "${String(layer.nm ?? layer.ind ?? "?")}" in ${where} has no in/out point.`,
+      );
     }
     if (layer.ty === 0 && (typeof layer.refId !== "string" || !state.precomps.has(layer.refId))) {
       throw new LottieError("invalid", `Precomposition layer "${String(layer.nm ?? "?")}" points to a missing asset.`);
@@ -188,7 +211,10 @@ function sanitizeLayers(list: unknown[], where: string, state: SanitizeState): u
     if (layer.ty === 2 && (typeof layer.refId !== "string" || !state.images.has(layer.refId))) {
       throw new LottieError("invalid", `Image layer "${String(layer.nm ?? "?")}" points to a missing image.`);
     }
-    if (layer.ty === 5) state.stats.texts++;
+    if (layer.ty === 5) {
+      state.stats.texts++;
+      fixTextOrder(layer, state);
+    }
     if (layer.shapes !== undefined && !Array.isArray(layer.shapes)) {
       throw new LottieError("invalid", `Shape layer "${String(layer.nm ?? "?")}" has malformed shapes.`);
     }
@@ -207,7 +233,6 @@ function resolveOptions(opts: ParseLottieOptions): ResolvedOptions {
     maxLottieLayers: opts.maxLottieLayers ?? LIMITS.maxLottieLayers,
     maxKeyframes: opts.maxKeyframes ?? LIMITS.maxKeyframes,
     maxImageBytes: opts.maxImageBytes ?? LIMITS.maxImageBytes,
-    remoteImages: opts.remoteImages ?? false,
   };
   if (opts.resolveImage) out.resolveImage = opts.resolveImage;
   return out;
@@ -222,6 +247,8 @@ function resolveOptions(opts: ParseLottieOptions): ResolvedOptions {
  *  - expressions are removed (the light player never evaluates them); an animation whose motion
  *    comes only from expressions is rejected, because it would not move at all;
  *  - images must be embedded (data:image/*); audio, data/footage layers and web fonts are removed;
+ *  - text animators with a random letter order get the fixed order (lottie-web would shuffle with
+ *    `Math.random`, so plays and exports would differ);
  *  - After Effects layer ids/classes (`ln`, `cl`) are dropped.
  *
  * @throws LottieError with a user-facing message when the input is rejected.
@@ -264,7 +291,9 @@ export function parseLottie(text: string, options: ParseLottieOptions = {}): Par
           "(After Effects: Animation > Keyframe Assistant > Convert Expression to Keyframes) and export again.",
       );
     }
-    state.notes.add(`${state.stats.expressions} expression(s) were ignored; their properties keep their keyframed values.`);
+    state.notes.add(
+      `${state.stats.expressions} expression(s) were ignored; their properties keep their keyframed values.`,
+    );
   }
   const keyTimes = normalizeTimes(times.keyframes, info.ip, info.op);
   return {
