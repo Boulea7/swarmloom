@@ -1,7 +1,8 @@
+/// <reference types="@vitest/browser-playwright" />
 import type { BrowserExportOptions, BrowserExportResult } from "@swarmloom/export/browser";
 import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
 import { afterEach, describe, expect, it } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import {
@@ -427,6 +428,32 @@ describe("Studio in a browser", () => {
     } finally {
       delete (screen as { width?: number }).width;
       delete (screen as { height?: number }).height;
+      await page.viewport(414, 896);
+    }
+  });
+
+  it("keeps every player app bar button a full touch target, side by side, on a narrow touch screen", async () => {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    try {
+      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
+      for (const width of [240, 320]) {
+        await page.viewport(width, 600);
+        const { root } = await mount("?example=svg-chart");
+        const buttons = [...root.querySelectorAll<HTMLElement>(".appbar-player .btn")]
+          .filter((el) => el.getClientRects().length > 0)
+          .map((el) => el.getBoundingClientRect())
+          .sort((a, b) => a.left - b.left);
+        expect(buttons.length, `${width}px`).toBeGreaterThanOrEqual(4);
+        for (const [i, r] of buttons.entries()) {
+          expect(Math.min(r.width, r.height), `${width}px button ${i}`).toBeGreaterThanOrEqual(44);
+          expect(r.left, `${width}px button ${i}`).toBeGreaterThanOrEqual(buttons[i - 1]?.right ?? 0);
+        }
+        expect(buttons.at(-1)?.right, `${width}px`).toBeLessThanOrEqual(document.documentElement.clientWidth);
+        app?.destroy();
+        app = null;
+      }
+    } finally {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
       await page.viewport(414, 896);
     }
   });

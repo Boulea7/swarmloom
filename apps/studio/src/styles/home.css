@@ -32,6 +32,11 @@
   flex: none;
 }
 
+/* A lead button (the player's Back) keeps its full size; the title next to it clips instead. */
+.appbar-lead > .btn {
+  flex: none;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
