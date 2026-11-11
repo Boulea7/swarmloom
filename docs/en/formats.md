@@ -29,7 +29,7 @@ This is a visual snapshot at one point in time, not a clone of application state
 
 HTML strings and URLs are planned to load in an isolated sandbox, then use the DOM snapshot pipeline. HTML input never runs scripts, and there is no option to enable them. The network is limited to `https:` images and fonts (sent without a referrer); every other request is blocked, and a Studio setting turns that loading off. Relative resources need a correct base URL. Remote resources remain subject to CORS, permissions and site access controls.
 
-CSS animation is frozen for the rebuild: finite animations at their end state, infinite ones at a fixed phase. Go live resumes the original animations. Script-driven and event-driven animation is not guaranteed to round-trip.
+CSS animation is frozen for the rebuild: finite animations at their end state, infinite ones at half a cycle. Go live resumes the original animations. When the host registers the keyframe timeline plugin (`anim:timeline`, from the Lottie adapter), up to six animated elements also get a small timeline bar with their keyframes in free space under or above them, built after the page. Script-driven and event-driven animation is not guaranteed to round-trip.
 
 ## Markdown
 
@@ -47,6 +47,8 @@ The default pipeline aims to preserve styles by converting the document into saf
 
 HTML layout is not Microsoft Word's live pagination engine. Without reliable pagination, content stays continuous rather than receiving invented page boundaries. Export a PDF from Word when exact layout matters.
 
+Fonts missing on the device are replaced from one shared fallback table, also used for DOC, PPTX, XLSX and OpenDocument: metric-compatible open fonts where they exist (Calibri to Carlito, Cambria to Caladea, Arial to Liberation Sans, Times New Roman to Liberation Serif, SimSun to Noto Serif SC, Microsoft YaHei to Noto Sans SC, and the matching Noto faces for Traditional Chinese, Japanese and Korean). An installed original always wins, no font files are bundled, and substitutions are listed in the load notes.
+
 A semantics-first simplified mode is planned for long documents and accessibility. It is not intended for precise style comparisons.
 
 ## DOC (Word 97–2003)
@@ -55,7 +57,7 @@ A semantics-first simplified mode is planned for long documents and accessibilit
 
 The legacy binary DOC pipeline is planned around CFB and the WordDocument stream. It extracts body text and paragraphs into simplified HTML. The first version prioritises text, not original table geometry, image positions, exact fonts or pagination.
 
-Encrypted, corrupt or unsupported structures produce explicit errors. Renaming an RTF file to `.doc` does not make it a valid Word binary document.
+Encrypted, corrupt or unsupported structures produce explicit errors. An RTF file saved with a `.doc` name is recognised by its content and opened with the RTF reader.
 
 ## PDF
 
@@ -73,21 +75,21 @@ Scanned pages and outlined text have no text items, so they reveal by region or 
 
 A pen cursor places anchors, pulls curves and traces strokes, followed by fills, gradients and text. `<use>` instances can appear as duplicates. Groups and paint order are preserved in the Blueprint.
 
-SMIL or CSS-animated SVG is first rebuilt as a static drawing; once the weave is done, the original animation plays from 0 s (planned). `href` may only point to `#fragment` targets inside the document. Scripts, external resources and interaction handlers are never executed.
+SMIL-animated SVG (`animate`, `animateTransform`, `animateMotion`, `set`, `mpath`) is first rebuilt as a static drawing. Once the weave is done, the animated drawing fades in and plays from 0 s; it follows player time while building, so exported videos stay frame-exact, and runs on its own clock after go live. CSS animation inside an SVG is not replayed yet (the first frame is shown). When the host registers the keyframe timeline plugin (`anim:timeline`), a timeline bar with the keyframes is built under the drawing before the animation plays. `href` may only point to `#fragment` targets inside the document. Scripts, external resources and interaction handlers are never executed.
 
 ## Slides
 
-**Primary extension:** `.pptx`; compatibility targets: `.ppt`, `.odp`
+**Extension:** `.pptx` (`.odp` opens with the OpenDocument reader)
 
 Each slide is planned as a stage section: background, master placeholders and guides first, then shapes and connectors, typed headings and body text, swept images, and finally tables, charts and slide numbers.
 
-PPTX is the main parsing target. Legacy PPT and ODP become supported only after their respective paths pass verification. SmartArt, OLE, complex media and original PowerPoint animation may use snapshots, placeholders or explicit degradation.
+PPTX is the main parsing target. Legacy `.ppt` is not supported yet: opening one asks you to save it as `.pptx` or PDF. SmartArt, OLE, complex media and original PowerPoint animation may use snapshots, placeholders or explicit degradation.
 
 Native Keynote object graphs are not a first-release promise. Export PPTX or PDF from Keynote. An iWork file with a reliable preview PDF can use the PDF pipeline.
 
 ## Spreadsheets
 
-**Extensions:** `.xlsx`, `.xlsm`, `.xls`, `.ods`, `.csv`, `.tsv`
+**Extensions:** `.xlsx`, `.xlsm`, `.ods`, `.csv`, `.tsv`. Legacy `.xls` is not supported yet: opening one asks you to save it as `.xlsx` or CSV.
 
 Sheets build through tabs, column letters, row numbers, grids, headers and data regions. Important cells can be typed; ordinary data appears in spatial tiles or fills. A large used range does not create one animation task per cell.
 
@@ -111,7 +113,7 @@ Source code is treated as text and never executed. Plain text has no reliable fo
 | OpenDocument | `.odt`, `.ods`, `.odp`, `.odg` and corresponding Flat XML | Rebuilds text, sheets, slides and drawings without recalculating formulas |
 | RTF | `.rtf` | Lays out paragraphs, character styles, tables and pictures as pages |
 | OFD | `.ofd` | Rebuilds fixed-layout text, paths and images page by page without verifying signatures |
-| Jupyter notebook | `.ipynb` | Rebuilds Markdown, code and output cells in order without a live kernel |
+| Jupyter notebook | `.ipynb` | Rebuilds Markdown, code and output cells in order without a live kernel; Markdown cells use the Markdown adapter's renderer, formulas stay as TeX source |
 | asciinema terminal recording | `.cast` | Replays recorded keystrokes and output with ANSI styling |
 | Patch / diff | `.diff`, `.patch` | Builds review panels, strikes through removals and types additions |
 | XMind / FreeMind mind map | `.xmind`, `.mm` | Draws topics and connectors on the first sheet from the root outwards |
@@ -130,7 +132,7 @@ Animated images use a deterministic representative frame by default; resuming th
 
 The 3D adapter is planned as a plugin with its own WebGL stage. Connected surface patches reveal vertices, feature edges and triangles, followed by materials, textures and lighting. A short camera orbit completes the build.
 
-GLB is the recommended single-file distribution. OBJ MTL files and textures, and glTF `.bin` files and textures, must resolve. Missing resources are listed instead of triggering silent network guesses. Formats without standard units, such as STL, need unit or up-axis overrides.
+GLB is the recommended single-file distribution. The reader reads only that one file and never loads companion files: a `.gltf` that references external `.bin` files or textures is rejected with a message to export a GLB or a glTF with embedded data, and OBJ `mtllib` materials and textures are not read (a palette is used and a note says so). Formats without standard units, such as STL, need unit or up-axis overrides.
 
 Large models use deterministic LOD and sampling budgets. Reduced-motion mode shows a static final state without automatic orbit. Unavailable WebGL or an excessive model budget produces an explicit error or fallback.
 

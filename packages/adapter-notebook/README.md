@@ -11,7 +11,7 @@ const { blueprint, plugins } = await notebookAdapter.load({ text }, { document, 
 How it works:
 
 - The JSON is checked against the nbformat 4 shape. nbformat 3 and older files are refused with a hint to upgrade them in Jupyter. Cell types, output types and MIME bundles that cannot be drawn (widgets, for example) are skipped and counted in `blueprint.truncated`.
-- **Markdown cells** are parsed with unified, remark-parse and remark-gfm, the same stack and versions as adapter-markdown. They support tables, task lists, strikethrough and footnotes, and fenced code is highlighted. `attachment:` images are resolved from the cell.
+- **Markdown cells** go through adapter-markdown's own parser and renderer (`parseMarkdown`, `renderMdast`), so both adapters read Markdown the same way: tables, task lists, strikethrough, footnotes and GitHub alerts. Fenced code is highlighted with the notebook's highlighter (the `renderCode` hook), the markup is restyled in the notebook palette, and `attachment:` images are resolved from the cell.
 - **Code cells:**
   - The code is highlighted with highlight.js 11.12.0, the same version as adapter-code. It uses a private instance with Python, R, Julia, JavaScript, TypeScript, Bash, SQL, JSON, Scala and C++, plus the usual kernel aliases.
   - Token colours are inline styles from the SwarmLoom palette.
@@ -49,7 +49,7 @@ Options (`createNotebookAdapter`):
 Limits:
 
 - No live kernel and no widgets.
-- Math in markdown (`$...$`) is shown as source text. adapter-markdown's KaTeX path will cover this once the two renderers are shared.
+- Math in markdown (`$...$`, `$$...$$`) is shown as its TeX source, marked up with `role="math"`; KaTeX is not loaded for notebooks. Prices such as `$5 and $6` stay plain text.
 - SVG outputs fall back to their text form.
 - Cell metadata such as hidden inputs or collapsed outputs is ignored.
 
@@ -57,9 +57,7 @@ Dependencies:
 
 | Package | License |
 | --- | --- |
-| `unified` | MIT |
-| `remark-parse` | MIT |
-| `remark-gfm` | MIT |
+| `@swarmloom/adapter-markdown` (parser and renderer) | MIT |
 | `highlight.js` | BSD-3-Clause |
 | `dompurify` | MPL-2.0 OR Apache-2.0 |
 | `@swarmloom/adapter-terminal` (ANSI only) | MIT |

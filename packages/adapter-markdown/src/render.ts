@@ -53,6 +53,12 @@ export interface RenderInputs {
   lang?: string;
   /** Highlighted code per fenced code node. */
   code: ReadonlyMap<Code, Highlighted>;
+  /**
+   * Highlights a fence that has no entry in {@link code}, for hosts with their own highlighter
+   * (adapter-notebook uses its kernel languages and palette). Returns the inner HTML of `<code>`,
+   * already escaped (it is sanitized with the rest), or undefined to show the fence as plain text.
+   */
+  renderCode?: (code: string, lang: string | null | undefined) => string | undefined;
   /** Rendered SVG per diagram code node (Mermaid). */
   diagrams: ReadonlyMap<Code, string>;
   /** Formula renderer; absent when math is disabled or failed to load. */
@@ -449,7 +455,9 @@ class HtmlRenderer {
     const label = lang?.label ?? node.lang?.trim() ?? "";
     const highlighted = this.opts.code.get(node);
     const theme = codeTheme(this.opts.scheme);
-    const body = highlighted ? highlighted.lines.map((l) => lineToHtml(l, theme)).join("\n") : escapeHtml(node.value);
+    const body = highlighted
+      ? highlighted.lines.map((l) => lineToHtml(l, theme)).join("\n")
+      : (this.opts.renderCode?.(node.value, node.lang) ?? escapeHtml(node.value));
     const head = label ? `<div class="loom-code-head">${escapeHtml(label)}</div>` : "";
     const dataLang = lang ? ` data-lang="${lang.id}"` : "";
     return `<div class="loom-code"${dataLang}>${head}<pre><code>${body}</code></pre></div>`;

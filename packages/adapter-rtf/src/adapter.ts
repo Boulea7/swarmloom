@@ -50,8 +50,8 @@ export function rtfNotes(doc: RtfDocument, missingImages = 0): string[] {
 
 /**
  * Creates the RTF adapter: the document is parsed by our own tokenizer ({@link parseRtf}),
- * rendered as page sheets and laid out by snapshot-dom. The same pipeline serves RTF content that
- * arrives with a .doc extension (adapter-doc can call `load` directly).
+ * rendered as page sheets and laid out by snapshot-dom. RTF content with a .doc name reaches it through
+ * @swarmloom/formats, which detects RTF by its signature (adapter-doc itself rejects such files).
  */
 export function createRtfAdapter(options: RtfAdapterOptions = {}): DocumentAdapter {
   return {

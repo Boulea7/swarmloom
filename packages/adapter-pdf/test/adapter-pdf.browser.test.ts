@@ -142,6 +142,24 @@ describe("pdf adapter on the brochure sample", () => {
     await expect(fetch(src)).rejects.toThrow();
   });
 
+  it("opens a PDF with the legacy build where Promise.withResolvers is missing (Chrome 116-118)", async () => {
+    const P = Promise as unknown as { withResolvers?: unknown };
+    const native = P.withResolvers;
+    delete P.withResolvers;
+    try {
+      const loaded = await createPdfAdapter({ maxPages: 1 }).load({ bytes }, ctx);
+      expect(textCrops(loaded.blueprint).length).toBeGreaterThan(10);
+      loaded.dispose?.();
+      // A worker would lack withResolvers as well, so the default runtime parses on the main thread.
+      expect(await getRuntime(resolveOptions({ build: "legacy" }))).toMatchObject({
+        build: "legacy",
+        mainThread: true,
+      });
+    } finally {
+      Object.defineProperty(Promise, "withResolvers", { value: native, writable: true, configurable: true });
+    }
+  }, 60_000);
+
   it("falls back to the main thread when the worker URL is unusable", async () => {
     const adapter = createPdfAdapter({ workerSrc: new URL("/missing/pdf.worker.mjs", location.href), maxPages: 1 });
     const loaded = await adapter.load({ bytes }, ctx);

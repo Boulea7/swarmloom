@@ -100,7 +100,8 @@ export function createSheetAdapter(options: SheetAdapterOptions = {}): OfficeAda
   return {
     id: "sheet",
     label: "Spreadsheet",
-    extensions: ["xlsx", "xlsm", "xls", "ods", "csv", "tsv"],
+    // Legacy .xls is rejected, so not listed; its MIME type stays because Windows browsers give it to .csv files.
+    extensions: ["xlsx", "xlsm", "ods", "csv", "tsv"],
     mime: [
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.ms-excel.sheet.macroenabled.12",

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320">
+  <title>Shuttle in motion</title>
+  <desc>Hand-written SMIL sample (MIT): the drawing is woven first, then its own animation plays (decision C04).</desc>
+  <defs>
+    <path id="track" d="M0 0 C 100 -110, 260 -110, 360 0"/>
+  </defs>
+  <rect width="480" height="320" fill="#0e0e16"/>
+  <path d="M60 230 C 160 120, 320 120, 420 230" fill="none" stroke="#5b5bf7" stroke-width="6" stroke-linecap="round"/>
+  <g stroke="#2a2a3d" stroke-width="3">
+    <line x1="120" y1="60" x2="120" y2="280"/>
+    <line x1="240" y1="60" x2="240" y2="280"/>
+    <line x1="360" y1="60" x2="360" y2="280"/>
+  </g>
+  <circle cx="240" cy="96" r="22" fill="#ff6b5b">
+    <animate attributeName="r" values="22;30;22" keyTimes="0;0.5;1" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <rect x="34" y="221" width="52" height="18" rx="9" fill="#f29e4c">
+    <animateMotion dur="3s" begin="0.5s" repeatCount="indefinite">
+      <mpath href="#track"/>
+    </animateMotion>
+  </rect>
+  <text x="240" y="300" fill="#e7e7f1" font-family="sans-serif" font-size="18" text-anchor="middle">Woven first, then it moves</text>
+</svg>

@@ -8,7 +8,7 @@ import { createMarkdownAdapter, markdownAdapter } from "@swarmloom/adapter-markd
 const { blueprint, warnings } = await markdownAdapter.load({ name: "README.md", text }, ctx);
 ```
 
-Pipeline: `parseMarkdown` (remark + GFM + math) -> `renderMdast` (HTML) -> `markdownToHtml` (DOMPurify plus the Loom light/dark theme from `loomThemeCss`: 720px measure, CJK font stacks) -> `snapshotHtml(width = clamp(ctx.width, 360, 920))`. These helpers, along with `assetPath` and `imageSource`, are exported for tests and tools and need no layout.
+Pipeline: `parseMarkdown` (remark + GFM + math) -> `renderMdast` (HTML) -> `markdownToHtml` (DOMPurify plus the Loom light/dark theme from `loomThemeCss`: 720px measure, CJK font stacks) -> `snapshotHtml(width = clamp(ctx.width, 360, 920))`. These helpers, along with `assetPath` and `imageSource`, are exported for tests and tools and need no layout. adapter-notebook renders its Markdown cells with `parseMarkdown` and `renderMdast`, passing its own highlighter through the optional `renderCode` hook.
 
 Supported: tables, task lists, strikethrough, autolinks, footnotes, heading anchors, front-matter titles, GitHub alerts (`> [!NOTE]` and friends), common raw HTML from READMEs (`<p align="center">`, `<img width>`, `<picture>`), and code highlighted by the shared highlighter from `@swarmloom/adapter-code`. `$...$` and `$$...$$` math is rendered with KaTeX, which is only loaded when a document has formulas; amounts such as `$5 and $6` stay text. ` ```mermaid ` fences go to the `renderDiagram` hook when one is given and are shown as code otherwise.
 

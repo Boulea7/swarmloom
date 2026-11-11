@@ -130,7 +130,10 @@ class Builder {
   }
 
   markdown(source: string): string {
-    const html = markdownToHtml(source, { highlight: (code, lang) => highlightCode(code, lang, this.pal) });
+    const html = markdownToHtml(source, {
+      highlight: (code, lang) => highlightCode(code, lang, this.pal),
+      scheme: this.pal.scheme,
+    });
     return sanitizeHtml(html, this.doc);
   }
 

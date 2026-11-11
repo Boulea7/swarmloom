@@ -1,8 +1,20 @@
-import type { CustomLayer, Layer, LoadedSource, PathLayer, StageApi, TextLayer } from "@swarmloom/core";
+import type { CustomLayer, Layer, LoadedSource, PathLayer, Plugin, StageApi, TextLayer } from "@swarmloom/core";
 import { afterEach, describe, expect, it } from "vitest";
 import chart from "../../../examples/svg/chart.svg?raw";
 import emblem from "../../../examples/svg/emblem.svg?raw";
-import { createSvgAdapter, DEFS_TASK, type SvgDefsData, svgAdapter, svgPlugin } from "../src/index";
+import shuttle from "../../../examples/svg/shuttle.svg?raw";
+import {
+  createSvgAdapter,
+  DEFS_TASK,
+  SMIL_TASK,
+  type SvgDefsData,
+  type SvgLoadContext,
+  type SvgSmilData,
+  svgAdapter,
+  svgPlugin,
+  TIMELINE_BAND,
+  TIMELINE_PLUGIN,
+} from "../src/index";
 
 const ctx = { document, width: 640, theme: "light" as const };
 
@@ -163,5 +175,79 @@ describe("svgAdapter safety", () => {
     expect(blueprint.truncated).toBeDefined();
     const text = byKind(blueprint.layers, "text") as TextLayer[];
     expect(text).toHaveLength(0);
+  });
+});
+
+describe("SMIL replay (decision C04)", () => {
+  it("weaves the authored pose, then plays the sanitised animation from 0 s on player time", async () => {
+    const hostile = shuttle.replace(
+      "</svg>",
+      '<set attributeName="href" to="https://evil.test/"/><animate attributeName="fill" values="url(https://evil.test/p.svg#a)" dur="1s"/></svg>',
+    );
+    const { blueprint, plugins } = await svgAdapter.load({ text: hostile, name: "shuttle.svg" }, ctx);
+    const smil = byKind(blueprint.layers, "custom").find((l) => l.task === SMIL_TASK) as CustomLayer;
+    const others = blueprint.layers.filter((l) => l !== smil);
+    // Built last and drawn above the woven layers; no timeline without an anim:timeline plugin.
+    expect(smil.priority).toBeGreaterThan(Math.max(...others.map((l) => l.priority ?? 0)));
+    expect(smil.z).toBeGreaterThan(Math.max(...others.map((l) => l.z ?? 0)));
+    expect(blueprint.layers.some((l) => l.kind === "custom" && l.task === TIMELINE_PLUGIN)).toBe(false);
+    const markup = (smil.data as SvgSmilData).markup;
+    expect(markup).toContain('<mpath href="#track"');
+    expect(markup).not.toContain("evil.test");
+    // The skeleton and the intro icon show the authored pose (r = 22 at 640/480 scale).
+    const circle = byKind(blueprint.layers, "path").find((p) => p.meta?.tag === "circle") as PathLayer;
+    expect(circle.box.w).toBeCloseTo((44 * 640) / 480, 0);
+    expect(decodeURIComponent(blueprint.icon ?? "")).not.toContain("<animate");
+    const plugin = plugins?.[0];
+    expect(plugin).not.toBe(svgPlugin);
+
+    // Mounted paused at 0 s; after the task finishes, time follows player time until the world goes live.
+    const world = document.createElement("div");
+    document.body.append(world);
+    const container = document.createElement("div");
+    world.attachShadow({ mode: "open" }).append(container);
+    const renderer = plugin?.renderers?.[SMIL_TASK];
+    const wrapper = renderer?.mount(smil, container, { blueprint } as StageApi) as HTMLElement;
+    container.append(wrapper);
+    const svg = wrapper.shadowRoot?.querySelector("svg") as SVGSVGElement;
+    expect(svg.animationsPaused()).toBe(true);
+    plugin?.frame?.(1000, 16);
+    expect(svg.getCurrentTime()).toBe(0);
+    renderer?.finish?.(smil);
+    expect(wrapper.style.opacity).toBe("1");
+    plugin?.frame?.(5000, 16);
+    plugin?.frame?.(6500, 16);
+    expect(svg.getCurrentTime()).toBeCloseTo(1.5, 3);
+    world.setAttribute("data-live", "");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(svg.animationsPaused()).toBe(false);
+    renderer?.unmount?.(smil);
+    expect(container.childElementCount).toBe(0);
+    world.remove();
+  });
+
+  it("adds a keyframe timeline under the drawing only when the host registers anim:timeline", async () => {
+    const timeline: Plugin = {
+      name: TIMELINE_PLUGIN,
+      tasks: {
+        [TIMELINE_PLUGIN]: function* () {
+          yield 0;
+        },
+      },
+    };
+    const plain = await svgAdapter.load({ text: shuttle }, ctx);
+    const registered: SvgLoadContext = { ...ctx, plugins: [timeline] };
+    const { blueprint, plugins } = await svgAdapter.load({ text: shuttle }, registered);
+    const layer = byKind(blueprint.layers, "custom").find((l) => l.task === TIMELINE_PLUGIN) as CustomLayer;
+    // The data has the shape the Lottie zone's plugin reads; begin 0.5s + dur 3s sets the cycle.
+    expect(layer.data).toEqual({ duration: 3500, keyframes: [0, 500, 1000, 2000, 3500], rest: 0, scheme: "dark" });
+    // The bar gets a band under the drawing; the replay waits for it.
+    expect(blueprint.size.h).toBe(plain.blueprint.size.h + TIMELINE_BAND);
+    expect(layer.box.y).toBeGreaterThanOrEqual(plain.blueprint.size.h);
+    expect(byKind(blueprint.layers, "custom").find((l) => l.task === SMIL_TASK)?.parent).toBe(layer.id);
+    expect(blueprint.plugins).toEqual(["svg", TIMELINE_PLUGIN]);
+    expect(plugins?.[1]).toBe(timeline);
+    const bad = { ...ctx, plugins: { [TIMELINE_PLUGIN]: timeline } as unknown as Plugin[] };
+    await expect(svgAdapter.load({ text: shuttle }, bad)).rejects.toThrow(/ctx.plugins must be an array/);
   });
 });

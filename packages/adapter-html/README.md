@@ -14,6 +14,8 @@ const { blueprint, warnings, live } = await html.load({ url: "https://example.co
 
 CSS animations are posed before the capture: finite ones at their end state, infinite ones at half a cycle (`infinitePhase`). With `keepLive`, the frame is returned as `live` and `live.resume()` lets the animations play again on go live; `dispose()` removes it.
 
+Keyframe timeline: when the load context carries an `anim:timeline` plugin (`ctx.plugins`, type `HtmlLoadContext`; the plugin comes from `@swarmloom/adapter-lottie` and is looked up by name, not imported), up to six animated elements of a full document get an `anim:timeline` layer (`duration`, `keyframes` and `rest`, the captured pose) in free space under or above them, built after the page and before go live. A bar never covers page content; an element without free space gets none. Without the plugin nothing changes.
+
 Safe defaults:
 
 - Scripts never run. Script tags, event handlers and `javascript:` URLs are removed, and a page that had scripts gets a warning that it is shown as written.

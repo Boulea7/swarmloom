@@ -434,6 +434,9 @@ importers:
 
   packages/adapter-notebook:
     dependencies:
+      '@swarmloom/adapter-markdown':
+        specifier: workspace:*
+        version: link:../adapter-markdown
       '@swarmloom/adapter-terminal':
         specifier: workspace:*
         version: link:../adapter-terminal
@@ -446,19 +449,6 @@ importers:
       highlight.js:
         specifier: ^11.12.0
         version: 11.12.0
-      remark-gfm:
-        specifier: ^4.0.1
-        version: 4.0.1(supports-color@7.2.0)
-      remark-parse:
-        specifier: ^11.0.0
-        version: 11.0.0(supports-color@7.2.0)
-      unified:
-        specifier: ^11.0.5
-        version: 11.0.5
-    devDependencies:
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
 
   packages/adapter-odf:
     dependencies:

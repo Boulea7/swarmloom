@@ -1,5 +1,6 @@
 import { type CustomLayer, definePlugin, type LayerRenderer, type Plugin, type TaskFn } from "@swarmloom/core";
 import { sanitizeSvgTree } from "./sanitize";
+import { createSmilPlayback, SMIL_TASK } from "./smil";
 import { SVG_NS } from "./units";
 
 /** Plugin name listed in `Blueprint.plugins`. */
@@ -76,11 +77,20 @@ const defsTask: TaskFn<CustomLayer> = function* (_agent, layer, stage) {
 };
 
 /**
- * Plugin returned by the SVG adapter: renders the `svg:defs` custom layer so `url(#...)`
- * references of path layers resolve inside the stage's shadow root.
+ * Creates an `svg` plugin instance: the `svg:defs` renderer, so `url(#...)` references of path
+ * layers resolve inside the stage's shadow root, and the `svg:smil` replay of the drawing's own
+ * animation after the weave (decision C04). Replay state is per instance, so the adapter hands each
+ * animated drawing its own.
  */
-export const svgPlugin: Plugin = definePlugin({
-  name: SVG_PLUGIN,
-  tasks: { [DEFS_TASK]: defsTask },
-  renderers: { [DEFS_TASK]: defsRenderer },
-});
+export function createSvgPlugin(): Plugin {
+  const smil = createSmilPlayback();
+  return definePlugin({
+    name: SVG_PLUGIN,
+    tasks: { [DEFS_TASK]: defsTask, [SMIL_TASK]: smil.task },
+    renderers: { [DEFS_TASK]: defsRenderer, [SMIL_TASK]: smil.renderer },
+    frame: (now) => smil.frame(now),
+  });
+}
+
+/** Shared plugin instance returned for drawings without animation. */
+export const svgPlugin: Plugin = createSvgPlugin();

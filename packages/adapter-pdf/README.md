@@ -50,7 +50,7 @@ defaults for every adapter, including the shared `pdfAdapter`. Invalid values th
 | `maxBytes` | 64 MiB | Largest accepted file. |
 | `renderTimeoutMs` | 20000 | A slower page ends the document at the previous page. |
 | `urlType` | `"blob"` | `"blob"` object URLs (revoked by `dispose()`), or `"data"` URLs that survive serialization. A data URL is repeated in every layer of its page, so a saved blueprint grows by roughly layers x bitmap size. |
-| `build` | `"auto"` | `"modern"` or `"legacy"` pdf.js; auto picks legacy when the browser lacks the built-ins the modern build needs. |
+| `build` | `"auto"` | `"modern"` or `"legacy"` pdf.js; auto picks legacy when the browser lacks the built-ins the modern build needs. Where `Promise.withResolvers` is missing (Chrome/Edge 116-118, Safari before 17.4) the adapter adds it and parses on the main thread. |
 | `workerSrc` | bundler URL | URL of `pdf.worker.min.mjs` of the same version and build. |
 | `workerPort` | - | A caller-owned pdf.js worker (never terminated by the adapter). |
 | `disableWorker` | `false` | Parse on the main thread. |

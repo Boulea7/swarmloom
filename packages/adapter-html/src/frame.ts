@@ -1,3 +1,5 @@
+import { type KeyframeTimeline, placeKeyframes, readKeyframes } from "./timeline";
+
 /** Options of {@link renderInFrame}. */
 export interface FrameOptions {
   /** Document that hosts the hidden frame. */
@@ -13,6 +15,8 @@ export interface FrameOptions {
   settleMs: number;
   /** Pose of infinite animations as a fraction of one cycle. Default 0.5. */
   infinitePhase?: number;
+  /** Also read the keyframe timelines of animated elements before they are frozen. Default false. */
+  keyframes?: boolean;
   signal?: AbortSignal;
 }
 
@@ -24,6 +28,8 @@ export interface FrameDocument {
   loaded: boolean;
   /** The animations frozen for the capture. */
   frozen: FrozenAnimations;
+  /** Keyframe timelines of animated elements, when {@link FrameOptions.keyframes} asked for them. */
+  timelines?: KeyframeTimeline[];
   dispose(): void;
 }
 
@@ -194,9 +200,12 @@ export async function renderInFrame(opts: FrameOptions): Promise<FrameDocument> 
     ]);
     await delay(opts.settleMs, opts.signal);
     await nextFrame(win);
+    // Timings before the freeze (finished animations may leave the list), boxes after it.
+    const timings = opts.keyframes ? readKeyframes(doc, opts.infinitePhase) : null;
     const frozen = freezeAnimations(doc, opts.infinitePhase);
     await nextFrame(win);
-    return { doc, frame, loaded, frozen, dispose };
+    const timelines = timings ? placeKeyframes(timings) : undefined;
+    return { doc, frame, loaded, frozen, dispose, ...(timelines ? { timelines } : {}) };
   } catch (error) {
     dispose();
     throw error;

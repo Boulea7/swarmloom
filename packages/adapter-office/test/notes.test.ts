@@ -7,12 +7,12 @@ import { sheetNotes } from "../src/sheet/notes";
 
 describe("font substitutes (decisions F01)", () => {
   it.each([
-    ["Calibri", "Calibri, Carlito, system-ui, sans-serif"],
-    ["Cambria", "Cambria, Caladea, serif"],
-    ["宋体", '"宋体", "Noto Serif SC", "Songti SC", serif'],
-    ["Microsoft YaHei", '"Microsoft YaHei", "Noto Sans SC", "PingFang SC", system-ui, sans-serif'],
-  ])("stacks %s with its open substitute", (face, stack) => {
-    expect(fontStack(face)).toBe(stack);
+    ["Calibri", /^Calibri, Carlito, .*, sans-serif$/],
+    ["Cambria", /^Cambria, Caladea, .*, serif$/],
+    ["宋体", /^"宋体", SimSun, "Noto Serif SC", .*, serif$/],
+    ["Microsoft YaHei", /^"Microsoft YaHei", "Noto Sans SC", .*, sans-serif$/],
+  ])("stacks %s with its open substitute from the core table", (face, stack) => {
+    expect(fontStack(face)).toMatch(stack);
   });
 
   it("reports each substituted face once, in first-use order, and skips faces without one", () => {

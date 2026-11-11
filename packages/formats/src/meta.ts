@@ -77,16 +77,15 @@ export const FORMAT_META: readonly FormatMeta[] = [
   {
     id: "slides",
     label: "Presentation",
-    extensions: ["pptx", "ppt"],
-    mime: [
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      "application/vnd.ms-powerpoint",
-    ],
+    // Legacy .ppt is not listed: the adapter rejects it, and its CFB stream still routes it there for the message.
+    extensions: ["pptx"],
+    mime: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
   },
   {
     id: "sheet",
     label: "Spreadsheet",
-    extensions: ["xlsx", "xlsm", "xls", "ods", "csv", "tsv"],
+    // Legacy .xls is not listed (the adapter rejects it). Its MIME type stays: Windows browsers give it to .csv files.
+    extensions: ["xlsx", "xlsm", "ods", "csv", "tsv"],
     mime: [
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.ms-excel.sheet.macroenabled.12",

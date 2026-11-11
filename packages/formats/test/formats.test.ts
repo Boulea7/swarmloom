@@ -61,6 +61,11 @@ describe("detect", () => {
     ["plain zip archive is unsupported", { name: "files.zip", bytes: makeZip([{ name: "a.txt" }]) }, null],
     ["cfb WordDocument stream", { bytes: makeCfb([{ name: "WordDocument", content: wordStream(0) }]) }, "doc"],
     ["cfb Workbook stream", { bytes: makeCfb([{ name: "Workbook" }]) }, "sheet"],
+    // Legacy .ppt/.xls are not buildable: only their CFB streams route them, to the adapter's "save as" message.
+    ["cfb PowerPoint stream", { name: "old.ppt", bytes: makeCfb([{ name: "PowerPoint Document" }]) }, "slides"],
+    ["a .ppt name alone", { name: "old.ppt" }, null],
+    ["a .xls name alone", { name: "old.xls" }, null],
+    ["csv with the Windows Excel mime", { type: "application/vnd.ms-excel", text: "a;b\n1;2\n3;4\n" }, "sheet"],
     [
       "truncated cfb falls back to a name scan",
       { bytes: bytes(CFB, [0, 0], Array.from("WordDocument", (c) => [c.charCodeAt(0), 0]).flat()) },

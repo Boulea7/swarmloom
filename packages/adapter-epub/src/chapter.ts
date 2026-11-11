@@ -48,6 +48,19 @@ const PURIFY_CONFIG: Config = {
   ALLOW_DATA_ATTR: false,
 };
 
+/** SVG presentation attributes that take a url(): paint servers, filters, clips, masks, markers, cursors. */
+const URL_PRESENTATION_ATTRS = [
+  "fill",
+  "stroke",
+  "filter",
+  "clip-path",
+  "mask",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+  "cursor",
+] as const;
+
 /** Counters reported as quality notes. */
 export interface BookStats {
   missingImages: number;
@@ -124,6 +137,8 @@ export class BookRenderer {
   }
 
   private resolveCssUrl = (href: string, base: string): string | null => {
+    // Same-document references (SVG gradients, clip paths) never fetch anything.
+    if (/^#[\w.:-]+$/.test(href)) return href;
     if (href.startsWith("data:image/") && href.length < 256 * 1024) return href;
     const path = resolvePath(base, href);
     return path && /\.(?:png|jpe?g|gif|webp|svg|bmp)$/i.test(path) ? this.image(path) : null;
@@ -216,11 +231,25 @@ export class BookRenderer {
     return classes.filter((c) => c);
   }
 
-  /** Rewrites resources of sanitised content: archive images to blob URLs, links and external references removed. */
+  /**
+   * Rewrites resources of sanitised content: archive images to blob URLs, links and external
+   * references removed. Besides `src` and `href` this covers inline styles, the HTML `background`
+   * attribute and SVG presentation attributes, which DOMPurify keeps with any URL in them.
+   */
   private rewrite(root: Element, path: string): void {
     for (const el of Array.from(root.querySelectorAll("*"))) {
       const style = el.getAttribute("style");
       if (style) el.setAttribute("style", cleanDeclarations(style, path, this.resolveCssUrl, this.family));
+      for (const name of URL_PRESENTATION_ATTRS) {
+        const value = el.getAttribute(name);
+        if (value) el.setAttribute(name, cleanDeclarations(value, path, this.resolveCssUrl));
+      }
+      const background = el.getAttribute("background");
+      if (background !== null) {
+        const url = this.image(resolvePath(path, background));
+        if (url) el.setAttribute("background", url);
+        else el.removeAttribute("background");
+      }
       const tag = el.localName;
       if (tag === "img") {
         const url = this.image(resolvePath(path, el.getAttribute("src") ?? ""));

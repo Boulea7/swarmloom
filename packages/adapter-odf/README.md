@@ -18,11 +18,11 @@ How it works:
 - Images from the package become blob URLs, revoked by `dispose()`. Charts, formulas and OLE objects are shown as labelled placeholders.
 - The HTML is laid out with `@swarmloom/snapshot-dom`, which turns it into a blueprint. Sheets get the `page` role (`slide` for presentations).
 
-Fonts follow the shared fallback table (decision F01): Calibri falls back to Carlito, Arial to Liberation Sans, SimSun to Noto Serif SC, and so on. Fonts are only requested with `local()`, never downloaded. Every substitution is reported in `notes`, together with other quality notes such as placeholders and cut tables.
+Fonts follow the shared fallback table (decision F01, `FONT_FALLBACKS` in `@swarmloom/core`): Calibri falls back to Carlito, Arial to Liberation Sans, SimSun to Noto Serif SC, and so on. Fonts are only requested with `local()`, never downloaded. Every substitution is reported in `notes`, together with other quality notes such as placeholders and cut tables.
 
 Options (`createOdfAdapter`): `maxBytes` (100 MiB), `budget` (S10 long-input budget, default 420 units or 12 000 characters), `maxSlides` (20), `snapshotHtml` (to replace the snapshot implementation, mainly for tests). When the budget runs out, the rest is left out and counted in `blueprint.truncated`.
 
-The shared toolkit used by the EPUB, RTF and OFD adapters is exported as `@swarmloom/adapter-odf/kit`: the safe ZIP and XML readers, the F01 font table (`fontStack`, `FontReport`), the content budget, HTML helpers, image sniffing and the page-sheet layout.
+The shared toolkit used by the EPUB, RTF and OFD adapters is exported as `@swarmloom/adapter-odf/kit`: the safe ZIP and XML readers, F01 font stacks over the core table (`fontStack`, `FontReport`), the content budget, HTML helpers, image sniffing and the page-sheet layout.
 
 Limits: no formula recalculation, conditional formats or charts (charts are placeholders); gradients and hatches are simplified to flat fills; 3D scenes are not drawn; animations and transitions are not played.
 

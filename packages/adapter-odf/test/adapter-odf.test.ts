@@ -76,7 +76,7 @@ describe("odf structure", () => {
     // Styles come from styles.xml (Heading 2 colour) and automatic styles (bold span).
     expect(css).toMatch(/color:#5B5BF7/i);
     expect(css).toContain("font-weight:bold");
-    expect(css).toContain('"Carlito"');
+    expect(css).toContain("Calibri, Carlito, ");
     expect(loaded.notes?.[0]).toMatch(/Calibri -> Carlito/);
     loaded.dispose?.();
   });
