@@ -19,7 +19,7 @@ How it works:
 
 Options (`createEpubAdapter`): `maxBytes` (100 MiB), `budget` (S10 long-input budget, default 420 units or 12 000 characters), `maxChapters` (24), `snapshotHtml`. When the budget runs out, the remaining chapters are counted in `blueprint.truncated`.
 
-Fonts follow the shared F01 fallback table from `@swarmloom/adapter-odf/kit`, and substitutions are listed in `notes`.
+Fonts follow the shared F01 fallback table (`FONT_FALLBACKS` in `@swarmloom/core`, through `@swarmloom/adapter-odf/kit`), and substitutions are listed in `notes`.
 
 Limits: no scripts, media overlays or audio and video playback. Fixed-layout books are drawn one page per sheet and have not been tested against a real fixed-layout sample.
 

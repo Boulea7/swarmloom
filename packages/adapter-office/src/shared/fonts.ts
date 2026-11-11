@@ -1,97 +1,20 @@
+import { resolveFontFamily } from "@swarmloom/core";
+
 /**
- * Office typefaces mapped to open stand-ins (contracts/decisions-v1.md F01), so text keeps its
- * line breaks on systems without the Microsoft originals, plus a log of the faces a document
- * actually used, so substitutions are reported instead of silent.
- *
- * The table mirrors the shared fallback table planned for @swarmloom/formats; that package
- * imports this one lazily, so it cannot be imported back here without a dependency cycle.
+ * Office typefaces mapped to open stand-ins through the shared core table (decisions-v1 F01,
+ * `FONT_FALLBACKS` in @swarmloom/core), so text keeps its line breaks on systems without the
+ * Microsoft originals, plus a log of the faces a document actually used, so substitutions are
+ * reported instead of silent.
  */
 
-/** Open stand-ins per Office face (keys lower-case). The first entry is the reported substitute. */
-const FONT_FALLBACKS: Readonly<Record<string, readonly string[]>> = {
-  calibri: ["Carlito"],
-  "calibri light": ["Carlito"],
-  cambria: ["Caladea"],
-  arial: ["Liberation Sans", "Arimo", "Helvetica"],
-  helvetica: ["Liberation Sans", "Arial"],
-  "times new roman": ["Liberation Serif", "Tinos", "Times"],
-  "courier new": ["Liberation Mono", "Cousine", "Courier"],
-  // Simplified Chinese.
-  simsun: ["Noto Serif SC", "Songti SC"],
-  宋体: ["Noto Serif SC", "Songti SC"],
-  nsimsun: ["Noto Serif SC", "Songti SC"],
-  新宋体: ["Noto Serif SC", "Songti SC"],
-  "microsoft yahei": ["Noto Sans SC", "PingFang SC"],
-  微软雅黑: ["Noto Sans SC", "PingFang SC"],
-  simhei: ["Noto Sans SC", "PingFang SC"],
-  黑体: ["Noto Sans SC", "PingFang SC"],
-  dengxian: ["Noto Sans SC", "PingFang SC"],
-  等线: ["Noto Sans SC", "PingFang SC"],
-  // Traditional Chinese.
-  pmingliu: ["Noto Serif TC", "Songti TC"],
-  新細明體: ["Noto Serif TC", "Songti TC"],
-  mingliu: ["Noto Serif TC", "Songti TC"],
-  細明體: ["Noto Serif TC", "Songti TC"],
-  "microsoft jhenghei": ["Noto Sans TC", "PingFang TC"],
-  微軟正黑體: ["Noto Sans TC", "PingFang TC"],
-  // Japanese.
-  "ms mincho": ["Noto Serif JP", "Hiragino Mincho ProN"],
-  "ms pmincho": ["Noto Serif JP", "Hiragino Mincho ProN"],
-  "ｍｓ 明朝": ["Noto Serif JP", "Hiragino Mincho ProN"],
-  "yu mincho": ["Noto Serif JP", "Hiragino Mincho ProN"],
-  "ms gothic": ["Noto Sans JP", "Hiragino Sans"],
-  "ms pgothic": ["Noto Sans JP", "Hiragino Sans"],
-  "ｍｓ ゴシック": ["Noto Sans JP", "Hiragino Sans"],
-  meiryo: ["Noto Sans JP", "Hiragino Sans"],
-  メイリオ: ["Noto Sans JP", "Hiragino Sans"],
-  "yu gothic": ["Noto Sans JP", "Hiragino Sans"],
-  游ゴシック: ["Noto Sans JP", "Hiragino Sans"],
-  // Korean.
-  batang: ["Noto Serif KR", "AppleMyungjo"],
-  바탕: ["Noto Serif KR", "AppleMyungjo"],
-  "malgun gothic": ["Noto Sans KR", "Apple SD Gothic Neo"],
-  "맑은 고딕": ["Noto Sans KR", "Apple SD Gothic Neo"],
-  gulim: ["Noto Sans KR", "Apple SD Gothic Neo"],
-  굴림: ["Noto Sans KR", "Apple SD Gothic Neo"],
-  dotum: ["Noto Sans KR", "Apple SD Gothic Neo"],
-  돋움: ["Noto Sans KR", "Apple SD Gothic Neo"],
-  // UI faces without an open metric twin.
-  "segoe ui": ["system-ui"],
-  aptos: ["system-ui"],
-};
-
-const MONO_HINT = /mono|courier|consol|code/i;
-const SERIF_HINT = /serif|times|georgia|cambria|garamond|minion|song|ming|mincho|batang|宋|明|바탕/i;
-
-function quoteFamily(name: string): string {
-  return /^[a-z-]+$/i.test(name) && name !== "inherit" ? name : `"${name.replace(/["\\]/g, "")}"`;
-}
-
-/** CSS `font-family` list for the given typefaces, with open fallbacks and a generic family. */
+/** CSS `font-family` list for the given typefaces (Latin first), with open fallbacks and a generic family. */
 export function fontStack(...typefaces: (string | undefined)[]): string {
-  const names: string[] = [];
-  const push = (n: string) => {
-    if (n && !names.includes(n)) names.push(n);
-  };
-  for (const face of typefaces) {
-    if (!face) continue;
-    push(face);
-    for (const alt of FONT_FALLBACKS[face.toLowerCase()] ?? []) push(alt);
-  }
-  const first = typefaces.find(Boolean) ?? "";
-  if (MONO_HINT.test(first)) push("monospace");
-  else if (SERIF_HINT.test(first) && !/sans|gothic|ゴシック|고딕/i.test(first)) push("serif");
-  else {
-    push("system-ui");
-    push("sans-serif");
-  }
-  return names.map(quoteFamily).join(", ");
+  return resolveFontFamily(typefaces.filter((face): face is string => !!face)).family;
 }
 
 /** Open substitute reported for an Office face, or undefined when the face has none. */
 export function fontSubstitute(face: string): string | undefined {
-  const alt = FONT_FALLBACKS[face.trim().toLowerCase()]?.[0];
-  return alt && alt !== "system-ui" ? alt : undefined;
+  return resolveFontFamily(face).substituted;
 }
 
 /** Characters that East Asian typefaces (`a:ea`) are used for. */

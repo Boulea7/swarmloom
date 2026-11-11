@@ -23,7 +23,7 @@ The parser covers:
 
 Unknown `{\*...}` destinations, headers, footers, footnotes and comments are skipped.
 
-The renderer turns the blocks into HTML on A4-like sheets, which are laid out with `@swarmloom/snapshot-dom`. Pictures become blob URLs, which `dispose()` revokes. EMF and WMF pictures are shown as placeholders. Fonts follow the shared F01 fallback table from `@swarmloom/adapter-odf/kit`, and substitutions and skipped content are listed in `notes`.
+The renderer turns the blocks into HTML on A4-like sheets, which are laid out with `@swarmloom/snapshot-dom`. Pictures become blob URLs, which `dispose()` revokes. EMF and WMF pictures are shown as placeholders. Fonts follow the shared F01 fallback table (`FONT_FALLBACKS` in `@swarmloom/core`, through `@swarmloom/adapter-odf/kit`), and substitutions and skipped content are listed in `notes`.
 
 Options (`createRtfAdapter`): `maxBytes` (50 MiB), `budget` (S10 long-input budget, default 420 units or 12 000 characters), `parse` (`maxDepth` 1024, `maxPictureBytes` 16 MiB, `maxPictures` 64), `snapshotHtml`.
 

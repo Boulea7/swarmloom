@@ -1,4 +1,4 @@
-import { fontStack } from "@swarmloom/adapter-docx/paged";
+import { resolveFontFamily } from "@swarmloom/core";
 import type { CharProps, DocFont, ParaProps } from "../model";
 import { halfPoints, px, twipsToPx } from "./units";
 
@@ -17,11 +17,9 @@ export class FontResolver {
     if (!stack) {
       const ascii = this.fonts[props.font];
       const eastAsia = this.fonts[props.fontEastAsia];
-      const families = fontStack(ascii?.name || "Times New Roman", ascii?.generic ?? null).split(", ");
-      if (eastAsia?.name && eastAsia.name !== ascii?.name) {
-        families.splice(1, 0, fontStack(eastAsia.name, eastAsia.generic).split(", ")[0]);
-      }
-      stack = [...new Set(families)].join(", ");
+      // Shared core table (decisions-v1 F01): each face brings its substitute and look-alikes.
+      const faces = [ascii?.name || "Times New Roman", eastAsia?.name ?? ""];
+      stack = resolveFontFamily(faces, ascii?.generic ?? undefined).family;
       this.cache.set(key, stack);
     }
     return stack;

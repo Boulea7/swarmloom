@@ -1,123 +1,17 @@
-/** CSS generic family used as the last resort of a stack. */
-export type GenericFamily = "serif" | "sans-serif" | "monospace" | "cursive" | "fantasy";
+import { formatFontFamily, type GenericFontFamily, resolveFontFamily } from "@swarmloom/core";
 
-interface FontFallback {
-  /** Metric-compatible or look-alike families, most faithful first. */
-  alternatives: string[];
-  generic: GenericFamily;
-  /** CJK fallbacks to append (Office documents often mix Latin and CJK runs). */
-  cjk: "sans" | "serif" | "mono";
-}
-
-const CJK_SANS = [
-  "PingFang SC",
-  "Hiragino Sans GB",
-  "Microsoft YaHei",
-  "Noto Sans SC",
-  "Noto Sans CJK SC",
-  "Source Han Sans SC",
-  "Hiragino Sans",
-  "Yu Gothic",
-  "Apple SD Gothic Neo",
-  "Malgun Gothic",
-];
-const CJK_SERIF = [
-  "Songti SC",
-  "STSong",
-  "SimSun",
-  "Noto Serif SC",
-  "Noto Serif CJK SC",
-  "Source Han Serif SC",
-  "Hiragino Mincho ProN",
-  "Yu Mincho",
-];
-
-const SANS = (...alternatives: string[]): FontFallback => ({ alternatives, generic: "sans-serif", cjk: "sans" });
-const SERIF = (...alternatives: string[]): FontFallback => ({ alternatives, generic: "serif", cjk: "serif" });
-const MONO = (...alternatives: string[]): FontFallback => ({ alternatives, generic: "monospace", cjk: "mono" });
-
-/**
- * Common Office fonts and the open or system fonts that stand in for them (keys are lower-case). The
- * first alternative follows the shared v1 table (contracts/decisions-v1.md F01): Calibri -> Carlito,
- * Cambria -> Caladea, Arial/Helvetica -> Liberation Sans, Times New Roman -> Liberation Serif,
- * Courier New -> Liberation Mono, SimSun -> Noto Serif SC, Microsoft YaHei/SimHei -> Noto Sans SC, and
- * the same for Traditional Chinese, Japanese and Korean.
- */
-const KNOWN: Record<string, FontFallback> = {
-  calibri: SANS("Carlito", "Segoe UI", "Helvetica Neue", "Arial"),
-  "calibri light": SANS("Carlito", "Segoe UI Light", "Helvetica Neue", "Arial"),
-  aptos: SANS("Carlito", "Segoe UI", "Helvetica Neue", "Arial"),
-  arial: SANS("Liberation Sans", "Arimo", "Helvetica Neue", "Helvetica"),
-  helvetica: SANS("Liberation Sans", "Helvetica Neue", "Arial"),
-  "segoe ui": SANS("Helvetica Neue", "Ubuntu", "Arial"),
-  tahoma: SANS("Verdana", "DejaVu Sans", "Arial"),
-  verdana: SANS("DejaVu Sans", "Tahoma", "Arial"),
-  "trebuchet ms": SANS("Segoe UI", "Arial"),
-  "century gothic": SANS("Avenir", "URW Gothic", "Arial"),
-  "times new roman": SERIF("Liberation Serif", "Tinos", "Times"),
-  times: SERIF("Times New Roman", "Liberation Serif"),
-  cambria: SERIF("Caladea", "Georgia", "Times New Roman"),
-  georgia: SERIF("Gelasio", "Times New Roman"),
-  garamond: SERIF("EB Garamond", "Georgia"),
-  "book antiqua": SERIF("Palatino Linotype", "Palatino", "Georgia"),
-  "courier new": MONO("Liberation Mono", "Cousine", "Courier"),
-  courier: MONO("Courier New", "Liberation Mono"),
-  consolas: MONO("Menlo", "Monaco", "Liberation Mono"),
-  "lucida console": MONO("Menlo", "Monaco", "Liberation Mono"),
-  simsun: SERIF("Noto Serif SC", "Songti SC", "STSong", "Noto Serif CJK SC"),
-  宋体: SERIF("SimSun", "Noto Serif SC", "Songti SC", "STSong", "Noto Serif CJK SC"),
-  nsimsun: SERIF("SimSun", "Noto Serif SC", "Songti SC"),
-  新宋体: SERIF("NSimSun", "SimSun", "Noto Serif SC", "Songti SC"),
-  simhei: SANS("Noto Sans SC", "Heiti SC", "PingFang SC", "Noto Sans CJK SC"),
-  黑体: SANS("SimHei", "Noto Sans SC", "Heiti SC", "PingFang SC", "Noto Sans CJK SC"),
-  "microsoft yahei": SANS("Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC"),
-  微软雅黑: SANS("Microsoft YaHei", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC"),
-  dengxian: SANS("Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"),
-  等线: SANS("DengXian", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"),
-  kaiti: SERIF("Kaiti SC", "STKaiti", "KaiTi_GB2312", "Noto Serif SC"),
-  楷体: SERIF("KaiTi", "Kaiti SC", "STKaiti", "Noto Serif SC"),
-  fangsong: SERIF("STFangsong", "FangSong_GB2312", "Noto Serif SC"),
-  仿宋: SERIF("FangSong", "STFangsong", "Noto Serif SC"),
-  mingliu: SERIF("Noto Serif TC", "PMingLiU", "Songti TC"),
-  pmingliu: SERIF("Noto Serif TC", "MingLiU", "Songti TC"),
-  新細明體: SERIF("PMingLiU", "Noto Serif TC", "Songti TC"),
-  "microsoft jhenghei": SANS("Noto Sans TC", "PingFang TC", "Heiti TC"),
-  微軟正黑體: SANS("Microsoft JhengHei", "Noto Sans TC", "PingFang TC"),
-  "ms mincho": SERIF("Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP"),
-  "ms gothic": SANS("Noto Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans CJK JP"),
-  "yu gothic": SANS("Noto Sans JP", "Hiragino Sans", "Noto Sans CJK JP"),
-  meiryo: SANS("Noto Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans CJK JP"),
-  "malgun gothic": SANS("Noto Sans KR", "Apple SD Gothic Neo", "Noto Sans CJK KR"),
-  gulim: SANS("Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic"),
-  dotum: SANS("Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic"),
-  batang: SERIF("Noto Serif KR", "AppleMyungjo", "Noto Serif CJK KR"),
-};
-
-function guess(name: string, generic: GenericFamily | null | undefined): FontFallback {
-  const n = name.toLowerCase();
-  if (generic === "monospace" || /mono|courier|code|consol/.test(n)) return MONO();
-  if (generic === "serif" || /serif|song|ming|mincho|batang|times|roman|garamond|宋|明/.test(n)) {
-    if (!/sans/.test(n)) return SERIF();
-  }
-  return { ...SANS(), generic: generic === "cursive" || generic === "fantasy" ? generic : "sans-serif" };
-}
-
-function quote(name: string): string {
-  return /^[a-z-]+$/i.test(name) && !GENERICS.has(name.toLowerCase()) ? name : `"${name.replace(/["\\]/g, "")}"`;
-}
+/** CSS generic family used as the last resort of a stack (the core type, re-exported for DOC). */
+export type GenericFamily = GenericFontFamily;
 
 const GENERICS = new Set(["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "inherit", "initial"]);
 
 /**
- * A CSS font-family stack for an Office font name: the font itself, look-alikes for machines that
- * lack it, CJK fallbacks and a generic family. `generic` is the document's own hint when known.
+ * A CSS font-family stack for an Office font name, from the shared core table (decisions-v1 F01):
+ * the font itself, other names of it, its open substitute, look-alikes, CJK fallbacks and a generic
+ * family. `generic` is the document's own hint for fonts the table does not know.
  */
 export function fontStack(name: string, generic?: GenericFamily | null): string {
-  const clean = name.trim();
-  const fallback = KNOWN[clean.toLowerCase()] ?? guess(clean, generic);
-  const cjk = fallback.cjk === "serif" ? CJK_SERIF : CJK_SANS;
-  const names = [clean, ...fallback.alternatives, ...cjk].filter((n) => n !== "");
-  return [...new Set(names)].map(quote).concat(fallback.generic).join(", ");
+  return resolveFontFamily(name, generic ?? undefined).family;
 }
 
 function unquote(name: string): string {
@@ -214,18 +108,18 @@ export function missingFonts(doc: Document, names: Iterable<string>): string[] {
   if (bases.every(([, w]) => w === 0)) return [];
   const out: string[] = [];
   for (const name of [...new Set(names)].slice(0, MAX_PROBED)) {
-    if (bases.every(([generic, w]) => width(`${quote(name)}, ${generic}`) === w)) out.push(name);
+    if (bases.every(([generic, w]) => width(formatFontFamily([name], generic)) === w)) out.push(name);
   }
   return out;
 }
 
 /**
- * The look-alike a missing font is replaced with: the first entry of the fallback table for known
- * Office fonts, else a description of the generic family ("a serif font").
+ * What a missing font is replaced with: its open substitute from the shared core table (F01), else a
+ * description of its generic family ("a serif font").
  */
 export function substituteFor(name: string): string {
-  const known = KNOWN[name.trim().toLowerCase()]?.alternatives[0];
-  return known ?? `a ${guess(name.trim(), null).generic} font`;
+  const { family, substituted } = resolveFontFamily(name);
+  return substituted ?? `a ${family.slice(family.lastIndexOf(", ") + 2)} font`;
 }
 
 const MAX_LISTED = 6;

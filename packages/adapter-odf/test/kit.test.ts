@@ -58,7 +58,7 @@ describe("F01 font fallbacks", () => {
   ])("%s -> %s", (name, substitute, generic) => {
     const choice = fontStack(name);
     expect(choice.substitute).toBe(substitute);
-    expect(choice.stack.startsWith(`"${name}"`)).toBe(true);
+    expect(choice.stack.split(", ")[0]?.replace(/"/g, "")).toBe(name);
     expect(choice.stack.endsWith(`, ${generic}`)).toBe(true);
   });
 
