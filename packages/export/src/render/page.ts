@@ -1,0 +1,59 @@
+import type { AdapterContext } from "@swarmloom/core";
+import { createPlayer } from "@swarmloom/core";
+import { type FormatEntry, formats, load } from "@swarmloom/formats";
+import { renderAudioWav } from "../audio";
+import { createRenderApi } from "./api";
+import type { RenderApi } from "./protocol";
+
+/**
+ * The formats registry with the render page's go-live settings: HTML documents keep their live page
+ * (laid out at the frame's height, so it lines up with the woven one) and SVG SMIL replays stay on
+ * player time after go live, since the export clock keeps ticking.
+ */
+export function renderFormats(height: number): FormatEntry[] {
+  return formats.map((entry): FormatEntry => {
+    if (entry.id === "html") {
+      return {
+        ...entry,
+        loader: () =>
+          import("@swarmloom/adapter-html").then((m) =>
+            m.createHtmlAdapter({ keepLive: true, viewportHeight: height }),
+          ),
+      };
+    }
+    if (entry.id === "svg") {
+      return {
+        ...entry,
+        loader: () => import("@swarmloom/adapter-svg").then((m) => m.createSvgAdapter({ liveClock: "player" })),
+      };
+    }
+    return entry;
+  });
+}
+
+/** Options of {@link createPageRenderApi}. */
+export interface PageRenderOptions {
+  /**
+   * What document adapters may fetch (`ctx.network`, read by the html and markdown adapters):
+   * "https" images and fonts, or "none". Unset leaves the adapters' default; the CLI filters
+   * requests itself.
+   */
+  network?: "https" | "none";
+}
+
+/**
+ * The render page's `window.__swarmloom` for the current window: every registered format with the
+ * go-live settings above, core's player and the offline WAV renderer. Shared by the CLI's render
+ * page and the frame Studio exports in.
+ */
+export function createPageRenderApi(options: PageRenderOptions = {}): RenderApi {
+  const { network } = options;
+  return createRenderApi({
+    load: (input, ctx, { format, height }) => {
+      const context: AdapterContext = network ? ({ ...ctx, network } as AdapterContext) : ctx;
+      return load(input, context, { format, registry: renderFormats(height) });
+    },
+    createPlayer,
+    renderAudioWav,
+  });
+}
