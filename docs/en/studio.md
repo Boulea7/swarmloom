@@ -58,7 +58,7 @@ Phones use a bottom settings sheet. Watch mode omits full settings and keeps onl
 
 ## Offline use
 
-After PWA installation, the Service Worker caches the app shell and, at install, fetches every format's adapter chunks together with what they import. Local files, cached examples and existing scenes can then run offline. The worker's version is a hash of the content of every cached file, so a change to only the page, the manifest or an icon still reaches installed copies.
+After PWA installation, the Service Worker caches the app shell and, at install, fetches every format's adapter chunks and the in-browser video exporter, together with what they import. Local files, cached examples and existing scenes can then run offline. The worker's version is a hash of the content of every cached file, so a change to only the page, the manifest or an icon still reaches installed copies.
 
 Offline mode does not make remote URLs readable. First-use formats, uncached remote resources, external fonts and model dependencies still need a network. Clearing site data removes the cache.
 
@@ -102,7 +102,7 @@ Studio always has an ordinary responsive layout. Supported Chromium environments
 - **Export in this browser** renders the video in the page, frame by frame. A hidden frame runs the same render page as `swarmloom render`, advances the same virtual clock by whole frames and keeps the same tail, so the frames match the CLI's for the same settings. Each frame is drawn from a snapshot of the page, encoded with WebCodecs (H.264 in MP4, or VP9 in WebM when H.264 is not available) and packed by [Mediabunny](https://github.com/Vanilagy/mediabunny). The sound is the run's sound log rendered offline, as AAC or Opus; when the browser cannot encode either, the video is silent and the dialog says so. A progress bar shows the frame count and the time left, **Cancel** stops at once, and **Download** saves the file. The page stays usable while it works; keep the tab open.
 - **Render with the command line** shows the `npx swarmloom render ...` command for the same file, with the chosen size, frame rate, theme, language, sound and web images setting, and the same 10-minute length limit (`--max-duration 600`; the CLI's own default is 120 s). It also offers WebM, GIF and WebP.
 
-Browsers without WebCodecs (no `VideoEncoder`) show only the command. The exporter and Mediabunny load when the dialog first opens, so they add nothing to Studio's start-up.
+Browsers without WebCodecs (no `VideoEncoder`) show only the command. The exporter and Mediabunny are not part of Studio's start-up: on an ordinary visit they load when the dialog first opens. An installed copy downloads them earlier, at install, with the format adapters (see Offline use above).
 
 Limits of the in-page export:
 
