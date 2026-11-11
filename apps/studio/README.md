@@ -25,7 +25,7 @@ Files are read in the browser and never uploaded. Remote https images and fonts 
 | `?import=1` | Highlight the file picker (sent by the extension). |
 | `?key=<key>` | Read input the extension stored in `chrome.storage` (extension build). |
 | `?inbox=<id>` | Read files shared to the installed app (service worker inbox). |
-| `?launch=1` | Wait for files opened with the installed app (`file_handlers`). |
+| `?launch=1` | Wait for files opened with the installed app (`file_handlers`). A file that cannot be read (empty, too large) returns to home with the reason. |
 | `?from=bookmarklet` | Receive a page copy from the bookmarklet (`window.opener`). |
 | `agents`, `speed`, `seed`, `labels`, `theme`, `finale`, `follow`, `motion`, `sound`, `pack`, `lang` | Settings for this visit only. |
 

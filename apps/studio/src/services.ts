@@ -73,8 +73,11 @@ export interface StudioServices {
   readStored?: (key: string) => Promise<StoredInput | null>;
   /** Share-target handoff (`?inbox=`), served from the service worker cache. */
   readInbox?: (id: string) => Promise<InboxItem[]>;
-  /** Registers a consumer for files opened through the OS (`file_handlers`). */
-  onLaunch?: (consumer: (files: File[]) => void) => void;
+  /**
+   * Registers a consumer for files opened through the OS (`file_handlers`). It gets the files as a
+   * promise, which rejects when the OS handles cannot be read, so Studio can say so.
+   */
+  onLaunch?: (consumer: (files: Promise<File[]>) => void) => void;
   /** Bookmarklet handoff (`?from=bookmarklet`): the page copy posted by `window.opener`. */
   receiveHandoff?: (signal?: AbortSignal) => Promise<HandoffPage>;
   /**
