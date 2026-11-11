@@ -121,6 +121,15 @@ describe("render page protocol", () => {
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
   });
 
+  it("plays a driver-supplied blueprint instead of loading the input", async () => {
+    const { api, players, loads } = setup();
+    const live = { ...blueprint, source: { type: "dom" }, layers: [{ id: "t1", kind: "text", text: "Hi" }] };
+    const info = await api.init({ ...base, blueprint: live } as RenderInit);
+    expect(loads).toHaveLength(0);
+    expect(players[0]?.options.blueprint).toBe(live);
+    expect(info.layers).toBe(1);
+  });
+
   it("renders silence when sound is off", async () => {
     const { api, audio } = setup();
     await api.init({ ...base, sound: false });
@@ -138,6 +147,7 @@ describe("render page protocol", () => {
       [{ ...base, fps: Number.NaN }, "fps must be a number"],
       [{ ...base, theme: "neon" }, "theme must be one of auto, light, dark"],
       [{ ...base, input: { name: "a", base64: "%%%" } }, "not valid base64"],
+      [{ ...base, blueprint: { version: 2, size: { w: 1, h: 1 }, layers: [] } }, "blueprint must be a version 1"],
     ];
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
     expect(players).toHaveLength(0);

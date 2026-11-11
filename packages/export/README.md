@@ -6,8 +6,9 @@ Deterministic video and audio export for SwarmLoom, plus a quick in-browser reco
 
 `dist/render/index.html` is a headless page, also exported as `@swarmloom/export/render/*`. It sets `window.__swarmloom` and marks `<html data-swarmloom="ready">`. A driver such as the `swarmloom render` CLI over CDP calls:
 
-1. `init({ input, width, height, fps, seed?, agents?, speed?, theme?, sound?, tail?, follow?, reducedMotion?, bpm?, pack? })`, which returns `{ estimatedMs }`.
+1. `init({ input, width, height, fps, seed?, agents?, speed?, theme?, sound?, tail?, follow?, reducedMotion?, bpm?, pack?, cues?, blueprint? })`, which returns `{ estimatedMs, layers, blueprintSha256 }`.
    - `input` is `{ name, type?, base64? | text? | url? }`. If `type` contains a slash it is a MIME type; otherwise it is an adapter id or extension that overrides detection.
+   - `blueprint` (optional) is a blueprint the driver already captured, such as the CLI's live snapshot of a web page. It is played as is and `input` is not loaded.
    - The player runs inline at `width` x `height` on a `VirtualClock`, with controls off.
 2. `step(1000 / fps)` advances the clock, waits for `player.ready()` (fonts, images, decode) and returns `{ state, built, total, done }`. Take a screenshot after each step until `done`. A run is done once the build has finished and `tail` ms (default 2500) have passed.
 3. `audioWav()` returns the run's sound log rendered offline to a 48 kHz stereo WAV, as base64. It is the same length as the video.

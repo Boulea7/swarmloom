@@ -1,4 +1,4 @@
-import type { LabelMode, SoundEvent } from "@swarmloom/core";
+import type { Blueprint, LabelMode, SoundEvent } from "@swarmloom/core";
 
 /** Input of a render: what `SourceInput` carries, serialisable across the driver boundary. */
 export interface RenderInput {
@@ -57,6 +57,11 @@ export interface RenderInit {
   pack?: string;
   /** Player actions at fixed video times, e.g. a hold and a quick finish timed to music. Default none. */
   cues?: RenderCue[];
+  /**
+   * A blueprint the driver already captured (the CLI snapshots live web pages). When set it is played
+   * as is and `input` is not loaded; `input` still names the source.
+   */
+  blueprint?: Blueprint;
 }
 
 /** What `init()` reports about the loaded input. */
@@ -164,6 +169,17 @@ function cueList(raw: unknown): RenderCue[] {
   return cues.sort((a, b) => a.at - b.at);
 }
 
+/** Shape check of a driver-supplied blueprint (untrusted JSON): version 1, finite size, a layer list. */
+function blueprintOf(raw: unknown): Blueprint | undefined {
+  if (raw === undefined) return undefined;
+  const bp = raw as Partial<Blueprint> | null;
+  const sized = Number.isFinite(bp?.size?.w) && Number.isFinite(bp?.size?.h);
+  if (!isRecord(bp) || bp.version !== 1 || !Array.isArray(bp.layers) || !sized) {
+    fail("blueprint must be a version 1 blueprint with a size and layers");
+  }
+  return bp as Blueprint;
+}
+
 /** Init options after validation, with defaults filled in. */
 export type ParsedInit = RenderInit &
   Required<Pick<RenderInit, "seed" | "tail" | "sound" | "follow" | "reducedMotion" | "theme" | "cues">>;
@@ -194,6 +210,7 @@ export function parseInit(raw: unknown): ParsedInit {
   if (sound !== undefined && typeof sound !== "boolean") fail("sound must be a boolean");
   const reducedMotion = raw.reducedMotion;
   if (reducedMotion !== undefined && typeof reducedMotion !== "boolean") fail("reducedMotion must be a boolean");
+  const blueprint = blueprintOf(raw.blueprint);
   return {
     input: source,
     width: number(raw, "width", 16, 8192, true) ?? fail("width is required"),
@@ -213,5 +230,6 @@ export function parseInit(raw: unknown): ParsedInit {
     bpm: number(raw, "bpm", 20, 400),
     pack: optionalString(raw, "pack"),
     cues: cueList(raw.cues),
+    ...(blueprint ? { blueprint } : {}),
   };
 }

@@ -141,7 +141,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
           theme: dark ? "dark" : "light",
           locale: init.locale,
         };
-        loaded = await deps.load(source, ctx, { format });
+        loaded = init.blueprint ? { blueprint: init.blueprint } : await deps.load(source, ctx, { format });
         session = new RenderSession({
           player: playerOptions(init, loaded, host),
           tailMs: init.tail,
