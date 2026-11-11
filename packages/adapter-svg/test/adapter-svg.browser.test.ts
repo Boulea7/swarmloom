@@ -42,7 +42,8 @@ describe("svgAdapter on the samples", () => {
   it("rebuilds the emblem: pen strokes, traced fills, stage-space defs, duplicates and text", async () => {
     const loaded: LoadedSource = await svgAdapter.load({ text: emblem, name: "emblem.svg" }, ctx);
     const { blueprint, plugins } = loaded;
-    expect(blueprint.size).toEqual({ w: 640, h: 640 });
+    // Square: fitted whole into the 16:9 frame of the layout width.
+    expect(blueprint.size).toEqual({ w: 360, h: 360 });
     expect(blueprint.background).toBe("rgb(250, 246, 238)");
     expect(blueprint.source).toMatchObject({ type: "svg", title: "SwarmLoom emblem" });
     expect(blueprint.truncated).toBeUndefined();
@@ -79,8 +80,8 @@ describe("svgAdapter on the samples", () => {
     // Pen anchors come from the path commands, in stage coordinates.
     const warp = paths.find((p) => p.meta?.tag === "line") as PathLayer;
     expect(warp.meta?.anchors).toEqual([
-      { x: 160, y: 80, start: true },
-      { x: 160, y: 506.7 },
+      { x: 90, y: 45, start: true },
+      { x: 90, y: 285 },
     ]);
     expect(warp.attrs?.["stroke-linecap"]).toBe("round");
 
@@ -91,25 +92,26 @@ describe("svgAdapter on the samples", () => {
 
   it("rebuilds the chart: dashed grid, bars, line and labels in stage coordinates", async () => {
     const { blueprint } = await svgAdapter.load({ text: chart, name: "chart.svg" }, ctx);
-    expect(blueprint.size).toEqual({ w: 640, h: 400 });
+    expect(blueprint.size).toEqual({ w: 576, h: 360 });
     expectInside(blueprint.layers, blueprint.size);
     const paths = byKind(blueprint.layers, "path");
     const texts = byKind(blueprint.layers, "text");
     expect(texts).toHaveLength(16);
-    expect(texts[0]).toMatchObject({ text: "Threads woven per week", fontSize: 20 });
-    const grid = paths.filter((p) => p.attrs?.["stroke-dasharray"] === "4 4");
+    // 16:10 chart in the 16:9 frame: scale 0.9.
+    expect(texts[0]).toMatchObject({ text: "Threads woven per week", fontSize: 18 });
+    const grid = paths.filter((p) => p.attrs?.["stroke-dasharray"] === "3.6 3.6");
     expect(grid).toHaveLength(4);
     const bars = paths.filter((p) => p.meta?.tag === "rect" && p.fill?.startsWith("url("));
     expect(bars).toHaveLength(9);
     expect(bars.every((b) => b.reveal === "trace")).toBe(true);
     const line = paths.find((p) => p.meta?.tag === "polyline") as PathLayer;
-    expect(line).toMatchObject({ reveal: "pen", strokeWidth: 3, fill: "none" });
+    expect(line).toMatchObject({ reveal: "pen", strokeWidth: 2.7, fill: "none" });
     expect(line.meta?.anchors).toHaveLength(8);
   });
 
-  it("scales to the layout width and respects the layer limit", async () => {
+  it("scales with the layout width and respects the layer limit", async () => {
     const { blueprint } = await createSvgAdapter({ maxLayers: 10 }).load({ text: chart }, { ...ctx, width: 320 });
-    expect(blueprint.size).toEqual({ w: 320, h: 200 });
+    expect(blueprint.size).toEqual({ w: 288, h: 180 });
     expect(blueprint.layers).toHaveLength(10);
     expect(blueprint.truncated?.reason).toMatch(/layer limit/);
     // The chart has 40 drawable layers; kept content plus dropped accounts for all of them.
@@ -194,9 +196,9 @@ describe("SMIL replay (decision C04)", () => {
     const markup = (smil.data as SvgSmilData).markup;
     expect(markup).toContain('<mpath href="#track"');
     expect(markup).not.toContain("evil.test");
-    // The skeleton and the intro icon show the authored pose (r = 22 at 640/480 scale).
+    // The skeleton and the intro icon show the authored pose (r = 22; the 480 x 320 drawing fits a 360 px frame).
     const circle = byKind(blueprint.layers, "path").find((p) => p.meta?.tag === "circle") as PathLayer;
-    expect(circle.box.w).toBeCloseTo((44 * 640) / 480, 0);
+    expect(circle.box.w).toBeCloseTo((44 * 360) / 320, 0);
     expect(decodeURIComponent(blueprint.icon ?? "")).not.toContain("<animate");
     const plugin = plugins?.[0];
     expect(plugin).not.toBe(svgPlugin);

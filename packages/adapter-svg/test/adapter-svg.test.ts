@@ -6,6 +6,7 @@ import { parsePathData } from "../src/path/parse";
 import { parsePoints, rectSegments } from "../src/path/shapes";
 import { sanitizeCss } from "../src/sanitize";
 import { looksLikeSvg } from "../src/source";
+import { stageSize } from "../src/units";
 
 describe("parsePathData", () => {
   it.each([
@@ -116,6 +117,17 @@ describe("sanitizing helpers", () => {
     const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
     expect(looksLikeSvg(enc('<?xml version="1.0"?>\n<!-- c --><!DOCTYPE svg><svg xmlns="x"/>'))).toBe(true);
     expect(looksLikeSvg(enc("<html><svg/></html>"))).toBe(false);
+  });
+});
+
+describe("stageSize", () => {
+  it.each([
+    ["a wide banner fills the width", { w: 1600, h: 400 }, { w: 1280, h: 320 }],
+    ["a square logo fits whole into the 16:9 frame", { w: 480, h: 480 }, { w: 720, h: 720 }],
+    ["a tall diagram keeps the width and scrolls", { w: 600, h: 800 }, { w: 1280, h: 1707 }],
+    ["an extreme strip stops at the height limit", { w: 10, h: 100_000 }, { w: 6, h: 60_000 }],
+  ])("%s", (_name, intrinsic, expected) => {
+    expect(stageSize(intrinsic, 1280)).toEqual(expected);
   });
 });
 
