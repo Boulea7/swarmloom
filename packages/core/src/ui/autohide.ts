@@ -15,7 +15,7 @@ export interface AutoHideDeps {
   apply(shown: boolean): void;
 }
 
-export type PinReason = "phase" | "focus" | "hover";
+export type PinReason = "phase" | "focus" | "hover" | "scrub";
 
 export interface AutoHide {
   readonly shown: boolean;

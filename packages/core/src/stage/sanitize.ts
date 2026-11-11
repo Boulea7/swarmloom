@@ -71,10 +71,8 @@ function cleanElement(el: Element): void {
       el.removeAttribute(a.name);
     }
   }
-  if (el.localName === "a") {
-    el.setAttribute("rel", "noopener noreferrer");
-    el.setAttribute("tabindex", "-1");
-  }
+  // No tabindex games: the world is inert while it builds and a page again once live (see StageDom.setLive).
+  if (el.localName === "a") el.setAttribute("rel", "noopener noreferrer");
   if (el.localName === "img") el.setAttribute("draggable", "false");
 }
 

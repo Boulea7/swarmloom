@@ -84,6 +84,18 @@ function finiteBoxes(layers: readonly Layer[]): Rect[] {
   return out;
 }
 
+const PX = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?px$/i;
+
+/** Offset of a CSS `translate` value written in px ("12px" or "12px 4px"); null for anything else. */
+function translateOffset(value: unknown): Point | null {
+  if (typeof value !== "string") return null;
+  const parts = value.trim().split(/\s+/);
+  if (parts.length > 3 || !parts.every((part) => PX.test(part))) return null;
+  const x = Number.parseFloat(parts[0] ?? "");
+  const y = parts.length > 1 ? Number.parseFloat(parts[1] ?? "") : 0;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
 function syncWindowScroll(win: Window, x: number, y: number): void {
   const left = Number.isFinite(x) ? Math.max(0, x) : 0;
   const top = Number.isFinite(y) ? Math.max(0, y) : 0;
@@ -128,6 +140,8 @@ export class SwarmStage implements Stage {
   readonly #offs: (() => void)[] = [];
   readonly #cleanups: (() => void)[] = [];
   readonly #textUnits = new Map<Slot, number>();
+  /** Typed texts whose views take layout reads in the next read phase ({@link measure}). */
+  readonly #reads = new Set<Slot>();
   readonly #origin: ClientOrigin = { left: 0, top: 0 };
   #originDirty = true;
   #frame = 0;
@@ -326,7 +340,14 @@ export class SwarmStage implements Stage {
       const dom = view.total?.() ?? 0;
       const text = this.#unitsOf(slot);
       if (text > 0 && dom !== text) units = (units / text) * dom;
-      return view.caret(units) ?? fallback;
+      // Typing goes on: the next caret block is read ahead, between frames.
+      if (!slot.finished) this.#reads.add(slot);
+      const caret = view.caret(units);
+      if (!caret) return fallback;
+      // The caret goes where the text is drawn: a transient translate (text typed beside its snap
+      // guide) moves it as well.
+      const shift = translateOffset(slot.css?.translate);
+      return shift ? { x: caret.x + shift.x, y: caret.y + shift.y } : caret;
     } catch {
       return fallback;
     }
@@ -360,6 +381,42 @@ export class SwarmStage implements Stage {
     return () => {
       this.#resizeListeners.delete(fn);
     };
+  }
+
+  /**
+   * A task is about to work on layer `id`. A typed text is mounted now (a DOM write, which is
+   * harmless mid-frame) and its first caret block is read in the next read phase, so typing
+   * starts on a measured caret instead of forcing a layout between other agents' writes.
+   */
+  prefetch(id: string): void {
+    const slot = this.#registry.get(id);
+    if (!slot?.dom || slot.broken || slot.finished || this.#destroyed) return;
+    const layer = slot.layer;
+    if (layer.kind !== "text" || (layer.reveal !== undefined && layer.reveal !== "type")) return;
+    slot.touched = this.#frame;
+    if (this.#mounter.ensure(slot)) this.#reads.add(slot);
+  }
+
+  /**
+   * Read phase, run by the engine at the start of a clock tick, before any task writes to the DOM:
+   * the layout is still clean from the browser's last frame, so these reads force no layout. Texts
+   * that finished, unmounted or broke drop out of the list.
+   */
+  measure(): void {
+    if (this.#destroyed) return;
+    for (const slot of this.#reads) {
+      const view = slot.view;
+      if (!view?.measure || slot.finished || slot.broken) {
+        this.#reads.delete(slot);
+        continue;
+      }
+      try {
+        view.measure();
+      } catch (error) {
+        this.#reads.delete(slot);
+        this.#report(slot, error);
+      }
+    }
   }
 
   setRulers(on: boolean): void {
@@ -401,8 +458,7 @@ export class SwarmStage implements Stage {
     if (this.#destroyed) return Promise.resolve();
     this.#phase++;
     const dom = this.#dom;
-    dom.rootEl.removeAttribute("data-live");
-    dom.world.removeAttribute("data-live");
+    dom.setLive(false);
     this.#overlay.setHidden(false);
     if (this.#mode === "inline") {
       this.#fade.set(1);
@@ -444,9 +500,12 @@ export class SwarmStage implements Stage {
   reset(): void {
     if (this.#destroyed) return;
     this.#phase++;
+    // Before the views go: focus on a link of the live content moves to the stage, not to <body>.
+    this.#dom.setLive(false);
     this.#scroll.cancel();
     // Fresh views are the only state guaranteed to carry nothing over from the previous build.
     this.#mounter.unmountAll();
+    this.#reads.clear();
     for (const slot of this.#registry.slots) {
       slot.p = 0;
       slot.finished = false;
@@ -458,8 +517,6 @@ export class SwarmStage implements Stage {
     overlay.clearOverlays();
     overlay.setHidden(false);
     overlay.setRulers(false, true);
-    this.#dom.rootEl.removeAttribute("data-live");
-    this.#dom.world.removeAttribute("data-live");
     if (this.#fade.active) this.#fade.set(this.#fade.value);
     this.#passDirty = true;
   }
@@ -472,9 +529,8 @@ export class SwarmStage implements Stage {
     overlay.setRulers(false, true);
     overlay.setHidden(true);
     if (this.#mode === "inline") {
-      // Content stays; it becomes a page again (selectable text, usable links, running animations).
-      dom.rootEl.setAttribute("data-live", "");
-      dom.world.setAttribute("data-live", "");
+      // Content stays; it becomes a page again (readable, focusable links, selectable text, running animations).
+      dom.setLive(true);
       return;
     }
     // The page takes input again the moment the dissolve starts.
@@ -544,6 +600,7 @@ export class SwarmStage implements Stage {
     this.#dom.dispose();
     this.#resizeListeners.clear();
     this.#textUnits.clear();
+    this.#reads.clear();
   }
 
   /* ----------------------------------------------------------- internals */

@@ -1,7 +1,8 @@
 /**
  * Text: click (short labels) or drag out a one-line text box, switch to the I-beam and type with a
  * caret at a natural, slightly irregular cadence. Headings are typed at a draft size and dragged
- * up to their final size; text that snaps is typed beside its guide and dragged onto it.
+ * up to their final size; text that snaps is typed beside its guide (never over neighbouring
+ * content) and dragged onto it.
  */
 
 import type { Rect, TextLayer, Yield } from "../../types";
@@ -20,7 +21,7 @@ import {
   VIEW_MARGIN_PX,
 } from "../timing";
 import { growHeading, planHeadingGrowth, typeScale } from "./heading";
-import { findSnapGuide, snapOffset, snapToGuide } from "./snap";
+import { findSnapGuide, snapOffset, snapRoom, snapToGuide } from "./snap";
 import { EditFrame, typeInto } from "./text-edit";
 
 /** Lines a text box may have and still count as single-line (line boxes vary a little). */
@@ -69,7 +70,7 @@ export const textTask: TaskBody<TextLayer> = function* text(scope, layer) {
   const units = typingUnits(typeof layer.text === "string" ? layer.text : "");
   const metrics = textMetrics(layer);
   const guide = findSnapGuide(stage, layer);
-  const offset = guide ? snapOffset(agent.rng, guide.axis) : { x: 0, y: 0 };
+  const offset = guide ? snapOffset(agent.rng, guide.axis, snapRoom(stage, layer, rect, guide.axis)) : { x: 0, y: 0 };
   const growth =
     mode === "type"
       ? planHeadingGrowth(layer, metrics, rect, units.length, scope.viewport(), typeScale(stage.blueprint), agent.rng)

@@ -11,3 +11,15 @@
 - long article text and visually hidden helper text that must not be captured.
 
 Open it directly in a browser to see the original. The text and artwork are original. License: MIT.
+
+## Player run
+
+`player-run/` plays this page with the real `createPlayer` in headless Chromium (not part of the test suites):
+
+```sh
+node examples/web/player-run/run.mjs /tmp/run                  # VirtualClock, screenshot per second, contact sheet
+node examples/web/player-run/run.mjs /tmp/run --follow tour --scrubber
+node examples/web/player-run/run.mjs /tmp/run --realtime       # real clock, counts long tasks
+```
+
+It prints when the first screen is complete, when the build completes, how long layers outside the viewport were being revealed, and how long a seek back to the middle blocks the page. `metrics.json` also holds the toolbar's ETA after every second. The browser is `$SWARMLOOM_CHROME`, else Playwright's own Chromium.

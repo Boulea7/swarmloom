@@ -4,8 +4,8 @@
  * guide tightens and a snap sounds.
  */
 
-import type { GuideLayer, Point, Rect, Rng, StageApi, TaskGen, TextLayer } from "../../types";
-import { clampPoint, guideLabel, offsetRect, translateValue } from "../geometry";
+import type { GuideLayer, Layer, Point, Rect, Rng, StageApi, TaskGen, TextLayer } from "../../types";
+import { clampPoint, guideLabel, intersect, layerRect, offsetRect, translateValue } from "../geometry";
 import { track } from "../motion";
 import type { TaskScope } from "../scope";
 import {
@@ -34,13 +34,84 @@ function signed(rng: Rng, magnitude: number): number {
   return rng() < 0.5 ? -magnitude : magnitude;
 }
 
+/** Gap kept between text typed beside its guide and neighbouring content, px. */
+const SNAP_CLEARANCE_PX = 2;
+/** Ancestor walks stop after this many steps (parent cycles in malformed input). */
+const MAX_ANCESTORS = 64;
+
+/** Free space on both sides of a text across its guide, px (Infinity when nothing is in reach). */
+export interface SnapRoom {
+  /** Above the text (guide on axis "y") or left of it (axis "x"). */
+  before: number;
+  /** Below the text (axis "y") or right of it (axis "x"). */
+  after: number;
+}
+
+function contains(outer: Rect, inner: Rect): boolean {
+  return (
+    outer.x <= inner.x &&
+    outer.y <= inner.y &&
+    outer.x + outer.w >= inner.x + inner.w &&
+    outer.y + outer.h >= inner.y + inner.h
+  );
+}
+
+function ancestorsOf(stage: StageApi, layer: Layer): Set<string> {
+  const out = new Set<string>();
+  let id = layer.parent;
+  for (let steps = 0; id !== undefined && !out.has(id) && steps < MAX_ANCESTORS; steps++) {
+    out.add(id);
+    id = stage.layer(id)?.parent;
+  }
+  return out;
+}
+
+/**
+ * How far text at `rect` can move across a guide on `axis` before it touches neighbouring
+ * content: the nearest visible layer facing it on each side within reach of the largest offset.
+ * Ancestors, guides, layers containing the text (backgrounds) and layers already overlapping it
+ * do not count. One pass over the blueprint, done once per snapping text.
+ */
+export function snapRoom(stage: StageApi, layer: Layer, rect: Rect, axis: "x" | "y"): SnapRoom {
+  const reach = SNAP_ACROSS_PX[1] + SNAP_CLEARANCE_PX;
+  const slack = SNAP_ALONG_PX[1];
+  const ancestors = ancestorsOf(stage, layer);
+  const room: SnapRoom = { before: Number.POSITIVE_INFINITY, after: Number.POSITIVE_INFINITY };
+  for (const other of stage.blueprint.layers ?? []) {
+    if (other === layer || other.id === layer.id || other.kind === "guide" || ancestors.has(other.id)) continue;
+    const r = layerRect(other);
+    if (!r || intersect(r, rect) || contains(r, rect)) continue;
+    // Across a horizontal guide (axis "y") the text moves vertically, and the other way round.
+    const [lo, hi, from, to] =
+      axis === "y"
+        ? [r.x, r.x + r.w, rect.x - slack, rect.x + rect.w + slack]
+        : [r.y, r.y + r.h, rect.y - slack, rect.y + rect.h + slack];
+    if (hi <= from || lo >= to) continue;
+    const start = axis === "y" ? rect.y : rect.x;
+    const end = axis === "y" ? rect.y + rect.h : rect.x + rect.w;
+    const oStart = axis === "y" ? r.y : r.x;
+    const oEnd = axis === "y" ? r.y + r.h : r.x + r.w;
+    if (oEnd <= start && start - oEnd < reach) room.before = Math.min(room.before, start - oEnd);
+    else if (oStart >= end && oStart - end < reach) room.after = Math.min(room.after, oStart - end);
+  }
+  return room;
+}
+
 /**
  * Where the text is typed relative to its final position: {@link SNAP_ACROSS_PX} across the
- * guide and {@link SNAP_ALONG_PX} along it, each on a random side.
+ * guide and {@link SNAP_ALONG_PX} along it, each on a random side. With `room`, the text never
+ * covers neighbouring content: when the drawn side is too tight it moves to the roomier one, and
+ * the distance shrinks to the free space there (down to zero: typed in place).
  */
-export function snapOffset(rng: Rng, axis: "x" | "y"): Point {
-  const across = signed(rng, pick(rng, SNAP_ACROSS_PX));
+export function snapOffset(rng: Rng, axis: "x" | "y", room?: SnapRoom): Point {
+  let across = signed(rng, pick(rng, SNAP_ACROSS_PX));
   const along = signed(rng, pick(rng, SNAP_ALONG_PX));
+  if (room) {
+    const free = (sign: number): number => Math.max(0, (sign < 0 ? room.before : room.after) - SNAP_CLEARANCE_PX);
+    const sign = Math.sign(across);
+    const side = free(sign) >= Math.abs(across) || free(sign) >= free(-sign) ? sign : -sign;
+    across = side * Math.min(Math.abs(across), free(side));
+  }
   // A guide on axis "x" is a vertical line: across is horizontal.
   return axis === "x" ? { x: across, y: along } : { x: along, y: across };
 }

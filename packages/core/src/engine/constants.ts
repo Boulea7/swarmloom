@@ -78,8 +78,11 @@ export const ICON_FADE_OUT_MS = 320;
 
 /** Work below the fold that unlocks early, as a share of the viewport height. */
 export const LOOKAHEAD_SHARE = 0.5;
-/** Scroll mode: with nothing to do for this long, unlock one more viewport below. */
-export const IDLE_EXPAND_MS = 1200;
+/**
+ * With nothing in sight left to build for this long (task ms) while the camera stands still,
+ * the layers out of sight fade in without cursors (the swarm never works where nobody looks).
+ */
+export const IDLE_RUSH_MS = 1800;
 /** Minimum gap between two agents joining. */
 export const JOIN_COOLDOWN_MS = 70;
 /** Extra (non-base) agents idle this long leave the screen. */
@@ -95,6 +98,11 @@ export const RULER_GRACE_MS = 1500;
 
 /** The earliest unfinished layer is kept this far (share of viewport) below the top edge. */
 export const TOUR_LEAD_SHARE = 0.3;
+/**
+ * Lead while the crew has nothing in sight to build: the tour moves on until the earliest
+ * unfinished layer is this close to the top edge, bringing new work into view.
+ */
+export const TOUR_STARVED_LEAD_SHARE = 0.06;
 /** Proportional gain toward the target scroll position, per second. */
 export const TOUR_GAIN = 1.4;
 /** Scroll speed cap at 1x (scaled with speed up to 3x). */

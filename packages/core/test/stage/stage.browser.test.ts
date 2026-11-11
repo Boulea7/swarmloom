@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentView, Stage, StageOptions } from "../../src/internal";
 import { createRng } from "../../src/rng";
 import { createStage, stageStats } from "../../src/stage";
@@ -322,6 +322,61 @@ describe("stage: reveal semantics per kind", () => {
     expect(calls).toEqual(["setup:true", "mount", "reveal:0.5", "cleanup", "unmount"]);
   });
 
+  it("text: carets read ahead in the read phase cost no layout reads while typing", () => {
+    const text = "The quick brown fox jumps over the lazy dog while the swarm rebuilds every line of this page.";
+    const layer: Layer = {
+      id: "t",
+      kind: "text",
+      box: { x: 40, y: 40, w: 180, h: 120 },
+      html: `<span>${text}</span>`,
+      text,
+      style: { "font-size": "16px", "line-height": "20px", "font-family": "monospace" },
+    };
+    const at = [0, 40, 70, text.length];
+    const reference = mount([layer]).stage;
+    const expected = at.map((n) => reference.caretAt("t", n));
+    const { stage } = mount([layer]);
+    /** Counts layout reads until stopped. */
+    const spy = (): { count: () => number; stop: () => void } => {
+      const range = vi.spyOn(Range.prototype, "getClientRects");
+      const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
+      return {
+        count: () => range.mock.calls.length + rect.mock.calls.length,
+        stop: () => {
+          range.mockRestore();
+          rect.mockRestore();
+        },
+      };
+    };
+
+    // A task starts on the text: its first caret block is read in the next read phase.
+    stage.prefetch?.("t");
+    stage.measure?.();
+    let s = spy();
+    stage.setStyle("t", { translate: "24px 0px" }); // a snap offset moves the text and its caret, not its glyphs
+    stage.reveal("t", 0);
+    const first = [stage.caretAt("t", 0)];
+    stage.reveal("t", 40 / text.length);
+    first.push(stage.caretAt("t", 40));
+    expect(s.count()).toBe(0);
+    s.stop();
+
+    // Past the middle of the first block, the read phase takes the next one.
+    stage.measure?.();
+    s = spy();
+    stage.reveal("t", 70 / text.length);
+    const later = [stage.caretAt("t", 70)];
+    stage.reveal("t", 1);
+    later.push(stage.caretAt("t", text.length));
+    expect(s.count()).toBe(0);
+    s.stop();
+    // The carets measured on demand, moved with the text (up to float noise from another place on the page).
+    [...first, ...later].forEach((p, i) => {
+      expect(p.x).toBeCloseTo((expected[i]?.x ?? Number.NaN) + 24, 3);
+      expect(p.y).toBeCloseTo(expected[i]?.y ?? Number.NaN, 3);
+    });
+  });
+
   it("transient styles apply and finish() clears them", () => {
     const { stage } = mount([
       { id: "t", kind: "text", box: { x: 0, y: 0, w: 200, h: 30 }, html: "Title", text: "Title", style: {} },
@@ -533,6 +588,38 @@ describe("stage: lifecycle", () => {
     const again = stage.el("b") as HTMLElement;
     expect(css(again).visibility).toBe("hidden");
     expect(stage.root.querySelector(".root[data-live]")).toBeNull();
+  });
+
+  it("inline: live content is read and its links take Tab focus; the build is neither", async () => {
+    const { stage } = mount([
+      {
+        id: "t",
+        kind: "text",
+        box: { x: 0, y: 0, w: 400, h: 40 },
+        text: "Read the accessible destination",
+        html: 'Read <a href="https://example.com/">the accessible destination</a>',
+        style: {},
+      },
+    ]);
+    await stage.enter();
+    stage.finishAll();
+    const world = stage.root.querySelector(".world") as HTMLElement;
+    const link = (stage.el("t") as HTMLElement).querySelector("a") as HTMLAnchorElement;
+    const focused = (): Element | null => (link.getRootNode() as ShadowRoot).activeElement;
+    link.focus();
+    expect(focused()).toBeNull();
+    expect(world.getAttribute("aria-hidden")).toBe("true");
+
+    await stage.goLive();
+    expect(world.hasAttribute("aria-hidden")).toBe(false);
+    expect(link.tabIndex).toBe(0);
+    link.focus();
+    expect(focused()).toBe(link);
+
+    // Replay: the build is a replay again and focus stays on the stage, not lost to <body>.
+    stage.reset();
+    expect(world.getAttribute("aria-hidden")).toBe("true");
+    expect((stage.root.activeElement as HTMLElement | null)?.classList.contains("scroller")).toBe(true);
   });
 
   it("inline: a container without a height gets the content's aspect ratio", () => {

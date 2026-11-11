@@ -28,6 +28,14 @@ export interface StageDom {
   readonly ui: HTMLElement;
   /** True while the host is in the document. */
   readonly attached: boolean;
+  /**
+   * Building (false, the initial state) or live (true, an inline stage after go-live). While the
+   * stage builds, the world is a visual replay: hidden from assistive technology and inert, so
+   * nothing in it takes focus or input (the toolbar and its announcements stand in for it). Live,
+   * it is a page again: read by screen readers, links and controls reachable with Tab, text
+   * selectable and content animations running.
+   */
+  setLive(live: boolean): void;
   /** Removes the host from the document but keeps the tree (overlay go-live); attach() puts it back. */
   detach(): void;
   attach(): void;
@@ -85,8 +93,6 @@ export function buildDom(o: DomOptions): StageDom {
   }
   const sizer = div(doc, "sizer");
   const world = div(doc, "world");
-  // The build is a visual replay: assistive technology gets the toolbar and announcements instead.
-  world.setAttribute("aria-hidden", "true");
   const worldRoot = world.attachShadow({ mode: "closed" });
   const userCss = typeof o.css === "string" ? o.css : "";
   sheets.push(adoptSheet(worldRoot, `${worldCss(o.textColor)}\n${userCss}\n${WORLD_FREEZE_CSS}`));
@@ -103,6 +109,19 @@ export function buildDom(o: DomOptions): StageDom {
   // Chromium ignores @font-face inside shadow trees: mirror them at document level.
   const faces = userCss ? extractFontFaces(userCss) : "";
   let fontSheet: SheetHandle | null = faces ? adoptSheet(doc, faces) : null;
+
+  const setLive = (live: boolean): void => {
+    if (!live && worldRoot.activeElement) {
+      // Focus inside content that turns inert would fall back to <body>: keep it on the stage.
+      scroller.focus({ preventScroll: true });
+    }
+    rootEl.toggleAttribute("data-live", live);
+    world.toggleAttribute("data-live", live);
+    world.toggleAttribute("inert", !live);
+    if (live) world.removeAttribute("aria-hidden");
+    else world.setAttribute("aria-hidden", "true");
+  };
+  setLive(false);
 
   let attached = false;
   let disposed = false;
@@ -140,6 +159,7 @@ export function buildDom(o: DomOptions): StageDom {
     },
     attach,
     detach,
+    setLive,
     dispose() {
       if (disposed) return;
       detach();

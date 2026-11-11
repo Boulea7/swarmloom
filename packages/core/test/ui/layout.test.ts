@@ -94,6 +94,7 @@ describe("buildView", () => {
     compact: false,
     canRecord: false,
     canFinish: true,
+    timeline: null,
   };
 
   it("shows build controls while running and go live as the primary action when done", () => {
@@ -115,6 +116,21 @@ describe("buildView", () => {
     expect(done.goLive).toEqual({ visible: true, primary: true });
     expect(done.finish).toBe(false);
     expect(done.progressText).toBe("12 layers built");
+  });
+
+  it("offers the seek bar only with a timeline, in 100 ms steps, full once done", () => {
+    expect(buildView(base, t).seek.visible).toBe(false);
+    const timeline = { elapsed: 12_340, duration: 31_000 };
+    expect(buildView({ ...base, timeline }, t).seek).toEqual({
+      visible: true,
+      value: 123,
+      max: 310,
+      text: "0:12 of 0:31",
+    });
+    expect(buildView({ ...base, state: "done", timeline }, t).seek).toMatchObject({ value: 310, max: 310 });
+    // Nothing to seek before play or without a known length.
+    expect(buildView({ ...base, state: "idle", timeline }, t).seek.visible).toBe(false);
+    expect(buildView({ ...base, timeline: { elapsed: 0, duration: Number.NaN } }, t).seek.visible).toBe(false);
   });
 
   it("never reports 100% before the build is done and clamps bad progress", () => {

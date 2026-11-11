@@ -22,7 +22,8 @@ function fakeZones() {
   const ran: string[] = [];
   const stages: FakeStage[] = [];
   const sounds: FakeSound[] = [];
-  const controls: { host: HTMLElement; player: unknown; destroyed: boolean }[] = [];
+  const controls: { host: HTMLElement; player: unknown; destroyed: boolean; timeline: ControlsOptions["timeline"] }[] =
+    [];
   const i18n: I18n = { locale: "en", t: (key) => key };
   const zones = {
     resolveTheme: vi.fn(() => theme),
@@ -37,7 +38,7 @@ function fakeZones() {
       return sound;
     }),
     createControls: vi.fn((opts: ControlsOptions): Controls => {
-      const entry = { host: opts.host, player: opts.player, destroyed: false };
+      const entry = { host: opts.host, player: opts.player, destroyed: false, timeline: opts.timeline };
       controls.push(entry);
       return {
         setVisible() {},
@@ -81,7 +82,11 @@ describe("assemblePlayer", () => {
     expect(zones.createSound.mock.calls.at(-1)?.[0]).toMatchObject({ seed: 5 });
     expect(controls[0]?.host).toBe(stage.uiLayer);
     expect(controls[0]?.player).toBe(player);
+    // Toolbar and stage follow the same resolved reduced-motion setting.
+    expect(zones.createControls.mock.calls[0]?.[0].reducedMotion).toBe(args?.reducedMotion);
     expect(typeof player.finish).toBe("function");
+    // The seek bar is opt-in: without `scrubber` the toolbar gets no timeline.
+    expect(controls[0]?.timeline).toBeUndefined();
 
     void player.play();
     for (let i = 0; i < 400 && player.state !== "finale"; i++) clock.advance(1000 / 60);
@@ -93,6 +98,31 @@ describe("assemblePlayer", () => {
     expect(controls[0]?.destroyed).toBe(true);
     expect(stage.calls.destroy).toBe(1);
     expect(sounds[0]?.destroyed).toBe(true);
+  });
+
+  it("gives the toolbar a timeline when the shell asks for a scrubber, and seeking follows it", () => {
+    const { zones, controls } = fakeZones();
+    const clock = new VirtualClock();
+    const player = assemblePlayer(
+      { blueprint: samplePage(), host: document.createElement("div"), clock, intro: false, scrubber: true },
+      zones,
+    );
+    const timeline = controls[0]?.timeline;
+    if (!timeline) throw new Error("no timeline seam");
+    expect(timeline()).toEqual({ elapsed: 0, duration: 0 });
+    void player.play();
+    for (let i = 0; i < 30; i++) clock.advance(1000 / 60);
+    const mid = timeline();
+    expect(mid.elapsed).toBeCloseTo(500, 0);
+    expect(mid.duration).toBeGreaterThan(mid.elapsed);
+    for (let i = 0; i < 400 && player.state !== "finale"; i++) clock.advance(1000 / 60);
+    const end = timeline();
+    expect(end.elapsed).toBe(end.duration);
+    player.seek?.(end.duration / 2);
+    expect(player.state).toBe("building");
+    expect(timeline().elapsed).toBeCloseTo(end.duration / 2, 0);
+    expect(player.progress.built).toBeLessThan(player.progress.total);
+    player.destroy();
   });
 
   it("rejects bad options before mounting anything and releases the stage on later failures", () => {
@@ -107,6 +137,7 @@ describe("assemblePlayer", () => {
       { blueprint, mode: "inline" },
       { blueprint, clock: {} },
       { blueprint, plugins: [{ tasks: {} }] },
+      { blueprint, scrubber: "yes" },
     ];
     for (const options of bad) expect(() => assemblePlayer(options as never, zones)).toThrow();
     expect(zones.createStage).not.toHaveBeenCalled();

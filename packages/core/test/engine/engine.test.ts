@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { builtinPlugin, choreoHelpers } from "../../src/choreo/index";
-import { FINALE_SETTLE_MS } from "../../src/engine/constants";
+import { FINALE_SETTLE_MS, IDLE_RUSH_MS } from "../../src/engine/constants";
 import type { EngineSettings } from "../../src/engine/engine";
 import { autoAgentCount } from "../../src/engine/options";
-import type { AgentApi, Layer, PlayerState, Plugin, Rect, StageApi, TaskGen } from "../../src/types";
+import type { AgentApi, Layer, PlayerState, Plugin, Rect, StageApi, TaskFn, TaskGen } from "../../src/types";
 import { blueprintOf, box, harness, samplePage, testPlugin, text } from "./fakes";
 
 /** Plays to the finale and returns the frame trace hash and a copy of the sound log. */
@@ -36,6 +36,29 @@ describe("Engine", () => {
     expect(a.h.stage.live("icon")).toHaveLength(0);
     expect(a.h.sound.played).toEqual(a.h.engine.soundLog);
     expect(a.log.map((e) => e.name)).toEqual(expect.arrayContaining(["swell", "fanout", "key", "note", "chord"]));
+  });
+
+  it("opens every tick with the stage's read phase and names a task's layer before the task writes", () => {
+    const h = harness(samplePage(), { seed: 7 });
+    const log: string[] = [];
+    const reveal = h.stage.reveal.bind(h.stage);
+    Object.assign(h.stage, {
+      measure: () => log.push("read"),
+      prefetch: (id: string) => log.push(`prefetch:${id}`),
+      reveal: (id: string, p: number) => {
+        log.push(`reveal:${id}`);
+        reveal(id, p);
+      },
+    });
+    h.clock.onTick(() => log.push("tick"));
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    // Within a tick nothing is written before the read phase.
+    expect(log.join(" ")).not.toMatch(/tick (reveal|prefetch)/);
+    // Layers built by a task (the rest fades in out of sight without one) are named first.
+    const named = log.filter((e) => e.startsWith("prefetch:")).map((e) => e.slice(9));
+    expect(named.length).toBeGreaterThan(3);
+    for (const id of named) expect(log.indexOf(`prefetch:${id}`), id).toBeLessThan(log.indexOf(`reveal:${id}`));
   });
 
   it("replay resets the stage and reproduces the run exactly", () => {
@@ -174,6 +197,41 @@ describe("Engine", () => {
       return Math.max(...s.stage.drawn);
     };
     expect(crew(true)).toBeGreaterThan(crew(false));
+  });
+
+  it("never builds out of sight: unscrolled, the rest fades in shortly after the screen is built", () => {
+    const tall = blueprintOf(
+      Array.from({ length: 40 }, (_, i) => box(`r${i}`, (i % 2) * 400, Math.floor(i / 2) * 150, 300, 100)),
+      { w: 800, h: 3000 },
+    );
+    const started: { id: string; y: number; top: number; bottom: number }[] = [];
+    const build = testPlugin.tasks?.box as TaskFn;
+    const watch: Plugin = {
+      name: "watch",
+      tasks: {
+        box: (agent: AgentApi, layer: Layer, stage: StageApi): TaskGen => {
+          const vp = stage.viewport();
+          started.push({ id: layer.id, y: layer.box.y, top: vp.y, bottom: vp.y + vp.h });
+          return build(agent, layer, stage);
+        },
+      },
+    };
+    const h = harness(tall, { intro: false, agents: 8 }, { plugins: [testPlugin, watch] });
+    void h.engine.play();
+    const onScreen = h.stage.blueprint.layers.filter((l) => l.box.y < 600);
+    let now = 0;
+    let screenDoneAt = Number.NaN;
+    const ms = h.until(() => {
+      if (Number.isNaN(screenDoneAt) && onScreen.every((l) => h.stage.finished.includes(l.id))) screenDoneAt = now;
+      now += 1000 / 60;
+      return h.engine.state === "finale";
+    });
+    // Cursors only took layers that were (at least partly) in view when they started.
+    expect(started.length).toBeGreaterThan(0);
+    expect(started.filter((s) => s.y + 100 < s.top || s.y > s.bottom)).toEqual([]);
+    expect(h.engine.progress).toEqual({ built: 40, total: 40 });
+    // The out-of-sight rest is a short cursor-free fill, not cursors working below the fold.
+    expect(ms - screenDoneAt).toBeLessThan(IDLE_RUSH_MS + 1500);
   });
 
   it("reduced motion cross-fades layers in plan order without cursors", () => {

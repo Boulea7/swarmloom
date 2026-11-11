@@ -57,6 +57,8 @@ export type Command =
   | { kind: "replay" }
   | { kind: "goLive" }
   | { kind: "finish" }
+  /** Jump to `t` player ms since play (Player.seek). */
+  | { kind: "seek"; t: number }
   | { kind: "record" };
 
 export type CommandKind = Command["kind"];
@@ -70,6 +72,7 @@ const AVAILABLE: Readonly<Record<CommandKind, ReadonlySet<Phase>>> = {
   replay: new Set(["running", "paused", "done", "live"]),
   goLive: new Set(["running", "paused", "done"]),
   finish: new Set(["running", "paused"]),
+  seek: new Set(["running", "paused", "done"]),
   record: new Set(["idle", "running", "paused", "done"]),
 };
 
@@ -90,7 +93,21 @@ export interface ViewInput {
   canRecord: boolean;
   /** The player offers finish() (complete the build now). */
   canFinish: boolean;
+  /**
+   * Playback position in player ms when the seek bar is offered (the shell asked for it and the
+   * player can seek), else null.
+   */
+  timeline: Timeline | null;
 }
+
+/** Playback position in player ms (see ControlsOptions.timeline). */
+export interface Timeline {
+  elapsed: number;
+  duration: number;
+}
+
+/** Seek bar resolution: one range step is this many player ms. */
+export const SEEK_UNIT_MS = 100;
 
 export interface ToolbarView {
   phase: Phase;
@@ -107,6 +124,8 @@ export interface ToolbarView {
   replay: boolean;
   goLive: { visible: boolean; primary: boolean };
   finish: boolean;
+  /** Seek bar in {@link SEEK_UNIT_MS} steps; `text` is its aria-valuetext ("0:12 of 0:31"). */
+  seek: { visible: boolean; value: number; max: number; text: string };
   record: boolean;
   close: boolean;
   /** Phases in which the toolbar never auto-hides. */
@@ -118,6 +137,16 @@ type Translate = (key: MessageKey, vars?: Record<string, string | number>) => st
 /** Narrows the contract's free-form `t` to known keys so typos fail to compile. */
 export function translator(i18n: I18n): Translate {
   return (key, vars) => i18n.t(key, vars);
+}
+
+/** "m:ss" (or "h:mm:ss") for a non-negative duration in ms; invalid input reads as 0:00. */
+export function formatClock(ms: number): string {
+  const total = Number.isFinite(ms) && ms > 0 ? Math.floor(ms / 1000) : 0;
+  const s = total % 60;
+  const m = Math.floor(total / 60) % 60;
+  const h = Math.floor(total / 3600);
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
 /** "12 seconds" / "2 minutes"; null when unknown. Rounds coarsely so the tooltip does not flicker. */
@@ -165,9 +194,23 @@ export function buildView(input: ViewInput, t: Translate): ToolbarView {
     replay: isAvailable("replay", phase) && !(active && input.compact),
     goLive: { visible: isAvailable("goLive", phase) && !(input.compact && finish), primary: phase === "done" },
     finish,
+    seek: seekView(t, phase, input.timeline),
     record: input.canRecord && isAvailable("record", phase),
     close: isAvailable("close", phase),
     pinned: phase !== "running" || soundHint,
+  };
+}
+
+function seekView(t: Translate, phase: Phase, timeline: Timeline | null): ToolbarView["seek"] {
+  const duration = timeline ? Math.max(0, finiteOr(timeline.duration, 0)) : 0;
+  const max = Math.ceil(duration / SEEK_UNIT_MS);
+  if (!timeline || max <= 0 || !isAvailable("seek", phase)) return { visible: false, value: 0, max: 0, text: "" };
+  const elapsed = phase === "done" ? duration : Math.min(duration, Math.max(0, finiteOr(timeline.elapsed, 0)));
+  return {
+    visible: true,
+    value: Math.round(elapsed / SEEK_UNIT_MS),
+    max,
+    text: t("progress.position", { elapsed: formatClock(elapsed), total: formatClock(duration) }),
   };
 }
 

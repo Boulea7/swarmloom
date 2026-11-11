@@ -121,6 +121,18 @@ export interface Stage extends StageApi {
    * virtualization, transient overlays, cursor canvas. `now` is engine time (caret blink etc.).
    */
   render(now: number, agents: readonly AgentView[]): void;
+  /**
+   * Optional read phase: the engine calls it at the start of every clock tick, before tasks write
+   * to the DOM. The stage takes the layout reads it can do ahead of time (caret geometry of typed
+   * text), so a task asking for them mid-frame does not force a layout after other agents' writes.
+   */
+  measure?(): void;
+  /**
+   * Optional: a task is about to start on layer `id` (the engine calls it when it hands the task
+   * to an agent), so the stage can mount the layer and read what the task will need in the next
+   * read phase.
+   */
+  prefetch?(id: string): void;
   /** Fade the blank canvas in over the live page (overlay) / show the empty stage (inline). */
   enter(): Promise<void>;
   /** Instantly reveal every layer to its final state (skip, reduced motion end). */
@@ -278,11 +290,26 @@ export interface ControlsOptions {
    * about once a second, only while viewport segments exist.
    */
   focus?: () => Point | null;
+  /**
+   * Optional (ui seam): playback position in player ms (`elapsed` since play, and the expected
+   * `duration` of the build; both 0 before play). When given and the player implements `seek()`,
+   * the toolbar shows a keyboard-accessible seek bar that calls `seek(t)` on release.
+   */
+  timeline?: () => { elapsed: number; duration: number };
+  /**
+   * Optional (ui seam): the player's resolved reduced-motion setting (PlayerOptions.reducedMotion).
+   * When true, the toolbar drops its slides, transitions and the sound hint's pulse even where the
+   * OS does not ask for reduced motion (an app-level choice such as Studio's Motion setting). The
+   * toolbar follows `prefers-reduced-motion` either way.
+   */
+  reducedMotion?: boolean;
 }
 
 /**
- * Floating toolbar: progress, play/pause, speed 1x/2x/3x, sound, tour, replay, go live, close.
- * Keyboard: Esc close, Space pause/resume, M sound, T tour, 1/2/3 speed, R replay, L go live.
+ * Floating toolbar: progress, play/pause, speed 1x/2x/3x, sound, tour, finish now, replay, go live,
+ * close, and a seek bar when the `timeline` seam is given and the player can seek.
+ * Keyboard: Esc close, Space pause/resume, M sound, T tour, 1/2/3 speed, R replay, L go live,
+ * F finish now; arrows, Page Up/Down, Home and End on the focused seek bar.
  * Touch: tap empty stage toggles toolbar; buttons >= 44px hit area; respects safe-area insets
  * and avoids the fold when viewport segments are present. Auto-hides after inactivity while building.
  */

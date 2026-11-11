@@ -9,16 +9,20 @@ Owner: engine team. Also owns `src/player.ts`, `src/clock.ts`, `src/rng.ts`, `sr
 | Module | Role |
 |---|---|
 | `assemble.ts` | Option validation and player assembly from the zone factories (`PlayerZones`); releases what it created when a zone throws |
-| `engine.ts` | `Engine`: state machine (idle, intro, building, paused, finale, done, live, destroyed), frame loop, player and task timelines, events, sound log, eta, ready, replay, seek, finish, go live |
+| `engine.ts` | `Engine`: state machine (idle, intro, building, paused, finale, done, live, destroyed), frame loop, player and task timelines, events, sound log, eta, ready, replay, seek (and the seek bar's timeline), finish, go live |
 | `planner.ts` | Task DAG (parent before child, master subtree before duplicate, guide before snapping text), reading order, priority tiers, unlock positions, cycle and dangling-reference diagnostics |
-| `schedule.ts`, `heap.ts` | Runtime task state: dependency counts, unlock boundary, available set, pick scoring (viewport, then above, then below), progress and ETA aggregates |
+| `schedule.ts`, `heap.ts` | Runtime task state: dependency counts, unlock boundary, available set, pick scoring (only work in sight: guides first, then reading position and distance), progress and ETA aggregates |
 | `build.ts`, `runner.ts`, `fallback.ts` | Choreography lookup (later plugins override earlier task keys), generator driving (yield ms, undefined or a promise), timeouts, cleanup of overlays and unfinished layers |
 | `agent.ts`, `easing.ts`, `steer.ts` | `AgentApi` per cursor: bent minimum-jerk travel with a tiny overshoot, straight drags, steering physics |
 | `roster.ts`, `crew.ts`, `labels.ts` | Agent pool: join from the edges, wander, retire, leave; names, "Agent 07", role and custom labels |
-| `camera.ts` | Scroll speed estimate (more agents on fast scrolls) and the tour, which never scrolls past unfinished work |
+| `camera.ts` | Scroll speed estimate (more agents on fast scrolls) and the tour, which never scrolls past unfinished work (and moves on faster while the crew has nothing in sight) |
 | `intro.ts` | Warp opening: cursors shuttle on a band behind the icon for 1.5 to 2.5 s, then fan out |
 | `finale.ts`, `flock.ts`, `spatial-hash.ts`, `halo.ts` | Finale: boids around the pointer with a uniform-grid hash, halo rings driven by sound levels, or fade out |
-| `crossfade.ts` | Cursor-free build in plan order (reduced motion, finish now) |
+| `crossfade.ts` | Cursor-free build in plan order (reduced motion, finish now, and the out-of-sight fill below) |
 | `streams.ts`, `options.ts`, `events.ts`, `constants.ts` | Seeded random streams, option validation, the event hub, tunables |
+
+Cursors only work where the viewer can look: a task is picked only when the visible part of its layer (box cut by its clip) meets the viewport. When the crew has had nothing in sight to build for `IDLE_RUSH_MS` while the camera stood still (no tour step, no user scroll), everything left fades in without cursors in under a second. So a page the viewer does not scroll still completes, and the swarm never works out of sight; in tour mode this only covers work the tour cannot reach.
+
+Each clock tick opens with the stage's read phase (`Stage.measure`), before any task writes to the DOM, and every task start names its layer to the stage (`Stage.prefetch`). Typed texts get their caret geometry measured there, on the layout the browser just finished, instead of forcing a layout mid-frame after other agents' writes.
 
 Determinism: nothing here calls `Math.random`, `Date.now` or `performance.now`. All randomness comes from streams derived from `PlayerOptions.seed` and stable ids (agent index, layer id), and all time comes from the clock. With a `VirtualClock`, equal options and steps give equal frames and an equal `soundLog`.

@@ -3,6 +3,22 @@
  * Colours follow the SwarmLoom brand constants (Loom Indigo #5B5BF7, ink #0B0B12, paper #FAFAFC).
  */
 
+/**
+ * Reduced motion: no slides, fades or pulse; the sound hint keeps a static ring instead. Applies
+ * when the OS asks for it and when the player was told to (data-reduced-motion, e.g. Studio's
+ * Motion setting), with every selector prefixed by `scope`.
+ */
+function reducedMotionCss(scope: string): string {
+  const sel = (list: string): string =>
+    list
+      .split(",")
+      .map((s) => scope + s.trim())
+      .join(", ");
+  return `${sel(".dock, .bar, .btn, .tip, .ring .fg")} { transition: none !important; }
+${sel(".btn.locked::before")} { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--sl-primary) 45%, transparent); }
+${sel(".dock[data-away] .bar")} { transform: none; }`;
+}
+
 export const TOOLBAR_CSS = /* css */ `
 :host {
   all: initial;
@@ -18,6 +34,7 @@ export const TOOLBAR_CSS = /* css */ `
   --sl-gap: 4px;
   --sl-pad: 6px;
   --sl-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sl-seek-h: 20px;
   font: 500 13px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans",
     "Noto Sans CJK SC", "Microsoft YaHei", "Malgun Gothic", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -53,7 +70,7 @@ export const TOOLBAR_CSS = /* css */ `
   color-scheme: dark;
 }
 :host([data-compact]) { --sl-target: 44px; --sl-gap: 2px; --sl-pad: 4px; }
-@media (pointer: coarse) { :host { --sl-target: 44px; } }
+@media (pointer: coarse) { :host { --sl-target: 44px; --sl-seek-h: 28px; } }
 
 [hidden] { display: none !important; }
 
@@ -72,6 +89,7 @@ export const TOOLBAR_CSS = /* css */ `
 }
 
 .bar {
+  position: relative;
   pointer-events: auto;
   display: flex;
   flex-wrap: wrap;
@@ -170,6 +188,57 @@ export const TOOLBAR_CSS = /* css */ `
 .ring .pct[data-unit-first] { flex-direction: row-reverse; }
 .ring svg[data-icon] { width: 20px; height: 20px; color: var(--sl-accent-ink); stroke-width: 2; }
 
+/*
+ * Seek bar: a row across the top of the pill. Out of the flex flow, so it never widens the pill
+ * or changes how the buttons wrap; the pill makes room for it with extra top padding.
+ */
+.bar[data-seek] { padding-top: calc(var(--sl-pad) + var(--sl-seek-h) + 2px); }
+.seek {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  top: var(--sl-pad);
+  left: calc(var(--sl-pad) + var(--sl-target) / 2 - 7px);
+  right: calc(var(--sl-pad) + var(--sl-target) / 2 - 7px);
+  width: auto;
+  height: var(--sl-seek-h);
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.seek::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--sl-primary) var(--sl-seek, 0%), var(--sl-track) var(--sl-seek, 0%));
+}
+.seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--sl-primary);
+  border: 2px solid var(--sl-bg-solid);
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+.seek::-moz-range-track { height: 4px; border-radius: 2px; background: var(--sl-track); }
+.seek::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--sl-primary); }
+.seek::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--sl-primary);
+  border: 2px solid var(--sl-bg-solid);
+  box-sizing: border-box;
+}
+.seek:focus-visible { outline: 2px solid var(--sl-focus); outline-offset: 2px; border-radius: 6px; }
+
 .tip {
   position: absolute;
   bottom: calc(100% + 12px);
@@ -194,6 +263,7 @@ export const TOOLBAR_CSS = /* css */ `
   .ring:hover .tip, .btn:hover .tip { opacity: 1; transform: translate(-50%, 0); transition-delay: 0.35s; }
   .ring:hover .tip { transform: none; }
 }
+.bar[data-seek] .tip { bottom: calc(100% + 14px + var(--sl-seek-h)); }
 .dock[data-away] .tip { opacity: 0; }
 
 .hint { font-size: 12.5px; }
@@ -217,6 +287,7 @@ export const TOOLBAR_CSS = /* css */ `
   color: var(--sl-primary-ink);
   box-shadow: var(--sl-shadow);
 }
+:host([data-compact]) .bar[data-seek] .hint { bottom: calc(100% + 14px + var(--sl-seek-h)); }
 @keyframes sl-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sl-primary) 45%, transparent); }
   70%, 100% { box-shadow: 0 0 0 10px transparent; }
@@ -235,13 +306,13 @@ export const TOOLBAR_CSS = /* css */ `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dock, .bar, .btn, .tip, .ring .fg { transition: none !important; }
-  .btn.locked::before { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--sl-primary) 45%, transparent); }
-  .dock[data-away] .bar { transform: none; }
+${reducedMotionCss("")}
 }
+${reducedMotionCss(":host([data-reduced-motion]) ")}
 @media (forced-colors: active) {
   .bar, .tip { border-color: CanvasText; }
   .btn.primary, .speed .btn[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .ring .fg { stroke: Highlight; }
+  .seek { forced-color-adjust: none; --sl-primary: Highlight; --sl-track: GrayText; --sl-bg-solid: Canvas; }
 }
 `;

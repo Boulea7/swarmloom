@@ -1,4 +1,4 @@
-import type { Point, TextLayer } from "../../types";
+import type { CSSMap, Point, TextLayer } from "../../types";
 import { applyLayerStyle } from "../sanitize";
 import { clamp01, contentDiv, type LayerView, type MountEnv, Shell, Transient } from "./common";
 import { TextIndex, type TextRun } from "./typing";
@@ -6,9 +6,24 @@ import { TextIndex, type TextRun } from "./typing";
 const BLOCK = 64;
 
 /**
+ * Transient properties that move, clip or fade the text as a whole: glyphs keep their place
+ * inside it, so measured carets stay valid (snap and copy drags set them every frame).
+ */
+const PAINT_ONLY = new Set(["translate", "opacity", "clip-path"]);
+
+/** True when replacing transient properties `prev` with `next` may move glyphs inside the text. */
+function movesGlyphs(prev: Iterable<string>, next: CSSMap | null): boolean {
+  for (const name of prev) if (!PAINT_ONLY.has(name)) return true;
+  if (next) for (const name of Object.keys(next)) if (!PAINT_ONLY.has(name)) return true;
+  return false;
+}
+
+/**
  * Caret positions measured with Range rects, a block of 64 boundaries per layout read and
  * cached until the geometry changes (transient styles, web fonts). Typing itself does not
- * move glyphs, so a typing agent costs one measurement per 64 characters.
+ * move glyphs, so a typing agent costs one measurement per 64 characters, and that measurement
+ * can be taken ahead of time ({@link CaretCache.prefetch}) in the stage's read phase, before a
+ * frame's DOM writes, instead of mid-frame after other agents' writes (a forced layout each).
  */
 class CaretCache {
   readonly #blocks = new Map<number, Float64Array>();
@@ -19,20 +34,32 @@ class CaretCache {
   }
 
   get(index: TextIndex, root: HTMLElement, u: number, gen: number, scale: number): Point | null {
+    const b = Math.floor(u / BLOCK);
+    const block = this.#block(index, root, b, gen, scale);
+    const i = (u - b * BLOCK) * 2;
+    const x = block[i] ?? Number.NaN;
+    const y = block[i + 1] ?? Number.NaN;
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  }
+
+  /** Measures the block of boundary `u` if needed, and the next block once `u` is past the middle of its own. */
+  prefetch(index: TextIndex, root: HTMLElement, u: number, gen: number, scale: number): void {
+    const b = Math.floor(u / BLOCK);
+    this.#block(index, root, b, gen, scale);
+    if (u - b * BLOCK >= BLOCK / 2 && (b + 1) * BLOCK <= index.total) this.#block(index, root, b + 1, gen, scale);
+  }
+
+  #block(index: TextIndex, root: HTMLElement, b: number, gen: number, scale: number): Float64Array {
     if (gen !== this.#gen) {
       this.#blocks.clear();
       this.#gen = gen;
     }
-    const b = Math.floor(u / BLOCK);
     let block = this.#blocks.get(b);
     if (!block) {
       block = measureBlock(index, root, b * BLOCK, scale);
       this.#blocks.set(b, block);
     }
-    const i = (u - b * BLOCK) * 2;
-    const x = block[i] ?? Number.NaN;
-    const y = block[i + 1] ?? Number.NaN;
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    return block;
   }
 }
 
@@ -100,7 +127,9 @@ function measureBlock(index: TextIndex, root: HTMLElement, from: number, scale: 
 
 /**
  * Text block. Reveal kinds: "type" (default; characters appear in place without reflow), "fade",
- * "stamp" (quick scale-in), "none" (appears at once).
+ * "stamp" (quick scale-in), "none" (appears at once). A typed text measures its carets in the
+ * stage's read phase ({@link LayerView.measure}): the block at the typed position, and the next
+ * one near its end.
  */
 export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView {
   const shell = new Shell(env, layer, z);
@@ -117,11 +146,14 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
     index ??= new TextIndex(content, env.segmenter);
     return index;
   };
+  /** Last reveal progress: where typing is, and so which caret block comes next. */
+  let progress = 0;
 
   return {
     outer: shell.outer,
     el: content,
     reveal(p) {
+      progress = clamp01(p);
       if (!(p > 0)) {
         shell.setVisible(false);
         if (mode === "type" && index?.wrapped) index.show(0);
@@ -156,13 +188,14 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
       }
     },
     finish() {
-      if (transient.active) carets.invalidate();
+      if (movesGlyphs(transient.names(), null)) carets.invalidate();
       transient.clear(content);
       this.reveal(1);
     },
     transient(css) {
+      const moves = movesGlyphs(transient.names(), css);
       transient.apply(content, css);
-      carets.invalidate();
+      if (moves) carets.invalidate();
     },
     total() {
       return getIndex().total;
@@ -173,6 +206,11 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
       const local = carets.get(ix, content, u, env.geometryGen(), env.scale());
       if (!local) return null;
       return { x: layer.box.x + local.x, y: layer.box.y + local.y };
+    },
+    measure() {
+      if (mode !== "type" || !content.isConnected) return;
+      const ix = getIndex();
+      carets.prefetch(ix, content, Math.round(progress * ix.total), env.geometryGen(), env.scale());
     },
     destroy() {
       index = null;

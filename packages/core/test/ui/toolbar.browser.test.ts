@@ -12,9 +12,18 @@ const frames = (n = 3) =>
   });
 
 /** Mounts the toolbar the way the stage does: inside a full-viewport shadow root's UI layer. */
-async function mount(opts: { locale: string; state: "building" | "done"; soundLocked?: boolean; finish?: boolean }) {
+async function mount(opts: {
+  locale: string;
+  state: "building" | "done";
+  soundLocked?: boolean;
+  finish?: boolean;
+  seekable?: boolean;
+  reducedMotion?: boolean;
+}) {
   const fake = createFakePlayer(opts.state);
   if (opts.finish) Object.assign(fake.player, { finish: vi.fn() });
+  const seekable = opts.seekable ? { timeline: () => ({ elapsed: 4000, duration: 16_000 }) } : {};
+  if (opts.seekable) Object.assign(fake.player, { seek: vi.fn() });
   fake.setProgress(opts.state === "done" ? 40 : 12, 40);
   const stageHost = document.createElement("div");
   stageHost.style.cssText = "position:fixed;inset:0";
@@ -29,6 +38,8 @@ async function mount(opts: { locale: string; state: "building" | "done"; soundLo
     chrome: "light",
     soundLocked: () => opts.soundLocked ?? false,
     onUnlockSound: () => {},
+    reducedMotion: opts.reducedMotion,
+    ...seekable,
   });
   await frames();
   const element = uiLayer.querySelector("swarmloom-controls") as HTMLElement;
@@ -91,5 +102,47 @@ describe("toolbar layout in Chromium", () => {
     // Bottom-centred pill.
     expect(bar && Math.abs(bar.left + bar.width / 2 - 640)).toBeLessThan(2);
     expect(bar && 800 - bar.bottom).toBeGreaterThanOrEqual(12);
+  });
+
+  it("runs the seek bar across the top of the pill without widening it or forcing the compact layout", async () => {
+    await page.viewport(1280, 800);
+    const plain = await mount({ locale: "en", state: "building" });
+    const plainWidth = plain.root.querySelector(".bar")?.getBoundingClientRect().width ?? 0;
+    plain.controls.destroy();
+    const m = await mount({ locale: "en", state: "building", seekable: true });
+    controls = m.controls;
+    expect(m.element.hasAttribute("data-compact")).toBe(false);
+    const bar = m.root.querySelector(".bar")?.getBoundingClientRect();
+    const seek = m.root.querySelector<HTMLInputElement>(".seek");
+    const track = seek?.getBoundingClientRect();
+    const ring = m.root.querySelector(".ring")?.getBoundingClientRect();
+    expect(bar && Math.abs(bar.width - plainWidth)).toBeLessThan(1);
+    // Spans the pill (inset to line up with the ring's centre), centred on it.
+    expect(track && bar && track.width).toBeGreaterThan((bar?.width ?? 0) - 40);
+    expect(track && bar && Math.abs(track.left + track.width / 2 - (bar.left + bar.width / 2))).toBeLessThan(1);
+    expect(track && ring && track.bottom <= ring.top).toBe(true);
+    // A real tab stop, read as a slider with a spoken position.
+    seek?.focus();
+    expect(m.root.activeElement).toBe(seek);
+    expect(seek?.getAttribute("aria-valuetext")).toBe("0:04 of 0:16");
+  });
+
+  it("drops its pulse, slides and transitions when the player asks for reduced motion and the OS does not", async () => {
+    await page.viewport(1280, 800);
+    expect(matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(false);
+    const moving = await mount({ locale: "en", state: "building", soundLocked: true });
+    const pulse = (root: ShadowRoot): string =>
+      getComputedStyle(root.querySelector(".btn.locked") as Element, "::before").animationName;
+    const slide = (root: ShadowRoot): string =>
+      getComputedStyle(root.querySelector(".bar") as Element).transitionDuration;
+    expect(pulse(moving.root)).toBe("sl-pulse");
+    expect(slide(moving.root)).not.toMatch(/^0s(, 0s)*$/);
+    moving.controls.destroy();
+
+    const m = await mount({ locale: "en", state: "building", soundLocked: true, reducedMotion: true });
+    controls = m.controls;
+    expect(pulse(m.root)).toBe("none");
+    expect(slide(m.root)).toMatch(/^0s(, 0s)*$/);
+    expect(getComputedStyle(m.root.querySelector(".dock") as Element).transitionDuration).toMatch(/^0s(, 0s)*$/);
   });
 });

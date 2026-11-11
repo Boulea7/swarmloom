@@ -5,8 +5,8 @@
 import type { Player } from "../types";
 import { type Command, DEFAULT_SETTINGS, type FollowMode, isAvailable, phaseOf, type Settings } from "./view-model";
 
-/** Player.finish() is optional: engines that cannot complete a build early leave it out. */
-type FinishablePlayer = Player & { finish?: () => void };
+/** finish() and seek() are optional: engines that cannot complete early or seek leave them out. */
+type FinishablePlayer = Player & { finish?: () => void; seek?: (t: number) => void };
 
 export interface ActionDeps {
   player: FinishablePlayer;
@@ -92,6 +92,10 @@ export function createActions(deps: ActionDeps): Actions {
       case "finish":
         if (typeof player.finish !== "function") return false;
         player.finish();
+        return true;
+      case "seek":
+        if (typeof player.seek !== "function" || !Number.isFinite(command.t) || command.t < 0) return false;
+        player.seek(command.t);
         return true;
       case "record":
         if (!deps.onRecord) return false;

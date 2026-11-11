@@ -8,8 +8,9 @@ const TOUR_SPEED_SCALE_MAX = 3;
 /**
  * Follows the viewport: estimates the user's scroll speed (frame-rate independent exponential
  * smoothing) and drives the tour, an auto-scroll that keeps the earliest unfinished layer a
- * little below the top edge. The tour only scrolls down, never past that layer (so it never
- * outruns the swarm), eases its speed, keeps sub-pixel progress and yields to user scrolls.
+ * little below the top edge (closer to it while the crew waits for work to come into view).
+ * The tour only scrolls down, never past that layer (so it never outruns the swarm), eases its
+ * speed, keeps sub-pixel progress and yields to user scrolls.
  */
 export class Camera {
   /** Smoothed user scroll speed, px/s. */
@@ -52,8 +53,17 @@ export class Camera {
    * Next tour scroll position, or NaN when the tour should not move this frame.
    * @param frontier Top edge of the earliest unfinished layer (Infinity when all are done).
    * @param worldHeight Height of the world; the tour stops at the bottom.
+   * @param lead How far below the top edge the frontier is kept, as a share of the viewport.
    */
-  tour(vp: Rect, frontier: number, worldHeight: number, speed: number, dtMs: number, pt: number): number {
+  tour(
+    vp: Rect,
+    frontier: number,
+    worldHeight: number,
+    speed: number,
+    dtMs: number,
+    pt: number,
+    lead = TOUR_LEAD_SHARE,
+  ): number {
     if (Number.isNaN(this.#tourY)) this.#tourY = vp.y;
     // Programmatic scrolls may be clamped or rounded by the stage: follow what it reports.
     if (Math.abs(this.#tourY - vp.y) > 2) this.#tourY = vp.y;
@@ -62,7 +72,7 @@ export class Camera {
       return Number.NaN;
     }
     const maxScroll = Math.max(0, worldHeight - vp.h);
-    const target = clamp(frontier - vp.h * TOUR_LEAD_SHARE, 0, maxScroll);
+    const target = clamp(frontier - vp.h * clamp(lead, 0, 1), 0, maxScroll);
     const cap = TOUR_MAX_PX_S * clamp(speed, 1, TOUR_SPEED_SCALE_MAX);
     const desired = clamp((target - this.#tourY) * TOUR_GAIN, 0, cap);
     this.#tourV += (desired - this.#tourV) * (1 - Math.exp(-dtMs / TOUR_SMOOTH_MS));
