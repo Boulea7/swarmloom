@@ -15,6 +15,8 @@ export interface BuildHost {
   fail(error: unknown, layer: Layer): void;
   /** Registers a promise a task waits on (Player.ready() awaits it). Never rejects. */
   track(promise: Promise<void>): void;
+  /** Optional: a task is about to start on layer `id` (see Stage.prefetch). */
+  prefetch?(id: string): void;
 }
 
 /**
@@ -96,6 +98,7 @@ export class Build {
     const { plan } = this;
     this.schedule.start(i);
     const layer = plan.layers[i] as Layer;
+    this.#host.prefetch?.(layer.id);
     const scope = new ScopedStage(this.#host.stage, layer.id, this.#key);
     agent.mode = WORKING;
     agent.role = plan.roles[i] ?? null;

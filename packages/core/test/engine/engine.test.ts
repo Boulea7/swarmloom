@@ -38,6 +38,29 @@ describe("Engine", () => {
     expect(a.log.map((e) => e.name)).toEqual(expect.arrayContaining(["swell", "fanout", "key", "note", "chord"]));
   });
 
+  it("opens every tick with the stage's read phase and names a task's layer before the task writes", () => {
+    const h = harness(samplePage(), { seed: 7 });
+    const log: string[] = [];
+    const reveal = h.stage.reveal.bind(h.stage);
+    Object.assign(h.stage, {
+      measure: () => log.push("read"),
+      prefetch: (id: string) => log.push(`prefetch:${id}`),
+      reveal: (id: string, p: number) => {
+        log.push(`reveal:${id}`);
+        reveal(id, p);
+      },
+    });
+    h.clock.onTick(() => log.push("tick"));
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    // Within a tick nothing is written before the read phase.
+    expect(log.join(" ")).not.toMatch(/tick (reveal|prefetch)/);
+    // Layers built by a task (the rest fades in out of sight without one) are named first.
+    const named = log.filter((e) => e.startsWith("prefetch:")).map((e) => e.slice(9));
+    expect(named.length).toBeGreaterThan(3);
+    for (const id of named) expect(log.indexOf(`prefetch:${id}`), id).toBeLessThan(log.indexOf(`reveal:${id}`));
+  });
+
   it("replay resets the stage and reproduces the run exactly", () => {
     const first = trace({ seed: 3 });
     const { h } = first;

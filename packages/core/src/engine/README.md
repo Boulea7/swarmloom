@@ -23,4 +23,6 @@ Owner: engine team. Also owns `src/player.ts`, `src/clock.ts`, `src/rng.ts`, `sr
 
 Cursors only work where the viewer can look: a task is picked only when the visible part of its layer (box cut by its clip) meets the viewport. When the crew has had nothing in sight to build for `IDLE_RUSH_MS` while the camera stood still (no tour step, no user scroll), everything left fades in without cursors in under a second. So a page the viewer does not scroll still completes, and the swarm never works out of sight; in tour mode this only covers work the tour cannot reach.
 
+Each clock tick opens with the stage's read phase (`Stage.measure`), before any task writes to the DOM, and every task start names its layer to the stage (`Stage.prefetch`). Typed texts get their caret geometry measured there, on the layout the browser just finished, instead of forcing a layout mid-frame after other agents' writes.
+
 Determinism: nothing here calls `Math.random`, `Date.now` or `performance.now`. All randomness comes from streams derived from `PlayerOptions.seed` and stable ids (agent index, layer id), and all time comes from the clock. With a `VirtualClock`, equal options and steps give equal frames and an equal `soundLog`.

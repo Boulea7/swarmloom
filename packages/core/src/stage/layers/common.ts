@@ -50,6 +50,11 @@ export interface LayerView {
   caret?(units: number): Point | null;
   /** Typing units of a text layer. */
   total?(): number;
+  /**
+   * Read phase (the stage calls it before a frame's DOM writes): takes the layout reads this view
+   * expects to need next, so they hit a clean layout. Text: caret geometry at the typed position.
+   */
+  measure?(): void;
   /** Settles when the layer's assets are decoded. */
   decode?(): Promise<void>;
   /** Called before the outer element is removed. */
@@ -161,6 +166,11 @@ export class Transient {
 
   get active(): boolean {
     return this.#saved.size > 0;
+  }
+
+  /** Names of the properties currently applied. */
+  names(): IterableIterator<string> {
+    return this.#saved.keys();
   }
 
   clear(el: HTMLElement | SVGElement): void {

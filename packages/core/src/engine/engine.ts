@@ -549,6 +549,7 @@ export class Engine implements Player {
       seed: this.#deps.settings.seed,
       fail: (error, layer) => this.#report(layerError(error, layer)),
       track: (promise) => this.#track(promise),
+      prefetch: (id) => this.#stage.prefetch?.(id),
     });
   }
 
@@ -677,12 +678,19 @@ export class Engine implements Player {
   /* ------------------------------------------------------------------ frame loop */
 
   /**
-   * Clock tick. Long deltas (coarse export frames) are integrated in slices of at most
-   * MAX_TICK_MS so player time always equals the clock time delivered, then drawn once.
+   * Clock tick: the stage's read phase, then the frame. Long deltas (coarse export frames) are
+   * integrated in slices of at most MAX_TICK_MS so player time always equals the clock time
+   * delivered, then drawn once.
    */
   #onTick(dt: number): void {
     const s = this.#state;
     if (s === "idle" || s === "destroyed") return;
+    // Read phase first: the layout is clean until this tick's tasks write to the DOM.
+    try {
+      this.#stage.measure?.();
+    } catch (error) {
+      this.#report(error);
+    }
     let left = Number.isFinite(dt) ? clamp(dt, 0, MAX_TICK_TOTAL_MS) : 0;
     do {
       const slice = Math.min(left, MAX_TICK_MS);

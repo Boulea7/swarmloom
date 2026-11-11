@@ -121,6 +121,18 @@ export interface Stage extends StageApi {
    * virtualization, transient overlays, cursor canvas. `now` is engine time (caret blink etc.).
    */
   render(now: number, agents: readonly AgentView[]): void;
+  /**
+   * Optional read phase: the engine calls it at the start of every clock tick, before tasks write
+   * to the DOM. The stage takes the layout reads it can do ahead of time (caret geometry of typed
+   * text), so a task asking for them mid-frame does not force a layout after other agents' writes.
+   */
+  measure?(): void;
+  /**
+   * Optional: a task is about to start on layer `id` (the engine calls it when it hands the task
+   * to an agent), so the stage can mount the layer and read what the task will need in the next
+   * read phase.
+   */
+  prefetch?(id: string): void;
   /** Fade the blank canvas in over the live page (overlay) / show the empty stage (inline). */
   enter(): Promise<void>;
   /** Instantly reveal every layer to its final state (skip, reduced motion end). */
