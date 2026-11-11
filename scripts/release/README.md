@@ -108,6 +108,6 @@ Packages PR 只删除 changeset；registry 返回 200 和 404 以外的结果时
 ```sh
 pnpm test:release        # node:test 单元测试
 pnpm check:notices       # 第三方许可能否生成（构建后还会检查 dist/ 里打包的包都有许可）
-pnpm typecheck:release   # 用 tsc 检查这些 .mjs 的 JSDoc 类型
+pnpm typecheck:release   # 用 tsc 检查这些 .mjs 的 JSDoc 类型（根目录 pnpm typecheck 也会跑，CI 由此执行）
 pnpm changeset status    # 下一次发版会包含什么
 ```

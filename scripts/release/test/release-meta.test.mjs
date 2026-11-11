@@ -89,3 +89,10 @@ test("checkPackage resolves npm access the way Changesets does", () => {
     assert.equal(errors.length === 0, passes, `${JSON.stringify(extra)} with ${defaultAccess}: ${errors.join("; ")}`);
   }
 });
+
+test("CI typechecks the release scripts through the root typecheck", () => {
+  // checkJs only runs from scripts/release/tsconfig.json, so the CI-run root script must include it.
+  assert.match(JSON.parse(read("package.json")).scripts.typecheck, /tsc -p scripts\/release(?: |$)/);
+  const steps = parse(read(".github/workflows/ci.yml")).jobs.check.steps;
+  assert.ok(steps.some((/** @type {{ run?: string }} */ step) => step.run === "pnpm typecheck"));
+});

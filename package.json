@@ -17,7 +17,7 @@
     "test:e2e": "pnpm -F @swarmloom/extension test:e2e",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "tsc --noEmit -p . && pnpm -r --filter \"./packages/**\" --filter \"./apps/**\" typecheck",
+    "typecheck": "tsc --noEmit -p . && tsc -p scripts/release && pnpm -r --filter \"./packages/**\" --filter \"./apps/**\" typecheck",
     "bench": "node scripts/bench.mjs",
     "test:bench": "node --test \"scripts/bench/test/*.test.mjs\"",
     "docs:dev": "vitepress dev docs",
