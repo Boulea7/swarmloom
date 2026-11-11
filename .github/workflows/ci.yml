@@ -38,8 +38,10 @@ jobs:
         run: pnpm check:licenses
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
+      # Build before the tests: apps/cli/test/render.test.ts drives the built render page
+      # (packages/export/dist/render, not in Git) and fails under CI when it is missing.
       - run: pnpm build
+      - run: pnpm test
       # After the build, so the check also reads the bundlers' module paths in each dist/.
       - if: matrix.os == 'ubuntu-latest'
         run: pnpm check:notices

@@ -2,7 +2,8 @@
 /**
  * End-to-end render tests: bundle the CLI, run it as a real process against a real browser and ffmpeg,
  * and inspect the result with ffprobe. Skipped (with the reason) when the machine lacks Chrome or ffmpeg;
- * the tests on the real render page also skip while its build is missing or older than the sources.
+ * the tests on the real render page also skip while its build is missing or older than the sources,
+ * except under CI, which builds before testing: there that is a broken pipeline and the tests fail.
  */
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
@@ -10,7 +11,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, type TestContext } from "vitest";
 import { findBrowser } from "../src/discovery/browser";
 import { findFfmpeg, systemFfmpegDeps } from "../src/discovery/ffmpeg";
 import { systemHost, which } from "../src/discovery/host";
@@ -65,6 +66,14 @@ function renderPageProblem(): string | undefined {
 }
 
 const renderPage = renderPageProblem();
+const IN_CI = /^(1|true)$/i.test(process.env.CI ?? "");
+
+/** Skips a real render page test while the page is unusable; CI must have built it, so there it fails. */
+function requireRenderPage(ctx: TestContext): void {
+  if (!renderPage) return;
+  if (IN_CI) throw new Error(`${renderPage} (CI must run pnpm build before pnpm test)`);
+  ctx.skip(renderPage);
+}
 
 function siblingOrPath(ffmpegPath: string, name: string): string | undefined {
   const ext = path.extname(ffmpegPath);
@@ -140,7 +149,7 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
   it(
     "renders a 2 s clip of examples/markdown/welcome.en.md to MP4 with video and audio",
     async (ctx) => {
-      if (renderPage) ctx.skip(renderPage);
+      requireRenderPage(ctx);
       if (!existsSync(WELCOME)) ctx.skip("examples/markdown/welcome.en.md is not in this checkout yet");
       const args = ["render", WELCOME, "-o", "welcome.mp4", "--width", "640", "--height", "360"];
       const run = startCli([...args, "--fps", "15", "--max-duration", "2", "--quiet"], {
@@ -162,7 +171,7 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
   it(
     "goes live after the build: an HTML loop keeps moving through the tail, the same in two runs",
     async (ctx) => {
-      if (renderPage) ctx.skip(renderPage);
+      requireRenderPage(ctx);
       const take = async (dir: string) => {
         const args = ["render", path.join(FIXTURES, "live/index.html"), "-o", `${dir}/live.mp4`, "--no-sound"];
         const extra = ["--width", "320", "--height", "200", "--fps", "10", "--tail", "3000", "--finale", "none"];
