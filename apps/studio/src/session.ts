@@ -41,6 +41,12 @@ export interface SessionOptions {
 
 const MIN_LAYOUT_WIDTH = 320;
 const MAX_LAYOUT_WIDTH = 2400;
+/** Seeking to the end steps on by at least this share of the time reached while layers remain. */
+const END_STEP_SHARE = 0.1;
+/** ...and at least this many ms (eta() can read 0 while the last layers still finish). */
+const END_STEP_MIN_MS = 500;
+/** Steps tried before seeking to the end gives up (a 10% step covers a plan about 10x too short). */
+const END_STEP_PASSES = 24;
 
 function layoutWidth(host: HTMLElement, preferred: number | undefined): number {
   const width = preferred ?? (host.clientWidth || host.ownerDocument.documentElement.clientWidth || 1280);
@@ -60,8 +66,15 @@ export class Session {
   opened: OpenedSource | null = null;
   loaded: LoadedSource | null = null;
   player: (Player & PlayerExtras) | null = null;
-  /** Engine ms the build was expected to take when it started (for the scrubber). */
+  /**
+   * Player ms from play() to the end of the build (scrubber length). An estimate (player time plus
+   * eta() at the furthest point reached) until the build has ended once, then the measured end.
+   */
   plannedMs = 0;
+  /** Player time plannedMs was estimated at: an estimate made later in the run is better. */
+  private planAt = 0;
+  /** plannedMs is the measured end of the build, not an estimate. */
+  private planExact = false;
 
   private settings: StudioSettings;
   private controller: AbortController | null = null;
@@ -131,7 +144,7 @@ export class Session {
           this.setPhase("error", new StudioError("player", { message: messageOf(error) }, { cause: error }));
       },
     );
-    this.plannedMs = Math.max(0, player.eta());
+    this.replan(player);
   }
 
   /**
@@ -147,6 +160,8 @@ export class Session {
       if (prev.speed !== next.speed) player.setSpeed(next.speed);
       if (prev.sound !== next.sound) player.setSound(next.sound);
       if (prev.follow !== next.follow) player.setFollow(next.follow);
+      // Speed and follow mode change the pace, so a seek (a replay) ends somewhere else.
+      if (prev.speed !== next.speed || prev.follow !== next.follow) this.resetPlan(this.plannedMs);
     }
     return impact;
   }
@@ -170,11 +185,16 @@ export class Session {
     if (play && this.phase === "ready") this.start();
   }
 
-  /** Jumps to a fraction of the planned build when the engine supports seeking. */
+  /**
+   * Jumps to a fraction of the planned build when the engine supports seeking. The right end (1)
+   * lands on the finished build even while the plan is still a short estimate.
+   */
   seek(fraction: number): boolean {
     const player = this.player;
     if (!player?.seek || this.plannedMs <= 0) return false;
-    player.seek(Math.max(0, Math.min(1, fraction)) * this.plannedMs);
+    const f = Math.max(0, Math.min(1, fraction));
+    player.seek(f * this.plannedMs);
+    if (f === 1) this.seekToBuildEnd(player, this.plannedMs);
     return true;
   }
 
@@ -213,12 +233,15 @@ export class Session {
       return;
     }
     this.player = player;
-    this.plannedMs = 0;
+    this.resetPlan(0);
     this.unsubscribe.push(
-      player.on("progress", (e) => this.o.onProgress?.(e.built, e.total)),
+      player.on("progress", (e) => {
+        this.replan(player);
+        this.o.onProgress?.(e.built, e.total);
+      }),
       player.on("state", (e) => {
+        this.replan(player);
         this.o.onState?.(e.state);
-        if (e.state === "building" && this.plannedMs === 0) this.plannedMs = Math.max(0, player.eta());
         if ((e.state === "done" || e.state === "live") && this.phase === "playing") this.setPhase("done");
       }),
       // Engine "error" events are non-fatal (blueprint diagnostics, failed layer tasks, plugin or
@@ -229,6 +252,56 @@ export class Session {
     const { built, total } = player.progress;
     this.o.onProgress?.(built, total);
     this.setPhase("ready");
+  }
+
+  private resetPlan(plannedMs: number): void {
+    this.plannedMs = plannedMs;
+    this.planAt = 0;
+    this.planExact = false;
+  }
+
+  /**
+   * Refines plannedMs from the player's clock: the build should end eta() after the current time,
+   * and entering the finale measures the end. Replays over earlier ground are ignored. A player
+   * without `time` keeps the first estimate, taken when the build started.
+   */
+  private replan(player: Player & PlayerExtras): void {
+    if (this.planExact) return;
+    const now = player.time;
+    if (now === undefined) {
+      if (this.plannedMs === 0) this.plannedMs = Math.max(0, player.eta());
+      return;
+    }
+    if (now < this.planAt) return;
+    const state = player.state;
+    if (state === "finale") {
+      this.plannedMs = now;
+      this.planExact = true;
+    } else if (state === "intro" || state === "building") {
+      this.planAt = now;
+      this.plannedMs = now + Math.max(0, player.eta());
+    }
+  }
+
+  /**
+   * After seeking to `t`, steps forward while layers remain, so a plan that was still too short
+   * reaches the end anyway. The finale state event on the way measures the end.
+   */
+  private seekToBuildEnd(player: Player & PlayerExtras, t: number): void {
+    let at = t;
+    for (let pass = 0; pass < END_STEP_PASSES && this.layersLeft(player); pass++) {
+      // Still building here, so a measured end (e.g. of a run rushed by finish()) was wrong.
+      this.planExact = false;
+      this.replan(player);
+      at = Math.max(this.plannedMs, at + Math.max(END_STEP_MIN_MS, at * END_STEP_SHARE));
+      player.seek?.(at);
+    }
+    if (!this.planExact) this.plannedMs = Math.max(this.plannedMs, at);
+  }
+
+  private layersLeft(player: Player): boolean {
+    const { built, total } = player.progress;
+    return built < total && player.state !== "live" && player.state !== "destroyed";
   }
 
   private destroyPlayer(): void {
