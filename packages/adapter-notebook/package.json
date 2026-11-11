@@ -27,15 +27,10 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@swarmloom/adapter-markdown": "workspace:*",
     "@swarmloom/adapter-terminal": "workspace:*",
     "@swarmloom/core": "workspace:*",
     "dompurify": "^3.4.17",
-    "highlight.js": "^11.12.0",
-    "remark-gfm": "^4.0.1",
-    "remark-parse": "^11.0.0",
-    "unified": "^11.0.5"
-  },
-  "devDependencies": {
-    "@types/mdast": "^4.0.4"
+    "highlight.js": "^11.12.0"
   }
 }

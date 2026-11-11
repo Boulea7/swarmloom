@@ -114,17 +114,26 @@ describe("parseNotebook", () => {
 });
 
 describe("markdown and HTML", () => {
-  it("renders GFM: tables, task lists, strikethrough, highlighted fences", () => {
+  it("renders GFM through adapter-markdown's renderer, with notebook-highlighted fences", () => {
     const html = markdownToHtml(
       "| a | b |\n|:-|-:|\n| 1 | 2 |\n\n- [x] done\n- [ ] todo\n\n~~old~~ [ok](https://example.org) [bad](javascript:alert(1))\n\n```python\ndef f(): pass\n```",
       { highlight: (code, lang) => highlightCode(code, lang, light) },
     );
+    expect(html).toMatch(/^<article class="loom-doc"/);
     expect(html).toContain('<td style="text-align:right">2</td>');
-    expect(html).toContain('<li class="slnb-task"><span class="slnb-check">☑</span>done</li>');
+    expect(html).toMatch(/<li class="task-item"[^>]*><span class="task-box"[^>]*aria-label="done">/);
     expect(html).toContain("<del>old</del>");
     expect(html).toContain('<a href="https://example.org">ok</a>');
     expect(html).not.toContain("javascript:");
     expect(html).toContain(`<span style="color:${light.syntax.keyword}">def</span>`);
+  });
+
+  it("keeps formulas as their TeX source and prices as text", () => {
+    const html = markdownToHtml("Energy $E=mc^2$, costs $5 and $6.\n\n$$\n\\int x\n$$");
+    expect(html).toContain('<span class="loom-math" role="math" aria-label="E=mc^2">$E=mc^2$</span>');
+    expect(html).toContain("costs $5 and $6.");
+    expect(html).toContain("$$\\int x$$");
+    expect(html).not.toContain("loom-math-error");
   });
 
   it("sanitizes HTML and applies the image policy", () => {
