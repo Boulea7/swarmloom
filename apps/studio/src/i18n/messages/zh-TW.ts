@@ -51,6 +51,7 @@ export const zhTW: StudioCatalog = {
   "player.export": "匯出",
   "player.settings": "設定",
   "player.truncated": { other: "內容太多，無法完整建構，省略了 {count} 個圖層。" },
+  "player.notes": "部分內容有調整：{notes}",
   "player.dismiss": "知道了",
   "player.retry": "重試",
   "player.home": "回到 Studio",

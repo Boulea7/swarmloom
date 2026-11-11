@@ -51,6 +51,7 @@ export const ko: StudioCatalog = {
   "player.export": "내보내기",
   "player.settings": "설정",
   "player.truncated": { other: "내용이 너무 많아 레이어 {count}개를 생략했습니다." },
+  "player.notes": "일부를 바꿔서 표시합니다: {notes}",
   "player.dismiss": "닫기",
   "player.retry": "다시 시도",
   "player.home": "Studio로 돌아가기",

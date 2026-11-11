@@ -55,6 +55,7 @@ export const fr: StudioCatalog = {
     one: "Trop de contenu pour tout construire : {count} calque a été omis.",
     other: "Trop de contenu pour tout construire : {count} calques ont été omis.",
   },
+  "player.notes": "Affiché avec quelques modifications : {notes}",
   "player.dismiss": "Fermer",
   "player.retry": "Réessayer",
   "player.home": "Retour à Studio",

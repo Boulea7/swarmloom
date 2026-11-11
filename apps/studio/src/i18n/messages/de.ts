@@ -55,6 +55,7 @@ export const de: StudioCatalog = {
     one: "Zu viel, um alles zu bauen: {count} Ebene wurde ausgelassen.",
     other: "Zu viel, um alles zu bauen: {count} Ebenen wurden ausgelassen.",
   },
+  "player.notes": "Mit einigen Änderungen dargestellt: {notes}",
   "player.dismiss": "Schließen",
   "player.retry": "Erneut versuchen",
   "player.home": "Zurück zu Studio",

@@ -247,16 +247,22 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     bar.share.disabled = false;
   };
 
-  const showTruncated = () => {
+  /** What the build leaves out or changes: layers over the limit and the adapter's quality notes. */
+  const showNotice = () => {
     const { i18n } = ctx;
+    const messages: string[] = [];
     const truncated = session.loaded?.blueprint.truncated;
-    if (!truncated || truncated.dropped <= 0) {
+    if (truncated && truncated.dropped > 0) messages.push(i18n.t("player.truncated", { count: truncated.dropped }));
+    // The notes are English; the lead-in says in the UI language that they describe changes.
+    const notes = session.notes;
+    if (notes.length > 0) messages.push(i18n.t("player.notes", { notes: notes.join(" ") }));
+    if (messages.length === 0) {
       notice.hidden = true;
       return;
     }
     notice.replaceChildren(
       icon("alert", 16),
-      h("span", { text: i18n.t("player.truncated", { count: truncated.dropped }) }),
+      h("span", { text: messages.join(" ") }),
       button({
         label: i18n.t("player.dismiss"),
         icon: "close",
@@ -283,7 +289,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       if (next === "ready" || next === "error") showOpened();
       scrubber.setPhase(next);
       if (next === "ready") {
-        showTruncated();
+        showNotice();
         bar.export.disabled = false;
         scrubber.ready(session.canSeek);
         if (autoplayPending) {
@@ -368,7 +374,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       title.textContent = provisionalName(ctx, ref);
       if (guess) meta.textContent = formatLabel(ctx, guess.id);
     }
-    if (!notice.hidden) showTruncated();
+    if (!notice.hidden) showNotice();
     renderOverlay(lastError);
     scrubber.relabel(ctx.i18n);
     recPill.replaceChildren(recDot, recLabel, stopButton());

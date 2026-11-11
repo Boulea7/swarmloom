@@ -55,6 +55,7 @@ export const es: StudioCatalog = {
     one: "Hay demasiado para construirlo entero: se omitió {count} capa.",
     other: "Hay demasiado para construirlo entero: se omitieron {count} capas.",
   },
+  "player.notes": "Se muestra con algunos cambios: {notes}",
   "player.dismiss": "Cerrar",
   "player.retry": "Reintentar",
   "player.home": "Volver a Studio",

@@ -51,6 +51,7 @@ export const zhCN: StudioCatalog = {
   "player.export": "导出",
   "player.settings": "设置",
   "player.truncated": { other: "内容太多，无法完整构建，省略了 {count} 个图层。" },
+  "player.notes": "部分内容有调整：{notes}",
   "player.dismiss": "知道了",
   "player.retry": "重试",
   "player.home": "回到 Studio",

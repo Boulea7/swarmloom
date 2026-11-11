@@ -52,6 +52,7 @@ export const ja: StudioCatalog = {
   "player.export": "書き出し",
   "player.settings": "設定",
   "player.truncated": { other: "内容が多すぎるため、{count} 個のレイヤーを省略しました。" },
+  "player.notes": "一部を変更して表示しています：{notes}",
   "player.dismiss": "閉じる",
   "player.retry": "再試行",
   "player.home": "Studio に戻る",

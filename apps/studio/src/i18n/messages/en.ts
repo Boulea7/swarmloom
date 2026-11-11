@@ -62,6 +62,7 @@ export const en = {
     one: "Too much to build in full: {count} layer was left out.",
     other: "Too much to build in full: {count} layers were left out.",
   },
+  "player.notes": "Shown with some changes: {notes}",
   "player.dismiss": "Dismiss",
   "player.retry": "Try again",
   "player.home": "Back to Studio",
