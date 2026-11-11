@@ -518,8 +518,9 @@ export interface Player {
    */
   finish?(): void;
   /**
-   * Optional. Jumps to `t` ms of player time since play() by replaying from the start in 60 Hz
-   * steps (Studio scrubber). Nothing is drawn or played while seeking; soundLog is kept complete.
+   * Optional. Jumps to `t` ms of player time since play() in 60 Hz steps (Studio scrubber): a later
+   * time fast-forwards the current run, an earlier one replays from the start. Nothing is drawn or
+   * played while seeking; soundLog is kept complete.
    */
   seek?(t: number): void;
   /** Optional. Changes the end-of-build behaviour; applies immediately while the finale runs. */

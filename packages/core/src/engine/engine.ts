@@ -218,6 +218,8 @@ export class Engine implements Player {
   #errors = 0;
   #diagnosticsShown = false;
   #seeking = false;
+  /** finish() rushed this run, so its later frames no longer match a replay. */
+  #rushed = false;
   #soundFailed = false;
 
   constructor(deps: EngineDeps) {
@@ -329,8 +331,10 @@ export class Engine implements Player {
   }
 
   /**
-   * Fast-forwards to player time `t` (ms since play) by replaying from the start in 60 Hz frames
-   * without drawing or playing sound; sound events are still logged.
+   * Moves to player time `t` (ms since play) in 60 Hz frames without drawing or playing sound;
+   * sound events are still logged. A later time fast-forwards the current run, so dragging a
+   * scrubber forward costs only the distance moved; an earlier time, an idle or live player and a
+   * run rushed by finish() replay from the start.
    * @throws RangeError for a negative or non-finite `t`.
    */
   seek(t: number): void {
@@ -338,9 +342,11 @@ export class Engine implements Player {
     if (this.#state === "destroyed") return;
     const target = Math.min(t, MAX_SEEK_MS);
     const paused = this.#state === "paused";
+    const forward = this.#canFastForward(target);
     this.#seeking = true;
     try {
-      this.replay();
+      if (!forward) this.replay();
+      else if (paused) this.resume();
       while (this.#pt + 1e-6 < target && !this.#ended()) {
         this.#frame(Math.min(SEEK_FRAME_MS, target - this.#pt), false);
       }
@@ -349,6 +355,13 @@ export class Engine implements Player {
     }
     if (paused) this.pause();
     this.#render();
+  }
+
+  /** Whether seek(target) may continue the current run instead of replaying it. */
+  #canFastForward(target: number): boolean {
+    const s = this.#state === "paused" ? this.#resumeState : this.#state;
+    const running = s === "intro" || s === "building" || s === "finale" || s === "done";
+    return running && !this.#rushed && target >= this.#pt;
   }
 
   /** True once the player went live or was destroyed (read through a call to defeat narrowing). */
@@ -370,6 +383,7 @@ export class Engine implements Player {
     const { status } = this.#build.schedule;
     const queue = this.#plan.order.filter((i) => status[i] !== DONE);
     this.#fade = new CrossFade(queue, this.#plan.layers, this.#tt, RUSH_TIMING);
+    this.#rushed = true;
   }
 
   goLive(): void {
@@ -516,6 +530,7 @@ export class Engine implements Player {
     this.#camera.reset();
     this.#soundLog = [];
     this.#fade = null;
+    this.#rushed = false;
     this.#pt = 0;
     this.#tt = 0;
     this.#sim = 0;

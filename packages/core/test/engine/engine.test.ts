@@ -281,6 +281,28 @@ describe("Engine", () => {
     expect(h.sound.destroyed).toBe(true);
   });
 
+  it("seek() fast-forwards the current run and replays only to go back or after finish()", () => {
+    const page = blueprintOf(Array.from({ length: 40 }, (_, i) => box(`b${i}`, (i % 5) * 150, Math.floor(i / 5) * 90)));
+    const h = harness(page, { intro: false });
+    void h.engine.play();
+    h.run(30);
+    h.engine.pause();
+    const built = h.engine.progress.built;
+    const head = h.engine.soundLog.slice();
+    h.engine.seek(2000);
+    // Forward: no replay, the run's log continues and a paused player stays paused.
+    expect(h.stage.calls.reset).toBe(0);
+    expect(h.engine.soundLog.slice(0, head.length)).toEqual(head);
+    expect(h.engine.progress.built).toBeGreaterThan(built);
+    expect(h.engine.state).toBe("paused");
+    h.engine.seek(1000);
+    expect(h.stage.calls.reset).toBe(1);
+    h.engine.resume();
+    h.engine.finish();
+    h.engine.seek(3000);
+    expect(h.stage.calls.reset).toBe(2);
+  });
+
   it("sizes the crew automatically and labels agents per mode", () => {
     expect(autoAgentCount(0, 390 * 844)).toBe(8);
     expect(autoAgentCount(260, 1280 * 800)).toBeGreaterThan(30);
