@@ -89,13 +89,23 @@ function waitForLoad(frame: HTMLIFrameElement, ms: number, signal?: AbortSignal)
   });
 }
 
-function nextFrame(win: Window): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof win.requestAnimationFrame !== "function") {
-      setTimeout(resolve, 16);
-      return;
-    }
-    win.requestAnimationFrame(() => resolve());
+function nextFrame(win: Window, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    const fail = (error: unknown) => {
+      if (done) return;
+      done = true;
+      reject(error);
+    };
+    if (typeof win.requestAnimationFrame === "function") win.requestAnimationFrame(finish);
+    else setTimeout(finish, 16);
+    // WebKit may not service animation frames inside the opacity-zero browser-export frame.
+    void delay(80, signal).then(finish, fail);
   });
 }
 
@@ -199,11 +209,11 @@ export async function renderInFrame(opts: FrameOptions): Promise<FrameDocument> 
       imagesSettled(doc, IMAGE_TIMEOUT_MS, opts.signal),
     ]);
     await delay(opts.settleMs, opts.signal);
-    await nextFrame(win);
+    await nextFrame(win, opts.signal);
     // Timings before the freeze (finished animations may leave the list), boxes after it.
     const timings = opts.keyframes ? readKeyframes(doc, opts.infinitePhase) : null;
     const frozen = freezeAnimations(doc, opts.infinitePhase);
-    await nextFrame(win);
+    await nextFrame(win, opts.signal);
     const timelines = timings ? placeKeyframes(timings) : undefined;
     return { doc, frame, loaded, frozen, dispose, ...(timelines ? { timelines } : {}) };
   } catch (error) {
