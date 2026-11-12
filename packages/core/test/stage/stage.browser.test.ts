@@ -617,15 +617,19 @@ describe("stage: virtualization", () => {
     h.engine.destroy();
   });
 
-  it("reports user scrolls but not programmatic ones", async () => {
+  it("reports user scrolls but not programmatic ones, whose exact offset it keeps", async () => {
     const layers: Layer[] = [{ id: "b", kind: "box", box: { x: 0, y: 0, w: 100, h: 100 }, style: {} }];
     const { stage } = mount(layers, { size: { w: 800, h: 5000 } });
     const seen: number[] = [];
     stage.onUserScroll((y) => seen.push(y));
     const scroller = stage.root.querySelector(".scroller") as HTMLElement;
-    stage.scrollTo(400);
+    stage.scrollTo(400.37);
+    const y = stage.scrollY;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     expect(seen).toEqual([]);
+    // The browser snaps the offset it was given; whether its scroll event comes before the next
+    // frame must not move what the overlay draws, or a render depends on wall-clock timing.
+    expect(stage.scrollY).toBe(y);
     scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 100 }));
     scroller.scrollTop = 900;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));

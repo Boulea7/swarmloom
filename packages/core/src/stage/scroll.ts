@@ -18,9 +18,11 @@ interface SmoothScroll {
  * exports stay deterministic) and the separation of user scrolls from them. A scroll event is the
  * user's when wheel, touch, navigation-key or scrollbar input preceded it, or when it lands where
  * no programmatic scroll put the scroller. Offsets are cached in the Geometry so the frame path
- * never reads layout. A deferred scroll updates the cache at once and writes the scroller in the
- * next {@link step}: a seek moves the tour every frame it fast-forwards between task writes, and
- * every scroller write after a DOM write forces a layout.
+ * never reads layout; only user scrolls replace the cache with the scroller's (snapped) offsets,
+ * so frames never depend on when the browser dispatched a scroll event. A deferred scroll updates
+ * the cache at once and writes the scroller in the next {@link step}: a seek moves the tour every
+ * frame it fast-forwards between task writes, and every scroller write after a DOM write forces a
+ * layout.
  */
 export class ScrollController {
   readonly #el: HTMLElement;
@@ -162,15 +164,21 @@ export class ScrollController {
     const g = this.#geo;
     const top = el.scrollTop;
     const left = el.scrollLeft;
-    // The scroller's offsets are the truth from here on, deferred ones included.
+    const recentInput = this.#frame - this.#inputFrame <= INPUT_FRAMES;
+    const expected = Math.abs(top - this.#expectTop) <= MATCH_PX && Math.abs(left - this.#expectLeft) <= MATCH_PX;
+    if (!recentInput && (expected || this.#smooth)) {
+      // Our own scroll: the cache keeps the exact offsets written, not the device-pixel-snapped
+      // ones read back. The event comes with the browser's next rendering update, so adopting
+      // them would make the following frames depend on wall-clock timing (exports would differ).
+      this.#onScroll?.();
+      return;
+    }
+    // A user scroll: the scroller's offsets are the truth from here on, deferred ones included.
     g.scrollTop = top;
     g.scrollLeft = left;
     this.#pendingTop = false;
     this.#pendingLeft = false;
-    const recentInput = this.#frame - this.#inputFrame <= INPUT_FRAMES;
-    const expected = Math.abs(top - this.#expectTop) <= MATCH_PX && Math.abs(left - this.#expectLeft) <= MATCH_PX;
     this.#onScroll?.();
-    if (!recentInput && (expected || this.#smooth)) return;
     this.#smooth = null;
     this.#expectTop = Number.NaN;
     this.#expectLeft = Number.NaN;
