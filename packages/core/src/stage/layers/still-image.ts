@@ -25,12 +25,17 @@ const FILE_PATH = /\.(?:svg|gif|png|apng|webp|avif)$/i;
 const CACHE_LIMIT = 32;
 const stills = new Map<string, Promise<string | null>>();
 /**
- * Fetched files that gave no still copy (most of them: still images), kept by URL alone and so in far
- * greater number (least recently used out). Re-mounts and replays of an image-heavy page show them
- * at once, without fetching them again or holding the copies' slots.
+ * Answers known at once, kept by URL (least recently used out), so re-mounts, replays and seeks back
+ * neither fetch nor decode again, nor hold the copies' slots: null for a fetched file found still or
+ * a `data:` URL with no still copy (most images show as they are), or the copy of an SVG `data:` URL
+ * made without waiting. A `data:` URL is its own key, the blueprint's string, which may run to
+ * megabytes and outlive the blueprint here, so the characters kept are bounded too: about all the
+ * images an HTML capture inlines (48 MiB, as base64).
  */
-const PLAIN_LIMIT = 4096;
-const plain = new Set<string>();
+const KNOWN_LIMIT = 4096;
+const KNOWN_CHARS = 64 * 1024 * 1024;
+const known = new Map<string, string | null>();
+let knownChars = 0;
 
 function cached(key: string, make: () => Promise<string | null>): Promise<string | null> {
   let still = stills.get(key);
@@ -44,17 +49,35 @@ function cached(key: string, make: () => Promise<string | null>): Promise<string
   return still;
 }
 
-/** Whether the file at `key` gave no still copy before (and keeps that memory fresh). */
-function knownPlain(key: string): boolean {
-  if (!plain.delete(key)) return false;
-  plain.add(key);
-  return true;
+/** What `key` answered at once before (keeping that memory fresh), or undefined when it is not known. */
+function recall(key: string): string | null | undefined {
+  const answer = known.get(key);
+  if (answer !== undefined) {
+    known.delete(key);
+    known.set(key, answer);
+  }
+  return answer;
 }
 
-function rememberPlain(key: string): void {
+function forget(key: string): void {
+  const answer = known.get(key);
+  if (answer === undefined) return;
+  known.delete(key);
+  knownChars -= key.length + (answer?.length ?? 0);
+}
+
+/** Keeps `answer` for `key` (see {@link known}) and returns it. */
+function remember(key: string, answer: string | null): string | null {
   stills.delete(key);
-  if (plain.size >= PLAIN_LIMIT) plain.delete(plain.values().next().value as string);
-  plain.add(key);
+  forget(key);
+  const chars = key.length + (answer?.length ?? 0);
+  if (chars > KNOWN_CHARS) return answer;
+  while (known.size > 0 && (known.size >= KNOWN_LIMIT || knownChars + chars > KNOWN_CHARS)) {
+    forget(known.keys().next().value as string);
+  }
+  known.set(key, answer);
+  knownChars += chars;
+  return answer;
 }
 
 /** Still copy of the file at `url`: null when it has none, undefined when it could not be read. */
@@ -118,33 +141,38 @@ function sameOriginFile(src: string, doc: Document): URL | null {
   }
 }
 
+/** Still copy of a `data:` URL, null when it has none, through a promise when one is decoded. */
+function dataStill(src: string, doc: Document): string | null | Promise<string | null> {
+  if (/^data:image\/svg\+xml[;,]/i.test(src)) return stillSvgDataUrl(src, embedded(doc));
+  const bitmap = animatedDataUrl(src);
+  return bitmap && firstFrameUrl(bitmap.bytes, bitmap.type, doc);
+}
+
 /**
  * What an `<img>` should load for `src`: `src` itself, or a still `data:` copy when `src` is an
  * animated image the stage can read. An SVG `data:` URL answers at once, unless it embeds an
  * animated bitmap; such SVGs, animated bitmap `data:` URLs, same-origin files and blob: URLs answer
  * through a promise (decoded or fetched once, then cached), which never rejects and falls back to
- * `src`. A file that gave no copy before answers `src` at once. `doc` fetches and draws the copies.
+ * `src`. A `data:` URL answered at once before, or a file that gave no copy before, answers at once
+ * without being read again. `doc` fetches and draws the copies.
  */
 export function stillImageSource(src: string, doc: Document): string | Promise<string> {
   let still: Promise<string | null>;
-  if (/^data:image\/svg\+xml[;,]/i.test(src)) {
-    // A cached copy (of an SVG that embeds an animated bitmap) spares decoding that bitmap again.
-    const svg = stills.has(src) ? undefined : stillSvgDataUrl(src, embedded(doc));
-    if (svg === null || typeof svg === "string") return svg ?? src;
-    still = cached(src, () => svg ?? Promise.resolve(null));
-  } else if (/^data:/i.test(src)) {
-    // A cached copy spares decoding the file again.
-    const bitmap = stills.has(src) ? undefined : animatedDataUrl(src);
-    if (bitmap === null) return src;
-    still = cached(src, () => (bitmap ? firstFrameUrl(bitmap.bytes, bitmap.type, doc) : Promise.resolve(null)));
+  if (/^data:/i.test(src)) {
+    const answer = recall(src);
+    if (answer !== undefined) return answer ?? src;
+    // A cached copy (of an animated bitmap, or an SVG that embeds one) spares decoding it again.
+    const copy = stills.has(src) ? undefined : dataStill(src, doc);
+    if (copy === null || typeof copy === "string") return remember(src, copy) ?? src;
+    still = cached(src, () => copy ?? Promise.resolve(null));
   } else {
     const url = sameOriginFile(src, doc);
-    if (!url || knownPlain(url.href)) return src;
+    if (!url || recall(url.href) === null) return src;
     const key = url.href;
     still = cached(key, () =>
       fetchStill(doc, url).then((copy) => {
         // A file that failed to load (not one read and found still) is tried again once evicted.
-        if (copy === null) rememberPlain(key);
+        if (copy === null) remember(key, null);
         return copy ?? null;
       }),
     );
