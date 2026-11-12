@@ -14,6 +14,7 @@ import {
   type MarkdownLoadContext,
   markdownToHtml,
   safeHref,
+  safeImageSrc,
   slugify,
   splitFrontMatter,
 } from "../src/index";
@@ -185,6 +186,29 @@ describe("markdownToHtml: safety", () => {
     const on = await render(md, { baseUrl: "https://t.dev/doc.md" });
     expect(on.dom.querySelector("video")?.getAttribute("poster")).toBe("https://t.dev/poster.png");
     expect(on.html).not.toContain("v.mp4");
+  });
+
+  it("reads network paths as the URL parser does, without a base too", async () => {
+    // Backslashes, tabs and leading control characters still name another host in the browser.
+    const md = [
+      String.raw`<img src="\\evil.test/raw.png">`,
+      "",
+      String.raw`![x](/\evil.test/md.png)`,
+      "",
+      String.raw`<video poster="\\evil.test/poster.png"></video><svg><image href="/\evil.test/svg.png"/></svg>`,
+      String.raw`<table background="\\evil.test/table.png"><tr><td>a</td></tr></table>`,
+      '<img src="ht&#9;tps://evil.test/tab.png"><img src="&#1;//evil.test/ctl.png">',
+    ].join("\n");
+    const off = await render(md, { remoteImages: false });
+    expect(off.html).not.toContain("evil.test");
+    expect(off.warnings.filter((w) => w.includes("remote images are off"))).toHaveLength(7);
+    const on = await render(md);
+    expect(on.dom.querySelector("img")?.getAttribute("src")).toBe("https://evil.test/raw.png");
+    // In a local file a host is a network (UNC) share, not a local file.
+    const doc = "file:///C:/docs/doc.md";
+    expect(safeImageSrc("file://srv/share/a.png", doc)).toBeUndefined();
+    expect(safeImageSrc(String.raw`\\srv\share\a.png`, doc, { remote: false })).toBeUndefined();
+    expect(safeImageSrc("img/a.png", doc, { remote: false })).toBe("file:///C:/docs/img/a.png");
   });
 
   it("maps relative images through the asset resolver (dropped folders)", async () => {
