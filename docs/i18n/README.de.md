@@ -163,7 +163,7 @@ SwarmLoom zerlegt eine Webseite oder Datei in Ebenen und weist sie den Cursorn i
 
 ### Aus dem Quellcode bauen
 
-GitHub Releases, npm-Pakete und Store-Einträge sind geplant. Bis dahin baust du SwarmLoom aus dem Quellcode. Du benötigst Node.js 22.12+; die pnpm-Version ist in `packageManager` festgelegt.
+Downloads der Erweiterungen und der CLI, npm-Pakete und Store-Einträge sind geplant (das Release `promo-v1` enthält nur die Promo-Videos und Untertitel). Bis dahin baust du SwarmLoom aus dem Quellcode. Du benötigst Node.js 22.12+; die pnpm-Version ist in `packageManager` festgelegt.
 
 ```bash
 git clone https://github.com/Boulea7/swarmloom.git
@@ -270,7 +270,7 @@ Für faltbare Geräte ist nichts zusätzlich erforderlich: Unterstützt der Brow
 ## Roadmap
 
 - **Jetzt**: Studio online, Webseiten plus 20 Dateiformate, Videoexport Bild für Bild per CLI oder direkt in Studio sowie aus dem Quellcode erstellbare Erweiterungen für Chrome / Edge / Firefox / Safari.
-- **Als Nächstes**: das erste GitHub Release und npm-Pakete, Store-Einträge und signierte Erweiterungen sowie Tests auf Smartphones und Safari-Geräten.
+- **Als Nächstes**: die erste Softwareversion (Downloads der Erweiterungen und der CLI auf GitHub sowie npm-Pakete), Store-Einträge und signierte Erweiterungen sowie Tests auf Smartphones und Safari-Geräten.
 - **Später**: weitere Formate und Plattformen, ohne feste Terminzusagen. Teile deine Ideen in [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 
 ## Mitwirken und Support

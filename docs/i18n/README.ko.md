@@ -163,7 +163,7 @@ SwarmLoom은 웹 페이지나 파일을 레이어로 나누고, 읽는 순서에
 
 ### 소스에서 빌드하기
 
-GitHub Releases, npm 패키지와 스토어 등록은 준비 중입니다. 지금은 소스에서 직접 빌드해야 합니다. Node.js 22.12 이상이 필요하며, pnpm 버전은 `packageManager`에 고정되어 있습니다.
+확장 프로그램과 CLI 다운로드, npm 패키지와 스토어 등록은 준비 중입니다(`promo-v1` 릴리스에는 소개 영상과 자막만 있습니다). 지금은 소스에서 직접 빌드해야 합니다. Node.js 22.12 이상이 필요하며, pnpm 버전은 `packageManager`에 고정되어 있습니다.
 
 ```bash
 git clone https://github.com/Boulea7/swarmloom.git
@@ -270,7 +270,7 @@ Chrome / Edge에서는 Studio를 열고 주소 표시줄이나 메뉴에서 앱 
 ## 로드맵
 
 - **현재**: 온라인 Studio, 웹 페이지와 20가지 파일 형식, CLI 또는 Studio 안에서 하는 프레임 단위 영상 내보내기, 소스에서 빌드하는 Chrome / Edge / Firefox / Safari 확장 프로그램을 지원합니다.
-- **다음**: 첫 GitHub Release 및 npm 패키지 공개, 스토어 등록과 확장 프로그램 서명, 휴대폰 및 Safari 실기기 테스트를 준비하고 있습니다.
+- **다음**: 첫 소프트웨어 릴리스(GitHub의 확장 프로그램과 CLI 다운로드, npm 패키지) 공개, 스토어 등록과 확장 프로그램 서명, 휴대폰 및 Safari 실기기 테스트를 준비하고 있습니다.
 - **이후**: 더 많은 형식과 플랫폼을 지원할 예정이지만 날짜는 약속드릴 수 없습니다. [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas)에서 아이디어를 공유해 주세요.
 
 ## 기여 및 지원

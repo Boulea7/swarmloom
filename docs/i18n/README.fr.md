@@ -163,7 +163,7 @@ Ouvrez [Studio en ligne](https://boulea7.github.io/swarmloom/studio/) et choisis
 
 ### Compiler à partir des sources
 
-Les publications sur GitHub Releases, les paquets npm et les fiches dans les boutiques sont prévus. Pour l’instant, compilez à partir des sources. Node.js 22.12 ou une version ultérieure est requis ; la version de pnpm est fixée dans `packageManager`.
+Les téléchargements des extensions et de la CLI, les paquets npm et les fiches dans les boutiques sont prévus (la release `promo-v1` ne contient que les vidéos de présentation et leurs sous-titres). Pour l’instant, compilez à partir des sources. Node.js 22.12 ou une version ultérieure est requis ; la version de pnpm est fixée dans `packageManager`.
 
 ```bash
 git clone https://github.com/Boulea7/swarmloom.git
@@ -270,7 +270,7 @@ Aucune installation supplémentaire n’est nécessaire sur les écrans pliables
 ## Feuille de route
 
 - **Aujourd’hui** : Studio en ligne, pages web et 20 formats de fichiers, export vidéo image par image via la CLI ou directement dans Studio, et extensions Chrome / Edge / Firefox / Safari compilables depuis les sources.
-- **Ensuite** : première version sur GitHub Releases et paquets npm, fiches en boutique et extensions signées, ainsi que tests sur téléphones et appareils Safari.
+- **Ensuite** : première version du logiciel (téléchargements des extensions et de la CLI sur GitHub, et paquets npm), fiches en boutique et extensions signées, ainsi que tests sur téléphones et appareils Safari.
 - **Plus tard** : d’autres formats et plateformes, sans date promise. Partagez vos idées dans [Idées](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 
 ## Contribuer et obtenir de l’aide

@@ -163,7 +163,7 @@ SwarmLoom 會將網頁或檔案拆成多個圖層，依閱讀順序交給游標�
 
 ### 從原始碼建置
 
-GitHub Releases、npm 套件與商店上架版本仍在規劃中，目前請從原始碼建置。需要 Node.js 22.12+；pnpm 版本固定於 `packageManager`。
+擴充功能與 CLI 的下載檔、npm 套件與商店上架版本仍在規劃中（`promo-v1` Release 只有宣傳影片與字幕），目前請從原始碼建置。需要 Node.js 22.12+；pnpm 版本固定於 `packageManager`。
 
 ```bash
 git clone https://github.com/Boulea7/swarmloom.git
@@ -270,7 +270,7 @@ npm 套件 `@swarmloom/element` 尚未發布（規劃中），但元件本身已
 ## 發展藍圖
 
 - **目前**：線上 Studio、網頁及 20 種檔案格式、透過 CLI 或在 Studio 內逐影格匯出影片，以及可從原始碼建置的 Chrome / Edge / Firefox / Safari 擴充功能。
-- **接下來**：首個 GitHub Release 與 npm 套件、商店上架與擴充功能簽章，以及手機與 Safari 裝置測試。
+- **接下來**：首個軟體版本（GitHub 上的擴充功能與 CLI 下載檔，以及 npm 套件）、商店上架與擴充功能簽章，以及手機與 Safari 裝置測試。
 - **之後**：更多格式與平台，不承諾時程。歡迎到 [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) 分享想法。
 
 ## 貢獻與支援
