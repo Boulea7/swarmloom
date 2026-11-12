@@ -100,6 +100,29 @@ function safeFileName(name: string): string {
 }
 
 /**
+ * The CLI's key for "same file" (`sameFileKey` in apps/cli): NTFS and APFS ignore case, and Win32 drops
+ * trailing dots and spaces, so "Logo.GIF" and "logo.gif" name one file there.
+ */
+function fileKey(name: string): string {
+  return name
+    .normalize("NFD")
+    .toLowerCase()
+    .toUpperCase()
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/[. ]+$/, "");
+}
+
+/**
+ * "<name>.<format>", or "<name>.swarmloom.<format>" when that names the input file `source`: the CLI
+ * refuses to write the video over its input ("logo.gif" exported as GIF).
+ */
+function outputName(name: string, format: VideoFormat, source: string | undefined): string {
+  const output = `${stem(name)}.${format}`;
+  return source !== undefined && fileKey(source) === fileKey(output) ? `${stem(name)}.swarmloom.${format}` : output;
+}
+
+/**
  * One percent-escaped non-ASCII character: a UTF-8 lead byte and its continuation bytes. Upper case
  * only, as the URL parser writes them, so the parsed link is the same text.
  */
@@ -149,7 +172,8 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
     saveAs = safeFileName(o.targetIsFile ? o.target : o.name);
     target = saveAs;
   }
-  const args: string[] = ["swarmloom", "render", target, "-o", `${stem(o.name)}.${o.format}`];
+  // `saveAs` is the input file whenever the CLI reads one (not a link).
+  const args: string[] = ["swarmloom", "render", target, "-o", outputName(o.name, o.format, saveAs)];
   if (o.format !== "mp4") args.push("--format", o.format);
   if (o.width !== 1280) args.push("--width", String(o.width));
   if (o.height !== 720) args.push("--height", String(o.height));

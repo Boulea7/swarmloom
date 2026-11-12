@@ -4,18 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXPORT_MAX_SECONDS, exportSettingsOf } from "../src/export/browser";
-import { buildCliCommand, type CliCommandOptions, cliHint, shellArg } from "../src/export/cli";
+import { buildCliCommand, type CliCommandOptions, cliHint, shellArg, type VideoFormat } from "../src/export/cli";
 import type { StudioServices } from "../src/services";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { type LocalInput, resolveSource } from "../src/source";
 
-function command(target: string, targetIsFile: boolean, name = target) {
+function command(target: string, targetIsFile: boolean, name = target, format: VideoFormat = "mp4") {
   const options: CliCommandOptions = {
     target,
     targetIsFile,
     name,
     settings: DEFAULT_SETTINGS,
-    format: "mp4",
+    format,
     width: 1280,
     height: 720,
   };
@@ -87,6 +87,22 @@ describe("CLI command", () => {
     expect(command("https://evil.example/x%DATABASE_URL%2F/deck.md", false, "deck.md")).toEqual({
       text: "swarmloom render deck.md -o deck.mp4 --seed 1",
       saveAs: "deck.md",
+    });
+  });
+
+  // The CLI refuses an output that names its input, ignoring case as NTFS and APFS do.
+  it.each([
+    ["logo.gif", "gif", "-o logo.swarmloom.gif"],
+    ["Logo.GIF", "gif", "-o Logo.swarmloom.gif"],
+    ["photo.webp", "gif", "-o photo.gif"],
+  ] as const)("keeps the input %j when exporting %s", (name, format, output) => {
+    expect(command(name, true, name, format).text).toContain(`swarmloom render ${name} ${output} --format ${format}`);
+  });
+
+  it("keeps the saved stand-in of an unsafe link", () => {
+    expect(command("https://evil.example/a&b.webp", false, "a&b.webp", "webp")).toEqual({
+      text: "swarmloom render a-b.webp -o a-b.swarmloom.webp --format webp --seed 1",
+      saveAs: "a-b.webp",
     });
   });
 
