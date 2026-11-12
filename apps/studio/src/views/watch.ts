@@ -380,11 +380,15 @@ export function createWatch(ctx: AppContext): View {
     return { notice: i18n.t(key) };
   }
 
-  /** Shows the code for a link, a notice in its place, or (null) an empty code while the link is read. */
+  /**
+   * Shows the code for a link, a notice in its place, or (null) an empty code while the link is
+   * read. A link too long for any QR code (a long source URL, a large `#d=`) gets a notice too.
+   */
   function drawQr(shown: { url: string } | { notice: string } | null): void {
-    const notice = shown && "notice" in shown ? shown.notice : null;
+    const code = shown && "url" in shown ? qrCode(shown.url, i18n.t("watch.scan")) : null;
+    const notice = shown && "notice" in shown ? shown.notice : shown && !code ? i18n.t("watch.tooLong") : null;
     qrBox.hidden = notice !== null;
-    qrBox.replaceChildren(...(shown && "url" in shown ? [qrCode(shown.url, i18n.t("watch.scan"))] : []));
+    qrBox.replaceChildren(...(code ? [code] : []));
     qrCaption.textContent = notice ?? i18n.t("watch.scan");
     qrCaption.toggleAttribute("data-notice", notice !== null);
   }

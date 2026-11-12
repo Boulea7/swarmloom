@@ -266,6 +266,25 @@ it("hands the phone a local file inside the link, not the bare Studio page", asy
   await expect.poll(() => modules(root.querySelector(".watch-qr svg"))).toBe(modules(qrCode(link.url, "")));
 });
 
+// A source URL may run to 4096 characters and a #d= payload to 16 KB; a QR code holds about 2.3 KB.
+it("says a link is too long for a QR code instead of throwing", async () => {
+  const src = `http://example.invalid/${"a".repeat(3000)}`;
+  history.replaceState(null, "", `${location.pathname}?watch=1&round=1&src=${encodeURIComponent(src)}`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  const fetch = async () => new Response("", { status: 404 });
+  app = await mountStudio(
+    root,
+    fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
+  );
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+  expect(root.querySelector(".watch-qr")?.matches(":modal")).toBe(true);
+  expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
+  expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
+});
+
 it.each([
   { size: 100, round: true },
   { size: 140, round: true },
