@@ -7,8 +7,8 @@ export interface SessionStatus {
   built: number;
   total: number;
   /**
-   * The build finished and the tail time has elapsed since, and a go live under way has shown the
-   * page (see {@link RenderSessionOptions.tailMs}).
+   * The build finished and the tail time has elapsed since, every cue has applied, and a go live
+   * under way has shown the page (see {@link RenderSessionOptions.tailMs}).
    */
   done: boolean;
 }
@@ -47,10 +47,11 @@ export interface RenderSessionOptions {
   /** Player options; the session supplies its own `VirtualClock`. */
   player: Omit<PlayerOptions, "clock">;
   /**
-   * Time to keep running after the build completes (finale), ms. Default 0. A go live (automatic or
-   * cued) still under way when it ends holds the end until the stage shows the page
-   * (`PlayerOptions.onLive`), so a video never stops mid-glide (`liveTop`) or with cursors leaving;
-   * a stage that never reports live is given up on 2.5 s after go live.
+   * Time to keep running after the build completes (finale), ms. Default 0. A cue still to come
+   * when it ends holds the end until that cue has applied, so every cue lands in the video whatever
+   * the build's length. A go live (automatic or cued) still under way then holds the end until the
+   * stage shows the page (`PlayerOptions.onLive`), so a video never stops mid-glide (`liveTop`) or
+   * with cursors leaving; a stage that never reports live is given up on 2.5 s after go live.
    */
   tailMs?: number;
   /**
@@ -63,7 +64,8 @@ export interface RenderSessionOptions {
   /**
    * Player actions at fixed session times, applied in time order (ties in the given order).
    * While paused the session keeps counting time, so {@link RenderSession.soundLog} shifts later
-   * events by the paused time and stays aligned with the frames.
+   * events by the paused time and stays aligned with the frames. The session is not done before the
+   * last cue has applied (see {@link tailMs}).
    */
   cues?: readonly SessionCue[];
   /** Player factory. Default `createPlayer` from `@swarmloom/core`. */
@@ -165,7 +167,7 @@ export class RenderSession {
     if (!Number.isFinite(tail) || tail < 0) throw new RangeError(`tailMs must be a finite number >= 0, got ${tail}`);
     this.tailMs = tail;
     this.#cues = [...(options.cues ?? [])].sort((a, b) => a.at - b.at);
-    // A live cue sets the go-live time itself.
+    // A live cue sets the go-live time itself; the session runs on until it has applied.
     this.#live = (options.live ?? false) && !this.#cues.some((cue) => cue.action === "live");
     const bad = this.#cues.find((cue) => !Number.isFinite(cue.at) || cue.at < 0);
     if (bad) throw new RangeError(`cue time must be a finite number >= 0, got ${bad.at}`);
@@ -313,7 +315,11 @@ export class RenderSession {
   status(): SessionStatus {
     const { built, total } = this.player.progress;
     // Tolerate float error from summing 1000 / fps steps.
-    const done = this.#builtAt !== null && this.#elapsed - this.#builtAt >= this.tailMs - 1e-6 && !this.#goingLive();
+    const done =
+      this.#builtAt !== null &&
+      this.#elapsed - this.#builtAt >= this.tailMs - 1e-6 &&
+      this.#nextCue >= this.#cues.length &&
+      !this.#goingLive();
     return { state: this.player.state, built, total, done };
   }
 

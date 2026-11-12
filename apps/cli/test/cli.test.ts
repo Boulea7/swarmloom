@@ -135,7 +135,9 @@ describe("render options", () => {
     [["a.md", "--duration", "5", "--max-duration", "9"], "either --duration (exact length) or --max-duration"],
     [["a.md", "--duration", "601"], '--duration must be at most 600 with sound (got "601")'],
     [["a.md", "--duration", "4", "--cue", "8b:pause"], "counts beats, which needs --bpm"],
-    [["a.md", "--duration", "4", "--bpm", "120", "--cue", "8b:pause"], "at or after the end of the video"],
+    [["a.md", "--duration", "4", "--bpm", "120", "--cue", "8b:pause"], "after the last frame of the video (4 s"],
+    // Before the end, but after the last frame (966.7 ms at 30 fps): no frame would show it.
+    [["a.md", "--duration", "1", "--cue", "990ms:pause"], "after the last frame of the video (1 s at 30 fps)"],
     [["a.md", "--cue", "3:rewind"], "--cue must look like <time>:<action>"],
     [["a.md", "--opening", "soon"], "--opening must be a time"],
     [["a.md", "--opening", "61"], "--opening must be at most 60 s"],

@@ -135,7 +135,7 @@ export interface RenderInit {
 
 /** What `init()` reports about the loaded input. */
 export interface RenderInfo {
-  /** Estimated length of the whole video (build plus tail), ms; 0 when unknown. */
+  /** Estimated length of the whole video (build plus tail, or up to the last cue when later), ms; 0 when unknown. */
   estimatedMs: number;
   /** Number of layers in the blueprint. */
   layers: number;

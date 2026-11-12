@@ -15,7 +15,7 @@ import { moveIntoPlace } from "../util/fs";
 import { trackTempDir } from "../util/owned";
 import { type PlatformFont, RenderPageDriver } from "./driver";
 import { type FrameImageType, formatHasAudio, frameImageType, type OutputFormat } from "./encode";
-import { runFrameLoop } from "./frames";
+import { frameLimit, runFrameLoop } from "./frames";
 import { inputBase, type RenderSource, servedInput, toRenderInput } from "./input";
 import { type FrameWriter, ffmpegWriter, pngSequenceWriter } from "./output";
 import { formatClock, Progress } from "./progress";
@@ -186,7 +186,7 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
 
     const writer = await createWriter(job, deps, tmp, imageType);
     cleanup.defer(() => writer.abort());
-    const maxFrames = Math.max(1, Math.round((job.maxDurationMs * job.fps) / 1000));
+    const maxFrames = frameLimit(job.maxDurationMs, job.fps);
     progress.expect(job.fixedLength ? maxFrames : Math.min(maxFrames, Math.ceil((estimate * job.fps) / 1000) + 1));
     const frameSha256: string[] = [];
     const sink = (frame: Uint8Array, index: number) => {

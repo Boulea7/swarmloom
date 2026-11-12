@@ -36,6 +36,7 @@ import {
   sourceDigest,
   writeAtomic,
 } from "../pipeline/evidence";
+import { frameLimit } from "../pipeline/frames";
 import { inputFilePath, isWebUrl, outputStem, type RenderSource, resolveSource } from "../pipeline/input";
 import { formatClock, lineWidth, wrapFields } from "../pipeline/progress";
 import { type PlayerSettings, type RenderSummary, renderVideo } from "../pipeline/render";
@@ -97,7 +98,9 @@ Swarm:
                           17b:speed=1 hurries only the start). Applied at the first 1/120 s
                           step at or after <at>; at an fps that does not divide 120 (25, 50)
                           a frame time that comes first applies it. Either way the first frame
-                          at or after <at> shows it; same-time cues in order given
+                          at or after <at> shows it; same-time cues in order given. The video
+                          runs past the tail until the last cue has shown, so that needs a frame
+                          before --duration or --max-duration
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
                           and plain-http files from other sites are never loaded
@@ -307,9 +310,13 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   const maxDurationMs = soundCapped ? MAX_SOUND_MS : requestedMs;
   const fps = readInt("fps", values.fps, 30, 1, 120);
   const cues = (values.cue ?? []).map((spec) => parseCue(spec, settings.bpm, fps));
+  // The first frame at or after a cue shows it, so a cue needs a frame left; the video then runs at
+  // least to that frame, even when the build ends long before.
+  const frames = frameLimit(maxDurationMs, fps);
   for (const cue of cues) {
-    if (cue.at >= maxDurationMs) {
-      throw new UsageError(`--cue ${cue.spec} is at or after the end of the video (${maxDurationMs / 1000} s)`);
+    if (cue.frame >= frames) {
+      const end = `${maxDurationMs / 1000} s at ${fps} fps`;
+      throw new UsageError(`--cue ${cue.spec} comes after the last frame of the video (${end})`);
     }
   }
   const evidence = {

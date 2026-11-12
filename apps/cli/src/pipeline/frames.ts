@@ -47,6 +47,11 @@ export function frameTime(n: number, fps: number): number {
   return (n * 1000) / fps;
 }
 
+/** Most frames a video of `maxDurationMs` captures (the frame loop's `maxFrames`): at least one. */
+export function frameLimit(maxDurationMs: number, fps: number): number {
+  return Math.max(1, Math.round((maxDurationMs * fps) / 1000));
+}
+
 /**
  * Captures frame 0 at engine time 0, then alternates step(1000 / fps) and capture until the page
  * reports `done` (that frame is included) or `maxFrames` is reached; with `untilDone: false` it always

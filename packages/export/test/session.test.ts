@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { RenderSession } from "../src/index";
 import { ClockPlayer } from "./fake-player";
 
@@ -50,4 +50,28 @@ it("applies a cue at a frame time between two ticks when that comes before the n
   expect(speeds.map(([, speed]) => speed)).toEqual([2, 3]);
   expect(speeds[0]?.[0]).toBeCloseTo(40, 6);
   expect(speeds[1]?.[0]).toBeCloseTo(5000 / 120, 6);
+});
+
+it("runs past the tail until a later live cue goes live, instead of ending in the finale", async () => {
+  const player: { current?: ClockPlayer } = {};
+  // Built at 1000 ms, so the 200 ms tail alone would end the video at 1200 ms, before the cue.
+  const session = new RenderSession({
+    player: { blueprint },
+    tailMs: 200,
+    live: true,
+    cues: [{ at: 2000, action: "live" }],
+    tickRate: 120,
+    createPlayer: (options) => {
+      const fake = new ClockPlayer(options);
+      fake.goLive = () => options.onLive?.();
+      player.current = fake;
+      return fake;
+    },
+  });
+  const goLive = vi.spyOn(player.current as ClockPlayer, "goLive");
+  let status = await session.start();
+  while (!status.done && session.elapsed < 5000) status = await session.step(40);
+  session.dispose();
+  expect(goLive).toHaveBeenCalledOnce();
+  expect(session.elapsed).toBeCloseTo(2000, 6);
 });
