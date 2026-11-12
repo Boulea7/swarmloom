@@ -21,6 +21,112 @@ export function bytesToDataUrl(bytes: ArrayBuffer | ArrayBufferView, type: strin
   return blobToDataUrl(new Blob([view.slice()], { type }));
 }
 
+/**
+ * Pieces of the frame markup at least this long (data URLs of images and fonts) are kept from one
+ * frame to the next as the same string, so their escaping and URI encoding are done once.
+ */
+export const LONG_PIECE = 16 * 1024;
+
+/** Image types a smaller copy is made of (see {@link ResourceCache.fitted}): bitmaps, GIFs aside. */
+const FITTED_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/pjpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+  "image/bmp",
+]);
+
+/** Data URLs shorter than this are embedded as they are: a smaller copy would save little. */
+const MIN_FITTED_LENGTH = 64 * 1024;
+
+/**
+ * Images whose smaller copies are kept, the most recently used: a page that keeps making new images
+ * (a script drawing into data URLs) would otherwise keep every one of them.
+ */
+const MAX_FITS = 64;
+
+/** Quality of the smaller copy of a JPEG (the encoders' usual default). */
+const JPEG_QUALITY = 0.92;
+
+interface Size {
+  width: number;
+  height: number;
+}
+
+/** What is known of an image a smaller copy may be made of. */
+interface Fit {
+  /** Its size in px, null when it does not decode. */
+  size: Promise<Size | null>;
+  /** Its smaller copies, by the number of times it was halved. */
+  copies: Map<number, Promise<string>>;
+}
+
+/** The type of a data URL that {@link ResourceCache.fitted} may make smaller, else null. */
+function fittedType(data: string): string | null {
+  if (data.length < MIN_FITTED_LENGTH) return null;
+  const type = /^data:([^;,]*)/i.exec(data.slice(0, 64))?.[1]?.toLowerCase() ?? "";
+  return FITTED_TYPES.has(type) ? type : null;
+}
+
+async function decodedImage(url: string): Promise<HTMLImageElement> {
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  return img;
+}
+
+async function naturalSize(url: string): Promise<Size | null> {
+  try {
+    const img = await decodedImage(url);
+    return img.naturalWidth > 0 && img.naturalHeight > 0
+      ? { width: img.naturalWidth, height: img.naturalHeight }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How many times an image of `size` can be halved and still have as many pixels as a box of `width`
+ * by `height` needs, however the image is fitted into it (stretched, contained or covering it); at
+ * most down to 1 px. 0 when it is less than twice as large as that.
+ */
+function halvings(size: Size, width: number, height: number): number {
+  const need = Math.max(width / size.width, height / size.height);
+  if (!(need < 0.5)) return 0;
+  const most = Math.floor(Math.log2(Math.min(size.width, size.height)));
+  return Math.max(0, Math.min(most, need > 0 ? Math.floor(-Math.log2(need)) : most));
+}
+
+/**
+ * The image `data` halved `times` times, each step averaging 2 x 2 pixels (one large step would
+ * skip pixels where a browser filters with bilinear sampling only): a JPEG again for a JPEG, else a
+ * PNG, which keeps transparency.
+ */
+async function halved(data: string, type: string, times: number): Promise<string> {
+  const img = await decodedImage(data);
+  let source: CanvasImageSource = img;
+  let width = img.naturalWidth;
+  let height = img.naturalHeight;
+  let canvas: OffscreenCanvas | null = null;
+  for (let i = 0; i < times; i++) {
+    width = Math.ceil(width / 2);
+    height = Math.ceil(height / 2);
+    canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return data;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(source, 0, 0, width, height);
+    source = canvas;
+  }
+  if (!canvas) return data;
+  const jpeg = type === "image/jpeg" || type === "image/jpg" || type === "image/pjpeg";
+  const blob = await canvas.convertToBlob(jpeg ? { type: "image/jpeg", quality: JPEG_QUALITY } : { type: "image/png" });
+  return blobToDataUrl(blob);
+}
+
 /** What the export frame may load from the web: https images and fonts, or nothing. */
 export type ResourcePolicy = "https" | "none";
 
@@ -72,13 +178,18 @@ type ResourceKind = "image" | "font";
  * fetched: the frame's own load of a font is a CORS request too. A resource that cannot be read
  * (another site without CORS) becomes {@link BLANK_IMAGE}. Either is reported once through
  * `onWarning`. Pictures drawn from elements are kept too, while the element stays in the same
- * state ({@link picture}).
+ * state ({@link picture}), and so are the smaller copies of large images ({@link fitted}) and the
+ * markup written for long data URLs ({@link markup}).
  */
 export class ResourceCache {
   /** Keyed by kind and URL: another site's URL may be fetched as a font but not as an image. */
   readonly #done = new Map<string, string>();
   readonly #pending = new Map<string, Promise<string>>();
   readonly #pictures = new WeakMap<object, { key: string; url: string }>();
+  readonly #fits = new Map<string, Fit>();
+  /** Markup of long data URLs by writer and data URL, made or used for this frame and the last. */
+  #markup = new Map<(data: string) => string, Map<string, string>>();
+  #lastMarkup = new Map<(data: string) => string, Map<string, string>>();
   readonly #fetch: typeof fetch;
   readonly #onWarning: (message: string) => void;
   readonly #gate: ResourceGate;
@@ -108,6 +219,61 @@ export class ResourceCache {
     const url = draw();
     this.#pictures.set(element, { key, url });
     return url;
+  }
+
+  /**
+   * The image data URL `data`, or a smaller copy of it when it is a large bitmap (a photo) with at
+   * least twice the pixels a box of `width` by `height` device px needs: the copy is the image
+   * halved as often as that allows, made once for each number of halvings. An SVG image decodes
+   * every image it embeds again whenever its markup changes, in one main-thread task: eight 1600 x
+   * 1200 photos shown as thumbnails held the page for about 300 ms a frame.
+   */
+  fitted(data: string, width: number, height: number): Promise<string> {
+    const type = fittedType(data);
+    if (type === null) return Promise.resolve(data);
+    const fit = this.#fits.get(data) ?? { size: naturalSize(data), copies: new Map() };
+    // Kept in the order of use: the image used longest ago goes first.
+    this.#fits.delete(data);
+    this.#fits.set(data, fit);
+    if (this.#fits.size > MAX_FITS) this.#fits.delete(this.#fits.keys().next().value as string);
+    const { size, copies } = fit;
+    return size.then((known) => {
+      const times = known ? halvings(known, width, height) : 0;
+      if (times === 0) return data;
+      let copy = copies.get(times);
+      if (!copy) {
+        // A copy that cannot be made (a tainted or unsupported canvas) leaves the image as it is.
+        copy = halved(data, type, times).catch(() => data);
+        copies.set(times, copy);
+      }
+      return copy;
+    });
+  }
+
+  /**
+   * What `write` makes of the data URL `data` (escaped for an attribute, quoted for CSS): for one
+   * of at least {@link LONG_PIECE} characters, the same string as on the frame before, so it is
+   * escaped once and its URI encoding can be reused rather than redone for megabytes every frame.
+   */
+  markup(data: string, write: (data: string) => string): string {
+    if (data.length < LONG_PIECE) return write(data);
+    let made = this.#markup.get(write);
+    if (!made) {
+      made = new Map();
+      this.#markup.set(write, made);
+    }
+    let text = made.get(data);
+    if (text === undefined) {
+      text = this.#lastMarkup.get(write)?.get(data) ?? write(data);
+      made.set(data, text);
+    }
+    return text;
+  }
+
+  /** Starts the markup of a frame: what the frame before it did not use is let go. */
+  nextFrame(): void {
+    this.#lastMarkup = this.#markup;
+    this.#markup = new Map();
   }
 
   /** The data URL of an image when already known (data URLs map to themselves), else undefined. */

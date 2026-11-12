@@ -1,6 +1,6 @@
 import type { ShadowWatch } from "../../render/live";
 import { FontFaceCache, type FontWatch } from "./fonts";
-import { networkGate, ResourceCache, type ResourcePolicy } from "./resources";
+import { LONG_PIECE, networkGate, ResourceCache, type ResourcePolicy } from "./resources";
 import { type CanvasOverlay, type FrameSnapshot, type SnapshotStats, snapshotFrame } from "./snapshot";
 import { readBaseline, type StyleBaseline } from "./styles";
 
@@ -70,8 +70,11 @@ export class FrameRasterizer {
   readonly #resources: ResourceCache;
   readonly #faces: FontFaceCache;
   #baseline: StyleBaseline | null = null;
-  /** The last font rules drawn and their URI encoding, kept while the next frames use the same. */
-  #fontUri = { css: "", uri: "" };
+  /**
+   * URI encodings of the long parts of the last image (fonts, data URLs of images), by part: the
+   * next frames mostly use the same, and encoding megabytes again took tens of milliseconds.
+   */
+  #encoded = new Map<string, string>();
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -83,8 +86,11 @@ export class FrameRasterizer {
     this.#faces = new FontFaceCache((url) => this.#resources.font(url));
   }
 
-  /** Serialises the current frame (exposed for diagnostics and tests). */
-  async snapshot(signal?: AbortSignal): Promise<FrameSnapshot> {
+  /**
+   * Serialises the current frame (exposed for diagnostics and tests), for drawing at `scale`
+   * device px per CSS px.
+   */
+  async snapshot(signal?: AbortSignal, scale = 1): Promise<FrameSnapshot> {
     const { document, width, height, shadows, fonts } = this.#o;
     this.#baseline ??= readBaseline(document);
     return snapshotFrame(
@@ -95,6 +101,7 @@ export class FrameRasterizer {
         shadowRootOf: () => null,
         shadowRoots: () => shadows.roots(),
         faces: () => fonts.faces(),
+        scale,
       },
       this.#baseline,
       this.#resources,
@@ -112,23 +119,37 @@ export class FrameRasterizer {
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     signal?: AbortSignal,
   ): Promise<SnapshotStats> {
-    const {
-      parts: [head, fonts, tail],
-      stats,
-      overlays,
-    } = await this.snapshot(signal);
-    // Fonts are often megabytes and rarely change between frames: they are encoded once.
-    if (fonts !== this.#fontUri.css) this.#fontUri = { css: fonts, uri: encodeURIComponent(fonts) };
+    const { width, height } = ctx.canvas;
+    const { parts, stats, overlays } = await this.snapshot(
+      signal,
+      Math.max(width / this.#o.width, height / this.#o.height),
+    );
     const img = new Image();
     // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
     // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
-    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(head)}${this.#fontUri.uri}${encodeURIComponent(tail)}`;
+    img.src = this.#uri(parts);
     await decoded(img);
-    const { width, height } = ctx.canvas;
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
     for (const overlay of overlays) drawOverlay(ctx, overlay, width / this.#o.width, height / this.#o.height);
     return stats;
+  }
+
+  /** The image's data URL, with the encodings of long parts the last image had reused. */
+  #uri(parts: readonly string[]): string {
+    const encoded = new Map<string, string>();
+    let uri = "data:image/svg+xml;charset=utf-8,";
+    for (const part of parts) {
+      if (part.length < LONG_PIECE) {
+        uri += encodeURIComponent(part);
+        continue;
+      }
+      const known = encoded.get(part) ?? this.#encoded.get(part) ?? encodeURIComponent(part);
+      encoded.set(part, known);
+      uri += known;
+    }
+    this.#encoded = encoded;
+    return uri;
   }
 }

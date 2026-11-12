@@ -253,3 +253,49 @@ it("encodes a paused video's frame once while it stays where it is", async () =>
   expect(encode).toHaveBeenCalledTimes(2);
   encode.mockRestore();
 });
+
+/** A `type` data URL of `width` x `height` px: blue under grey noise, so that it compresses badly. */
+async function noisy(width: number, height: number, type: string): Promise<string> {
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const image = ctx.createImageData(width, height);
+  let seed = 1;
+  for (let i = 0; i < image.data.length; i += 4) {
+    seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+    const n = seed >>> 26;
+    image.data.set([n, n, 192 + n, 255], i);
+  }
+  ctx.putImageData(image, 0, 0);
+  const blob = await canvas.convertToBlob({ type, quality: 0.9 });
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(blob);
+  });
+}
+
+it("embeds a large photo only as large as its box needs, unless it may show larger", async () => {
+  const photo = await noisy(1600, 1200, "image/jpeg");
+  const unfitted = await noisy(640, 480, "image/jpeg");
+  const { rasterizer } = await frameOf(
+    `<body style="margin:0"><img src="${photo}" style="display:block;width:50px;height:40px">` +
+      `<img src="${unfitted}" style="display:block;width:50px;height:40px;object-fit:none"></body>`,
+  );
+  const { svg } = await rasterizer.snapshot();
+  const sizes = await Promise.all(
+    (svg.match(/data:image\/jpeg;base64,[\w+/=]+/g) ?? []).map(async (url) => {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      return [img.naturalWidth, img.naturalHeight];
+    }),
+  );
+  // Halved four times: 100 x 75 still covers the 50 x 40 box twice over, 50 x 38 would not.
+  expect(sizes).toEqual([
+    [100, 75],
+    [640, 480],
+  ]);
+  const [r = 0, , b = 0] = await pixel(rasterizer, 25, 20);
+  expect(r).toBeLessThan(100);
+  expect(b).toBeGreaterThan(150);
+});

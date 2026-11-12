@@ -1,7 +1,7 @@
 import { yieldTask } from "../schedule";
 import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
 import { pickImageSets } from "./image-set";
-import { BLANK_IMAGE, type ResourceCache } from "./resources";
+import { BLANK_IMAGE, LONG_PIECE, type ResourceCache } from "./resources";
 import { type InheritedValues, nativeControl, type StyleBaseline, styleText } from "./styles";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -181,6 +181,11 @@ export interface SnapshotSource {
   shadowRoots(): Iterable<ShadowRoot>;
   /** Faces created through the FontFace API. */
   faces(): readonly WatchedFace[];
+  /**
+   * Device px per CSS px the image is drawn at (default 1): a large photo is embedded only as large
+   * as its box needs (see {@link ResourceCache.fitted}).
+   */
+  scale?: number;
 }
 
 /** What one snapshot found worth reporting. */
@@ -212,13 +217,15 @@ export interface CanvasOverlay {
 
 /** One serialised frame. */
 export interface FrameSnapshot {
-  svg: string;
+  /** The image's markup (`parts` joined when read). */
+  readonly svg: string;
   /**
-   * `svg` in three pieces: before its `@font-face` rules, the rules, and after them. The rules are
-   * the same string object from frame to frame while the fonts stay the same, so whoever encodes
-   * the image can encode them once.
+   * `svg` in consecutive pieces, those of at least {@link LONG_PIECE} characters on their own: the
+   * `@font-face` rules and the data URLs of images, canvases and video frames among them are the
+   * same strings from frame to frame while they stay the same, so whoever encodes the image can
+   * encode each once.
    */
-  parts: readonly [string, string, string];
+  parts: readonly string[];
   stats: SnapshotStats;
   /** Canvases to draw over the image, in paint order (a WebGL model, then the cursor layer). */
   overlays: CanvasOverlay[];
@@ -248,6 +255,11 @@ interface ResourceUse {
   shared: number;
   /** Of those, the `<img>` sources. */
   images: number;
+  /**
+   * Device px of the largest box an `<img>` showing it is drawn in, Infinity when one may draw it
+   * larger than its box (see {@link imageBox}); a video poster counts as unbounded.
+   */
+  fit: { width: number; height: number };
 }
 
 /** A canvas that may become a {@link CanvasOverlay}, and its token index. */
@@ -339,17 +351,20 @@ interface DocView {
   reach: Box;
   /** The frame document itself (not a page inside it). */
   top: boolean;
+  /** Device px of the image per CSS px of this document, the transforms of the frames it is in included. */
+  scale: number;
 }
 
 /** Steps of a walk: each `yield` hands the main thread back until the walk resumes. */
 type Steps = Generator<void, void, void>;
 
-function docView(win: Window & typeof globalThis, width: number, height: number, top: boolean): DocView {
+function docView(win: Window & typeof globalThis, width: number, height: number, top: boolean, scale: number): DocView {
   return {
     win,
     viewport: { left: 0, top: 0, right: width, bottom: height },
     reach: { left: -INK_MARGIN, top: -INK_MARGIN, right: width + INK_MARGIN, bottom: height + INK_MARGIN },
     top,
+    scale,
   };
 }
 
@@ -378,20 +393,31 @@ function tokenKey(): string {
 /**
  * A token for a resource URL, resolved after the walk (see {@link token} for the kinds). URLs used
  * more than once in shareable places are defined once in the sheet: a page bitmap cropped into
- * many layers would otherwise be inlined in every one of them.
+ * many layers would otherwise be inlined in every one of them. `box` is the size an `<img>` ("i")
+ * draws it at (see {@link imageBox}), unbounded when left out.
  */
-function embedUrl(walk: Walk, url: string, kind: "a" | "i" | "c" | "s", fallback?: () => string | null): string {
+function embedUrl(
+  walk: Walk,
+  url: string,
+  kind: "a" | "i" | "c" | "s",
+  fallback?: () => string | null,
+  box?: { width: number; height: number } | null,
+): string {
   if (!url || url.startsWith("#")) return url;
   let index = walk.urlIndex.get(url);
   if (index === undefined) {
     index = walk.urls.length;
     walk.urlIndex.set(url, index);
-    walk.urls.push({ url, fallback, shared: 0, images: 0 });
+    walk.urls.push({ url, fallback, shared: 0, images: 0, fit: { width: 0, height: 0 } });
   }
   const use = walk.urls[index] as ResourceUse;
   use.fallback ??= fallback;
   if (kind === "i" || kind === "c" || kind === "s") use.shared++;
-  if (kind === "i") use.images++;
+  if (kind === "i") {
+    use.images++;
+    use.fit.width = Math.max(use.fit.width, box?.width ?? Number.POSITIVE_INFINITY);
+    use.fit.height = Math.max(use.fit.height, box?.height ?? Number.POSITIVE_INFINITY);
+  }
   return token(walk, kind, index);
 }
 
@@ -1179,10 +1205,18 @@ function overlayOf(
 
 /** The `src` of a canvas clone: its pixels, or a token while it may be drawn over the snapshot instead. */
 function canvasSource(walk: Walk, canvas: HTMLCanvasElement, overlay: CanvasOverlay | null): string {
-  if (!overlay) return canvasDataUrl(canvas);
+  if (!overlay) return pixelsToken(walk, canvasDataUrl(canvas));
   const index = walk.canvases.push(null) - 1;
   walk.overlays.push({ ...overlay, index });
   return token(walk, "k", index);
+}
+
+/**
+ * A token for the data URL of drawn pixels (a canvas, a video frame): kept out of the markup until
+ * the end, where it becomes a piece of its own (see {@link FrameSnapshot.parts}).
+ */
+function pixelsToken(walk: Walk, url: string): string {
+  return token(walk, "k", walk.canvases.push(url) - 1);
 }
 
 /** `translate` value that adds an offset to the element's own `translate`. */
@@ -1226,7 +1260,7 @@ function videoSource(walk: Walk, video: HTMLVideoElement): string {
   if (!hasFrame(video)) return ` src="${BLANK_IMAGE}"`;
   const key = stillFrame(video);
   const draw = () => videoFrameUrl(walk, video);
-  return ` src="${key === null ? draw() : walk.resources.picture(video, key, draw)}"`;
+  return ` src="${pixelsToken(walk, key === null ? draw() : walk.resources.picture(video, key, draw))}"`;
 }
 
 /**
@@ -1331,6 +1365,30 @@ function videoPlayer(walk: Walk, video: HTMLVideoElement, cs: CSSStyleDeclaratio
     (picture ? `<img${source} style="${escapeAttr(`${box};${fit}`)}"/>` : "") +
     controlsSvg(video, w, h, picture, box, `sl${walk.nextClass++}`)
   );
+}
+
+/**
+ * The largest size, device px, at which the picture of `img` is drawn: its box as the page
+ * transforms it, or its layout size where that is larger (a smaller picture could change how a
+ * flex or grid item sizes). Null when the picture may be drawn larger than its box (`object-fit:
+ * none`) or has to keep its own pixels (pixelated, or not turned as its EXIF orientation says).
+ * Its bounding box overstates the size of a rotated box; a skewed or 3D-projected one is not
+ * covered, and may show its picture at a lower resolution.
+ */
+function imageBox(
+  img: HTMLImageElement,
+  cs: CSSStyleDeclaration,
+  view: DocView,
+): { width: number; height: number } | null {
+  if (cs.getPropertyValue("object-fit") === "none") return null;
+  const rendering = cs.getPropertyValue("image-rendering");
+  if (rendering !== "auto" && rendering !== "smooth" && rendering !== "high-quality") return null;
+  if (cs.getPropertyValue("image-orientation") === "none") return null;
+  const rect = img.getBoundingClientRect();
+  return {
+    width: Math.max(rect.width * view.scale, px(cs, "width")),
+    height: Math.max(rect.height * view.scale, px(cs, "height")),
+  };
 }
 
 /** Draws a loaded image into a PNG data URL; used when its URL cannot be fetched. */
@@ -1654,7 +1712,10 @@ function* emitElement(
   if (!svg && local === "img") {
     const img = el as HTMLImageElement;
     const src = img.currentSrc || img.src;
-    attrs += src && !src.startsWith("#") ? embedUrl(walk, src, "i", imageFallback(img)) : ` src="${BLANK_IMAGE}"`;
+    attrs +=
+      src && !src.startsWith("#")
+        ? embedUrl(walk, src, "i", imageFallback(img), imageBox(img, cs, view))
+        : ` src="${BLANK_IMAGE}"`;
   } else if (canvas) {
     attrs = ` src="${canvasSource(walk, canvas, overlay)}"`;
   } else if (local === "video" && !svg) {
@@ -1663,7 +1724,7 @@ function* emitElement(
 
   if (frame) {
     walk.out.push(`<div${xmlns}${style}>`);
-    yield* emitFrame(walk, el as HTMLIFrameElement, cs);
+    yield* emitFrame(walk, el as HTMLIFrameElement, cs, view);
     walk.out.push("</div>");
     return;
   }
@@ -1819,7 +1880,7 @@ function keptParent(walk: Walk, el: Element, site: KeptElements): InheritedValue
 }
 
 /** The document of a same-origin frame drawn into its box, at its scroll position. */
-function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaration): Steps {
+function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaration, outer: DocView): Steps {
   let doc: Document | null = null;
   try {
     doc = frame.contentDocument;
@@ -1835,7 +1896,13 @@ function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaratio
     x: Number.parseFloat(cs.getPropertyValue("padding-left")) || 0,
     y: Number.parseFloat(cs.getPropertyValue("padding-top")) || 0,
   };
-  yield* emitDocument(walk, docView(win, width, height, false), frame, width, height, at);
+  // How much the page's transforms scale the frame: its bounding box against its layout size.
+  const rect = frame.getBoundingClientRect();
+  const scaled = Math.max(
+    frame.offsetWidth > 0 ? rect.width / frame.offsetWidth : 1,
+    frame.offsetHeight > 0 ? rect.height / frame.offsetHeight : 1,
+  );
+  yield* emitDocument(walk, docView(win, width, height, false, outer.scale * scaled), frame, width, height, at);
 }
 
 function transparentColor(color: string): boolean {
@@ -2039,45 +2106,65 @@ function frameChars(walk: Walk): number[] {
 }
 
 /**
- * Style sheet of the snapshot after its fonts (which open it, see {@link FrameSnapshot.parts}): the
- * reset every clone starts from, the resources used more than once and pseudo-elements. Ends the
- * `<style>` element.
+ * Pieces of the snapshot's markup (see {@link FrameSnapshot.parts}): consecutive short ones are
+ * joined, one of at least {@link LONG_PIECE} characters stays a piece of its own.
  */
-function sheetAfterFonts(rules: readonly string[], shared: readonly string[]): string {
-  // Only the clones inside the foreignObject: resetting the wrapping `<svg>` and `<foreignObject>`
-  // would turn their width and height (geometry properties) to `auto`, and Firefox then draws
-  // nothing of the foreignObject.
-  // The image is drawn in the host's forced colours (Windows high contrast) like a page; the clones
-  // inherit this opt-out and keep the colours they were given, as in the CLI's browser. `:where`
-  // leaves the reset at element specificity, so the shared-resource classes below still override it.
-  const css = [
-    "",
-    "foreignObject{forced-color-adjust:none}",
-    "foreignObject *:where(:not([data-sl-controls]):not([data-sl-controls] *)){all:unset}",
-    "style{display:none!important}",
-    ...shared,
-    ...rules,
-  ].join("\n");
-  return `${css.replace(/]]>/g, "]]]]><![CDATA[>")}]]></style>`;
+class Pieces {
+  readonly #list: string[] = [];
+  #short: string[] = [];
+
+  add(text: string): void {
+    if (text.length < LONG_PIECE) {
+      this.#short.push(text);
+      return;
+    }
+    this.#flush();
+    this.#list.push(text);
+  }
+
+  /** Adds `text` with each token `tokens` matches replaced by what `resolve` writes for it. */
+  addResolved(text: string, tokens: RegExp, resolve: (kind: string, index: number) => string): void {
+    let at = 0;
+    for (const match of text.matchAll(tokens)) {
+      this.add(text.slice(at, match.index));
+      this.add(resolve(match[1] as string, Number(match[2])));
+      at = match.index + match[0].length;
+    }
+    this.add(text.slice(at));
+  }
+
+  done(): string[] {
+    this.#flush();
+    return this.#list;
+  }
+
+  #flush(): void {
+    if (this.#short.length === 0) return;
+    this.#list.push(this.#short.join(""));
+    this.#short = [];
+  }
 }
 
 /**
- * Definitions of the resources used more than once: a class per resource for `<img>` clones
- * (`content` replaces the image) and custom properties on the snapshot's root (CSS `url()`s refer
- * to them). The class names the URL itself, not the custom property: Chromium makes a new image of
- * a `url()` substituted through `var()` for every element, and decodes each one again (a page
- * bitmap cropped into dozens of layers held the main thread for over 100 ms a frame).
+ * Start of the snapshot's style sheet after its fonts (which open it): the reset every clone starts
+ * from. Only the clones inside the foreignObject: resetting the wrapping `<svg>` and
+ * `<foreignObject>` would turn their width and height (geometry properties) to `auto`, and Firefox
+ * then draws nothing of the foreignObject. The image is drawn in the host's forced colours
+ * (Windows high contrast) like a page; the clones inherit this opt-out and keep the colours they
+ * were given, as in the CLI's browser. `:where` leaves the reset at element specificity, so the
+ * shared-resource classes after it still override it.
  */
-function sharedRules(walk: Walk, data: readonly string[]): string[] {
-  const props: string[] = [];
-  const classes: string[] = [];
-  walk.urls.forEach((use, i) => {
-    if (use.shared < 2) return;
-    const url = `url(${cssString(data[i] ?? BLANK_IMAGE)})`;
-    if (use.images > 0) classes.push(`.slr${i}{content:${url}}`);
-    if (use.shared > use.images) props.push(`--slr${i}:${url}`);
-  });
-  return props.length > 0 ? [`foreignObject>div{${props.join(";")}}`, ...classes] : classes;
+const SHEET_RESET = [
+  "",
+  "foreignObject{forced-color-adjust:none}",
+  "foreignObject *:where(:not([data-sl-controls]):not([data-sl-controls] *)){all:unset}",
+  "style{display:none!important}",
+].join("\n");
+
+/** The rest of the sheet: the rules of pseudo-elements (with tokens). Ends the `<style>` element. */
+function sheetRules(rules: readonly string[]): string {
+  const css = rules.map((rule) => `\n${rule}`).join("");
+  return `${css.replace(/]]>/g, "]]]]><![CDATA[>")}]]></style>`;
 }
 
 /** Keeps a CSS string inside the sheet's CDATA section (`\>` is `>` in CSS). */
@@ -2085,20 +2172,61 @@ function sheetSafe(css: string): string {
   return css.replace(/]]>/g, "]]\\>");
 }
 
-/** Markup for one token once every resource has its data URL (see {@link token}). */
-function tokenText(walk: Walk, data: readonly string[], kind: string, index: number): string {
+/** Writers of a data URL into the markup, for {@link ResourceCache.markup}. */
+const srcAttribute = (url: string): string => ` src="${escapeAttr(url)}"`;
+const styleUrl = (url: string): string => escapeAttr(`url(${cssString(url)})`);
+const sheetUrl = (url: string): string => sheetSafe(`url(${cssString(url)})`);
+
+/**
+ * Adds the definitions of the resources used more than once to the sheet: a class per resource for
+ * `<img>` clones (`content` replaces the image) and custom properties on the snapshot's root (CSS
+ * `url()`s refer to them). The class names the URL itself, not the custom property: Chromium makes
+ * a new image of a `url()` substituted through `var()` for every element, and decodes each one
+ * again (a page bitmap cropped into dozens of layers held the main thread for over 100 ms a frame).
+ * `pictures` are the data URLs for `<img>` clones, `data` those for CSS.
+ */
+function addSharedRules(pieces: Pieces, walk: Walk, data: readonly string[], pictures: readonly string[]): void {
+  const shared = walk.urls.flatMap((use, i) => (use.shared > 1 ? [i] : []));
+  const props = shared.filter((i) => (walk.urls[i] as ResourceUse).shared > (walk.urls[i] as ResourceUse).images);
+  if (props.length > 0) {
+    pieces.add("\nforeignObject>div{");
+    props.forEach((i, n) => {
+      pieces.add(`${n > 0 ? ";" : ""}--slr${i}:`);
+      pieces.add(walk.resources.markup(data[i] ?? BLANK_IMAGE, sheetUrl));
+    });
+    pieces.add("}");
+  }
+  for (const i of shared) {
+    if ((walk.urls[i] as ResourceUse).images === 0) continue;
+    pieces.add(`\n.slr${i}{content:`);
+    pieces.add(walk.resources.markup(pictures[i] ?? BLANK_IMAGE, sheetUrl));
+    pieces.add("}");
+  }
+}
+
+/**
+ * Markup for one token once every resource has its data URL (see {@link token}): `pictures` for
+ * `<img>` clones, `data` for the rest.
+ */
+function tokenText(
+  walk: Walk,
+  data: readonly string[],
+  pictures: readonly string[],
+  kind: string,
+  index: number,
+): string {
   if (kind === "k") return walk.canvases[index] ?? BLANK_IMAGE;
-  const url = data[index] ?? BLANK_IMAGE;
+  const { resources } = walk;
   const shared = (walk.urls[index]?.shared ?? 0) > 1;
   switch (kind) {
     case "i":
-      return shared ? ` class="slr${index}"` : ` src="${escapeAttr(url)}"`;
+      return shared ? ` class="slr${index}"` : resources.markup(pictures[index] ?? BLANK_IMAGE, srcAttribute);
     case "c":
-      return shared ? `var(--slr${index})` : escapeAttr(`url(${cssString(url)})`);
+      return shared ? `var(--slr${index})` : resources.markup(data[index] ?? BLANK_IMAGE, styleUrl);
     case "s":
-      return shared ? `var(--slr${index})` : sheetSafe(`url(${cssString(url)})`);
+      return shared ? `var(--slr${index})` : resources.markup(data[index] ?? BLANK_IMAGE, sheetUrl);
     default:
-      return escapeAttr(url);
+      return resources.markup(data[index] ?? BLANK_IMAGE, escapeAttr);
   }
 }
 
@@ -2186,7 +2314,7 @@ async function walkFrame(
   );
   try {
     const steps = (function* (): Steps {
-      yield* emitDocument(walk, docView(win, width, height, true), null, width, height);
+      yield* emitDocument(walk, docView(win, width, height, true, source.scale ?? 1), null, width, height);
       yield* emitKept(walk);
     })();
     for (;;) {
@@ -2207,7 +2335,9 @@ async function walkFrame(
  * (a native form control with `all: revert`) and given back the computed values that differ, the
  * root's or body's background painted over the whole canvas, and every resource (images,
  * canvases, fonts) embedded as a data URL, since an SVG image loads nothing else. Resources used
- * more than once are embedded once for images and once for CSS.
+ * more than once are embedded once for images and once for CSS. A large photo in an `<img>` is
+ * embedded halved as often as its box allows ({@link ResourceCache.fitted}): the image decodes all
+ * it embeds again on every frame whose markup changed.
  *
  * Only what can show is written: subtrees away from the viewport are left out (out of flow) or
  * written as empty boxes of their size (in flow), keeping the SVG elements in them that something
@@ -2225,7 +2355,8 @@ async function walkFrame(
  * base value; ink reaching more than {@link INK_MARGIN} px past the boxes of a subtree away from
  * the viewport (a huge shadow, a fixed-position pseudo-element) is not drawn; in Firefox, which
  * lacks CSS Typed OM, the margins a block's last content passes through its bottom edge stay inside
- * its clone (see {@link passedMargin}).
+ * its clone (see {@link passedMargin}); a photo in a skewed or 3D-projected box may be embedded
+ * smaller than it shows (see {@link imageBox}).
  *
  * @throws The signal's reason when it aborts while the walk pauses.
  */
@@ -2250,19 +2381,35 @@ export async function snapshotFrame(
   const fonts = await fontCss(walk, source, docs, faces);
   for (const { index } of walk.overlays) walk.canvases[index] = BLANK_IMAGE;
   const data = await Promise.all(walk.urls.map(({ url, fallback }) => resources.resolve(url, fallback)));
+  // What `<img>` clones show: large photos only as large as their boxes need.
+  const pictures = await Promise.all(
+    walk.urls.map(({ images, fit }, i) => {
+      const url = data[i] as string;
+      const bounded = images > 0 && Number.isFinite(fit.width) && Number.isFinite(fit.height);
+      return bounded ? resources.fitted(url, fit.width, fit.height) : url;
+    }),
+  );
+  resources.nextFrame();
   walk.out.push("</div>");
   const done = walk;
-  const tokens = tokenPattern(walk.key);
-  const resolved = (text: string) =>
-    text.replace(tokens, (_m, kind: string, index: string) => tokenText(done, data, kind, Number(index)));
-  // The fonts sit between the root box and the rest of the sheet, out of reach of the token pass:
-  // they are embedded already, and often megabytes long.
   const [root = "", ...body] = walk.out;
   const { width, height } = source;
-  const head =
+  const pieces = new Pieces();
+  pieces.add(
     `<svg xmlns="${SVG_NS}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
-    `<foreignObject x="0" y="0" width="${width}" height="${height}">${root}<style><![CDATA[`;
-  const tail = `${resolved(sheetAfterFonts(walk.rules, sharedRules(walk, data)) + body.join(""))}</foreignObject></svg>`;
+      `<foreignObject x="0" y="0" width="${width}" height="${height}">${root}<style><![CDATA[`,
+  );
+  // The fonts sit between the root box and the rest of the sheet, out of reach of the token pass:
+  // they are embedded already, and often megabytes long.
+  pieces.add(fonts);
+  pieces.add(SHEET_RESET);
+  addSharedRules(pieces, walk, data, pictures);
+  pieces.addResolved(
+    `${sheetRules(walk.rules)}${body.join("")}</foreignObject></svg>`,
+    tokenPattern(walk.key),
+    (kind, i) => tokenText(done, data, pictures, kind, i),
+  );
+  const parts = pieces.done();
   const overlays = walk.overlays.map(({ canvas, x, y, width: w, height: h, clip }) => ({
     canvas,
     x,
@@ -2271,5 +2418,12 @@ export async function snapshotFrame(
     height: h,
     clip,
   }));
-  return { svg: head + fonts + tail, parts: [head, fonts, tail], stats: walk.stats, overlays };
+  return {
+    get svg() {
+      return parts.join("");
+    },
+    parts,
+    stats: walk.stats,
+    overlays,
+  };
 }
