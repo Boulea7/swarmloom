@@ -15,11 +15,14 @@ export interface SessionCue {
   /** Session time in ms; the cue applies at the end of the first step (tick, with `tickRate`) reaching it. */
   at: number;
   /**
-   * "pause", "resume", "finish" (complete the build quickly) or "live": go live now, as the
-   * toolbar's go live does (an unfinished build completes at once). A "live" cue replaces the
-   * automatic go live of {@link RenderSessionOptions.live} and applies even when that is off.
+   * "pause", "resume", "finish" (complete the build quickly), "live": go live now, as the
+   * toolbar's go live does (an unfinished build completes at once), or "speed": `Player.setSpeed`
+   * with {@link speed}. A "live" cue replaces the automatic go live of
+   * {@link RenderSessionOptions.live} and applies even when that is off.
    */
-  action: "pause" | "resume" | "finish" | "live";
+  action: "pause" | "resume" | "finish" | "live" | "speed";
+  /** Build speed a "speed" cue sets (finite, > 0); ignored by the other actions. */
+  speed?: number;
 }
 
 /** One stretch of scrolling in session time (see {@link RenderSession.scrollLog}). */
@@ -143,6 +146,10 @@ export class RenderSession {
     this.#live = (options.live ?? false) && !this.#cues.some((cue) => cue.action === "live");
     const bad = this.#cues.find((cue) => !Number.isFinite(cue.at) || cue.at < 0);
     if (bad) throw new RangeError(`cue time must be a finite number >= 0, got ${bad.at}`);
+    const slow = this.#cues.find(
+      (cue) => cue.action === "speed" && !(Number.isFinite(cue.speed) && (cue.speed as number) > 0),
+    );
+    if (slow) throw new RangeError(`a speed cue needs a finite speed > 0, got ${slow.speed}`);
     this.#onWarning = options.onWarning;
     const rate = options.tickRate;
     if (rate !== undefined && !(rate >= 1 && rate <= 1000)) {
@@ -297,6 +304,7 @@ export class RenderSession {
       if (cue.action === "pause") this.player.pause();
       else if (cue.action === "resume") this.player.resume();
       else if (cue.action === "live") this.#goLive();
+      else if (cue.action === "speed") this.player.setSpeed(cue.speed as number);
       else this.player.finish?.();
       // The player ignores actions that do not fit its state, so follow what it actually did.
       const paused = this.player.state === "paused";

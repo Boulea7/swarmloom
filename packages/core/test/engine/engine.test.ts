@@ -114,6 +114,34 @@ describe("Engine", () => {
     expect(h.stage.live("icon")).toHaveLength(0);
   });
 
+  it("opens with three cursors drawing the largest shapes, then calls the swarm", () => {
+    const big = [700, 640, 580, 520, 460, 400].map((w, i) => box(`big${i}`, 20, 20 + i * 70, w, 60));
+    const small = Array.from({ length: 6 }, (_, i) => box(`s${i}`, 40 + i * 110, 470, 60, 40));
+    const page = blueprintOf([...small, ...big, text("t", 40, 540, "Hello")]);
+    const run = () => {
+      const h = harness(page, { intro: "outline", agents: 8 });
+      const log: string[] = [];
+      Object.assign(h.stage, { prefetch: (id: string) => log.push(id) });
+      h.engine.on("sound", (e) => {
+        if (e.event.name === "fanout") log.push("fanout");
+      });
+      void h.engine.play();
+      expect(h.engine.state).toBe("building");
+      h.until(() => log.includes("fanout") || h.engine.state === "finale");
+      const crewBefore = Math.max(...h.stage.drawn);
+      h.until(() => h.engine.state === "finale");
+      return { h, log, crewBefore };
+    };
+    const { h, log, crewBefore } = run();
+    const opening = log.slice(0, log.indexOf("fanout"));
+    expect(new Set(opening)).toEqual(new Set(big.map((l) => l.id)));
+    expect(crewBefore).toBe(3);
+    expect(Math.max(...h.stage.drawn)).toBeGreaterThan(3);
+    expect(h.stage.overlays.filter((o) => o.kind === "icon")).toHaveLength(0);
+    expect(h.stage.finished).toHaveLength(13);
+    expect(run().h.engine.soundLog).toEqual(h.engine.soundLog);
+  });
+
   it("pause freezes time, resume continues and speed shortens the build", async () => {
     const timeToFinale = (speed: number): number => {
       const h = harness(samplePage(), { speed, intro: false });

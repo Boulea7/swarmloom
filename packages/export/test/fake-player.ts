@@ -16,6 +16,7 @@ export class ClockPlayer implements Player {
   scrollY = 0;
   readyCalls = 0;
   destroyed = false;
+  readonly speeds: [number, number][] = [];
   readonly options: PlayerOptions;
   readonly #clock: VirtualClockLike;
   readonly #buildMs: number;
@@ -65,7 +66,10 @@ export class ClockPlayer implements Player {
     this.#finishing = true;
     this.soundLog.push({ t: this.#pt, name: "fanout", pan: 0 });
   }
-  setSpeed(): void {}
+  /** Records each setSpeed() call with the player time it came at. */
+  setSpeed(speed: number): void {
+    this.speeds.push([this.#pt, speed]);
+  }
   setSound(): void {}
   setFollow(): void {}
   replay(): void {}

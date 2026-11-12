@@ -31,6 +31,7 @@ export const SHARE_SETTING_KEYS: readonly (keyof StudioSettings)[] = [
   "agents",
   "labels",
   "finale",
+  "intro",
   "follow",
 ];
 

@@ -312,9 +312,15 @@ export interface SoundOptions {
   volume?: number;
   /** Sound pack id: "studio" (default), "soft", "8bit", "silent-keys" (musical events only, no keys or clicks). */
   pack?: string;
-  /** Musical grid tempo; notes and task starts quantize to it when `beatSync` is on. */
+  /** Musical grid tempo (default 112); `beatSync` snaps sounds to its eighth and sixteenth notes. */
   bpm?: number;
-  beatSync?: boolean;
+  /**
+   * true (default): placement notes, the fan-out and the final chord sound on the next eighth note.
+   * "all": also keys, clicks, snaps, pen anchors and heading ticks, each on the nearest sixteenth
+   * note at most 30 ms earlier or 60 ms later, one per sound and sixteenth; a hit with no line that
+   * close stays silent. false: every sound plays when it happens.
+   */
+  beatSync?: boolean | "all";
 }
 
 /* ------------------------------------------------------------------ */
@@ -506,7 +512,13 @@ export interface PlayerOptions {
   follow?: "scroll" | "tour" | "none";
   /** "auto" follows prefers-reduced-motion: quick cross-fade build, no flocking. */
   reducedMotion?: "auto" | boolean;
-  intro?: boolean;
+  /**
+   * Intro of the build. true (default): the cursors shuttle behind the file icon for 1.5 to 2.5 s,
+   * then fan out. "outline": no icon; three cursors walk in and draw the largest shapes in view
+   * (paths and boxes, two each), and the rest of the swarm joins once all of them are taken. false:
+   * the swarm walks in and starts at once.
+   */
+  intro?: boolean | "outline";
   /**
    * Optional. Opening before the intro, in ms of player time: the original shows first (an inline
    * stage shows the finished content, an overlay leaves the page uncovered), then it fades into the

@@ -128,6 +128,9 @@ describe("render page protocol", () => {
       [{ ...base, cues: [{ at: 10, action: "rewind" }] }, "action must be one of pause, resume, finish"],
       [{ ...base, cues: [{ at: -1, action: "pause" }] }, "at must be a number within 0..3600000"],
       [{ ...base, cues: "pause" }, "cues must be an array"],
+      [{ ...base, cues: [{ at: 0, action: "speed" }] }, "cues[0].speed is required"],
+      [{ ...base, cues: [{ at: 0, action: "speed", speed: 0 }] }, "speed must be a number within 0.05..16"],
+      [{ ...base, cues: [{ at: 0, action: "pause", speed: 2 }] }, 'cues[0].speed is only for a "speed" cue'],
     ];
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
   });
@@ -146,6 +149,45 @@ describe("render page protocol", () => {
       { t: 80, end: 160, from: 0, to: 100 },
       { t: 240, end: 280, from: 100, to: 60 },
     ]);
+  });
+
+  it("passes the intro through to the player", async () => {
+    const { api, players } = setup();
+    await api.init({ ...base, intro: "outline" });
+    expect(players[0]?.options.intro).toBe("outline");
+    api.dispose();
+    const short = { ...base, intro: "short" } as unknown as RenderInit;
+    await expect(api.init(short)).rejects.toThrow('intro must be a boolean or "outline"');
+  });
+
+  it("renders the soundtrack with the beat sync asked for", async () => {
+    const { api, audio } = setup();
+    await api.init({ ...base, bpm: 124, beatSync: "all" });
+    await api.step(40);
+    await api.audioWav();
+    expect(audio.mock.calls[0]?.[2]?.sound).toEqual({ enabled: true, pack: undefined, bpm: 124, beatSync: "all" });
+    api.dispose();
+    await expect(api.init({ ...base, beatSync: false } as unknown as RenderInit)).rejects.toThrow(
+      'beatSync must be true or "all"',
+    );
+  });
+
+  it("changes the build speed at speed cues, on the engine tick that reaches them", async () => {
+    const { api, players } = setup();
+    await api.init({
+      ...base,
+      cues: [
+        { at: 0, action: "speed", speed: 0.6 },
+        { at: 120, action: "speed", speed: 0.45 },
+      ],
+    });
+    for (let i = 0; i < 4; i++) await api.step(50);
+    // 120 ms falls between the 1/120 s ticks at 116.7 and 125 ms; the frame at 150 ms shows it.
+    expect((players[0] as ClockPlayer).speeds).toEqual([
+      [0, 0.6],
+      [125, 0.45],
+    ]);
+    api.dispose();
   });
 
   it("shifts the sounds a cue logs itself when it ends a pause", async () => {

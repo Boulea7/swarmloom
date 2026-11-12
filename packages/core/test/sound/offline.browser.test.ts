@@ -50,6 +50,18 @@ const SHOWCASE: SoundEvent[] = [
 ];
 
 describe("renderOffline", () => {
+  it("plays an event on time when a note before it moved past a scheduling slice", async () => {
+    // At 40 bpm the note at 1510 ms sounds at 2250, past the first 2 s slice; the key after it must
+    // still sound at 1600, not when the next slice is scheduled (1900).
+    const log: SoundEvent[] = [
+      { t: 1510, name: "note", pan: 0, pitch: 0.4, vel: 1 },
+      { t: 1600, name: "key", pan: 0, vel: 1 },
+    ];
+    const buffer = await renderOffline(log, 3000, { sampleRate: RATE, bpm: 40 });
+    expect(peak(buffer, 1600, 1700)).toBeGreaterThan(0.01);
+    expect(peak(buffer, 1900, 2000)).toBeLessThan(peak(buffer, 1600, 1700));
+  });
+
   it("is audible around event times and silent elsewhere, with notes on the beat grid", async () => {
     const noteAt = quantize(3000, DEFAULT_BPM); // ~3214 ms
     const buffer = await renderOffline(

@@ -6,10 +6,10 @@ Owner: sound zone. WebAudio synthesis for SwarmLoom: no audio files, every sound
 |---|---|
 | `index.ts` | Zone entry: `createSound` (internal, wired by the player), `renderOffline`, `encodeWav`, `quantize` (public). |
 | `realtime.ts` | `createSound`: live engine with autoplay-lock detection, unlock from any page gesture, smooth mute, idle suspend, levels and microphone. |
-| `offline.ts` | `renderOffline`: renders a `SoundEvent` log on an `OfflineAudioContext`, bit-identical for the same events, options and browser. |
+| `offline.ts` | `renderOffline`: renders a `SoundEvent` log on an `OfflineAudioContext`, bit-identical for the same events, options and browser; `soundTimes`: when each event of a log is heard (or null), without audio. |
 | `wav.ts` | `encodeWav`: 16-bit PCM RIFF/WAVE, all channels interleaved. |
-| `quantize.ts` | Pure eighth-note grid from t = 0 (default 112 BPM). |
-| `policy.ts` | Which events sound and when (shared by live and offline): grid snapping, one `note` per eighth slot (extras dropped, never queued), rate limits for typing and clicks, one-shot de-duplication. |
+| `quantize.ts` | Pure eighth-note grid from t = 0 (default 112 BPM) and the sixteenth-note line a hit may move to. |
+| `policy.ts` | Which events sound and when (shared by live and offline): grid snapping, one `note` per eighth slot (extras dropped, never queued), with `beatSync: "all"` hits on a sixteenth note at most 30 ms early or 60 ms late (one per name and line, the rest dropped), rate limits for typing and clicks, one-shot de-duplication. |
 | `synth.ts`, `voice.ts` | Voice graphs, voice cap (24, priority-based stealing) and the fixed mixer. |
 | `bus.ts` | Master bus: generated short stereo room (convolver), gentle compressor, volume, a soft limiter that keeps samples below -1 dBFS, and mute with `setTargetAtTime` ramps. |
 | `levels.ts`, `microphone.ts` | Smoothed loudness + 16 log-spaced bands for the halo finale; optional microphone input (analysed only, never played back). |

@@ -17,7 +17,9 @@ export interface RenderInput {
 /** A player action at a fixed video time, ms (applied on the first frame at or after it). */
 export interface RenderCue {
   at: number;
-  action: "pause" | "resume" | "finish" | "live";
+  action: "pause" | "resume" | "finish" | "live" | "speed";
+  /** Build speed a "speed" cue sets from then on (0.05-16); only on "speed" cues. */
+  speed?: number;
 }
 
 export interface RenderInit {
@@ -46,13 +48,17 @@ export interface RenderInit {
   /** Going live glides back to the top first. */
   liveTop?: boolean;
   follow?: "tour" | "none";
+  /** Intro: true (the warp, default), "outline" (largest shapes first) or false (render pages without it play the warp). */
+  intro?: boolean | "outline";
   /** Quick cross-fade build without flocking. */
   reducedMotion?: boolean;
   /** Musical grid tempo of placement notes. */
   bpm?: number;
+  /** "all" also puts keys, clicks, snaps and pen anchors on sixteenth notes (render pages without it ignore it). */
+  beatSync?: true | "all";
   /** Sound pack id ("studio", "soft", "8bit", "silent-keys"). */
   pack?: string;
-  /** Player actions at fixed video times (pause, resume, finish, live). */
+  /** Player actions at fixed video times (pause, resume, finish, live, speed). */
   cues?: RenderCue[];
   /** Font of terminal recordings: "fit" (14 px, shrunk to fit the width) or "fill" (grown to fill the frame). */
   terminalFont?: "fit" | "fill";

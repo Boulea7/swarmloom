@@ -72,7 +72,7 @@ const dispose = () => {
 | `labels` | `LabelMode` / `string[]` | `names`、`agents`、`roles`、`none` 或自定义标签；`none` 同时隐藏状态泡 |
 | `follow` | `scroll` / `tour` / `none` | 跟随用户、自动巡航或固定视口 |
 | `reducedMotion` | `auto` / `boolean` | 默认尊重系统减少动态偏好 |
-| `intro` | `boolean` | 是否播放图标环绕与扇出开场 |
+| `intro` | `boolean \| "outline"` | 开场：`true`（默认）为图标环绕与扇出；`"outline"` 不显示图标，三个光标先画视野内最大的形状（路径和方框，每个光标两个），全部被领取后其余光标加入；`false` 不要开场 |
 | `finale` | `flock` / `halo` / `none` | 群聚、音频响应光环或无结尾 |
 | `opening` | `number`，默认 0 | 先显示原内容的毫秒数（inline 显示完成后的内容，overlay 显示页面），再淡出到空白画布并开始开场 |
 | `liveTop` | `boolean`，默认 false | go live 时一边让光标离开，一边滑回顶部 |
@@ -90,7 +90,7 @@ const dispose = () => {
 | `volume` | 0–1 主音量 |
 | `pack` | `studio`、`soft`、`8bit`、`silent-keys` 或自定义包 ID |
 | `bpm` | 音乐网格速度 |
-| `beatSync` | 音符与任务起点是否按拍量化 |
+| `beatSync` | 声音对齐 `bpm` 网格：`true`（默认）时放置音符、散开音与完成和弦落在下一个八分音符；`"all"` 时按键、点击、吸附、钢笔锚点和标题跳字也落到最近的十六分音符（最多提前 30 ms 或推后 60 ms，每种声音每个十六分音符一次，离得更远的不发声）；`false` 时都按原时刻发声 |
 
 `ThemeSpec` 可提供 `palette`、`accent`、`select` 和 `chrome`。光标颜色按 `palette` 顺序循环。
 
@@ -345,4 +345,4 @@ const wav = await renderAudioWav(soundLog, durationMs);
 
 `swarmloom render` 命令行用的就是同一套逐帧流程，见 [CLI](./cli.md)。
 
-核心还导出 `renderOffline()` 和 `encodeWav()`，供自定义音频管线使用。视频导出应始终等待 `player.ready()`，避免在字体和图片未解码时捕获。
+核心还导出 `renderOffline()`、`soundTimes()`（每个事件在同样设置下实际发声的时刻，不发声为 `null`）和 `encodeWav()`，供自定义音频管线使用。视频导出应始终等待 `player.ready()`，避免在字体和图片未解码时捕获。
