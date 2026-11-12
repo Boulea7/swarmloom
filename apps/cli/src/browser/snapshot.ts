@@ -53,6 +53,18 @@ async function prescrollPage(name: string): Promise<void> {
 }
 
 /**
+ * Waits at most `ms` for a best-effort step in the page. A step that fails or times out is skipped, so
+ * a page that never answers is captured as it is; only an interruption is passed on.
+ */
+async function bestEffort(step: Promise<unknown>, what: string, ms: number, signal?: AbortSignal): Promise<void> {
+  try {
+    await guard(step, what, ms, signal);
+  } catch (error) {
+    if (error instanceof InterruptedError) throw error;
+  }
+}
+
+/**
  * Checks the shape of a blueprint produced in the page (untrusted JSON).
  * @throws RenderError when it is not a version 1 blueprint.
  */
@@ -107,12 +119,17 @@ export async function snapshotPage(context: BrowserContext, opts: PageSnapshotOp
     }
     // Best effort: late XHR content and web fonts. Pages that never go idle are captured as they are.
     await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
-    await page.evaluate(() => document.fonts?.ready.then(() => undefined)).catch(() => {});
+    // Every wait on the page below is bounded and interruptible: page scripts can stall a promise or
+    // the event loop, and the helpers that run in the page trust its globals (setTimeout, getAnimations).
+    const fonts = page.evaluate(() => document.fonts?.ready.then(() => undefined));
+    await bestEffort(fonts, "Waiting for web fonts", opts.timeoutMs, opts.signal);
 
     try {
       // Not a <script> element: a page served with `script-src 'none'` must still accept it.
-      await page.evaluate(`${opts.bundle}\n;undefined`);
+      const inject = page.evaluate(`${opts.bundle}\n;undefined`);
+      await guard(inject, "Injecting the snapshot script", opts.timeoutMs, opts.signal);
     } catch (error) {
+      if (error instanceof CliError) throw error;
       throw fail("Could not inject the snapshot script", error);
     }
     try {
@@ -125,23 +142,28 @@ export async function snapshotPage(context: BrowserContext, opts: PageSnapshotOp
     // for canvases and videos, so it must show the same pose. Again after the videos, whose pauses fire
     // `pause` events that may start new animations. Best effort: a page that stops its own timers and
     // frames is captured as it is.
-    const freezeAnimations = () =>
-      guard(
-        page.evaluate(freezePageAnimations, LOOP_PHASE),
-        "Freezing animations",
-        ANIMATION_FREEZE_TIMEOUT_MS,
-        opts.signal,
-      ).catch((error: unknown) => {
-        if (error instanceof InterruptedError) throw error;
-      });
+    const freezeAnimations = () => {
+      const freeze = page.evaluate(freezePageAnimations, LOOP_PHASE);
+      return bestEffort(freeze, "Freezing animations", ANIMATION_FREEZE_TIMEOUT_MS, opts.signal);
+    };
     await freezeAnimations();
-    await page.evaluate(freezePageVideos, { phase: LOOP_PHASE, timeoutMs: VIDEO_FREEZE_TIMEOUT_MS }).catch(() => {});
+    const videos = page.evaluate(freezePageVideos, { phase: LOOP_PHASE, timeoutMs: VIDEO_FREEZE_TIMEOUT_MS });
+    await bestEffort(videos, "Freezing videos", opts.timeoutMs, opts.signal);
     await freezeAnimations();
 
-    const cdp = await context.newCDPSession(page);
-    const shot = (await cdp.send("Page.captureScreenshot", { format: "png" })) as { data: string };
-    await cdp.detach().catch(() => {});
-    const view = await page.evaluate(() => ({ x: scrollX, y: scrollY, dpr: devicePixelRatio, title: document.title }));
+    let shot: { data: string };
+    let view: { x: number; y: number; dpr: number; title: string };
+    try {
+      const cdp = await guard(context.newCDPSession(page), "Page screenshot", opts.timeoutMs, opts.signal);
+      const capture = cdp.send("Page.captureScreenshot", { format: "png" }) as Promise<{ data: string }>;
+      shot = await guard(capture, "Page screenshot", opts.timeoutMs, opts.signal);
+      await cdp.detach().catch(() => {});
+      const read = page.evaluate(() => ({ x: scrollX, y: scrollY, dpr: devicePixelRatio, title: document.title }));
+      view = await guard(read, "Reading the page view", opts.timeoutMs, opts.signal);
+    } catch (error) {
+      if (error instanceof CliError) throw error;
+      throw fail("Page screenshot failed", error);
+    }
     const snapshotOptions = {
       origin: "document",
       source: {

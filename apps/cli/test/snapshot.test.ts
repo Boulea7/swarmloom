@@ -4,12 +4,14 @@
  * instead (see ./real-deps), and a wrong SWARMLOOM_CHROME always does.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { launchBrowser, newContext } from "../src/browser/launch";
+import { snapshotPage } from "../src/browser/snapshot";
 import { snapshotCommand } from "../src/commands/snapshot";
 import { findBrowser } from "../src/discovery/browser";
 import { systemHost } from "../src/discovery/host";
@@ -230,4 +232,28 @@ for (const v of videos) for (const type of ["playing", "pause", "seeked"]) v.add
       server.close();
     }
   }, 120_000);
+
+  it("captures a page whose video freeze never ends once the step times out", async () => {
+    // The video never loads and the page drops long timers, so the in-page 3 s deadline never fires.
+    const page = `<!doctype html><title>t</title><h1>Hello</h1><video autoplay muted src="/stall.mp4"></video>
+<script>const st = setTimeout; window.setTimeout = (f, d, ...a) => (d >= 1000 ? 0 : st(f, d, ...a));</script>`;
+    const server = createServer((req, res) => {
+      if (req.url === "/") res.setHeader("content-type", "text/html").end(page);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const launch = { webPages: true, requireSandbox: false, onUnsandboxed: () => {} };
+    const browser = await launchBrowser(chrome as string, launch);
+    try {
+      const view = { width: 800, height: 600, scale: 1, colorScheme: "light", locale: "en-US" } as const;
+      const context = await newContext(browser, view);
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const bundle = await readFile(SNAPSHOT_DOUBLE, "utf8");
+      const { blueprint } = await snapshotPage(context, { url, bundle, timeoutMs: 5000 });
+      expect(blueprint.layers.map((l) => (l as { text?: string }).text)).toEqual(["Hello"]);
+    } finally {
+      await browser.close();
+      server.closeAllConnections();
+      server.close();
+    }
+  }, 60_000);
 });
