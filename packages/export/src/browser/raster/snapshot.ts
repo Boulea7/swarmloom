@@ -1553,7 +1553,8 @@ function flatChildren(walk: Walk, el: Element): readonly Node[] {
 /**
  * `::before` / `::after` of `el` as a rule on a class of the clone, or null when it has none. Those
  * of an empty box away from the viewport (`hollow`) keep only what sets their size and place, and
- * their counters. `inherited` gives what the clone of `el` passes on (read once, if needed).
+ * their counters. `inherited` gives what the clone of `el` passes on (read once, if needed). They
+ * move with the scroll offset of `el` (`scroll`) like its children.
  */
 function pseudoRules(
   walk: Walk,
@@ -1561,6 +1562,7 @@ function pseudoRules(
   view: DocView,
   inherited: () => InheritedValues,
   hollow: boolean,
+  scroll: Scroll | null,
 ): string | null {
   const props = hollow ? walk.baseline.layout : walk.baseline.props;
   let cls: string | null = null;
@@ -1571,7 +1573,10 @@ function pseudoRules(
     if (!content || content === "none" || content === "normal") continue;
     cls ??= `sl${walk.nextClass++}`;
     from ??= inherited();
-    const { text } = styleText(walk.baseline, ps, from, undefined, props);
+    const override: Record<string, string> = {};
+    const item = () => /flex|grid|box/.test(view.win.getComputedStyle(el).getPropertyValue("display"));
+    if (scroll) scrollWith(scroll, ps, item, override);
+    const { text } = styleText(walk.baseline, ps, from, override, props);
     if (!hollow) useFonts(walk, ps);
     walk.rules.push(`.${cls}${pseudo}{${embedCssUrls(walk, text, "s")};content:${embedCssUrls(walk, content, "s")}}`);
   }
@@ -1584,13 +1589,144 @@ function useFonts(walk: Walk, cs: CSSStyleDeclaration): void {
   walk.fonts.add(`${face}\n${cs.getPropertyValue("font-family")}`);
 }
 
-/** Emits a text node, shifted when its parent is a scrolled container. */
-function emitText(walk: Walk, node: Node, shift: { x: number; y: number } | null): void {
+/**
+ * The scroll offset of a scrolled box, negated (CSS px), as its children move by it: those in flow
+ * do, and those out of flow it is the containing block of.
+ */
+interface Scroll {
+  x: number;
+  y: number;
+  /** Absolutely positioned children lay out against the scrolled box (it is positioned, say). */
+  absolute: boolean;
+  /** Fixed children do too (it is transformed, say). */
+  fixed: boolean;
+  /** Its direction is right to left: the `right` of a relatively positioned child wins over its `left`. */
+  rtl: boolean;
+}
+
+/** How the children of `el`, a scrolled box with the styles `cs`, move with its scroll offset. */
+function scrollOf(el: Element, cs: CSSStyleDeclaration): Scroll {
+  const fixed = holdsFixed(cs) || ["translate", "rotate", "scale"].some((name) => cs.getPropertyValue(name) !== "none");
+  return {
+    x: -el.scrollLeft,
+    y: -el.scrollTop,
+    absolute: fixed || cs.getPropertyValue("position") !== "static",
+    fixed,
+    rtl: cs.getPropertyValue("direction") === "rtl",
+  };
+}
+
+/**
+ * Moves a child of a scrolled box that has a box of its own (styles `cs`, an element or a
+ * pseudo-element) by the scroll offset, into `override`, unless it is out of flow and lays out
+ * against a box further out: the page does not scroll it. A box in flow is offset relatively, which
+ * moves an inline box too (`translate` does not apply to those) and keeps a fixed box in it laid out
+ * against the viewport; a box out of flow is translated. `item` tells whether it is a flex or grid
+ * item.
+ */
+function scrollWith(
+  scroll: Scroll,
+  cs: CSSStyleDeclaration,
+  item: () => boolean,
+  override: Record<string, string>,
+): void {
+  const position = cs.getPropertyValue("position");
+  if (position === "absolute" || position === "fixed") {
+    if (position === "absolute" ? scroll.absolute : scroll.fixed) {
+      override.translate = shiftedTranslate(cs.getPropertyValue("translate"), scroll.x, scroll.y);
+    }
+    return;
+  }
+  // The offsets a relatively positioned box is drawn at: its `top` and `left` as read, or its
+  // `right` negated where the containing block runs right to left (`right` wins there when both are
+  // set). A sticky box's offsets only say where it sticks, which the snapshot does not do.
+  const relative = position === "relative";
+  const left = relative ? (scroll.rtl ? -px(cs, "right") : px(cs, "left")) : 0;
+  const top = relative ? px(cs, "top") : 0;
+  override.position = "relative";
+  override.left = `${left + scroll.x}px`;
+  override.top = `${top + scroll.y}px`;
+  override.right = "auto";
+  override.bottom = "auto";
+  // A static box takes its z-index only as a flex or grid item; once positioned it would anyway.
+  if (position === "static" && zIndex(cs) !== null && !item()) override["z-index"] = "auto";
+}
+
+/** Whether a textarea's look is drawn from `name`: its border, background, shadow and their colour. */
+function lookProperty(name: string): boolean {
+  return name.startsWith("border-") || name.startsWith("background-") || name === "box-shadow" || name === "color";
+}
+
+/**
+ * A scrolled textarea, whose clone would show its text from the top (a clone keeps no scroll
+ * offset). It becomes a box in its place, written with its styles but its look (`override` as for
+ * the textarea, `attrs` its attributes), that holds an empty textarea with its look over its border
+ * box and its text, moved by the scroll offset, in a box clipped to its padding box.
+ */
+function scrolledTextarea(
+  walk: Walk,
+  area: HTMLTextAreaElement,
+  cs: CSSStyleDeclaration,
+  view: DocView,
+  parent: InheritedValues | null,
+  override: Readonly<Record<string, string>>,
+  ua: ReadonlyMap<string, string> | undefined,
+  attrs: string,
+): string {
+  const border = (side: (typeof SIDES)[number]) => px(cs, `border-${side}-width`);
+  const box: Record<string, string> = {
+    ...override,
+    // The look is drawn over the border box, which a clip would cut away.
+    "overflow-x": "visible",
+    "overflow-y": "visible",
+    "background-color": "transparent",
+    "background-image": "none",
+    "border-image-source": "none",
+    "box-shadow": "none",
+  };
+  for (const side of SIDES) box[`border-${side}-color`] = "transparent";
+  if (cs.getPropertyValue("display") === "inline") box.display = "inline-block";
+  if (cs.getPropertyValue("position") === "static" && !override.position) {
+    box.position = "relative";
+    if (zIndex(cs) !== null && inBlockFlow(area, view)) box["z-index"] = "auto";
+  }
+  const look: Record<string, string> = {
+    position: "absolute",
+    left: `${-border("left")}px`,
+    top: `${-border("top")}px`,
+    width: `calc(100% + ${border("left") + border("right")}px)`,
+    height: `calc(100% + ${border("top") + border("bottom")}px)`,
+    "box-sizing": "border-box",
+    "margin-top": "0px",
+    "margin-right": "0px",
+    "margin-bottom": "0px",
+    "margin-left": "0px",
+  };
+  if (override["color-scheme"]) look["color-scheme"] = override["color-scheme"];
+  const styled = (text: string) => (text ? ` style="${escapeAttr(embedCssUrls(walk, text, "c"))}"` : "");
+  const boxStyle = styleText(walk.baseline, cs, parent, box).text;
+  const lookStyle = styleText(walk.baseline, cs, parent, look, walk.baseline.props.filter(lookProperty), ua).text;
+  const padding = SIDES.map((side) => cs.getPropertyValue(`padding-${side}`)).join(" ");
+  return (
+    `<div${attrs}${styled(boxStyle)}><textarea${styled(lookStyle)}></textarea>` +
+    `<div style="display:block;position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;padding:${padding}">` +
+    `<div style="display:block;position:relative;left:${-area.scrollLeft}px;top:${-area.scrollTop}px">` +
+    `${escapeText(area.value)}</div></div></div>`
+  );
+}
+
+/**
+ * Emits a text node, shifted when its parent is a scrolled container. White space alone shows
+ * nothing to shift, and wrapped it would become an item of a flex or grid container (with gaps
+ * around it), where the page does not lay it out at all.
+ */
+function emitText(walk: Walk, node: Node, shift: Scroll | null): void {
   const text = escapeText(node.nodeValue ?? "");
   if (!text) return;
   if (walk.overlays.length > 0 && text.trim()) dropOverlays(walk);
-  if (shift) walk.out.push(`<span style="position:relative;left:${shift.x}px;top:${shift.y}px">${text}</span>`);
-  else walk.out.push(text);
+  if (shift && !/^[ \t\n\r\f]*$/.test(text)) {
+    walk.out.push(`<span style="position:relative;left:${shift.x}px;top:${shift.y}px">${text}</span>`);
+  } else walk.out.push(text);
 }
 
 /** Records a box of z-index `z` > 0 in the stacking context it sits in (the frame document only). */
@@ -1615,7 +1751,7 @@ function* emitElement(
   view: DocView,
   parent: InheritedValues | null,
   parentNs: string,
-  shift: { x: number; y: number } | null,
+  scroll: Scroll | null,
   context: Context,
 ): Steps {
   if (performance.now() >= walk.deadline) yield;
@@ -1653,7 +1789,9 @@ function* emitElement(
   // No scrollbars in a still frame; scroll offsets become a shift of the children.
   if (overflowX === "auto" || overflowX === "scroll") override["overflow-x"] = "hidden";
   if (overflowY === "auto" || overflowY === "scroll") override["overflow-y"] = "hidden";
-  if (shift) override.translate = shiftedTranslate(cs.getPropertyValue("translate"), shift.x, shift.y);
+  // An element without a box of its own hands the scroll offset on to its children.
+  const boxless = !svg && display === "contents";
+  if (scroll && !boxless) scrollWith(scroll, cs, () => !inBlockFlow(el, view), override);
   if (walk.onCanvas.has(el)) {
     override["background-color"] = "transparent";
     override["background-image"] = "none";
@@ -1708,7 +1846,11 @@ function* emitElement(
   if (covers && paintsBox(cs, svg || replaced || VOID.has(local))) dropOverlays(walk);
   const xmlns = ns !== parentNs ? ` xmlns="${ns}"` : "";
   // The text of a table row's or cell's pseudo-elements sizes the grid: it keeps its fonts.
-  const pseudo = svg || replaced || VOID.has(local) ? null : pseudoRules(walk, el, view, handed, bare && !tablePart);
+  // The scrolling element reports the viewport's scroll, which emitDocument already applied.
+  const scrolled = (el.scrollLeft !== 0 || el.scrollTop !== 0) && el !== el.ownerDocument.scrollingElement;
+  const contentScroll = scrolled ? scrollOf(el, cs) : boxless ? scroll : null;
+  const pseudo =
+    svg || replaced || VOID.has(local) ? null : pseudoRules(walk, el, view, handed, bare && !tablePart, contentScroll);
   if (pseudo && !bare) dropOverlays(walk);
   const cls = pseudo ? ` class="${pseudo}"` : "";
   const style = styleBody ? ` style="${escapeAttr(embedCssUrls(walk, styleBody, "c"))}"` : "";
@@ -1736,6 +1878,11 @@ function* emitElement(
     walk.out.push(`<div${xmlns}${style}>${videoPlayer(walk, el as HTMLVideoElement, cs, attrs)}</div>`);
     return;
   }
+  const area = local === "textarea" && !svg && !bare ? (el as HTMLTextAreaElement) : null;
+  if (area && (area.scrollLeft !== 0 || area.scrollTop !== 0)) {
+    walk.out.push(scrolledTextarea(walk, area, cs, view, parent, override, control?.ua, `${xmlns}${attrs}`));
+    return;
+  }
   if (tag === "img") {
     walk.out.push(`<img${xmlns}${attrs}${cls}${style}/>`);
     return;
@@ -1749,9 +1896,6 @@ function* emitElement(
   if (local === "textarea" && !svg) {
     walk.out.push(escapeText((el as HTMLTextAreaElement).value));
   } else {
-    // The scrolling element reports the viewport's scroll, which emitDocument already applied.
-    const scrolled = (el.scrollLeft !== 0 || el.scrollTop !== 0) && el !== el.ownerDocument.scrollingElement;
-    const childShift = scrolled ? { x: -el.scrollLeft, y: -el.scrollTop } : null;
     const children = flatChildren(walk, el);
     const cover = coveringFrame(children, view);
     const inner = faint && context === TABLE ? FAR_ROW : childContext(el, cs, context);
@@ -1767,9 +1911,9 @@ function* emitElement(
           walk.stats.culled++;
           continue;
         }
-        yield* emitElement(walk, child as Element, view, inherited, ns, childShift, inner);
+        yield* emitElement(walk, child as Element, view, inherited, ns, contentScroll, inner);
       } else if (child.nodeType === 3 || child.nodeType === 4) {
-        emitText(walk, child, childShift);
+        emitText(walk, child, contentScroll);
       }
     }
     if (view.top) walk.path.pop();
@@ -2354,7 +2498,9 @@ async function walkFrame(
  * `::first-letter`) fall back to defaults; cross-origin images and videos without CORS are left
  * blank; a paused video's controls are a likeness of Chromium's;
  * WebGL canvases show what `toDataURL` (in the image) or `drawImage` (as overlays) returns at
- * capture time; `position: sticky` does not stick;
+ * capture time; `position: sticky` does not stick; the children of a scrolled box are offset
+ * relatively ({@link scrollWith}), so an absolutely positioned box nested in a static one of them
+ * lays out against that child;
  * SMIL animations of keyword attributes (enumerations, `preserveAspectRatio`, `orient`) show the
  * base value; ink reaching more than {@link INK_MARGIN} px past the boxes of a subtree away from
  * the viewport (a huge shadow, a fixed-position pseudo-element) is not drawn; in Firefox, which

@@ -61,6 +61,67 @@ it("draws a scrolled document at its scroll offset once, fixed boxes in view", a
   ]);
 });
 
+/** A box scrolled 40px down (`#s`), 60px tall, holding `content` and room to scroll. */
+const scroller = (style: string, content: string) =>
+  `<div id=s style="height:60px;overflow:hidden;${style}">${content}<div style="height:200px"></div></div>`;
+const square = (style: string) => `<i style="width:20px;height:20px;background:rgb(0,255,0);${style}"></i>`;
+
+it.each([
+  // `translate` moves no inline box: the spans of a scrolled code block stayed behind its text.
+  [
+    "an inline child",
+    scroller("", '<div style="height:40px"></div><span style="color:rgb(0,0,255);background:rgb(0,0,255)">MM</span>'),
+    10,
+    10,
+    [0, 0, 255],
+  ],
+  ["a fixed child, not scrolled", scroller("", square("position:fixed;left:50px;top:10px")), 60, 20, [0, 255, 0]],
+  [
+    "an absolute child of an unpositioned box, not scrolled",
+    scroller("", square("position:absolute;left:50px;top:70px")),
+    60,
+    80,
+    [0, 255, 0],
+  ],
+  [
+    "an absolute child of a positioned box",
+    scroller("position:relative", square("position:absolute;top:50px")),
+    10,
+    20,
+    [0, 255, 0],
+  ],
+  // White space wrapped to move became flex items, with gaps around them.
+  [
+    "flex items, without the white space between them",
+    scroller(
+      "display:flex;flex-direction:column;gap:20px",
+      ` <b style="flex:none;height:40px"></b> ${square("flex:none;height:40px")} `,
+    ),
+    10,
+    30,
+    [0, 255, 0],
+  ],
+  [
+    "a pseudo-element",
+    `<style>#s::before{content:"";display:block;height:20px;margin-top:40px;background:rgb(0,255,0)}</style>${scroller("", "")}`,
+    10,
+    10,
+    [0, 255, 0],
+  ],
+  [
+    "a textarea's text",
+    '<textarea id=s style="display:block;border:0;padding:0;width:100px;height:40px;overflow:hidden;' +
+      'font:20px/20px monospace;color:rgb(255,0,0)">\n\n\n\u2588\u2588\nx\nx\nx</textarea>',
+    5,
+    10,
+    [255, 0, 0],
+  ],
+])("draws scrolled content where the page shows it: %s", async (_name, html, x, y, expected) => {
+  const { win, rasterizer } = await frameOf(`<body style="margin:0;font:20px/20px monospace">${html}`);
+  (win.document.getElementById("s") as HTMLElement).scrollTop = 40;
+  expect(await pixel(rasterizer, x, y)).toEqual(expected);
+});
+
 it.each([
   ["a zero border width with a style", '<div style="border:0 solid rgb(255,0,0);width:60px;height:60px">', [0, 0, 255]],
   [
