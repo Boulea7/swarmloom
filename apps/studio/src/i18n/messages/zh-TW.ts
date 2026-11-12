@@ -177,7 +177,9 @@ export const zhTW: StudioCatalog = {
   "export.cli.format": "格式",
   "export.cli.copy": "複製指令",
   "export.cli.copied": "已複製",
-  "export.cli.save": "請先把貼上的內容儲存為 {name}。",
+  "export.cli.save": "請先把這段內容儲存為 {name}，再在它所在的資料夾中執行指令。",
+  "export.cli.folder": "請在 {name} 所在的資料夾中執行指令。",
+  "export.cli.rename": "請先把 {file} 複製一份，命名為 {name}，再在它所在的資料夾中執行指令。",
   "export.cli.download": "這個連結直接貼到終端機並不安全，請先把它下載為 {name}。",
 
   "watch.play": "播放",
@@ -220,5 +222,6 @@ export const zhTW: StudioCatalog = {
   "theme.label": "主題：{theme}",
   "update.ready": "Studio 有新版本了。",
   "update.reload": "重新整理",
+  "launch.ready": "{name} 可以開啟了。",
   "offline.ready": "Studio 現在可以離線使用了。",
 };

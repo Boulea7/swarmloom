@@ -213,7 +213,9 @@ export const en = {
   "export.cli.format": "Format",
   "export.cli.copy": "Copy command",
   "export.cli.copied": "Copied",
-  "export.cli.save": "Save the pasted content as {name} first.",
+  "export.cli.save": "Save this content as {name}, then run the command in that folder.",
+  "export.cli.folder": "Run the command in the folder that holds {name}.",
+  "export.cli.rename": "Save a copy of {file} as {name}, then run the command in that folder.",
   "export.cli.download": "This link isn't safe to paste into a terminal. Download it as {name} first.",
 
   "watch.play": "Play",
@@ -257,6 +259,7 @@ export const en = {
   "theme.label": "Theme: {theme}",
   "update.ready": "A new version of Studio is ready.",
   "update.reload": "Reload",
+  "launch.ready": "{name} is ready to open.",
   "offline.ready": "Studio now works offline.",
 } satisfies Record<string, Message>;
 

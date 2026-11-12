@@ -185,7 +185,9 @@ export const ja: StudioCatalog = {
   "export.cli.format": "形式",
   "export.cli.copy": "コマンドをコピー",
   "export.cli.copied": "コピーしました",
-  "export.cli.save": "貼り付けた内容を先に {name} として保存してください。",
+  "export.cli.save": "この内容を {name} として保存し、そのフォルダーでコマンドを実行してください。",
+  "export.cli.folder": "{name} があるフォルダーでコマンドを実行してください。",
+  "export.cli.rename": "{file} のコピーを {name} として保存し、そのフォルダーでコマンドを実行してください。",
   "export.cli.download":
     "このリンクはそのままターミナルに貼り付けると安全ではありません。先に {name} としてダウンロードしてください。",
 
@@ -230,5 +232,6 @@ export const ja: StudioCatalog = {
   "theme.label": "テーマ: {theme}",
   "update.ready": "Studio の新しいバージョンがあります。",
   "update.reload": "再読み込み",
+  "launch.ready": "{name} を開けるようになりました。",
   "offline.ready": "Studio をオフラインで使えるようになりました。",
 };

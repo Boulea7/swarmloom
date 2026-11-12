@@ -210,7 +210,9 @@ export const fr: StudioCatalog = {
   "export.cli.format": "Format",
   "export.cli.copy": "Copier la commande",
   "export.cli.copied": "Copié",
-  "export.cli.save": "Enregistrez d’abord le contenu collé sous {name}.",
+  "export.cli.save": "Enregistrez ce contenu sous {name}, puis lancez la commande dans ce dossier.",
+  "export.cli.folder": "Lancez la commande dans le dossier qui contient {name}.",
+  "export.cli.rename": "Enregistrez une copie de {file} sous {name}, puis lancez la commande dans ce dossier.",
   "export.cli.download":
     "Ce lien ne peut pas être collé sans risque dans un terminal. Téléchargez-le d’abord sous {name}.",
 
@@ -255,5 +257,6 @@ export const fr: StudioCatalog = {
   "theme.label": "Thème : {theme}",
   "update.ready": "Une nouvelle version de Studio est prête.",
   "update.reload": "Recharger",
+  "launch.ready": "{name} est prêt à être ouvert.",
   "offline.ready": "Studio fonctionne désormais hors ligne.",
 };

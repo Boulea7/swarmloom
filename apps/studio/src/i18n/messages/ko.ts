@@ -179,7 +179,9 @@ export const ko: StudioCatalog = {
   "export.cli.format": "형식",
   "export.cli.copy": "명령 복사",
   "export.cli.copied": "복사했습니다",
-  "export.cli.save": "붙여넣은 내용을 먼저 {name}(으)로 저장하세요.",
+  "export.cli.save": "이 내용을 {name}(으)로 저장한 뒤 그 폴더에서 명령을 실행하세요.",
+  "export.cli.folder": "{name} 파일이 있는 폴더에서 명령을 실행하세요.",
+  "export.cli.rename": "{file}의 사본을 {name}(으)로 저장한 뒤 그 폴더에서 명령을 실행하세요.",
   "export.cli.download": "이 링크는 터미널에 그대로 붙여넣으면 안전하지 않습니다. 먼저 {name}(으)로 다운로드하세요.",
 
   "watch.play": "재생",
@@ -223,5 +225,6 @@ export const ko: StudioCatalog = {
   "theme.label": "테마: {theme}",
   "update.ready": "Studio의 새 버전이 준비되었습니다.",
   "update.reload": "새로 고침",
+  "launch.ready": "{name} 파일을 열 수 있습니다.",
   "offline.ready": "이제 Studio를 오프라인에서도 사용할 수 있습니다.",
 };
