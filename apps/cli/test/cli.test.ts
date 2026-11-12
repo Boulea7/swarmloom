@@ -230,6 +230,11 @@ describe("render input", () => {
       ["-f", "png-seq", "-o", "frames", "--events-out", "NUL.json"],
       '--events-out cannot be saved as "NUL.json"',
     ],
+    [
+      "win32",
+      ["-f", "png-seq", "-o", "frames", "--events-out", "bad?/events.json"],
+      '--events-out cannot be saved in a folder named "bad?" on Windows',
+    ],
     ["linux", ["-f", "png-seq", "-o", "frames", "--events-out", "."], "--events-out is a directory"],
   ] as const)(
     "refuses on %s an output that could only be written after the capture: %j",

@@ -94,7 +94,9 @@ Swarm:
                           live (go live then, not when the finale settles; also with --no-live) or
                           speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=2 then
                           17b:speed=1 hurries only the start). Applied at the first 1/120 s
-                          step at or after <at>, at any fps; same-time cues in order given
+                          step at or after <at>; at an fps that does not divide 120 (25, 50)
+                          a frame time that comes first applies it. Either way the first frame
+                          at or after <at> shows it; same-time cues in order given
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
                           and plain-http files from other sites are never loaded
@@ -523,20 +525,26 @@ function windowsCannotHold(name: string): boolean {
 }
 
 /**
- * On Windows, refuses an output whose file name Win32 cannot create. The video and the evidence files
- * are moved into place after the whole capture, so such a name would otherwise fail only then.
+ * On Windows, refuses an output whose file name, or the name of a folder on its path, Win32 cannot
+ * create. The video and the evidence files are moved into place (their folders made) after the whole
+ * capture, so such a name would otherwise fail only then. The root (`C:\`, `\\server\share\`,
+ * `\\?\C:\`) is not a name and is skipped.
  * @throws UsageError naming the output.
  */
 function checkWindowsNames(opts: RenderOptions, platform: NodeJS.Platform): void {
   if (platform !== "win32") return;
   for (const [label, file] of outputPaths(opts)) {
-    const name = path.win32.basename(file);
-    if (windowsCannotHold(name)) {
-      throw new UsageError(
-        `${label} cannot be saved as "${name}" on Windows`,
-        'Use a name without < > : " | ? * or control characters, not ending in a dot or space, and not a device name such as NUL or COM1.',
-      );
-    }
+    const names = file
+      .slice(path.win32.parse(file).root.length)
+      .split(/[\\/]/)
+      .filter((name) => name !== "");
+    const bad = names.findIndex(windowsCannotHold);
+    if (bad === -1) continue;
+    const where = bad === names.length - 1 ? `as "${names[bad]}"` : `in a folder named "${names[bad]}"`;
+    throw new UsageError(
+      `${label} cannot be saved ${where} on Windows`,
+      'Use names without < > : " | ? * or control characters, not ending in a dot or space, and not a device name such as NUL or COM1.',
+    );
   }
 }
 
