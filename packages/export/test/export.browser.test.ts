@@ -7,6 +7,18 @@ import { LiveStage, watchShadowRoots } from "../src/render/live";
 // These cases also run in Firefox; Region Capture and classic scrollbars are Chromium's.
 const chromium = server.browser === "chromium";
 
+/** The top-left pixel (RGBA) the image at `url` paints, or a rejection when it does not decode. */
+async function firstPixel(url: string | null | undefined): Promise<number[]> {
+  const img = new Image();
+  img.src = url ?? "";
+  await img.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D;
+  ctx.drawImage(img, 0, 0);
+  return Array.from(ctx.getImageData(0, 0, 1, 1).data);
+}
+
 describe("export in the browser", () => {
   it.runIf(chromium)("detects live recording support", async () => {
     // Chromium ships getDisplayMedia, Region/Element Capture and MediaRecorder with WebM.
@@ -123,10 +135,14 @@ describe("export in the browser", () => {
       ]);
       expect(doc.querySelector("svg image")?.getAttribute("href")?.slice(0, 15)).toBe("data:image/png;");
       // Neither is in document.images.
-      expect([
-        doc.querySelector("video")?.getAttribute("poster")?.slice(0, 15),
-        doc.querySelector("input")?.getAttribute("src")?.slice(0, 15),
-      ]).toEqual(["data:image/png;", "data:image/png;"]);
+      const poster = doc.querySelector("video")?.getAttribute("poster");
+      const button = doc.querySelector("input")?.getAttribute("src");
+      expect([poster?.slice(0, 15), button?.slice(0, 15)]).toEqual(["data:image/png;", "data:image/png;"]);
+      // Every still copy shows the first (red) frame, not a blank or the second (blue) frame.
+      const bgUrl = /^url\("(.*)"\)$/.exec(bg.backgroundImage)?.[1];
+      const svgHref = doc.querySelector("svg image")?.getAttribute("href");
+      const stills = [img.src, bgUrl, svgHref, poster, button];
+      expect(await Promise.all(stills.map(firstPixel))).toEqual(stills.map(() => [255, 0, 0, 255]));
     } finally {
       frame.remove();
     }
