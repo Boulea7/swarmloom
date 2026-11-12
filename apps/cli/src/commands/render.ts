@@ -276,18 +276,32 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
 /** True when two of the given output paths name one file (see {@link sameFileKey}). */
 function hasSharedPath(files: (string | undefined)[]): boolean {
   const present = files.filter((file): file is string => file !== undefined);
-  return new Set(present.map(sameFileKey)).size !== present.length;
+  return new Set(present.map((file) => sameFileKey(file))).size !== present.length;
 }
 
 /**
- * Comparison key for "is this the same file?": NTFS and default APFS volumes ignore case (APFS also
- * Unicode normalization), so `take.mp4` and `TAKE.MP4` name one file there, and Win32 drops trailing
- * dots and spaces from path segments, so `take.mp4.` and `take.mp4 ` open `take.mp4` (path.resolve
- * keeps them). Folding on every platform rejects such twins where they are distinct files too, which
- * is harmless next to overwriting the video.
+ * Comparison key for "is this the same file?" of a resolved path: NTFS and default APFS volumes ignore
+ * case (APFS also Unicode normalization), so `take.mp4` and `TAKE.MP4` name one file there, and Win32
+ * drops trailing dots and spaces from path segments, so `take.mp4.` and `take.mp4 ` open `take.mp4`
+ * (path.resolve keeps them). Windows keys also drop the namespace prefix (see
+ * {@link stripWin32Namespace}). Folding on every platform rejects such twins where they are distinct
+ * files too, which is harmless next to overwriting the video.
+ * @param paths The platform's path module; tests pass `path.win32` to check Windows keys anywhere.
  */
-function sameFileKey(file: string): string {
-  return caseFold(file).split(path.sep).map(trimTrailingDotsAndSpaces).join(path.sep);
+export function sameFileKey(file: string, paths: path.PlatformPath = path): string {
+  const named = paths.sep === "\\" ? stripWin32Namespace(file) : file;
+  return caseFold(named).split(paths.sep).map(trimTrailingDotsAndSpaces).join(paths.sep);
+}
+
+/**
+ * `\\?\C:\work\take.mp4` and `\\.\C:\work\take.mp4` open `C:\work\take.mp4`, and `\\?\UNC\srv\share\x`
+ * opens `\\srv\share\x`; path.win32.resolve keeps these prefixes (and turns `//?/` into `\\?\`).
+ */
+function stripWin32Namespace(file: string): string {
+  const prefix = /^\\\\[?.]\\(UNC\\)?/i.exec(file);
+  if (!prefix) return file;
+  const rest = file.slice(prefix[0].length);
+  return prefix[1] ? `\\\\${rest}` : rest;
 }
 
 /**
