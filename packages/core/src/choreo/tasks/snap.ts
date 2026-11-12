@@ -39,12 +39,25 @@ const SNAP_CLEARANCE_PX = 2;
 /** Ancestor walks stop after this many steps (parent cycles in malformed input). */
 const MAX_ANCESTORS = 64;
 
-/** Free space on both sides of a text across its guide, px (Infinity when nothing is in reach). */
+/**
+ * Free space around a text, px: across its guide up to neighbouring content or the world's edge,
+ * along it up to the world's edge (Infinity when nothing is in reach).
+ */
 export interface SnapRoom {
   /** Above the text (guide on axis "y") or left of it (axis "x"). */
   before: number;
   /** Below the text (axis "y") or right of it (axis "x"). */
   after: number;
+  /** Along the guide: left of the text (axis "y") or above it (axis "x"). Default Infinity. */
+  alongBefore?: number;
+  /** Along the guide: right of the text (axis "y") or below it (axis "x"). Default Infinity. */
+  alongAfter?: number;
+}
+
+/** Distance from `start`/`end` to the world's edges 0 and `limit` (Infinity when the size is unknown). */
+function edgeRoom(start: number, end: number, limit: number | undefined): [number, number] {
+  const known = typeof limit === "number" && Number.isFinite(limit) && limit > 0;
+  return [Math.max(0, start), known ? Math.max(0, limit - end) : Number.POSITIVE_INFINITY];
 }
 
 function contains(outer: Rect, inner: Rect): boolean {
@@ -67,16 +80,22 @@ function ancestorsOf(stage: StageApi, layer: Layer): Set<string> {
 }
 
 /**
- * How far text at `rect` can move across a guide on `axis` before it touches neighbouring
- * content: the nearest visible layer facing it on each side within reach of the largest offset.
- * Ancestors, guides, layers containing the text (backgrounds) and layers already overlapping it
- * do not count. One pass over the blueprint, done once per snapping text.
+ * How far text at `rect` can move around a guide on `axis` before it touches neighbouring
+ * content or leaves the world (where a narrow stage, such as a watch face, cuts it off): across
+ * the guide the nearest visible layer facing it on each side within reach of the largest offset,
+ * or the world's edge when nearer; along the guide the world's edges. Ancestors, guides, layers
+ * containing the text (backgrounds) and layers already overlapping it do not count. One pass over
+ * the blueprint, done once per snapping text.
  */
 export function snapRoom(stage: StageApi, layer: Layer, rect: Rect, axis: "x" | "y"): SnapRoom {
   const reach = SNAP_ACROSS_PX[1] + SNAP_CLEARANCE_PX;
   const slack = SNAP_ALONG_PX[1];
   const ancestors = ancestorsOf(stage, layer);
-  const room: SnapRoom = { before: Number.POSITIVE_INFINITY, after: Number.POSITIVE_INFINITY };
+  const size = stage.blueprint.size;
+  const horizontal = edgeRoom(rect.x, rect.x + rect.w, size?.w);
+  const vertical = edgeRoom(rect.y, rect.y + rect.h, size?.h);
+  const [across, along] = axis === "y" ? [vertical, horizontal] : [horizontal, vertical];
+  const room: SnapRoom = { before: across[0], after: across[1], alongBefore: along[0], alongAfter: along[1] };
   for (const other of stage.blueprint.layers ?? []) {
     if (other === layer || other.id === layer.id || other.kind === "guide" || ancestors.has(other.id)) continue;
     const r = layerRect(other);
@@ -100,17 +119,19 @@ export function snapRoom(stage: StageApi, layer: Layer, rect: Rect, axis: "x" | 
 /**
  * Where the text is typed relative to its final position: {@link SNAP_ACROSS_PX} across the
  * guide and {@link SNAP_ALONG_PX} along it, each on a random side. With `room`, the text never
- * covers neighbouring content: when the drawn side is too tight it moves to the roomier one, and
- * the distance shrinks to the free space there (down to zero: typed in place).
+ * covers neighbouring content or leaves the world: when the drawn side is too tight it moves to
+ * the roomier one, and the distance shrinks to the free space there (down to zero: typed in place).
  */
 export function snapOffset(rng: Rng, axis: "x" | "y", room?: SnapRoom): Point {
   let across = signed(rng, pick(rng, SNAP_ACROSS_PX));
-  const along = signed(rng, pick(rng, SNAP_ALONG_PX));
+  let along = signed(rng, pick(rng, SNAP_ALONG_PX));
   if (room) {
     const free = (sign: number): number => Math.max(0, (sign < 0 ? room.before : room.after) - SNAP_CLEARANCE_PX);
     const sign = Math.sign(across);
     const side = free(sign) >= Math.abs(across) || free(sign) >= free(-sign) ? sign : -sign;
     across = side * Math.min(Math.abs(across), free(side));
+    const alongFree = along < 0 ? room.alongBefore : room.alongAfter;
+    along = Math.sign(along) * Math.min(Math.abs(along), Math.max(0, alongFree ?? Number.POSITIVE_INFINITY));
   }
   // A guide on axis "x" is a vertical line: across is horizontal.
   return axis === "x" ? { x: across, y: along } : { x: along, y: across };

@@ -230,6 +230,26 @@ describe("builtin choreographies", () => {
     }
   });
 
+  // A 360 px world, as a phone or watch stage lays it out: the stage cuts off whatever leaves it.
+  const narrow = { x: 0, y: 0, w: 360, h: 640 };
+  it.each([
+    ["left edge, guide on axis x", "x", { x: 32, y: 200, w: 296, h: 82 }],
+    ["full width, guide on axis y", "y", { x: 4, y: 200, w: 352, h: 36 }],
+  ] as const)("types snapping text inside a narrow world (%s)", (_name, axis, box) => {
+    const pos = axis === "x" ? box.x : box.y + box.h;
+    const line: Layer = { id: "g", kind: "guide", box: { x: 0, y: 0, w: 0, h: 0 }, axis, pos };
+    const title = text("title", "Watch a swarm of cursors", { snaps: ["g"], box });
+    for (let seed = 1; seed <= 12; seed++) {
+      const timeline = new Timeline();
+      run(taskFor(title), fakeAgent(timeline, { seed }), title, fakeStage(timeline, [line, title], narrow), timeline);
+      const typedAt = timeline.of("style").find((e) => e.css?.translate)?.css?.translate ?? "";
+      const [dx = Number.NaN, dy = Number.NaN] = typedAt.split(" ").map(Number.parseFloat);
+      expect(box.x + dx, `seed ${seed}`).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.w + dx, `seed ${seed}`).toBeLessThanOrEqual(narrow.w);
+      expect(box.y + dy, `seed ${seed}`).toBeGreaterThanOrEqual(0);
+    }
+  });
+
   it("duplicates: selects the master before the drop, then retypes differing text", () => {
     const layer = cases.find(([name]) => name === "duplicate text")?.[1] as TextLayer;
     const { timeline } = play(layer);
