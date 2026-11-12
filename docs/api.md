@@ -72,7 +72,7 @@ const dispose = () => {
 | `labels` | `LabelMode` / `string[]` | `names`、`agents`、`roles`、`none` 或自定义标签；`none` 同时隐藏状态泡 |
 | `follow` | `scroll` / `tour` / `none` | 跟随用户、自动巡航或固定视口 |
 | `reducedMotion` | `auto` / `boolean` | 默认尊重系统减少动态偏好 |
-| `intro` | `boolean` | 是否播放图标环绕与扇出开场 |
+| `intro` | `boolean \| "outline"` | 开场：`true`（默认）为图标环绕与扇出；`"outline"` 不显示图标，三个光标先画视野内最大的形状（路径和方框，每个光标两个），全部被领取后其余光标加入；`false` 不要开场 |
 | `finale` | `flock` / `halo` / `none` | 群聚、音频响应光环或无结尾 |
 | `controls` | `boolean` | 是否显示内置工具栏 |
 | `locale` | BCP 47 字符串 | 工具栏语言；默认 `navigator.language` |

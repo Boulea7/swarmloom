@@ -38,7 +38,7 @@ On touchscreens, tap an empty part of the stage to toggle the toolbar. Targets a
 | `follow` | `scroll`, `tour`, `none` | Use `scroll` for reading, `tour` for video, `none` for a fixed frame |
 | `finale` | `flock`, `halo`, `none` | Gather around the pointer, show an audio-reactive ring, or end directly |
 | `reducedMotion` | `auto`, on, off | Keep `auto` to respect the system preference |
-| `intro` | On or off | Disable it for small repeated embeds |
+| `intro` | On, off or `outline` | Disable it for small repeated embeds; `outline` has a few cursors draw the large shapes first, good for images and drawings |
 
 The JavaScript API also supports custom label arrays, palettes, locale, seed and clocks.
 

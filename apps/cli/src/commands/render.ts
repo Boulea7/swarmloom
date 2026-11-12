@@ -72,6 +72,8 @@ Swarm:
                           and status bubbles. Default: full
       --finale <finale>   flock | halo | none. Default: flock
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
+      --intro <opening>   warp (cursors circle the file icon, then fan out) | outline (three
+                          cursors draw the largest shapes, then the rest joins) | none. Default: warp
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
                           goes live and its own animations play. Default: 2500
       --no-live           Keep the finale through the whole tail instead of going live
@@ -148,6 +150,7 @@ const OPTIONS = {
   overlays: { type: "string" },
   finale: { type: "string" },
   follow: { type: "string" },
+  intro: { type: "string" },
   tail: { type: "string" },
   locale: { type: "string" },
   "no-sound": { type: "boolean" },
@@ -238,6 +241,8 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     live: !values["no-live"],
     sound: !values["no-sound"] && formatHasAudio(format),
   };
+  const intro = readEnum("intro", values.intro, ["warp", "outline", "none"], "warp");
+  if (intro !== "warp") settings.intro = intro === "outline" ? "outline" : false;
   if (values.locale !== undefined) settings.locale = readLocale(values.locale);
   if (values.bpm !== undefined) settings.bpm = readNumber("bpm", values.bpm, 120, { min: 40, max: 240 });
   if (readEnum("beat-sync", values["beat-sync"], ["notes", "all"], "notes") === "all") settings.beatSync = "all";

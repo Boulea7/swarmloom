@@ -142,7 +142,7 @@ function playerOptions(
     follow: init.follow,
     reducedMotion: init.reducedMotion,
     controls: false,
-    intro: true,
+    intro: init.intro,
     // Never realtime audio: the player logs every sound event anyway and audioWav() renders that log
     // offline. An enabled player would open an AudioContext, and in a page with user activation (the
     // Studio export frame after the click on Export) play every note aloud at export speed.

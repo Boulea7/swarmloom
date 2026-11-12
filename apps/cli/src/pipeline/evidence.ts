@@ -183,9 +183,9 @@ export function buildManifest(m: ManifestInput): Record<string, unknown> {
     },
     player: {
       ...settings,
-      // The render page always plays the intro with the toolbar off (see @swarmloom/export).
+      // The render page plays with the toolbar off (see @swarmloom/export).
       controls: false,
-      intro: true,
+      intro: settings.intro ?? true,
       reducedMotion: settings.reducedMotion ?? false,
       beatSync: settings.beatSync ?? true,
     },

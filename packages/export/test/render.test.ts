@@ -133,6 +133,15 @@ describe("render page protocol", () => {
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
   });
 
+  it("passes the opening through to the player", async () => {
+    const { api, players } = setup();
+    await api.init({ ...base, intro: "outline" });
+    expect(players[0]?.options.intro).toBe("outline");
+    api.dispose();
+    const short = { ...base, intro: "short" } as unknown as RenderInit;
+    await expect(api.init(short)).rejects.toThrow('intro must be a boolean or "outline"');
+  });
+
   it("renders the soundtrack with the beat sync asked for", async () => {
     const { api, audio } = setup();
     await api.init({ ...base, bpm: 124, beatSync: "all" });

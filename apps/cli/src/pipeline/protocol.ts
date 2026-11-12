@@ -44,6 +44,8 @@ export interface RenderInit {
   /** Go live once the finale settles: the finished page plays its own animations. Default true. */
   live?: boolean;
   follow?: "tour" | "none";
+  /** Opening: true (the warp, default), "outline" (largest shapes first) or false (render pages without it play the warp). */
+  intro?: boolean | "outline";
   /** Quick cross-fade build without flocking. */
   reducedMotion?: boolean;
   /** Musical grid tempo of placement notes. */

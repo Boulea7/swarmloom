@@ -72,6 +72,11 @@ export interface RenderInit {
   live?: boolean;
   /** Scroll mode during export: "tour" (default; follows the build) or "none". */
   follow?: "tour" | "none";
+  /**
+   * Opening (`PlayerOptions.intro`): true (default) the warp around the file icon, "outline" a few
+   * cursors drawing the largest shapes before the swarm joins, false none.
+   */
+  intro?: boolean | "outline";
   /** Quick cross-fade build without flocking. Default false: exports never inherit the host preference. */
   reducedMotion?: boolean;
   /** Musical grid tempo of placement notes (beat-synced builds). Default: the sound pack's tempo. */
@@ -231,7 +236,10 @@ function blueprintOf(raw: unknown): Blueprint | undefined {
 /** Init options after validation, with defaults filled in. */
 export type ParsedInit = RenderInit &
   Required<
-    Pick<RenderInit, "seed" | "tail" | "live" | "sound" | "follow" | "reducedMotion" | "theme" | "cues" | "beatSync">
+    Pick<
+      RenderInit,
+      "seed" | "tail" | "live" | "sound" | "follow" | "intro" | "reducedMotion" | "theme" | "cues" | "beatSync"
+    >
   >;
 
 /**
@@ -262,6 +270,10 @@ export function parseInit(raw: unknown): ParsedInit {
   if (reducedMotion !== undefined && typeof reducedMotion !== "boolean") fail("reducedMotion must be a boolean");
   const live = raw.live;
   if (live !== undefined && typeof live !== "boolean") fail("live must be a boolean");
+  const intro = raw.intro;
+  if (intro !== undefined && typeof intro !== "boolean" && intro !== "outline") {
+    fail('intro must be a boolean or "outline"');
+  }
   const beatSync = raw.beatSync;
   if (beatSync !== undefined && beatSync !== true && beatSync !== "all") fail('beatSync must be true or "all"');
   const blueprint = blueprintOf(raw.blueprint);
@@ -282,6 +294,7 @@ export function parseInit(raw: unknown): ParsedInit {
     tail: number(raw, "tail", 0, 600_000) ?? 2500,
     live: live ?? true,
     follow: oneOf(raw, "follow", FOLLOWS) ?? "tour",
+    intro: intro ?? true,
     reducedMotion: reducedMotion ?? false,
     bpm: number(raw, "bpm", 20, 400),
     beatSync: beatSync ?? true,
