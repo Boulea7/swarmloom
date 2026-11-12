@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import pagesCss from "../public/pages.css?raw";
 import welcomeHtml from "../public/welcome.html?raw";
+import { createTranslator } from "../src/shared/i18n";
 import { DEFAULT_PREFS, savePrefs } from "../src/shared/prefs";
 import { createFake } from "./fake-api";
 
@@ -27,7 +28,7 @@ beforeAll(async () => {
     return root;
   };
   const fake = createFake();
-  await savePrefs(fake.api, { ...DEFAULT_PREFS, reducedMotion: "on" }, 1);
+  await savePrefs(fake.api, { ...DEFAULT_PREFS, reducedMotion: "on", locale: "de" }, 1);
   scope.browser = fake.api;
 
   const style = document.createElement("style");
@@ -49,6 +50,20 @@ afterAll(() => {
 describe("welcome page", () => {
   it("plays the demo with the stored reduced-motion setting", async () => {
     await vi.waitFor(() => expect(document.querySelector("swarm-loom")?.getAttribute("reduced-motion")).toBe("true"));
+  });
+
+  it("translates the sample card with the rest of the page", async () => {
+    const de = createTranslator("de");
+    const keys = [
+      "welcomeSampleText",
+      "welcomeSampleOffline",
+      "welcomeSampleShare",
+      "welcomeSampleOpen",
+      "welcomeSampleStart",
+    ] as const;
+    await vi.waitFor(() => expect(document.documentElement.lang).toBe("de"));
+    const texts = [...document.querySelectorAll(".sample p, .sample li, .sample .button")].map((el) => el.textContent);
+    expect(texts).toEqual(keys.map((key) => de.t(key)));
   });
 
   it("keeps the finished demo's toolbar below the sample card on a 390px phone", async () => {
