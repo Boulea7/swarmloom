@@ -287,7 +287,18 @@ function hasSharedPath(files: (string | undefined)[]): boolean {
  * is harmless next to overwriting the video.
  */
 function sameFileKey(file: string): string {
-  return file.normalize("NFC").toLowerCase().split(path.sep).map(trimTrailingDotsAndSpaces).join(path.sep);
+  return caseFold(file).split(path.sep).map(trimTrailingDotsAndSpaces).join(path.sep);
+}
+
+/**
+ * Case-insensitive file systems fold case, which lowercasing alone misses: `Σ` lowercases to `σ` but
+ * the final sigma `ς` stays `ς`, and `ẞ` lowercases to `ß` while `ß` uppercases to `SS`. Going through
+ * upper case maps every such pair to one string; NFD first and NFC last make canonically equivalent
+ * spellings agree, as Unicode's canonical caseless match does. It folds a little more than the file
+ * systems (`ß` and `ss` share a key), which only rejects a rare distinct pair.
+ */
+function caseFold(text: string): string {
+  return text.normalize("NFD").toLowerCase().toUpperCase().toLowerCase().normalize("NFC");
 }
 
 function trimTrailingDotsAndSpaces(segment: string): string {
