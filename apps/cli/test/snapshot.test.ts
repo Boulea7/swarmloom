@@ -234,9 +234,11 @@ for (const v of videos) for (const type of ["playing", "pause", "seeked"]) v.add
   }, 120_000);
 
   it("captures a page whose video freeze never ends once the step times out", async () => {
-    // The video never loads and the page drops long timers, so the in-page 3 s deadline never fires.
-    const page = `<!doctype html><title>t</title><h1>Hello</h1><video autoplay muted src="/stall.mp4"></video>
-<script>const st = setTimeout; window.setTimeout = (f, d, ...a) => (d >= 1000 ? 0 : st(f, d, ...a));</script>`;
+    // The video starts after load and never answers, and the page drops long timers, so the in-page
+    // 3 s deadline never fires. Starting it earlier would make page.goto itself time out on Windows.
+    const page = `<!doctype html><title>t</title><h1>Hello</h1><video autoplay muted></video>
+<script>const st = setTimeout; window.setTimeout = (f, d, ...a) => (d >= 1000 ? 0 : st(f, d, ...a));
+addEventListener("load", () => { document.querySelector("video").src = "/stall.mp4"; });</script>`;
     const server = createServer((req, res) => {
       if (req.url === "/") res.setHeader("content-type", "text/html").end(page);
     });
