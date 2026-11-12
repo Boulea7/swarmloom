@@ -109,13 +109,14 @@ it("plays a round face inside its inscribed square and clears the controls soon 
 });
 
 it.each([
-  { size: 180, phase: "idle" },
-  { size: 180, phase: "done" },
-  { size: 140, phase: "idle" },
-  { size: 100, phase: "idle" },
-  { size: 140, phase: "playing" },
-  { size: 100, phase: "playing" },
-])("keeps every $phase control of a $size px round face inside its inscribed square", async ({ size, phase }) => {
+  { size: 180, phase: "idle", titled: true },
+  { size: 180, phase: "done", titled: true },
+  { size: 140, phase: "idle", titled: false },
+  { size: 100, phase: "idle", titled: false },
+  { size: 140, phase: "playing", titled: false },
+  { size: 100, phase: "playing", titled: false },
+])("keeps every $phase control of a $size px round face inside its inscribed square", async (row) => {
+  const { size, phase, titled } = row;
   await page.viewport(size, size);
   try {
     const title = "Willkommen bei SwarmLoom: so entsteht eine Seite";
@@ -128,11 +129,16 @@ it.each([
     const safe = root.querySelector<HTMLElement>(".watch-safe")?.getBoundingClientRect();
     const heading = root.querySelector<HTMLElement>(".watch-title");
     if (!safe || !heading) throw new Error("no watch face");
-    // A long title keeps to one line, or gives way entirely on the smallest faces.
+    // Play, Next and phone always render; the title only where it fits. Without this, controls that
+    // all vanished would pass the bounds checks below (no rects: top Infinity, bottom -Infinity).
+    const shown = (el: Element) => el.getClientRects().length > 0;
+    const buttons = [...root.querySelectorAll<HTMLElement>(".watch-play, .watch-actions > *")];
+    expect([shown(heading), ...buttons.map(shown)]).toEqual([titled, true, true, true]);
+    // A long title keeps to one line.
     const line = parseFloat(getComputedStyle(heading).lineHeight);
-    if (heading.getClientRects().length > 0) expect(heading.getBoundingClientRect().height).toBeLessThan(line * 2);
+    if (titled) expect(heading.getBoundingClientRect().height).toBeLessThan(line * 2);
     const controls = [...root.querySelectorAll<HTMLElement>(".watch-safe > *, .watch-actions > *")]
-      .filter((el) => el.getClientRects().length > 0)
+      .filter(shown)
       .map((el) => el.getBoundingClientRect());
     const bounds = {
       top: Math.min(...controls.map((r) => r.top)),
