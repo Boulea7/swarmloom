@@ -22,13 +22,23 @@ describe("tagOrigin", () => {
 });
 
 describe("badgeOrigin", () => {
-  it("moves a size badge under the name tag it would overlap, or right of it at the canvas bottom", () => {
-    const badge = { w: 60, h: 18 };
-    // The dragging crosshair's own tag sits at hotspot + (11, 11).
-    const own = { x: 111, y: 111, w: 40, h: 18 };
-    expect(badgeOrigin(100, 100, badge, [], 405)).toEqual({ x: 106, y: 106 });
-    expect(badgeOrigin(100, 100, badge, [own], 405)).toEqual({ x: 106, y: 131 });
-    expect(badgeOrigin(100, 100, badge, [{ ...own, x: 300 }], 405)).toEqual({ x: 106, y: 106 });
-    expect(badgeOrigin(100, 100, badge, [own], 140)).toEqual({ x: 153, y: 106 });
+  const badge = { w: 60, h: 18 };
+  // The dragging crosshair's own tag sits at hotspot + (11, 11).
+  const own = { x: 111, y: 111, w: 40, h: 18 };
+  // Another cursor's tag just right of the badge's usual spot.
+  const other = { x: 170, y: 104, w: 36, h: 18 };
+  it.each([
+    ["below right of its point in the open", [], 405, { x: 106, y: 106 }],
+    ["under the dragging cursor's own tag", [own], 405, { x: 106, y: 131 }],
+    ["beside its point, above the own tag, at the canvas bottom", [own], 140, { x: 106, y: 91 }],
+    // Regression (word take, frame 630): moving right of the own tag put it under the other tag.
+    ["clear of every tag when escaping one lands on another", [other, own], 140, { x: 106, y: 91 }],
+  ])("places the badge %s", (_case, tags, height, expected) => {
+    const at = badgeOrigin(100, 100, badge, tags, 720, height);
+    expect(at).toEqual(expected);
+  });
+
+  it("skips the frame when no spot on the canvas is clear", () => {
+    expect(badgeOrigin(10, 10, badge, [{ x: 0, y: 0, w: 100, h: 60 }], 100, 60)).toBeNull();
   });
 });

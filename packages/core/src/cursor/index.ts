@@ -107,10 +107,11 @@ export class CursorPainter {
   }
 
   /**
-   * Name tag boxes (CSS px) of the visible agents {@link draw} would draw, so marks painted below
-   * the cursors can keep clear of them.
+   * Boxes (CSS px) of the name tags, and of the status bubbles unless `bubbles` is false, that
+   * {@link draw} would draw for the visible agents, so marks painted below the cursors can keep
+   * clear of them.
    */
-  tagBoxes(agents: readonly AgentView[], view: ViewTransform): Rect[] {
+  tagBoxes(agents: readonly AgentView[], view: ViewTransform, bubbles = true): Rect[] {
     if (view.dpr !== this.#dpr) {
       this.clear();
       this.#dpr = view.dpr;
@@ -119,8 +120,11 @@ export class CursorPainter {
     for (const a of agents) {
       const at = this.#visible(a, view);
       if (!at) continue;
-      const tag = this.#agentCache(a, this.#frame).tag;
+      const cache = this.#agentCache(a, this.#frame);
+      const tag = cache.tag;
       if (tag) boxes.push({ ...this.#tagAt(a, at.cx, at.cy, tag, view), w: tag.w, h: tag.h });
+      const b = bubbles ? cache.bubbleSprite : null;
+      if (b) boxes.push({ ...this.#bubbleAt(at.cx, at.cy, b, view.dpr), w: b.w, h: b.h });
     }
     return boxes;
   }
@@ -165,9 +169,8 @@ export class CursorPainter {
       }
       if (bubbles && cache.bubbleSprite) {
         const b = cache.bubbleSprite;
-        const bx = Math.round((cx + 6 - b.ax) * dpr) / dpr;
-        const by = Math.round((cy - 6 - b.ay) * dpr) / dpr;
-        ctx.drawImage(b.canvas, bx, by, b.w, b.h);
+        const at = this.#bubbleAt(cx, cy, b, dpr);
+        ctx.drawImage(b.canvas, at.x, at.y, b.w, b.h);
       }
       drawn++;
     }
@@ -193,6 +196,11 @@ export class CursorPainter {
     const size = clamp(Number.isFinite(a.scale) ? a.scale : 1, 0, 4);
     const at = tagOrigin(cx, cy, shapeDef(a.shape).tag, size, tag, view.width, view.height, a.tagLeft === true);
     return { x: Math.round(at.x * view.dpr) / view.dpr, y: Math.round(at.y * view.dpr) / view.dpr };
+  }
+
+  /** Top-left corner of a status bubble (tail tip above right of the hotspot) on device pixels, CSS px. */
+  #bubbleAt(cx: number, cy: number, b: Sprite, dpr: number): { x: number; y: number } {
+    return { x: Math.round((cx + 6 - b.ax) * dpr) / dpr, y: Math.round((cy - 6 - b.ay) * dpr) / dpr };
   }
 
   #cursor(color: string, shape: string): Sprite {

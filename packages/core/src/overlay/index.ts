@@ -187,7 +187,7 @@ export class OverlayLayer {
     const hidden = HIDDEN_KINDS[this.#level];
     const list = this.#records;
     const badges = !hidden.has("size-badge") && list.some((rec) => rec.kind === "size-badge");
-    this.#env.tags = badges ? this.#cursors.tagBoxes(agents, v) : NO_TAGS;
+    this.#env.tags = badges ? this.#cursors.tagBoxes(agents, v, this.#level !== "none") : NO_TAGS;
     for (let i = 0; i < list.length; i++) {
       const rec = list[i];
       if (!rec || hidden.has(rec.kind)) continue;
