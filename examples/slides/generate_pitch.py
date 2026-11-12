@@ -6,6 +6,8 @@ Run from any directory with a Python that has python-pptx and Pillow:
 
 The deck is original content in the SwarmLoom palette. Output is reproducible:
 core properties use a fixed date and the ZIP entries get a fixed timestamp.
+It starts from python-pptx's default template and keeps some of its parts; SOURCES.md (next to
+this script) lists them and holds python-pptx's MIT licence, which ships with the sample.
 """
 
 from __future__ import annotations

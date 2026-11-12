@@ -10,6 +10,8 @@ Usage (from the repository root, with python-docx 1.2.0 and Pillow installed):
     python examples/docx/generate.py
 
 The output is byte-for-byte reproducible: core properties and ZIP timestamps are fixed.
+It starts from python-docx's default template and keeps some of its parts; SOURCES.md (next to
+this script) lists them and holds python-docx's MIT licence, which ships with the sample.
 """
 
 from __future__ import annotations

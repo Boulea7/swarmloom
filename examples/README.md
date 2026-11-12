@@ -6,6 +6,12 @@ Samples for the supported formats live here, one folder per format: Markdown, HT
 
 Most samples are written for this repository, by a script checked in next to them or by hand. They are MIT like the rest of the repository.
 
-Two files come from elsewhere: `doc/headers-footers-unicode.doc` and `doc/table.doc` are real Word files copied unchanged from the test data of the MIT-licensed [word-extractor](https://github.com/morungos/node-word-extractor) project, Copyright (c) 2016-2021 Stuart Watt. [`doc/SOURCES.md`](doc/SOURCES.md) lists their original paths and SHA-256 hashes and holds the full license text.
+Some samples contain material from elsewhere, all MIT-licensed:
 
-Generate new samples where you can. A third-party sample needs a license that allows redistribution, and a `SOURCES.md` in its folder that records the author, the source, the license and any required attribution, like `doc/SOURCES.md`. Do not add files of unknown origin. Studio builds, and so the CLI package, copy these notes (files named `SOURCES`, `LICENSE`, `LICENCE`, `NOTICE`, `COPYING` or `ATTRIBUTION`, with any extension) next to the samples they cover; they get no gallery tile.
+- `doc/headers-footers-unicode.doc` and `doc/table.doc` are real Word files copied unchanged from the test data of the [word-extractor](https://github.com/morungos/node-word-extractor) project, Copyright (c) 2016-2021 Stuart Watt. [`doc/SOURCES.md`](doc/SOURCES.md) lists their original paths and SHA-256 hashes.
+- `docx/report.docx` and `slides/pitch.pptx` are built on the default templates of [python-docx](https://github.com/python-openxml/python-docx) and [python-pptx](https://github.com/scanny/python-pptx), Copyright (c) 2013 Steve Canny, and keep some template parts unchanged (Word styles, theme and font table; PowerPoint thumbnail and presentation properties). [`docx/SOURCES.md`](docx/SOURCES.md) and [`slides/SOURCES.md`](slides/SOURCES.md) list them.
+- `sheet/sales.xlsx` holds the fixed theme part that [openpyxl](https://foss.heptapod.net/openpyxl/openpyxl) writes into every workbook, Copyright (c) 2010 openpyxl; see [`sheet/SOURCES.md`](sheet/SOURCES.md).
+
+Each of these `SOURCES.md` files holds the full license text.
+
+Generate new samples where you can. A third-party sample needs a license that allows redistribution, and a `SOURCES.md` in its folder that records the author, the source, the license and any required attribution, like `doc/SOURCES.md`. This includes a generator that starts from a library's built-in template (python-docx's `Document()`, python-pptx's `Presentation()`): the template ships inside the output. Do not add files of unknown origin. Studio builds, and so the CLI package, copy these notes (files named `SOURCES`, `LICENSE`, `LICENCE`, `NOTICE`, `COPYING` or `ATTRIBUTION`, with any extension) next to the samples they cover; they get no gallery tile.

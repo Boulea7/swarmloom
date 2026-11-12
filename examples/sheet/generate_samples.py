@@ -6,6 +6,8 @@ Run from any directory with a Python that has openpyxl:
 
 All figures are invented. Output is reproducible: fixed document dates and fixed ZIP
 entry timestamps.
+openpyxl writes its fixed theme part into the workbook; SOURCES.md (next to this script) holds
+openpyxl's MIT licence, which ships with the sample.
 """
 
 from __future__ import annotations
