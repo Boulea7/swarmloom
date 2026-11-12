@@ -44,8 +44,11 @@ it("keeps focus inside the watch QR dialog until it closes", async () => {
   expect(document.activeElement).toBe(phone);
 });
 
-/** Mounts the watch face at `query` with a build that keeps running, so the controls are due to fade. */
-async function mountRunning(query: string): Promise<HTMLElement> {
+/**
+ * Mounts the watch face at `query`. With `hold`, the build keeps running, so the controls are due
+ * to fade; without, it finishes as soon as it starts.
+ */
+async function mountWatch(query: string, hold = true): Promise<HTMLElement> {
   history.replaceState(null, "", `${location.pathname}${query}`);
   const root = document.createElement("div");
   document.body.append(root);
@@ -59,17 +62,20 @@ async function mountRunning(query: string): Promise<HTMLElement> {
     fetch: async () => new Response("# Notes\n"),
   });
   const createPlayer = fake.services.createPlayer;
-  fake.services.createPlayer = (options) =>
-    new Proxy(createPlayer(options), {
-      get: (player, key) =>
-        key === "play" ? () => player.play().then(() => new Promise<void>(() => undefined)) : Reflect.get(player, key),
-    });
+  if (hold)
+    fake.services.createPlayer = (options) =>
+      new Proxy(createPlayer(options), {
+        get: (player, key) =>
+          key === "play"
+            ? () => player.play().then(() => new Promise<void>(() => undefined))
+            : Reflect.get(player, key),
+      });
   app = await mountStudio(root, fake.services);
   return root;
 }
 
 it("keeps the faded watch controls on screen while one has keyboard focus", async () => {
-  const root = await mountRunning("?watch=1");
+  const root = await mountWatch("?watch=1");
 
   const play = root.querySelector<HTMLButtonElement>(".watch-play");
   for (let i = 0; i < 4 && document.activeElement !== play; i++) await userEvent.keyboard("{Tab}");
@@ -82,7 +88,7 @@ it("keeps the faded watch controls on screen while one has keyboard focus", asyn
 });
 
 it("plays a round face inside its inscribed square and clears the controls soon after resume", async () => {
-  const root = await mountRunning("?watch=1&round=1");
+  const root = await mountWatch("?watch=1&round=1");
   const face = root.querySelector<HTMLElement>(".view-watch");
   const play = root.querySelector<HTMLButtonElement>(".watch-play");
   play?.click();
@@ -96,4 +102,17 @@ it("plays a round face inside its inscribed square and clears the controls soon 
   expect(face?.dataset.controls).toBe("shown");
   await new Promise((resolve) => setTimeout(resolve, 1000)); // well before the 2.6 s fade after a touch
   expect(face?.dataset.controls).toBe("hidden");
+});
+
+it("keeps the title and small buttons on a dark backing over a finished page", async () => {
+  const root = await mountWatch("?watch=1&round=1", false);
+  const face = root.querySelector<HTMLElement>(".view-watch");
+  root.querySelector<HTMLButtonElement>(".watch-play")?.click();
+  await expect.poll(() => face?.dataset.phase).toBe("done");
+  // The poster is gone and the finished page, often white, sits right behind the end card.
+  const probe = face?.appendChild(document.createElement("i"));
+  probe?.style.setProperty("background-color", "var(--watch-scrim)");
+  const scrim = probe && getComputedStyle(probe).backgroundColor;
+  const covered = [...root.querySelectorAll<HTMLElement>(".watch-title, .watch-actions .watch-icon-btn")];
+  expect(covered.map((el) => getComputedStyle(el).backgroundColor)).toEqual(covered.map(() => scrim));
 });

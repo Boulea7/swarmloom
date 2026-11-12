@@ -249,10 +249,19 @@
   cursor: pointer;
 }
 
-.view-watch[data-phase="playing"] .watch-actions .watch-icon-btn {
+/* Without the poster (playing, paused or finished) the page shows through, light or dark: the small
+   buttons, and the title of a finished build, get the same dark backing as the play button. */
+.view-watch[data-phase="playing"] .watch-actions .watch-icon-btn,
+.view-watch[data-phase="done"] .watch-actions .watch-icon-btn,
+.view-watch[data-phase="done"] .watch-title {
   background: var(--watch-scrim);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+}
+
+.view-watch[data-phase="done"] .watch-title {
+  padding: 1cqmin 3cqmin;
+  border-radius: 2cqmin;
 }
 
 /* A modal <dialog> in the top layer, laid exactly over the face it covers. */
