@@ -296,14 +296,15 @@ it("keeps the native look of form controls and the UA's placeholder colour", asy
   // The bar's middle row: WebKit's native bar is 6px tall, Chromium's and Firefox's taller.
   const bar = (win.document.querySelector("progress") as HTMLElement).getBoundingClientRect();
   const [red = 0, green = 0, blue = 0] = ctx.getImageData(50, Math.floor(bar.top + bar.height / 2), 1, 1).data;
-  const text = ctx.getImageData(0, 16, SIZE, 34).data.filter((_, i) => i % 4 === 0);
+  // Only the field's own rows: Firefox's progress box is 18px tall, and its blue bar has no red.
+  const field = (win.document.querySelector("input") as HTMLElement).getBoundingClientRect();
+  const top = Math.ceil(field.top);
+  const text = ctx.getImageData(0, top, SIZE, Math.floor(field.bottom) - top).data.filter((_, i) => i % 4 === 0);
   // A clone given the UA's border or background as author styles draws a green fallback bar.
   // The native bars are different blues (Firefox's darker than Chromium's, WebKit's rgb(52,132,228)).
   expect(blue > 150 && green < 180 && red < 80).toBe(true);
-  // Chromium's root clone used to pin the placeholder to the root's resolved text fill colour.
-  // Firefox does not apply author ::placeholder rules inside an SVG image (a documented
-  // pseudo-element limit), so the grey-placeholder assertion is Chromium-specific.
-  if (server.browser !== "firefox") expect(Math.min(...text)).toBeGreaterThan(80);
+  // A resolved text fill colour on the root clone, inherited down to the placeholder, drew it black.
+  expect(Math.min(...text)).toBeGreaterThan(80);
 });
 
 it("draws a video's poster, and its controls over a dark backdrop when it has no picture", async () => {
