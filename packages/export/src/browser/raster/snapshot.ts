@@ -742,24 +742,43 @@ function showsPoster(video: HTMLVideoElement): boolean {
 
 /**
  * The `src` (or shared class) of an `<img>` showing what a video shows: its poster, else its current
- * frame as a PNG, else nothing. A frame from another site cannot be read and is left blank.
+ * frame as a PNG, else nothing. A frame from another site cannot be read and is left blank. A
+ * paused video's frame is encoded once while it stays where it is (see {@link stillFrame}).
  */
 function videoSource(walk: Walk, video: HTMLVideoElement): string {
   if (showsPoster(video)) return embedUrl(walk, video.poster, "i");
   if (!hasFrame(video)) return ` src="${BLANK_IMAGE}"`;
+  const key = stillFrame(video);
+  const draw = () => videoFrameUrl(walk, video);
+  return ` src="${key === null ? draw() : walk.resources.picture(video, key, draw)}"`;
+}
+
+/**
+ * Names the frame a paused video shows: its source, position, ready state and size. Null while
+ * the frame may change under the same name: a playing video's `currentTime` can trail its
+ * picture, a seek has not shown its target yet, and a stream (`srcObject`) has no fixed frames.
+ */
+function stillFrame(video: HTMLVideoElement): string | null {
+  if (!video.paused || video.seeking || video.srcObject) return null;
+  const { currentSrc, currentTime, readyState, videoWidth, videoHeight } = video;
+  return `${readyState} ${videoWidth}x${videoHeight} ${currentTime} ${currentSrc}`;
+}
+
+/** A video's current frame as a PNG data URL, or a blank image when another site's frame cannot be read. */
+function videoFrameUrl(walk: Walk, video: HTMLVideoElement): string {
   const canvas = video.ownerDocument.createElement("canvas");
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext("2d")?.drawImage(video, 0, 0);
   try {
-    return ` src="${canvas.toDataURL("image/png")}"`;
+    return canvas.toDataURL("image/png");
   } catch {
     const url = video.currentSrc;
     const name = url.length > 80 ? `${url.slice(0, 77)}...` : url;
     walk.resources.report(
       `The video ${name} could not be drawn in the frame (another site without CORS); it is left blank`,
     );
-    return ` src="${BLANK_IMAGE}"`;
+    return BLANK_IMAGE;
   }
 }
 

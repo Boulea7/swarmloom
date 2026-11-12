@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { server } from "vitest/browser";
 import { FrameRasterizer } from "../src/browser/raster/rasterize";
 
@@ -169,4 +169,26 @@ it("draws a video's poster, and its controls over a dark backdrop when it has no
   expect(Math.max(...at(5, 55))).toBeLessThan(64);
   expect(Math.min(...at(25, 52))).toBeGreaterThan(64);
   expect(Math.min(...at(50, 78))).toBeGreaterThan(64);
+});
+
+/** 16x16 VP8 WebM: a red frame, then a blue one from 0.1 s. */
+const CLIP =
+  "data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAH0EU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHGTbuMU6uEElTDZ1OsggETTbuMU6uEHFO7a1OsggHe7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmoCrXsYMPQkBNgIRMYXZmV0GETGF2ZkSJiEBpAAAAAAAAFlSua8iuAQAAAAAAAD/XgQFzxYgAAAAAAAAAAZyBACK1nIN1bmSIgQCGhVZfVlA4g4EBI+ODhAX14QDgkLCBELqBEJqBAlWwhFW5gQESVMNn0HNzzWPAi2PFiAAAAAAAAAABZ8iYRaOHRU5DT0RFUkSHi0xhdmMgbGlidnB4Z8ihRaOIRFVSQVRJT05Eh5MwMDowMDowMC4yMDAwMDAwMDAAH0O2dfHngQCjvYEAAIDwAgCdASoQABAAAEcIhYWIhYSIAgICdaoD+AP6Ag1NGAD+/W7z/+OZNzDE/45t//FhPA4oyP/xUQCjrYEAZACxAQABEBAAGAAwP/QMAAAA/v9NEv/8WE8DijI//FhX/z8oL6sr636JABxTu2uRu4+zgQC3iveBAfGCAWjwgQM=";
+
+it("encodes a paused video's frame once while it stays where it is", async () => {
+  const { win, rasterizer } = await frameOf(`<video controls preload="auto" width=64 height=64 src="${CLIP}"></video>`);
+  const video = win.document.querySelector("video") as HTMLVideoElement;
+  const still = () => video.readyState >= 2 && !video.seeking;
+  await vi.waitUntil(still, { timeout: 5000 });
+  const encode = vi.spyOn((win as Window & typeof globalThis).HTMLCanvasElement.prototype, "toDataURL");
+  await rasterizer.snapshot();
+  const { svg } = await rasterizer.snapshot();
+  expect(encode).toHaveBeenCalledTimes(1);
+  expect(svg).toContain(encode.mock.results[0]?.value);
+  // Moved to another frame, it is encoded again.
+  video.currentTime = 0.15;
+  await vi.waitUntil(still, { timeout: 5000 });
+  await rasterizer.snapshot();
+  expect(encode).toHaveBeenCalledTimes(2);
+  encode.mockRestore();
 });

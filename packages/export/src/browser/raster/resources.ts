@@ -58,11 +58,13 @@ export function networkGate(policy: ResourcePolicy, base: string): ResourceGate 
  * Turns resource URLs into data URLs, once per URL: an SVG image (the frame snapshot) may only use
  * resources embedded in it. A URL the gate refuses is never requested; it is drawn from its loaded
  * element when there is one, else left blank. A resource that cannot be read (another site without
- * CORS) becomes {@link BLANK_IMAGE}. Either is reported once through `onWarning`.
+ * CORS) becomes {@link BLANK_IMAGE}. Either is reported once through `onWarning`. Pictures drawn
+ * from elements are kept too, while the element stays in the same state ({@link picture}).
  */
 export class ResourceCache {
   readonly #done = new Map<string, string>();
   readonly #pending = new Map<string, Promise<string>>();
+  readonly #pictures = new WeakMap<object, { key: string; url: string }>();
   readonly #fetch: typeof fetch;
   readonly #onWarning: (message: string) => void;
   readonly #gate: ResourceGate;
@@ -79,6 +81,19 @@ export class ResourceCache {
     if (this.#reported.has(message)) return;
     this.#reported.add(message);
     this.#onWarning(message);
+  }
+
+  /**
+   * The data URL of what `element` shows in the state `key` names: drawn by `draw` only when the
+   * element was last drawn in another state. Encoding a paused video's frame again every frame
+   * would block the main thread for tens of milliseconds to make the same PNG.
+   */
+  picture(element: object, key: string, draw: () => string): string {
+    const known = this.#pictures.get(element);
+    if (known?.key === key) return known.url;
+    const url = draw();
+    this.#pictures.set(element, { key, url });
+    return url;
   }
 
   /** The data URL when already known (data URLs map to themselves), else undefined. */
