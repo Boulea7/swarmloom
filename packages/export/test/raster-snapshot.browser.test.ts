@@ -71,6 +71,19 @@ it.each([
   expect(await pixel(rasterizer, 2, 2)).toEqual(expected);
 });
 
+it("keeps the margins a written block's last content passes on to what follows it", async () => {
+  // The block's `auto` height is read through CSS Typed OM, which Firefox lacks.
+  if (server.browser === "firefox") return;
+  // The paragraph's margin collapses through the div's bottom; a clone sized to the div kept it inside.
+  const { win, rasterizer } = await frameOf(`<body style="margin:0"><div><x-text><p style="margin:0 0 30px">x</p>
+    </x-text></div><div id=red style="height:50px;background:rgb(255,0,0)"></div></body>`);
+  const top = Math.round((win.document.getElementById("red") as HTMLElement).getBoundingClientRect().top);
+  expect([await pixel(rasterizer, 50, top - 2), await pixel(rasterizer, 50, top + 1)]).toEqual([
+    [255, 255, 255],
+    [255, 0, 0],
+  ]);
+});
+
 it("writes one href for an SVG element that has both href and xlink:href", async () => {
   const { rasterizer } = await frameOf(
     '<body style="margin:0"><svg width=50 height=50 style="display:block">' +

@@ -92,6 +92,44 @@ const INK_MARGIN = 256;
 const HOLLOW_DISPLAYS = new Set(["block", "flow-root", "flex", "grid", "list-item"]);
 /** Of those, the ones that hold their content's margins and floats in (block formatting contexts). */
 const CONTAINED_DISPLAYS = new Set(["flow-root", "flex", "grid"]);
+/** Block-level displays (the outer display of the others is inline, or they are internal parts). */
+const BLOCK_LEVEL = new Set(["block", "list-item", "flow-root", "flex", "grid", "table", "-webkit-box"]);
+/** HTML elements laid out as a whole whatever their display (replaced elements, form controls). */
+const WHOLE = new Set([
+  ...VOID,
+  "button",
+  "fieldset",
+  "legend",
+  "canvas",
+  "video",
+  "iframe",
+  "object",
+  "embed",
+  "meter",
+  "progress",
+]);
+/**
+ * SVG elements whose content draws only where something refers to it by id, never where it sits.
+ * Their content inherits from where they sit (not from what refers to them), except a `<symbol>`'s.
+ */
+const UNDRAWN_SVG = new Set([
+  "defs",
+  "symbol",
+  "clipPath",
+  "mask",
+  "linearGradient",
+  "radialGradient",
+  "pattern",
+  "filter",
+  "marker",
+]);
+/**
+ * Names a reference to an element written in the markup: `url(#id)` in a style or presentation
+ * attribute, `href="#id"`. Anything else spelled that way (text) is a harmless extra match.
+ */
+const ID_REF = /#([\w.:-]+)/g;
+/** Ids {@link ID_REF} finds whole; an element with any other id is written whether referred to or not. */
+const PLAIN_ID = /^[\w.:-]+$/;
 /** Inline-level boxes laid out as a whole (atomic inlines), by the layout of their content. */
 const ATOMIC_INLINES: ReadonlyMap<string, string> = new Map([
   ["inline-block", "flow-root"],
@@ -231,6 +269,29 @@ interface PathEntry {
   raised: number;
 }
 
+/**
+ * SVG elements with an id inside a box left out or written empty: something written may still
+ * refer to them. After the walk, those the markup refers to go into `slot` of the walk's output,
+ * in a hidden `<svg>` (see {@link emitKept}).
+ */
+interface KeptElements {
+  slot: number;
+  elements: Element[];
+  /** The box left out or written empty. */
+  root: Element;
+  view: DocView;
+  /** Inherited values of the clone the slot sits in (null at the root). */
+  parent: InheritedValues | null;
+}
+
+/** How a box is written empty (see {@link hollowable}). */
+interface Hollow {
+  /** Margins written instead of its own: those its content shared with it, CSS declarations. */
+  margins: Record<string, string>;
+  /** SVG elements in it with an id (see {@link KeptElements}). */
+  kept: Element[];
+}
+
 /** Tells whether the documents read so far changed after the walk read them. */
 interface ChangeWatch {
   observe(node: Document | ShadowRoot): void;
@@ -258,6 +319,8 @@ interface Walk {
   path: PathEntry[];
   /** Elements whose background the canvas paints instead (see {@link emitDocument}). */
   onCanvas: Set<Element>;
+  /** SVG elements kept from boxes left out or written empty; null once they are being written. */
+  kept: KeptElements[] | null;
   watch: ChangeWatch | null;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
@@ -361,15 +424,25 @@ type Reach = typeof OPEN | typeof CLIPPED | typeof SEALED;
 
 /**
  * True when nothing of the flattened subtree of `el` can show: every box in it, widened by what
- * overflows it unclipped (text, pseudo-elements), lies outside `view.reach`, and it holds no SVG
- * element with an id (a gradient, symbol or clip path something visible may refer to, wherever it
- * sits). Below a positioned box that clips its content and lies outside, only the position of each
- * box is read: a fixed box escapes that clip. With `floats`, a floating box in it also counts as
- * showing: it can move content that follows `el`. With `transparent`, `el` paints nothing at all
- * and only the SVG ids count. Reads boxes and a few styles, a small fraction of what writing the
- * subtree costs.
+ * overflows it unclipped (text, pseudo-elements), lies outside `view.reach`. Below a positioned box
+ * that clips its content and lies outside, only the position of each box is read: a fixed box
+ * escapes that clip. Inside SVG elements drawn only where referred to ({@link UNDRAWN_SVG}), no box
+ * is read. With `floats`, a floating box in it also counts as showing: it can move content that
+ * follows `el`. With `transparent`, `el` paints nothing at all. Reads boxes and a few styles, a
+ * small fraction of what writing the subtree costs.
+ *
+ * Something visible may refer to an SVG element with an id wherever it sits (a gradient, clip path,
+ * or a shape a `<use>` copies). Those are added to `kept`, to be written on their own when the
+ * markup refers to them (see {@link emitKept}); without `kept`, any such element counts as showing.
  */
-function offscreen(walk: Walk, el: Element, view: DocView, floats: boolean, transparent = false): boolean {
+function offscreen(
+  walk: Walk,
+  el: Element,
+  view: DocView,
+  floats: boolean,
+  transparent = false,
+  kept: Element[] | null = null,
+): boolean {
   const area = view.reach;
   const near = (left: number, top: number, right: number, bottom: number) =>
     right >= area.left && left <= area.right && bottom >= area.top && top <= area.bottom;
@@ -377,7 +450,14 @@ function offscreen(walk: Walk, el: Element, view: DocView, floats: boolean, tran
   const reaches: Reach[] = [transparent ? SEALED : OPEN];
   for (let next = stack.pop(); next; next = stack.pop()) {
     let reach = reaches.pop() as Reach;
-    if (next.namespaceURI === SVG_NS && next.id) return false;
+    if (next.namespaceURI === SVG_NS) {
+      if (next.id) {
+        if (!kept) return false;
+        kept.push(next);
+      }
+      // Not drawn where it sits: its boxes, if any, show nothing there.
+      if (UNDRAWN_SVG.has(next.localName)) reach = SEALED;
+    }
     if (reach !== SEALED) {
       const cs = view.win.getComputedStyle(next);
       const position = cs.getPropertyValue("position");
@@ -478,21 +558,24 @@ function resetsCounter(el: Element, cs: CSSStyleDeclaration): boolean {
 /**
  * An absolutely positioned subtree that cannot show: fully transparent, or with nothing in it near
  * the viewport. Leaving it out cannot move anything else (it is out of flow), unless it counts:
- * it steps a counter, or resets one for the boxes after it.
+ * it steps a counter, or resets one for the boxes after it. Returns null when it may show, else the
+ * SVG elements with an id in it ({@link offscreen}).
  */
-function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView): boolean {
+function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView): Element[] | null {
   const position = cs.getPropertyValue("position");
-  if (position !== "absolute" && position !== "fixed") return false;
-  if (resetsCounter(el, cs)) return false;
-  const hidden = offscreen(walk, el, view, false, cs.getPropertyValue("opacity") === "0");
-  return hidden && !stepsCounters(walk, [el], view);
+  if (position !== "absolute" && position !== "fixed") return null;
+  if (resetsCounter(el, cs)) return null;
+  const kept: Element[] | null = walk.kept ? [] : null;
+  if (!offscreen(walk, el, view, false, cs.getPropertyValue("opacity") === "0", kept)) return null;
+  return stepsCounters(walk, [el], view) ? null : (kept ?? []);
 }
 
 /**
  * Where an element sits, as far as writing it as an empty box goes (see {@link hollowable}):
  * - LOOSE: a baseline may be read from it, or its parent lays it out in some other way;
- * - FLOW: in block flow, or in a flex or grid container that aligns nothing by baseline, and no
- *   baseline is read from it;
+ * - FLOW: in block flow, and no baseline is read from it;
+ * - ITEMS: in a flex or grid container that aligns nothing by baseline, and no baseline is read
+ *   from it: a flex or grid item holds its content's margins and floats in;
  * - TABLE: in a table's grid (a row group or row of a table, or a cell of such a row), and no
  *   baseline is read from the table;
  * - FAR_ROW: as TABLE, a cell of a row with nothing in it that can show ({@link faintRow}).
@@ -501,7 +584,8 @@ const LOOSE = 0;
 const FLOW = 1;
 const TABLE = 2;
 const FAR_ROW = 3;
-type Context = typeof LOOSE | typeof FLOW | typeof TABLE | typeof FAR_ROW;
+const ITEMS = 4;
+type Context = typeof LOOSE | typeof FLOW | typeof TABLE | typeof FAR_ROW | typeof ITEMS;
 
 /**
  * Whether an inline-level box or a table cell is placed by its edges rather than by the baseline
@@ -523,55 +607,299 @@ function edgeAligned(cs: CSSStyleDeclaration, display: string): boolean {
  * its place does not depend on them. Its used size is written anyway (computed width and height),
  * so what follows keeps its place, provided no baseline is read from it, its content steps no
  * counter, and it is:
- * - an in-flow block in a {@link FLOW} context that does not share margins or floats with its
- *   content (a block formatting context, or border or padding on both edges and no floats inside);
+ * - an in-flow block in a {@link FLOW} or {@link ITEMS} context with no floats inside, whose
+ *   content's margins collapsing with its own are known ({@link sharedMargin}): none in a block
+ *   formatting context, behind border or padding, or under a line;
  * - an inline block, flex or grid container placed in its line by its edges ({@link edgeAligned});
  * - a cell of one row and column in a {@link TABLE} context, placed by its edges: the grid keeps
  *   the widths written on every cell and the height written on this one.
  * Off-screen sections of a long live page then cost one element each, table rows one per cell.
+ * Returns null when it may not, else the margins to write and the SVG elements it keeps.
  */
-function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView, context: Context): boolean {
+function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView, context: Context): Hollow | null {
   const local = el.localName;
-  if (VOID.has(local) || local === "canvas" || local === "video" || local === "iframe") return false;
+  if (VOID.has(local) || local === "canvas" || local === "video" || local === "iframe") return null;
   const display = cs.getPropertyValue("display");
   let contained = true;
   if (HOLLOW_DISPLAYS.has(display)) {
-    if (context !== FLOW || cs.getPropertyValue("float") !== "none") return false;
-    if (cs.getPropertyValue("align-self").includes("baseline")) return false;
-    const overflow = cs.getPropertyValue("overflow-x");
-    contained =
-      CONTAINED_DISPLAYS.has(display) ||
-      (overflow !== "visible" && overflow !== "clip") ||
-      /\b(?:layout|paint|strict|content)\b/.test(cs.getPropertyValue("contain"));
+    if ((context !== FLOW && context !== ITEMS) || cs.getPropertyValue("float") !== "none") return null;
+    if (cs.getPropertyValue("align-self").includes("baseline")) return null;
+    contained = context === ITEMS || CONTAINED_DISPLAYS.has(display) || holdsContent(cs);
   } else if (display === "table-cell") {
     const cell = el as Partial<HTMLTableCellElement>;
-    if (context !== TABLE && context !== FAR_ROW) return false;
-    if ((cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1) return false;
-    if (!edgeAligned(cs, display)) return false;
+    if (context !== TABLE && context !== FAR_ROW) return null;
+    if ((cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1) return null;
+    if (!edgeAligned(cs, display)) return null;
   } else if (!ATOMIC_INLINES.has(display) || local === "button" || !edgeAligned(cs, display)) {
     // A button takes its baseline from its content whatever its overflow.
-    return false;
+    return null;
   }
   const position = cs.getPropertyValue("position");
-  if (position !== "static" && position !== "relative") return false;
-  if (!cs.getPropertyValue("width").endsWith("px") || !cs.getPropertyValue("height").endsWith("px")) return false;
+  if (position !== "static" && position !== "relative") return null;
+  if (!cs.getPropertyValue("width").endsWith("px") || !cs.getPropertyValue("height").endsWith("px")) return null;
+  const r = el.getBoundingClientRect();
+  if (r.height <= 0) return null;
+  // Near the viewport: offscreen() below would say so first.
+  const area = view.reach;
+  if (r.right >= area.left && r.left <= area.right && r.bottom >= area.top && r.top <= area.bottom) return null;
+  const margins: Record<string, string> = {};
   if (!contained) {
-    const edge = (side: "top" | "bottom") => px(cs, `border-${side}-width`) > 0 || px(cs, `padding-${side}`) > 0;
-    if (!edge("top") || !edge("bottom")) return false;
+    // Collapsing margins run along the block axis; this reads them as vertical.
+    if (cs.getPropertyValue("writing-mode") !== "horizontal-tb") return null;
+    for (const start of [true, false]) {
+      const side = start ? "top" : "bottom";
+      const own = px(cs, `margin-${side}`);
+      const shared = sharedMargin(own, edgeMargins(walk, el, cs, view, start));
+      if (shared === null) return null;
+      if (shared !== own) margins[`margin-${side}`] = `${shared}px`;
+    }
   }
-  if (el.getBoundingClientRect().height <= 0) return false;
-  // The row of a FAR_ROW cell was found away from the viewport, all of it.
-  if (context !== FAR_ROW && !offscreen(walk, el, view, !contained)) return false;
+  const kept: Element[] | null = walk.kept ? [] : null;
+  // The row of a FAR_ROW cell was found away from the viewport, all of it (SVG ids included).
+  if (context !== FAR_ROW && !offscreen(walk, el, view, !contained, false, kept)) return null;
   // The box keeps its own counters and pseudo-elements, its content's would go: a list's items too,
   // which step its `list-item` counter for the boxes after it.
-  return !stepsCounters(walk, flatChildren(walk, el), view);
+  if (stepsCounters(walk, flatChildren(walk, el), view)) return null;
+  return { margins, kept: kept ?? [] };
+}
+
+/** Whether a block box holds its content's margins and floats in by its overflow or containment. */
+function holdsContent(cs: CSSStyleDeclaration): boolean {
+  const overflow = cs.getPropertyValue("overflow-x");
+  return (
+    (overflow !== "visible" && overflow !== "clip") ||
+    /\b(?:layout|paint|strict|content)\b/.test(cs.getPropertyValue("contain"))
+  );
+}
+
+/**
+ * The margin a box written empty takes at one edge, or null when it cannot be known: its own
+ * margin `own` and those of its content that may collapse with it (`edge`, see {@link edgeMargins})
+ * collapse into one. When they all lie between 0 and `own`, that is `own` whether they collapse or
+ * not; otherwise it is their largest (all positive) or smallest (all negative) when they surely
+ * collapse, and unknown when they may not or their signs differ.
+ */
+function sharedMargin(own: number, edge: Edge | null): number | null {
+  if (!edge) return null;
+  const all = [own, ...edge.margins];
+  const collapsed = all.every((m) => m >= 0) ? Math.max(...all) : all.every((m) => m <= 0) ? Math.min(...all) : null;
+  if (collapsed === null) return null;
+  return collapsed === own || edge.sure ? collapsed : null;
+}
+
+/** Margins of a box's content that may collapse with its own at one edge (see {@link edgeMargins}). */
+interface Edge {
+  /** CSS px. */
+  margins: number[];
+  /** They collapse with it for sure; false when they only may. */
+  sure: boolean;
+}
+
+/** An edge of a box's content ends in a line (text, an inline box, a preserved space). */
+const LINE = 1;
+/** Nothing of a box's content lies at an edge (only boxes out of flow, collapsed white space). */
+const NONE = 2;
+/** What lies first or last in a box's content: a block-level child, or one of the above. */
+type EdgeItem = typeof LINE | typeof NONE | { box: Element; cs: CSSStyleDeclaration; pseudo: boolean };
+
+/**
+ * The margins of the content of the block `el` that may collapse with its own margin at its top
+ * (`start`) or bottom edge (CSS 2 §8.3.1): those of its first (last) in-flow block-level box, of
+ * that box's first (last) one, and so on, up to a line, a border, padding, or a box that holds its
+ * content's margins in. They surely collapse when every box on the way is a plain block (no block
+ * formatting context) with no clearance and, at the bottom, an `auto` height (read through CSS
+ * Typed OM, which Firefox lacks). Floats and positioned boxes are passed over. Null when the
+ * content at that edge cannot be read: internal table or ruby boxes, generated block content, a
+ * block with no height.
+ */
+function edgeMargins(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView, start: boolean): Edge | null {
+  const side = start ? "top" : "bottom";
+  // Clearance keeps a box's top margin from collapsing with its parent's, when there is any.
+  const cleared = (style: CSSStyleDeclaration) => start && style.getPropertyValue("clear") !== "none";
+  const edge: Edge = { margins: [], sure: holdsMargins(el, cs) === false && !cleared(cs) };
+  let box = el;
+  let style = cs;
+  for (;;) {
+    if (px(style, `border-${side}-width`) > 0 || px(style, `padding-${side}`) > 0) return edge;
+    const item = edgeItem(walk, box, style, view, start, edge);
+    if (item === null) return null;
+    if (item === LINE || item === NONE) return edge;
+    if (!start && !autoHeight(box, style)) edge.sure = false;
+    // An inside marker may make a line before the content.
+    const marker = style.getPropertyValue("display") === "list-item";
+    if (start && marker && style.getPropertyValue("list-style-position") === "inside") edge.sure = false;
+    edge.margins.push(px(item.cs, `margin-${side}`));
+    if (cleared(item.cs)) edge.sure = false;
+    const holds = holdsMargins(item.box, item.cs);
+    if (holds === true) return edge;
+    // Generated block content, or a block that may collapse through and join its other margin.
+    if (item.pseudo || holds === null || item.box.getBoundingClientRect().height <= 0) return null;
+    box = item.box;
+    style = item.cs;
+  }
+}
+
+/**
+ * Whether the block-level box `el` holds its content's margins in: true for a block formatting
+ * context or a box laid out as a whole, false for a plain block, null when it may depend on the
+ * engine (`align-content` on a block, a query container).
+ */
+function holdsMargins(el: Element, cs: CSSStyleDeclaration): boolean | null {
+  const display = cs.getPropertyValue("display");
+  if (display !== "block" && display !== "list-item") return true;
+  if (el.namespaceURI !== XHTML_NS || WHOLE.has(el.localName) || holdsContent(cs)) return true;
+  if (el === el.ownerDocument.documentElement) return true;
+  if (cs.getPropertyValue("column-count") !== "auto" || cs.getPropertyValue("column-width") !== "auto") return true;
+  if (cs.getPropertyValue("writing-mode") !== "horizontal-tb") return true;
+  const align = cs.getPropertyValue("align-content");
+  if ((align !== "" && align !== "normal") || cs.getPropertyValue("container-type") !== "normal") return null;
+  return false;
+}
+
+/**
+ * The bottom margin to write on the block `el` written whole, or null to keep its own. Its clone is
+ * given its used height, which keeps the margins of its content that collapsed through its bottom
+ * edge on the page (an `auto` height) inside it: they go onto its own margin instead, when they
+ * surely collapsed ({@link sharedMargin}) and `el` is no flex or grid item.
+ */
+function passedMargin(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView): string | null {
+  const display = cs.getPropertyValue("display");
+  if (display !== "block" && display !== "list-item") return null;
+  if (px(cs, "border-bottom-width") > 0 || px(cs, "padding-bottom") > 0) return null;
+  const own = px(cs, "margin-bottom");
+  const shared = sharedMargin(own, edgeMargins(walk, el, cs, view, false));
+  if (shared === null || shared === own || !inBlockFlow(el, view)) return null;
+  return `${shared}px`;
+}
+
+/** Whether `el` is laid out in block flow: the box around it is no flex or grid container. */
+function inBlockFlow(el: Element, view: DocView): boolean {
+  for (let up = flatParent(el); up?.nodeType === 1; up = flatParent(up)) {
+    const display = view.win.getComputedStyle(up as Element).getPropertyValue("display");
+    if (display !== "contents") return !/flex|grid|box/.test(display);
+  }
+  return true;
+}
+
+/** Whether a block's computed height is `auto`, with no min or max height: its last margins can pass. */
+function autoHeight(el: Element, cs: CSSStyleDeclaration): boolean {
+  const min = cs.getPropertyValue("min-height");
+  if ((min !== "0px" && min !== "auto") || cs.getPropertyValue("max-height") !== "none") return false;
+  const map = (el as Partial<Element>).computedStyleMap;
+  if (typeof map !== "function") return false;
+  try {
+    return String(map.call(el).get("height")) === "auto";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The first (`start`) or last in-flow item of the content of `owner`, its `::before` and `::after`
+ * boxes included, looking through `display: contents` and empty inline boxes: a block inside an
+ * inline box (a custom element's) is laid out in the block around it, and shares margins with it
+ * when nothing of the inline box makes a line before it. Clears `edge.sure` when an item may or may
+ * not make a line; null when an item cannot be read.
+ */
+function edgeItem(
+  walk: Walk,
+  owner: Element,
+  ownerStyle: CSSStyleDeclaration,
+  view: DocView,
+  start: boolean,
+  edge: Edge,
+): EdgeItem | null {
+  // ::before, the children, ::after, from the edge in.
+  const children = flatChildren(walk, owner);
+  const count = children.length + 2;
+  for (let k = 0; k < count; k++) {
+    const i = start ? k : count - 1 - k;
+    const found =
+      i === 0 || i === count - 1
+        ? pseudoItem(owner, view, i === 0 ? "::before" : "::after", edge)
+        : childItem(walk, children[i - 1] as Node, ownerStyle, view, start, edge);
+    if (found !== NONE) return found;
+  }
+  return NONE;
+}
+
+/** The `::before` or `::after` box of `owner` as an edge item (see {@link edgeItem}). */
+function pseudoItem(owner: Element, view: DocView, pseudo: "::before" | "::after", edge: Edge): EdgeItem {
+  if (owner.namespaceURI !== XHTML_NS || WHOLE.has(owner.localName)) return NONE;
+  const ps = view.win.getComputedStyle(owner, pseudo);
+  const content = ps.getPropertyValue("content");
+  if (!content || content === "none" || content === "normal") return NONE;
+  const display = ps.getPropertyValue("display");
+  const position = ps.getPropertyValue("position");
+  // Boxes out of flow separate no margins.
+  if (display === "none" || position === "absolute" || position === "fixed") return NONE;
+  if (ps.getPropertyValue("float") !== "none") return NONE;
+  if (display.startsWith("inline")) {
+    if (display !== "inline" || content !== '""') return LINE;
+    // An empty inline box makes a line only with horizontal margin, border or padding.
+    edge.sure = false;
+    return NONE;
+  }
+  return { box: owner, cs: ps, pseudo: true };
+}
+
+/** A child node of a box's content as an edge item (see {@link edgeItem}). */
+function childItem(
+  walk: Walk,
+  node: Node,
+  parentStyle: CSSStyleDeclaration,
+  view: DocView,
+  start: boolean,
+  edge: Edge,
+): EdgeItem | null {
+  if (node.nodeType === 3 || node.nodeType === 4) return textItem(node.nodeValue ?? "", parentStyle);
+  if (node.nodeType !== 1) return NONE;
+  const el = node as Element;
+  const cs = view.win.getComputedStyle(el);
+  const display = cs.getPropertyValue("display");
+  const position = cs.getPropertyValue("position");
+  // Boxes out of flow separate no margins.
+  if (display === "none" || position === "absolute" || position === "fixed") return NONE;
+  if (cs.getPropertyValue("float") !== "none") return NONE;
+  const html = el.namespaceURI === XHTML_NS;
+  if (display === "contents") {
+    // Replaced elements and controls without a box show nothing at all.
+    return html && !WHOLE.has(el.localName) ? edgeItem(walk, el, cs, view, start, edge) : NONE;
+  }
+  if (display === "inline" && html && !WHOLE.has(el.localName)) {
+    const edges = (sides: readonly string[]) =>
+      sides.some((s) => px(cs, `margin-${s}`) !== 0 || px(cs, `padding-${s}`) > 0 || px(cs, `border-${s}-width`) > 0);
+    if (edges(["left", "right"])) return LINE;
+    // Whether those alone make a line differs between engines.
+    if (edges(["top", "bottom"])) edge.sure = false;
+    return edgeItem(walk, el, cs, view, start, edge);
+  }
+  if (display === "inline" && el.localName === "wbr") return NONE;
+  // An atomic inline (inline block, replaced element) makes a line.
+  if (display.startsWith("inline")) return LINE;
+  // Internal table and ruby boxes, MathML: laid out in boxes of their own making.
+  if (!BLOCK_LEVEL.has(display)) return null;
+  return { box: el, cs, pseudo: false };
+}
+
+/** A text node as an edge item: a line unless it is white space its parent collapses away. */
+function textItem(text: string, parentStyle: CSSStyleDeclaration): EdgeItem {
+  if (!CSS_SPACE.test(text)) return LINE;
+  let collapse = parentStyle.getPropertyValue("white-space-collapse");
+  if (!collapse) {
+    const ws = parentStyle.getPropertyValue("white-space");
+    collapse = ws === "normal" || ws === "nowrap" ? "collapse" : ws === "pre-line" ? "preserve-breaks" : "preserve";
+  }
+  if (collapse === "collapse" || text === "") return NONE;
+  if (collapse === "preserve-breaks") return /[\n\r\f]/.test(text) ? LINE : NONE;
+  return LINE;
 }
 
 /** The context a box with this display gives its children by its own layout, its baseline aside. */
 function layoutContext(display: string, cs: CSSStyleDeclaration): Context {
   if (display === "block" || display === "flow-root" || display === "list-item") return FLOW;
   if (display !== "flex" && display !== "grid") return LOOSE;
-  return cs.getPropertyValue("align-items").includes("baseline") ? LOOSE : FLOW;
+  return cs.getPropertyValue("align-items").includes("baseline") ? LOOSE : ITEMS;
 }
 
 /**
@@ -588,7 +916,8 @@ function childContext(el: Element, cs: CSSStyleDeclaration, context: Context): C
   if (inner !== undefined) return edgeAligned(cs, display) ? layoutContext(inner, cs) : LOOSE;
   const position = cs.getPropertyValue("position");
   const outOfFlow = position === "absolute" || position === "fixed" || cs.getPropertyValue("float") !== "none";
-  if ((context !== FLOW && !outOfFlow) || cs.getPropertyValue("align-self").includes("baseline")) return LOOSE;
+  const inFlowOf = context === FLOW || context === ITEMS;
+  if ((!inFlowOf && !outOfFlow) || cs.getPropertyValue("align-self").includes("baseline")) return LOOSE;
   return display === "table" ? TABLE : layoutContext(display, cs);
 }
 
@@ -1234,15 +1563,19 @@ function* emitElement(
   const display = cs.getPropertyValue("display");
   // SVG resources (gradients, symbols) count even inside display:none, so only HTML subtrees go.
   if (!svg && display === "none") return;
-  if (!svg && culled(walk, el, cs, view)) {
+  const cut = svg ? null : culled(walk, el, cs, view);
+  if (cut) {
     walk.stats.culled++;
+    keep(walk, cut, el, view, parent);
     return;
   }
-  const hollow = !svg && hollowable(walk, el, cs, view, context);
+  const emptied = svg ? null : hollowable(walk, el, cs, view, context);
+  const hollow = emptied !== null;
   if (hollow) walk.stats.culled++;
   // A table row away from the viewport keeps its cells; both are written with what places them only.
   const faint = !svg && !hollow && display === "table-row" && faintRow(walk, el, view);
   const bare = hollow || faint;
+  const passed = svg || bare ? null : passedMargin(walk, el, cs, view);
   walk.stats.elements++;
   const z = zIndex(cs) ?? 0;
   if (view.top && z > 0) raise(walk, z);
@@ -1258,11 +1591,13 @@ function* emitElement(
     override["background-color"] = "transparent";
     override["background-image"] = "none";
   }
-  if (hollow) {
+  if (emptied) {
     // Without content a flex or grid item could shrink below the size it had.
     override["min-width"] = cs.getPropertyValue("width");
     override["min-height"] = cs.getPropertyValue("height");
+    Object.assign(override, emptied.margins);
   }
+  if (passed) override["margin-bottom"] = passed;
   // Nothing of it shows wherever it lands: a transform or offset that moved it away is not written.
   if (bare) override.visibility = cs.getPropertyValue("visibility") === "collapse" ? "collapse" : "hidden";
   const motion = svg && walk.smil.moving.has(el) ? motionMatrix(el) : null;
@@ -1336,7 +1671,8 @@ function* emitElement(
     return;
   }
   walk.out.push(`<${tag}${xmlns}${attrs}${cls}${style}>`);
-  if (hollow) {
+  if (emptied) {
+    keep(walk, emptied.kept, el, view, handed());
     walk.out.push(`</${tag}>`);
     return;
   }
@@ -1369,6 +1705,112 @@ function* emitElement(
     if (view.top) walk.path.pop();
   }
   walk.out.push(`</${tag}>`);
+}
+
+/**
+ * Records the SVG elements with an id of `root`, a box left out or written empty, and keeps a slot
+ * for them here in the output (see {@link emitKept}). `parent` is what the slot's parent clone
+ * passes on.
+ */
+function keep(walk: Walk, elements: Element[], root: Element, view: DocView, parent: InheritedValues | null): void {
+  if (elements.length === 0 || !walk.kept) return;
+  walk.kept.push({ slot: walk.out.push("") - 1, elements, root, view, parent });
+}
+
+/** The parent of a node in the flattened tree: its slot, else its parent, a shadow root's host. */
+function flatParent(node: Node): Node | null {
+  const slot = (node as Partial<Slottable>).assignedSlot;
+  if (slot) return slot;
+  const parent = node.parentNode;
+  return parent?.nodeType === 11 ? ((parent as ShadowRoot).host ?? null) : parent;
+}
+
+/** Whether an element below `root` sits under a box with `display: none` (on the way up to `root`). */
+function undisplayed(el: Element, root: Element, view: DocView): boolean {
+  for (let node = flatParent(el); node && node !== root; node = flatParent(node)) {
+    if (node.nodeType === 1 && view.win.getComputedStyle(node as Element).getPropertyValue("display") === "none") {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Ids the markup in `texts` may refer to, added to `into` (see {@link ID_REF}). */
+function referredIds(into: Set<string>, texts: readonly string[]): void {
+  for (const text of texts) {
+    if (text.includes("#")) for (const [, id] of text.matchAll(ID_REF)) into.add(id as string);
+  }
+}
+
+/**
+ * Writes the SVG elements kept from boxes left out or written empty that the markup refers to,
+ * and those the written ones refer to in turn, each in its slot: in a hidden zero-size `<svg>`
+ * where they are drawn nowhere, or one with `display: none` for those that sat under such a box,
+ * as the page has them. A gradient, clip path, mask, pattern, filter or marker inherits there
+ * from the slot's parent clone, which the hidden `<svg>` hands on unchanged; anything else (a
+ * symbol or shape a `<use>` copies) is written against its own parent's values, so that a copy
+ * inherits from the `<use>` as on the page.
+ */
+function* emitKept(walk: Walk): Steps {
+  const sites = walk.kept;
+  // Boxes written now keep no SVG elements of their own (an HTML pattern or mask content).
+  walk.kept = null;
+  if (!sites || sites.length === 0) return;
+  const refs = new Set<string>();
+  referredIds(refs, walk.out);
+  referredIds(refs, walk.rules);
+  const out = walk.out;
+  // Elements drawn nowhere paint over no overlay candidate.
+  const overlays = walk.overlays;
+  walk.overlays = [];
+  const written = sites.map((site) => site.elements.map((): string | null => null));
+  try {
+    for (let found = true; found; ) {
+      found = false;
+      for (const [i, site] of sites.entries()) {
+        for (const [j, el] of site.elements.entries()) {
+          const done = written[i] as (string | null)[];
+          if (done[j] !== null || (PLAIN_ID.test(el.id) && !refs.has(el.id))) continue;
+          // An element kept in another written here is written with it.
+          const outer = site.elements.findIndex((other, k) => k !== j && done[k] && other.contains(el));
+          if (outer >= 0) {
+            done[j] = "";
+            continue;
+          }
+          walk.out = [];
+          collectSmil(walk.smil, el);
+          yield* emitElement(walk, el, site.view, keptParent(walk, el, site), SVG_NS, null, LOOSE);
+          done[j] = walk.out.join("");
+          referredIds(refs, [done[j] as string]);
+          found = true;
+        }
+      }
+    }
+  } finally {
+    walk.out = out;
+    walk.overlays = overlays;
+  }
+  const box = "position:absolute;width:0;height:0;overflow:hidden";
+  for (const [i, site] of sites.entries()) {
+    const shown: string[] = [];
+    const hidden: string[] = [];
+    for (const [j, markup] of (written[i] as (string | null)[]).entries()) {
+      if (!markup) continue;
+      (undisplayed(site.elements[j] as Element, site.root, site.view) ? hidden : shown).push(markup);
+    }
+    const visibility = site.parent?.get("visibility") ?? "visible";
+    const svg = (style: string, parts: string[]) =>
+      parts.length > 0 ? `<svg xmlns="${SVG_NS}" style="${style}">${parts.join("")}</svg>` : "";
+    out[site.slot] = svg(`${box};visibility:${visibility}`, shown) + svg("display:none", hidden);
+  }
+}
+
+/** What a kept SVG element is written against (see {@link emitKept}). */
+function keptParent(walk: Walk, el: Element, site: KeptElements): InheritedValues | null {
+  if (UNDRAWN_SVG.has(el.localName) && el.localName !== "symbol") return site.parent;
+  const up = flatParent(el);
+  if (up?.nodeType !== 1) return site.parent;
+  return styleText(walk.baseline, site.view.win.getComputedStyle(up as Element), null).inherited;
 }
 
 /** The document of a same-origin frame drawn into its box, at its scroll position. */
@@ -1726,6 +2168,7 @@ async function walkFrame(
     overlays: [],
     path: [],
     onCanvas: new Set(),
+    kept: [],
     watch,
     deadline: 0,
     stats: { elements: 0, culled: 0, restarts },
@@ -1737,7 +2180,10 @@ async function walkFrame(
     `<div xmlns="${XHTML_NS}" style="display:block;position:relative;width:${width}px;height:${height}px;overflow:hidden">`,
   );
   try {
-    const steps = emitDocument(walk, docView(win, width, height, true), null, width, height);
+    const steps = (function* (): Steps {
+      yield* emitDocument(walk, docView(win, width, height, true), null, width, height);
+      yield* emitKept(walk);
+    })();
     for (;;) {
       walk.deadline = atomic ? Number.POSITIVE_INFINITY : performance.now() + SLICE_MS;
       if (steps.next().done) return walk;
@@ -1759,10 +2205,11 @@ async function walkFrame(
  * more than once are embedded once for images and once for CSS.
  *
  * Only what can show is written: subtrees away from the viewport are left out (out of flow) or
- * written as empty boxes of their size (in flow), and boxes under a frame that covers the viewport
- * are left out. The canvases painted last (the cursor layer, and a WebGL model under it) are
- * returned as overlays rather than encoded into the image when nothing else paints after them. The
- * walk pauses every few milliseconds and starts over if the page changed meanwhile.
+ * written as empty boxes of their size (in flow), keeping the SVG elements in them that something
+ * written refers to by id, and boxes under a frame that covers the viewport are left out. The
+ * canvases painted last (the cursor layer, and a WebGL model under it) are returned as overlays
+ * rather than encoded into the image when nothing else paints after them. The walk pauses every
+ * few milliseconds and starts over if the page changed meanwhile.
  *
  * Known limits: pseudo-elements other than `::before`/`::after` (custom `::marker`,
  * `::first-letter`) fall back to defaults; cross-origin images and videos without CORS are left
@@ -1771,7 +2218,9 @@ async function walkFrame(
  * capture time; `position: sticky` does not stick;
  * SMIL animations of keyword attributes (enumerations, `preserveAspectRatio`, `orient`) show the
  * base value; ink reaching more than {@link INK_MARGIN} px past the boxes of a subtree away from
- * the viewport (a huge shadow, a fixed-position pseudo-element) is not drawn.
+ * the viewport (a huge shadow, a fixed-position pseudo-element) is not drawn; in Firefox, which
+ * lacks CSS Typed OM, the margins a block's last content passes through its bottom edge stay inside
+ * its clone (see {@link passedMargin}).
  *
  * @throws The signal's reason when it aborts while the walk pauses.
  */

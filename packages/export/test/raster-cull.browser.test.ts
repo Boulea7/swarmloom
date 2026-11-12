@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from "vitest";
+import { server } from "vitest/browser";
 import { FrameRasterizer } from "../src/browser/raster/rasterize";
 
 const SIZE = 100;
@@ -38,7 +39,7 @@ async function drawn(rasterizer: FrameRasterizer): Promise<(x: number, y: number
 it("leaves out what is far from the viewport, keeping layout and what reaches into view", async () => {
   const { win, rasterizer } = await frameOf(`<body style="margin:0">
     <section style="height:600px;padding:1px;background:rgb(0,0,255)"><p>far above</p></section>
-    <section style="height:400px;padding:1px"><p>near</p></section>
+    <section style="height:400px;padding:1px"><p style="margin-top:350px">near</p></section>
     <section style="height:98px;padding:1px;background:rgb(255,0,0)"></section>
     <div style="position:absolute;top:2000px"><p>far below</p></div>
     <div style="position:absolute;top:2000px"><b style="position:absolute;top:-980px;display:block;width:50px;height:50px;background:rgb(0,255,0)"></b></div>
@@ -92,6 +93,61 @@ it("paints nothing of a box written empty, wherever its transform put it", async
   const { svg, stats } = await rasterizer.snapshot();
   expect({ moved: svg.includes("moved away"), culled: stats.culled }).toEqual({ moved: false, culled: 1 });
   expect((await drawn(rasterizer))(5, 5)).toEqual([255, 255, 255]);
+});
+
+it("writes far article blocks empty, with the margins their content shares with them", async () => {
+  // No border or padding anywhere: headings', paragraphs' and quotes' margins collapse through.
+  const cases: Record<string, (i: number) => string> = {
+    // The h2's margin passes the section's top; the quote's bottom ones stay within its own.
+    sections: (i) => `<section style="margin:16px 0"><h2>far ${i}</h2><p>text <em>x</em></p>
+      <ul><li>a</li><li>b</li></ul><blockquote><p>q</p></blockquote></section>`,
+    // Through an inline custom element and both edges (the bottom read through CSS Typed OM).
+    wrapped: (i) => `<div><x-card><h3>far ${i}</h3><p>text</p></x-card></div>`,
+  };
+  for (const [name, item] of Object.entries(cases)) {
+    if (name === "wrapped" && server.browser === "firefox") continue;
+    const items = Array.from({ length: 8 }, (_, i) => item(i)).join("");
+    const { win, rasterizer } = await frameOf(
+      `<!doctype html><body style="margin:0">${items}<p id=red style="height:98px;margin:0;background:rgb(255,0,0)"></p>`,
+    );
+    const red = win.document.getElementById("red") as HTMLElement;
+    win.scrollTo(0, red.getBoundingClientRect().top - 20);
+    const { svg, stats } = await rasterizer.snapshot();
+    const far = svg.includes("far 0");
+    expect({ name, far, culled: stats.culled >= 4 }).toEqual({ name, far: false, culled: true });
+    const at = await drawn(rasterizer);
+    expect({ name, above: at(50, 18), top: at(50, 21) }).toEqual({ name, above: [255, 255, 255], top: [255, 0, 0] });
+  }
+});
+
+it("writes far boxes empty around SVG ids, keeping the clip paths, gradients and symbols drawn elsewhere", async () => {
+  // Cards as design tools export their icons: a clip path or gradient with an id inside each.
+  const icon = (i: number) =>
+    `<svg width=20 height=20><g clip-path="url(#clip${i})"><rect width=20 height=20 /></g><defs>` +
+    `<clipPath id=clip${i}><rect width=10 height=10 /></clipPath></defs></svg>`;
+  const card = (i: number, defs = "") =>
+    `<div style="border:1px solid;padding:4px;height:150px">${icon(i)}${defs}<p>far ${i}</p></div>`;
+  const defs =
+    '<svg width=0 height=0><linearGradient id=g><stop stop-color="rgb(0,255,0)"/></linearGradient>' +
+    '<symbol id=s viewBox="0 0 1 1"><rect width=1 height=1 fill="rgb(0,0,255)"/></symbol></svg>';
+  const { win, rasterizer } = await frameOf(`<!doctype html><body style="margin:0">
+    ${card(0, defs)}${[1, 2, 3, 4, 5].map((i) => card(i)).join("")}<div style="height:300px"></div>
+    <svg width=100 height=100 style="display:block" id=view><rect width=50 height=50 fill="url(#g)" />
+      <use href="#s" x=50 width=50 height=50 />
+      <rect transform="translate(0 50)" width=50 height=50 fill="rgb(255,0,0)" clip-path="url(#clip0)" /></svg>
+  </body>`);
+  win.scrollTo(0, (win.document.getElementById("view") as Element).getBoundingClientRect().top);
+  const { svg, stats } = await rasterizer.snapshot();
+  expect({ far: svg.includes("far"), culled: stats.culled }).toEqual({ far: false, culled: 6 });
+  // What nothing written refers to stays out.
+  expect(svg.match(/<clipPath/g)?.length).toBe(1);
+  const at = await drawn(rasterizer);
+  expect({ gradient: at(25, 25), symbol: at(75, 25), clipped: at(5, 55), outside: at(25, 75) }).toEqual({
+    gradient: [0, 255, 0],
+    symbol: [0, 0, 255],
+    clipped: [255, 0, 0],
+    outside: [255, 255, 255],
+  });
 });
 
 it("keeps what escapes a clipping or transparent box away from view: fixed boxes and SVG resources", async () => {
