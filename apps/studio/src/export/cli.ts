@@ -62,8 +62,8 @@ const BARE = /^[\p{L}\p{M}\p{N}_./:@+=-]+$/u;
 
 /**
  * Inside double quotes these characters stay literal in all three shells. The set has to hold even
- * after PowerShell drops the quotes and hands the bare text to `npx.cmd`, which cmd.exe parses again,
- * so cmd.exe operators (`&`, `|`, `<`, `>`, `^`) are never allowed. `"`, `$`, `` ` ``, `\` and `!` keep
+ * after PowerShell drops the quotes and hands the bare text to npm's `swarmloom.cmd` shim, which cmd.exe
+ * parses again, so cmd.exe operators (`&`, `|`, `<`, `>`, `^`) are never allowed. `"`, `$`, `` ` ``, `\` and `!` keep
  * a meaning inside double quotes in at least one shell.
  */
 const QUOTABLE = /^[\p{L}\p{M}\p{N}_./:@+=,;'#?*~()[\]{} -]+$/u;
@@ -123,13 +123,14 @@ function unescapeLetters(url: string): string {
 }
 
 /**
- * Builds the `npx --no swarmloom render` command that reproduces the current preview frame by frame.
+ * Builds the `swarmloom render` command that reproduces the current preview frame by frame.
  * Only flags that differ from the CLI defaults are listed, except `--seed`, which is always
  * written so the command stays reproducible even if defaults change.
  *
- * `--no` makes npx run an installed CLI (the project's or the global one) and never download one:
- * a plain `npx swarmloom` fetches and runs whatever package holds that name on the registry, without
- * a prompt when stdin is not a terminal.
+ * The command runs the `swarmloom` CLI on the PATH (`npm install -g swarmloom` or any other global
+ * install) and never downloads one. `npx swarmloom` fetches and runs whatever package holds that name
+ * on the registry, without a prompt when stdin is not a terminal; `npx --no swarmloom` finds only
+ * project and npm global installs, and otherwise asks the registry and fails (offline it hangs).
  *
  * The target comes from file names and links anyone can craft, so it is never written in a way a
  * shell could run. A target that cannot be written safely is replaced by a plain file name the user
@@ -148,7 +149,7 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
     saveAs = safeFileName(o.targetIsFile ? o.target : o.name);
     target = saveAs;
   }
-  const args: string[] = ["npx", "--no", "swarmloom", "render", target, "-o", `${stem(o.name)}.${o.format}`];
+  const args: string[] = ["swarmloom", "render", target, "-o", `${stem(o.name)}.${o.format}`];
   if (o.format !== "mp4") args.push("--format", o.format);
   if (o.width !== 1280) args.push("--width", String(o.width));
   if (o.height !== 720) args.push("--height", String(o.height));
