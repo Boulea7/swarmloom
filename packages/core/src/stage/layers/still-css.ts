@@ -21,7 +21,7 @@ function rewrite(
   const style = el.style;
   for (const name of IMAGE_PROPS) {
     const value = read.getPropertyValue(name);
-    if (!value.includes("url(")) continue;
+    if (!/url\(/i.test(value)) continue;
     const next = value.replace(URL_TOKEN, (all, dq?: string, sq?: string, bare?: string) => {
       const copy = copies.get(urlOf(dq, sq, bare));
       return copy === undefined ? all : cssUrl(copy);
@@ -44,7 +44,7 @@ export function holdCssImages(el: HTMLElement | SVGElement, doc: Document, compu
   const urls = new Set<string>();
   for (const name of IMAGE_PROPS) {
     const value = read.getPropertyValue(name);
-    if (value.includes("url(")) for (const m of value.matchAll(URL_TOKEN)) urls.add(urlOf(m[1], m[2], m[3]));
+    if (/url\(/i.test(value)) for (const m of value.matchAll(URL_TOKEN)) urls.add(urlOf(m[1], m[2], m[3]));
   }
   if (urls.size === 0) return null;
   const now = new Map<string, string>();

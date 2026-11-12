@@ -547,8 +547,8 @@ describe("stage: reveal semantics per kind", () => {
       embed: xhtmlDiv(`style="width:40px;height:40px;background:url(${GIF_RED_BLUE})"`),
     },
     {
-      name: "a <style> rule",
-      embed: `<style>.g{background:url("${GIF_RED_BLUE}")}</style>${xhtmlDiv(`class="g" style="width:40px;height:40px"`)}`,
+      name: "a <style> rule with an upper-case URL()",
+      embed: `<style>.g{background:URL("${GIF_RED_BLUE}")}</style>${xhtmlDiv(`class="g" style="width:40px;height:40px"`)}`,
     },
   ])("image: an SVG embedding an animated GIF ($name) shows its first frame", async ({ embed }) => {
     const xlink = "http://www.w3.org/1999/xlink";

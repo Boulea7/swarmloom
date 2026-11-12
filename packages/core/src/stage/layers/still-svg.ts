@@ -85,13 +85,13 @@ function embedSlots(root: Element): EmbedSlot[] {
 /** The URLs a slot of {@link embedSlots} names: its value, or the url()s of its CSS text. */
 function slotUrls(value: string, css: boolean): string[] {
   if (!css) return [value.trim()];
-  return value.includes("url(") ? Array.from(value.matchAll(URL_TOKEN), (m) => urlOf(m[1], m[2], m[3]).trim()) : [];
+  return /url\(/i.test(value) ? Array.from(value.matchAll(URL_TOKEN), (m) => urlOf(m[1], m[2], m[3]).trim()) : [];
 }
 
 /** `value` of a slot of {@link embedSlots} with its URLs swapped through `copyOf` (undefined: kept). */
 function swapUrls(value: string, css: boolean, copyOf: (src: string) => string | undefined): string {
   if (!css) return copyOf(value.trim()) ?? value;
-  if (!value.includes("url(")) return value;
+  if (!/url\(/i.test(value)) return value;
   return value.replace(URL_TOKEN, (all, dq?: string, sq?: string, bare?: string) => {
     const copy = copyOf(urlOf(dq, sq, bare).trim());
     return copy === undefined ? all : cssUrl(copy);
