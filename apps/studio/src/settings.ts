@@ -224,9 +224,14 @@ export function playerOptionsFrom(
     opening: s.opening ? OPENING_MS : 0,
     liveTop: s.liveTop,
     reducedMotion: s.reducedMotion === "auto" ? "auto" : s.reducedMotion === "reduce",
-    sound: s.sound
-      ? { enabled: true, pack: s.soundPack, volume: s.volume, ...(s.beatHits ? { beatSync: "all" as const } : {}) }
-      : false,
+    // Muted still carries the pack, volume and beat choice: turning sound on is a live
+    // setSound(true) without a new player, so the muted engine must already hold them.
+    sound: {
+      enabled: s.sound,
+      pack: s.soundPack,
+      volume: s.volume,
+      ...(s.beatHits ? { beatSync: "all" as const } : {}),
+    },
     locale,
   };
 }

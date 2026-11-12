@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { normalizeSourceUrl, parseRoute, type Route, routeToUrl } from "../src/route";
-import { DEFAULT_SETTINGS, impactOf } from "../src/settings";
+import { DEFAULT_SETTINGS, impactOf, playerOptionsFrom } from "../src/settings";
 import { decodeShare, encodeShare, MAX_INFLATED_BYTES, ShareError, sanitizeShareName } from "../src/share";
 import type { OpenedSource } from "../src/source";
 import { buildShareLink } from "../src/views/share-link";
@@ -140,5 +140,16 @@ describe("settings impact", () => {
     [{ agents: 8, theme: "dark" }, "reload"],
   ] as const)("classifies %o as %s", (change, impact) => {
     expect(impactOf(DEFAULT_SETTINGS, { ...DEFAULT_SETTINGS, ...change })).toBe(impact);
+  });
+
+  it("gives a muted player the chosen pack, volume and beat hits, since unmuting is live", () => {
+    const muted = { ...DEFAULT_SETTINGS, sound: false, soundPack: "8bit" as const, volume: 0.4, beatHits: true };
+    expect(impactOf(muted, { ...muted, sound: true })).toBe("live");
+    expect(playerOptionsFrom(muted, "en").sound).toEqual({
+      enabled: false,
+      pack: "8bit",
+      volume: 0.4,
+      beatSync: "all",
+    });
   });
 });

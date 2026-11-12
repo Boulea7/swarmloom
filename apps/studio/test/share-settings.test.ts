@@ -90,7 +90,7 @@ it("takes speed, sound and tour changed on the player's toolbar into the panel, 
 
   // A setting that needs a new player keeps the toolbar's choices.
   studio.context.updateSettings({ agents: 12 });
-  expect(log.players.at(-1)).toMatchObject({ agents: 12, speed: 3, sound: false, follow: "scroll" });
+  expect(log.players.at(-1)).toMatchObject({ agents: 12, speed: 3, sound: { enabled: false }, follow: "scroll" });
 });
 
 it("brings an entry's URL settings back on Back, and drops the ones the user changed from its URL", async () => {

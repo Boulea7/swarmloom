@@ -78,7 +78,8 @@ export function fakePlayer(
     emit({ type: "state", state: next });
   };
   // Like the engine, a changed speed, sound or follow mode is reported (the toolbar changes them).
-  const live = { speed: options.speed ?? 1, sound: options.sound !== false, follow: options.follow ?? "scroll" };
+  const sound = typeof options.sound === "object" ? options.sound.enabled !== false : options.sound !== false;
+  const live = { speed: options.speed ?? 1, sound, follow: options.follow ?? "scroll" };
   const change = (patch: Partial<typeof live>) => {
     const next = { ...live, ...patch };
     if (next.speed === live.speed && next.sound === live.sound && next.follow === live.follow) return;
