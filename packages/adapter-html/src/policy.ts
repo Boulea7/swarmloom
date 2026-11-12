@@ -36,9 +36,40 @@ export function sourceList(policy: NetworkPolicy, base?: string): string {
 }
 
 const DATA_IMAGE = /^data:image\/(?:png|gif|jpeg|webp|avif|svg\+xml|bmp|x-icon)[;,]/i;
-const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi;
 /** Placeholder for refused CSS URLs: an empty data: URL, so no request is made and the syntax stays valid. */
 const EMPTY_URL = 'url("data:,")';
+
+/**
+ * CSS tokens as far as the policy needs them, read like the browser's CSS tokenizer (on text whose
+ * newlines are `\n`): a comment; a string (group 1 the quote, group 2 the body; an unterminated one
+ * ends at a newline or the end); a name with escapes (group 4) after an optional `@` (group 3, an
+ * at-keyword) and before an optional `(` (group 5, a function); a run of characters that never
+ * matter; or any other single character. Reading tokens keeps `url(` in strings and comments from
+ * counting, and escapes such as `\75rl(` or `@\69mport` from hiding a request.
+ */
+const CSS_TOKEN =
+  /\/\*[\s\S]*?(?:\*\/|$)|(["'])((?:(?!\1)[^\\\n]|\\[\s\S])*)(?:\1|\\?$|(?=\n))|(@?)((?:[\w-]|[\x80-\uffff]|\\(?:[0-9a-f]{1,6}[ \t\n]?|[^\n0-9a-f]))+)(\(?)|[^"'/@\\();{}\w\x80-\uffff-]+|[\s\S]/giy;
+/**
+ * What follows `url(` when the browser reads a URL from it: a string (groups 1 and 2) or an unquoted
+ * URL (group 3), then `)` or the end of the text (an unclosed `url(` at the end still loads).
+ */
+const CSS_URL_REST =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: an unquoted URL ends at a control character, as in the CSS tokenizer.
+  /[ \t\n]*(?:(["'])((?:(?!\1)[^\\\n]|\\[\s\S])*)(?:\1|\\?$|(?=\n))|((?:[^\x00-\x20"'()\\\x7f]|\\[^\n])*))[ \t\n]*(?:\)|$)/y;
+/** Functions that take a plain string as an image URL, as in `image-set("a.png" 1x)`. */
+const URL_STRING_FUNCTIONS = new Set(["image-set", "-webkit-image-set", "image", "src"]);
+/** SVG presentation attributes the browser reads as CSS, where a `url()` can name another document. */
+const CSS_ATTRIBUTES = [
+  "style",
+  "fill",
+  "stroke",
+  "filter",
+  "mask",
+  "clip-path",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+];
 
 function resolve(url: string, base: string | undefined): URL | undefined {
   try {
@@ -72,26 +103,106 @@ export function allowedResource(
 }
 
 /**
- * Rewrites `url()` references in CSS text: allowed ones become absolute, others an empty data: URL.
- * `local` is as in {@link allowedResource}.
+ * Decodes CSS escapes as the tokenizer does (on text whose newlines are `\n`): `\75 ` and `\u` are
+ * `u`, and a backslash before a newline is dropped. Invalid code points become U+FFFD.
  */
-export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string, local?: string): string {
-  if (!/url\(/i.test(css)) return css;
-  return css.replace(CSS_URL, (_whole, dq?: string, sq?: string, bare?: string) => {
-    const raw = dq ?? sq ?? bare ?? "";
-    if (raw.startsWith("#")) return `url("${raw}")`;
-    // A font cannot be told apart from an image here; data: URLs of either kind are local.
-    const ok = /^data:/i.test(raw.trim()) ? raw.trim() : allowedResource(raw, policy, base, "image", local);
-    return ok ? `url("${ok.replace(/"/g, "%22")}")` : EMPTY_URL;
+function decodeCssEscapes(text: string): string {
+  if (!text.includes("\\")) return text;
+  return text.replace(/\\(?:([0-9a-f]{1,6})[ \t\n]?|([\s\S]))/gi, (_m, hex?: string, ch?: string) => {
+    if (hex === undefined) return ch === "\n" ? "" : (ch ?? "");
+    const cp = Number.parseInt(hex, 16);
+    return cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? "\ufffd" : String.fromCodePoint(cp);
   });
 }
 
 /**
+ * `url("…")` for a URL the policy allowed. Quotes, backslashes, parentheses and angle brackets are
+ * percent-encoded (tabs and newlines dropped, as the URL parser does), so the text can neither end
+ * the string early nor read as markup or CSS of its own.
+ */
+function cssUrl(url: string): string {
+  const text = url
+    .replace(/[\t\n\r]/g, "")
+    .replace(/[\f"'()<>\\]/g, (c) => `%${c.charCodeAt(0).toString(16).padStart(2, "0").toUpperCase()}`);
+  return `url("${text}")`;
+}
+
+/**
+ * Applies the network policy to CSS text (`<style>` content or a style attribute): every `url()`
+ * and every string an image function takes as a URL (`image-set("a.png" 1x)`) becomes an absolute
+ * allowed URL or an empty data: URL, `@import` rules are removed, and a `url(` the browser would
+ * not read as one URL becomes `invalid(`. The text is read token by token like the browser does,
+ * so CSS escapes (`\75rl(`, `@\69mport`) cannot hide a request; the rest of the text, escapes in
+ * selectors included, is kept as written. `local` is as in {@link allowedResource}.
+ */
+export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string, local?: string): string {
+  if (!/[(@]/.test(css)) return css;
+  // The CSS tokenizer turns CRLF, CR and FF into LF first; the patterns then need one newline.
+  const text = css.replace(/\r\n?|\f/g, "\n");
+  const url = (value: string): string => {
+    const v = decodeCssEscapes(value).trim();
+    // A font cannot be told apart from an image here; data: URLs of either kind are local.
+    const ok = v.startsWith("#") || /^data:/i.test(v) ? v : allowedResource(v, policy, base, "image", local);
+    return ok ? cssUrl(ok) : EMPTY_URL;
+  };
+  const token = new RegExp(CSS_TOKEN);
+  const rest = new RegExp(CSS_URL_REST);
+  const out: string[] = [];
+  // One entry per open parenthesis: true inside a function that takes strings as image URLs.
+  const parens: boolean[] = [];
+  // Parenthesis depth of the `@import` rule being removed, or -1.
+  let dropDepth = -1;
+  for (let at = 0; at < text.length; ) {
+    token.lastIndex = at;
+    // Always matches: the last alternative takes any single character.
+    const m = token.exec(text) as RegExpExecArray;
+    at = token.lastIndex;
+    const [tok, quote, body, atSign, name, paren] = m;
+    const dropping = dropDepth >= 0;
+    let emit = tok;
+    if (quote !== undefined) {
+      if (parens.at(-1)) emit = url(body ?? "");
+    } else if (name !== undefined) {
+      const id = decodeCssEscapes(name).toLowerCase();
+      if (atSign && id === "import") {
+        dropDepth = parens.length;
+        // A space, not "": `@imp@import "a";ort "…"` must not join into a new @import.
+        emit = " ";
+      }
+      if (paren && !atSign && id === "url") {
+        rest.lastIndex = at;
+        const u = rest.exec(text);
+        if (u) {
+          at = rest.lastIndex;
+          emit = url(u[2] ?? u[3] ?? "");
+        } else {
+          emit = "invalid(";
+          parens.push(false);
+        }
+      } else if (paren) parens.push(!atSign && URL_STRING_FUNCTIONS.has(id));
+    } else if (tok === "(") parens.push(false);
+    else if (tok === ")") parens.pop();
+    if (dropping) {
+      // The rule ends at its `;` (removed with it), at a brace, or where its enclosing `(` closes.
+      const end = parens.length < dropDepth || (parens.length === dropDepth && /^[;{}]$/.test(tok));
+      if (end) {
+        dropDepth = -1;
+        if (tok !== ";") out.push(tok);
+      }
+      continue;
+    }
+    out.push(emit);
+  }
+  return out.join("");
+}
+
+/**
  * Applies the network policy to sanitized markup that is laid out without a CSP of its own
- * (fragments go into the host document): image sources are resolved or removed, `srcset`,
- * `<source>`, media sources and external style sheets are dropped, and `url()` in style
- * attributes and `<style>` elements is rewritten. References resolve against `base`; plain-http
- * ones load only from `local` (see {@link allowedResource}). Returns how many were refused.
+ * (fragments go into the host document): image sources (`<img>`, SVG `<image>` and `<feImage>`,
+ * `background` attributes) are resolved or removed, `srcset`, `<source>`, media sources and
+ * external style sheets are dropped, and CSS in style attributes, SVG presentation attributes and
+ * `<style>` elements goes through {@link rewriteCssUrls}. References resolve against `base`;
+ * plain-http ones load only from `local` (see {@link allowedResource}). Returns how many were refused.
  */
 export function applyNetworkPolicy(root: ParentNode, policy: NetworkPolicy, base?: string, local?: string): number {
   let refused = 0;
@@ -106,7 +217,7 @@ export function applyNetworkPolicy(root: ParentNode, policy: NetworkPolicy, base
       refused++;
     }
   }
-  for (const el of Array.from(root.querySelectorAll("img, image, video, audio, input[type=image]"))) {
+  for (const el of Array.from(root.querySelectorAll("img, image, feImage, video, audio, input[type=image]"))) {
     el.removeAttribute("srcset");
     el.removeAttribute("sizes");
     for (const attr of ["src", "poster", "href", "xlink:href"]) {
@@ -122,14 +233,25 @@ export function applyNetworkPolicy(root: ParentNode, policy: NetworkPolicy, base
     }
     if (el.localName === "img") el.setAttribute("referrerpolicy", "no-referrer");
   }
-  for (const el of Array.from(root.querySelectorAll("[style]"))) {
-    const style = el.getAttribute("style") ?? "";
-    const next = rewriteCssUrls(style, policy, base, local);
-    if (next !== style) el.setAttribute("style", next);
+  // The legacy `background` attribute of body and table cells loads an image too.
+  for (const el of Array.from(root.querySelectorAll("[background]"))) {
+    const ok = allowedResource(el.getAttribute("background") ?? "", policy, base, "image", local);
+    if (ok) el.setAttribute("background", ok);
+    else {
+      el.removeAttribute("background");
+      refused++;
+    }
+  }
+  for (const name of CSS_ATTRIBUTES) {
+    for (const el of Array.from(root.querySelectorAll(`[${name}]`))) {
+      const value = el.getAttribute(name) ?? "";
+      const next = rewriteCssUrls(value, policy, base, local);
+      if (next !== value) el.setAttribute(name, next);
+    }
   }
   for (const el of Array.from(root.querySelectorAll("style"))) {
     const css = el.textContent ?? "";
-    const next = rewriteCssUrls(css.replace(/@import\b[^;]*;?/gi, ""), policy, base, local);
+    const next = rewriteCssUrls(css, policy, base, local);
     if (next !== css) el.textContent = next;
   }
   return refused;

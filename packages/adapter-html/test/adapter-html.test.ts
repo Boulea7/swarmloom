@@ -111,6 +111,28 @@ describe("prepareDocument", () => {
   });
 });
 
+describe("rewriteCssUrls", () => {
+  it.each([
+    ["a split @import", '@imp@import "a";ort "https://x.dev/t.css";', '@imp ort "https://x.dev/t.css";'],
+    ["an escaped @import", '@\\69mport "https://x.dev/t.css";p{}', " p{}"],
+    ["an escaped url(", "p{background:\\75rl(https://x.dev/i.png)}", 'p{background:url("data:,")}'],
+    ["an unclosed url(", "p{background:url(https://x.dev/i.png", 'p{background:url("data:,")'],
+    [
+      "an image-set string",
+      'p{background:image-set("https://x.dev/i.png" 1x)}',
+      'p{background:image-set(url("data:,") 1x)}',
+    ],
+    ["a quote in a local reference", "p{fill:url('#a\")x')}", 'p{fill:url("#a%22%29x")}'],
+  ])("refuses %s under network none", (_label, css, out) => {
+    expect(rewriteCssUrls(css, "none")).toBe(out);
+  });
+
+  it("keeps escapes in selectors, and url( in strings and comments, as written", () => {
+    const css = '.md\\:flex::after{content:"url(x)";background:url(#g)}/* url(x) */';
+    expect(rewriteCssUrls(css, "none")).toBe('.md\\:flex::after{content:"url(x)";background:url("#g")}/* url(x) */');
+  });
+});
+
 describe("htmlAdapter.load (fragments)", () => {
   const fake = (): SnapshotDom & { calls: [string, SnapshotHtmlOptions][] } => {
     const calls: [string, SnapshotHtmlOptions][] = [];
@@ -147,6 +169,21 @@ describe("htmlAdapter.load (fragments)", () => {
     expect(opts).toMatchObject({ width: 900, scheme: "light" });
     expect(result.blueprint.source).toMatchObject({ type: "html", name: "card.html" });
     expect(result.warnings).toEqual(["html: 1 resource reference skipped (remote resources are off)"]);
+  });
+
+  it("keeps fragment CSS, background attributes and SVG filters from loading remote files", async () => {
+    const snap = fake();
+    const text =
+      '<style>@imp@import "a";ort "https://evil.example/t.css";</style>' +
+      '<p style="background:\\75rl(https://evil.example/p.png)">Hi</p>' +
+      '<table background="https://evil.example/b.png"><tr><td>x</td></tr></table>' +
+      '<svg><filter id="f"><feImage href="https://evil.example/f.png"/></filter>' +
+      '<rect fill="url(https://evil.example/s.svg#p)"/></svg>';
+    const result = await createHtmlAdapter({ snapshot: snap, network: "none" }).load({ text }, ctx);
+    const html = snap.calls[0]?.[0] ?? "";
+    expect(html).toContain("<style>@imp ort");
+    expect(html).not.toMatch(/@import|evil\.example\/[pbfs]\./);
+    expect(result.warnings).toEqual(["html: 2 resource references skipped (remote resources are off)"]);
   });
 
   it("turns remote loading off for one load when the host passes ctx.network none", async () => {
