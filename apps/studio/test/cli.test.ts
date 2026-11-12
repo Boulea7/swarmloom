@@ -59,6 +59,15 @@ describe("CLI command", () => {
     expect(command("https://example.com/a.md", false, "a.md")).toEqual({
       text: "npx swarmloom render https://example.com/a.md -o a.mp4 --seed 1",
     });
+    // Escaped letters of a link are written as letters (the CLI escapes them again), other escapes are
+    // not: `%DATABASE_URL%` would send a secret to the link's server.
+    expect(command("https://example.com/%E4%B8%AD.md", false, "中.md").text).toBe(
+      "npx swarmloom render https://example.com/中.md -o 中.mp4 --seed 1",
+    );
+    expect(command("https://evil.example/x%DATABASE_URL%2F/deck.md", false, "deck.md")).toEqual({
+      text: "npx swarmloom render deck.md -o deck.mp4 --seed 1",
+      saveAs: "deck.md",
+    });
   });
 
   // Windows opens these as devices even with an extension, so the video would be thrown away.

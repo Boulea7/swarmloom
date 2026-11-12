@@ -55,7 +55,8 @@ export interface CliCommand {
  * Unquoted, these characters mean the same in POSIX shells, PowerShell and cmd.exe. `%` is never
  * allowed: cmd.exe expands `%NAME%` for any variable that is set, even inside double quotes and even
  * when the text looks like percent-escapes (`%DATE%20` holds `%DATE%`), and no escape for it reads the
- * same in the other shells. A link with percent-escapes is therefore replaced by a saved file.
+ * same in the other shells. A link keeps its escaped letters as letters ({@link unescapeLetters});
+ * a link with other percent-escapes is replaced by a saved file.
  */
 const BARE = /^[\p{L}\p{M}\p{N}_./:@+=-]+$/u;
 
@@ -99,6 +100,29 @@ function safeFileName(name: string): string {
 }
 
 /**
+ * One percent-escaped non-ASCII character: a UTF-8 lead byte and its continuation bytes. Upper case
+ * only, as the URL parser writes them, so the parsed link is the same text.
+ */
+const ESCAPED_CHAR = /%[C-F][\dA-F](?:%[89AB][\dA-F])+/g;
+
+/**
+ * "https://x/%E4%B8%AD.md" -> "https://x/中.md": escaped non-ASCII letters and digits of a link are
+ * written as themselves, so the link needs no `%`. The CLI's URL parser escapes them again and fetches
+ * the same URL. Other escapes (`%20`, `%2F`) are kept.
+ */
+function unescapeLetters(url: string): string {
+  return url.replace(ESCAPED_CHAR, (escaped) => {
+    try {
+      const char = decodeURIComponent(escaped);
+      return /^[\p{L}\p{M}\p{N}]$/u.test(char) ? char : escaped;
+    } catch {
+      // Not UTF-8.
+      return escaped;
+    }
+  });
+}
+
+/**
  * Builds the `npx swarmloom render` command that reproduces the current preview frame by frame.
  * Only flags that differ from the CLI defaults are listed, except `--seed`, which is always
  * written so the command stays reproducible even if defaults change.
@@ -110,7 +134,8 @@ function safeFileName(name: string): string {
 export function buildCliCommand(o: CliCommandOptions): CliCommand {
   const s = o.settings;
   const d = DEFAULT_SETTINGS;
-  let target = shellArg(o.target);
+  // A file name is literal: "%C3%A4.md" is that file, not "ä.md".
+  let target = shellArg(o.targetIsFile ? o.target : unescapeLetters(o.target));
   let saveAs = o.targetIsFile && target !== null ? o.target : undefined;
   if (target === null) {
     saveAs = safeFileName(o.targetIsFile ? o.target : o.name);
