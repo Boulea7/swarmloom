@@ -1,3 +1,4 @@
+import { cssUrl, URL_TOKEN, urlOf } from "./css-url";
 import { preload, stillImageSource } from "./still-image";
 
 /*
@@ -9,22 +10,6 @@ import { preload, stillImageSource } from "./still-image";
 
 /** Longhands that paint url() images; a shorthand (`background`, `mask`, `list-style`) sets one of them. */
 const IMAGE_PROPS = ["background-image", "mask-image", "-webkit-mask-image", "border-image-source", "list-style-image"];
-const URL_TOKEN = /url\(\s*(?:"((?:[^"\\]|\\[\s\S])*)"|'((?:[^'\\]|\\[\s\S])*)'|([^)\s"']*))\s*\)/gi;
-
-function unescapeCss(s: string): string {
-  return s.replace(/\\(?:([0-9a-f]{1,6})\s?|([\s\S]))/gi, (_all, hex: string | undefined, ch: string | undefined) => {
-    if (hex === undefined) return ch ?? "";
-    const code = Number.parseInt(hex, 16);
-    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "\ufffd";
-  });
-}
-
-const urlOf = (dq: string | undefined, sq: string | undefined, bare: string | undefined): string =>
-  unescapeCss(dq ?? sq ?? bare ?? "");
-
-function cssUrl(url: string): string {
-  return `url("${url.replace(/[\\"]/g, "\\$&").replace(/\n/g, "\\a ")}")`;
-}
 
 /** Writes `copies` over the url()s `read` holds, into `el`'s inline style. */
 function rewrite(

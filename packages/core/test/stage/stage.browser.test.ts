@@ -471,11 +471,21 @@ describe("stage: reveal semantics per kind", () => {
     expect(animatedBitmapType(new Uint8Array(await (await fetch(img.src)).arrayBuffer()))).toBeNull();
   });
 
+  const xhtmlDiv = (attrs: string): string =>
+    `<foreignObject width="40" height="40"><div xmlns="http://www.w3.org/1999/xhtml" ${attrs}/></foreignObject>`;
   it.each([
     { name: "<image href>", embed: `<image href="${GIF_RED_BLUE}" width="40" height="40"/>` },
     {
       name: "<feImage xlink:href>",
       embed: `<filter id="f"><feImage xlink:href="${GIF_RED_BLUE}"/></filter><rect width="40" height="40" filter="url(#f)"/>`,
+    },
+    {
+      name: "a CSS background in a <foreignObject>",
+      embed: xhtmlDiv(`style="width:40px;height:40px;background:url(${GIF_RED_BLUE})"`),
+    },
+    {
+      name: "a <style> rule",
+      embed: `<style>.g{background:url("${GIF_RED_BLUE}")}</style>${xhtmlDiv(`class="g" style="width:40px;height:40px"`)}`,
     },
   ])("image: an SVG embedding an animated GIF ($name) shows its first frame", async ({ embed }) => {
     const xlink = "http://www.w3.org/1999/xlink";
@@ -485,12 +495,10 @@ describe("stage: reveal semantics per kind", () => {
     stage.reveal("s", 1);
     await stage.ready();
     const img = (stage.el("s") as HTMLElement).querySelector("img") as HTMLImageElement;
-    const shown = new DOMParser().parseFromString(await (await fetch(img.src)).text(), "image/svg+xml");
-    const embedded = shown.querySelector("image, feImage");
-    const href = embedded?.getAttribute("href") ?? embedded?.getAttributeNS(xlink, "href") ?? "";
+    const shown = (await (await fetch(img.src)).text()).match(/data:image\/\w+;base64,[\w+/=]+/g) ?? [];
     // One frame: nothing left for the wall clock to play.
-    expect(href.slice(0, 22)).toBe("data:image/png;base64,");
-    expect(animatedBitmapType(new Uint8Array(await (await fetch(href)).arrayBuffer()))).toBeNull();
+    expect(shown.map((href) => href.slice(0, 22))).toEqual(["data:image/png;base64,"]);
+    expect(animatedBitmapType(new Uint8Array(await (await fetch(shown[0] as string)).arrayBuffer()))).toBeNull();
   });
 
   it("media: labelled placeholder that fades in", () => {

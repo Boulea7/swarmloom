@@ -7,6 +7,8 @@
  * skeleton), CSS animations hold their first frame and embedded images show their still copies.
  */
 
+import { cssUrl, URL_TOKEN, urlOf } from "./css-url";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const XLINK_NS = "http://www.w3.org/1999/xlink";
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -15,9 +17,14 @@ const SMIL = new Set(["animate", "animateTransform", "animateMotion", "animateCo
 const KEYFRAMES = /@(?:-[a-z]+-)?keyframes\b/i;
 /** Cheap check before parsing: markup that can animate at all. */
 const MAY_ANIMATE = /<(?:[\w.-]+:)?(?:animate\w*|set|discard)[\s/>]|@(?:-[a-z]+-)?keyframes\b/i;
-/** Cheap checks before parsing: markup that may embed a `data:` image (an `<image>`, `<feImage>` or `<img>`). */
-const MAY_EMBED = /<(?:[\w.-]+:)?(?:image|feImage|img)[\s/>]/i;
+/**
+ * Cheap checks before parsing: markup that may embed a `data:` image (an `<image>`, `<feImage>` or
+ * `<img>`, or a CSS url() in a style sheet or `style` attribute, its quote maybe written as an entity).
+ */
+const MAY_EMBED = /<(?:[\w.-]+:)?(?:image|feImage|img)[\s/>]|url\(\s*(?:["']|&[\w#]+;)?\s*data:/i;
 const DATA_URL = /data:/i;
+const TEXT_NODE = 3;
+const CDATA_NODE = 4;
 /** The SVG media type, with or without parameters. */
 export const SVG_TYPE = /^\s*image\/svg\+xml\s*(?:;|$)/i;
 const PAUSE_CSS = "*,*::before,*::after{animation-play-state:paused!important;transition:none!important}";
@@ -53,12 +60,51 @@ export function svgImageHrefs(root: Document | Element): Attr[] {
   return out;
 }
 
+/** A node naming embedded images: a URL attribute, or CSS text (`css`) whose url()s may name some. */
+type EmbedSlot = { node: Attr | Text; css: boolean };
+
+/**
+ * Where an SVG document names the images it embeds: URL attributes (`<image>` and `<feImage>`, and
+ * `<img>` in a `<foreignObject>`), and CSS text whose url()s may name images (the `style` attribute
+ * of any element, and `<style>` sheets, SVG or XHTML; a text node or CDATA section each).
+ */
+function embedSlots(root: Element): EmbedSlot[] {
+  const imgs = Array.from(root.getElementsByTagNameNS(XHTML_NS, "img"), (img) => img.getAttributeNodeNS(null, "src"));
+  const slots: EmbedSlot[] = [...svgImageHrefs(root), ...imgs].flatMap((node) => (node ? [{ node, css: false }] : []));
+  for (const el of [root, ...Array.from(root.getElementsByTagName("*"))]) {
+    const style = el.getAttributeNodeNS(null, "style");
+    if (style) slots.push({ node: style, css: true });
+    if (el.localName !== "style" || (el.namespaceURI !== SVG_NS && el.namespaceURI !== XHTML_NS)) continue;
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType === TEXT_NODE || child.nodeType === CDATA_NODE) slots.push({ node: child as Text, css: true });
+    }
+  }
+  return slots;
+}
+
+/** The URLs a slot of {@link embedSlots} names: its value, or the url()s of its CSS text. */
+function slotUrls(value: string, css: boolean): string[] {
+  if (!css) return [value.trim()];
+  return value.includes("url(") ? Array.from(value.matchAll(URL_TOKEN), (m) => urlOf(m[1], m[2], m[3]).trim()) : [];
+}
+
+/** `value` of a slot of {@link embedSlots} with its URLs swapped through `copyOf` (undefined: kept). */
+function swapUrls(value: string, css: boolean, copyOf: (src: string) => string | undefined): string {
+  if (!css) return copyOf(value.trim()) ?? value;
+  if (!value.includes("url(")) return value;
+  return value.replace(URL_TOKEN, (all, dq?: string, sq?: string, bare?: string) => {
+    const copy = copyOf(urlOf(dq, sq, bare).trim());
+    return copy === undefined ? all : cssUrl(copy);
+  });
+}
+
 /**
  * Markup of `text` with its animation stopped, or null when it does not animate or is not a
  * well-formed SVG document (an `<img>` would not show that either). With `embed`, the `data:` images
- * it embeds (`<image>` and `<feImage>`, and `<img>` in a `<foreignObject>`) show what `embed` answers
- * for them, an animated GIF its first frame: an SVG shown as an image loads no other URLs. The answer
- * comes through a promise (never rejecting) when one of them does.
+ * it embeds (see {@link embedSlots}: `<image>`, `<feImage>`, `<img>` in a `<foreignObject>` and CSS
+ * url()s, such as a background) show what `embed` answers for them, an animated GIF its first frame:
+ * an SVG shown as an image loads no other URLs. The answer comes through a promise (never rejecting)
+ * when one of them does.
  */
 export function stillSvgMarkup(text: string, embed?: StillEmbed): Maybe<string | null> {
   if (text.length > MAX_SVG_CHARS || typeof DOMParser === "undefined") return null;
@@ -81,23 +127,32 @@ export function stillSvgMarkup(text: string, embed?: StillEmbed): Maybe<string |
     root.append(style);
     changed = true;
   }
+  const slots = embed ? embedSlots(root) : [];
+  // Each `data:` URL named, by what it shows (itself until its copy is known).
+  const copies = new Map<string, string>();
   const waits: Promise<void>[] = [];
-  if (embed) {
-    const imgs = Array.from(root.getElementsByTagNameNS(XHTML_NS, "img"), (img) => img.getAttributeNodeNS(null, "src"));
-    for (const attr of [...svgImageHrefs(root), ...imgs]) {
-      const src = attr?.value.trim();
-      if (!attr || !src || !/^data:/i.test(src)) continue;
-      const swap = (copy: string): void => {
-        if (copy === src) return;
-        attr.value = copy;
-        changed = true;
-      };
+  for (const { node, css } of slots) {
+    for (const src of slotUrls(node.nodeValue ?? "", css)) {
+      if (!embed || copies.has(src) || !/^data:/i.test(src)) continue;
       const still = embed(src);
-      if (typeof still === "string") swap(still);
-      else waits.push(still.then(swap));
+      copies.set(src, typeof still === "string" ? still : src);
+      if (typeof still !== "string") waits.push(still.then((copy) => void copies.set(src, copy)));
     }
   }
-  const markup = (): string | null => (changed ? new XMLSerializer().serializeToString(root) : null);
+  const copyOf = (src: string): string | undefined => {
+    const copy = copies.get(src);
+    return copy === src ? undefined : copy;
+  };
+  const markup = (): string | null => {
+    for (const { node, css } of slots) {
+      const value = node.nodeValue ?? "";
+      const next = swapUrls(value, css, copyOf);
+      if (next === value) continue;
+      node.nodeValue = next;
+      changed = true;
+    }
+    return changed ? new XMLSerializer().serializeToString(root) : null;
+  };
   return waits.length > 0 ? Promise.all(waits).then(markup) : markup();
 }
 
