@@ -22,6 +22,7 @@ const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
 const REPO = path.resolve(CLI_DIR, "../..");
 const FIXTURES = path.join(CLI_DIR, "test/fixtures");
 const WELCOME = path.join(REPO, "examples/markdown/welcome.en.md");
+const LANDING = path.join(REPO, "examples/html/landing.html");
 const EXPORT_RENDER_DIR = path.join(REPO, "packages/export/dist/render");
 const TIMEOUT = 240_000;
 
@@ -179,6 +180,39 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
       // Without go live the last frames of a finished build with no finale are all the same.
       expect(new Set(a.frames.sha256.slice(-5)).size).toBe(5);
       expect(a.frames.aggregateSha256).toBe(b.frames.aggregateSha256);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "builds the same frames and sound at 15 and 30 fps with an opening, outline intro, live top, cues and beat sync",
+    async (ctx) => {
+      requireRenderPage(ctx);
+      const take = async (fps: number) => {
+        const dir = `combo-${fps}`;
+        const args = ["render", LANDING, "-o", `${dir}/combo.mp4`, "--width", "480", "--height", "300"];
+        // The tour scrolls down from about 1.2 s; going live at 2 s glides back to the top.
+        const timing = ["--duration", "3", "--fps", String(fps), "--cue", "0.1:speed=4", "--cue", "2:live"];
+        const player = ["--opening", "0.3", "--intro", "outline", "--live-top", "--beat-sync", "all"];
+        const evidence = ["--audio-out", `${dir}/a.wav`, "--events-out", `${dir}/ev.json`];
+        const outs = [...evidence, "--manifest-out", `${dir}/m.json`, "--quiet"];
+        const run = startCli([...args, ...timing, ...player, ...outs], { SWARMLOOM_RENDER_DIR: EXPORT_RENDER_DIR });
+        const { code, stderr } = await run.done;
+        expect(code, stderr).toBe(0);
+        const read = async (name: string) => JSON.parse(await readFile(path.join(work, dir, name), "utf8"));
+        return { manifest: await read("m.json"), events: await read("ev.json") };
+      };
+      const [slow, fast] = [await take(15), await take(30)];
+      expect(fast.manifest.player).toMatchObject({ opening: 300, intro: "outline", liveTop: true, beatSync: "all" });
+      const frames: string[] = fast.manifest.frames.sha256;
+      expect(new Set(frames).size, "distinct frames at 30 fps").toBeGreaterThan(30);
+      // Each 15 fps frame is the 30 fps frame at the same time: both ran the same 1/120 s engine ticks.
+      expect(slow.manifest.frames.sha256).toEqual(frames.filter((_, i) => i % 2 === 0));
+      expect(slow.events.soundLogSha256).toBe(fast.events.soundLogSha256);
+      expect(slow.manifest.outputs.audio.sha256).toBe(fast.manifest.outputs.audio.sha256);
+      // Without --live-top the view would stop where the tour had it at 2 s.
+      const last = fast.events.scrolls.at(-1);
+      expect([last?.to, last?.end > 2000], "the glide back to the top").toEqual([0, true]);
     },
     TIMEOUT,
   );
