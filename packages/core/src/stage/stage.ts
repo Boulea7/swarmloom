@@ -590,6 +590,7 @@ export class SwarmStage implements Stage {
     const fonts = (this.#doc as Document & { fonts?: FontFaceSet }).fonts;
     if (fonts?.ready) waits.push(fonts.ready.catch(() => undefined));
     waits.push(this.#overlay.imagesSettled());
+    if (this.#dom.backgroundHeld) waits.push(this.#dom.backgroundHeld);
     let timer = 0;
     const timeout = new Promise<void>((resolve) => {
       timer = this.#win.setTimeout(resolve, READY_TIMEOUT_MS);

@@ -421,6 +421,38 @@ describe("stage: reveal semantics per kind", () => {
     expect(Number(css(el.parentElement as HTMLElement).opacity)).toBeCloseTo(0.5, 2);
   });
 
+  it("CSS images: an animated GIF background (box, inline text style, page) shows its first frame", async () => {
+    const bg = `url(${GIF_RED_BLUE}) 0 0/100% 100%`;
+    const layers: Layer[] = [
+      { id: "b", kind: "box", box: { x: 0, y: 0, w: 40, h: 40 }, style: { background: bg } },
+      {
+        id: "t",
+        kind: "text",
+        box: { x: 0, y: 60, w: 200, h: 20 },
+        html: `<span style="background:${bg}">GIF</span>`,
+        text: "GIF",
+        style: {},
+      },
+    ];
+    const { stage } = mount(layers, { blueprint: { ...blueprint(layers), background: bg } });
+    stage.reveal("b", 1);
+    stage.reveal("t", 1);
+    await stage.ready();
+    const painted = [
+      stage.el("b") as HTMLElement,
+      (stage.el("t") as HTMLElement).querySelector("span") as HTMLElement,
+      stage.root.querySelector(".scroller") as HTMLElement,
+    ];
+    const seen = await Promise.all(
+      painted.map(async (el) => {
+        const url = /^url\("(.+)"\)$/.exec(el.style.backgroundImage)?.[1] ?? "";
+        // One frame: nothing left for the wall clock to play.
+        return [url.slice(0, 22), animatedBitmapType(new Uint8Array(await (await fetch(url)).arrayBuffer()))];
+      }),
+    );
+    expect(seen).toEqual(Array(3).fill(["data:image/png;base64,", null]));
+  });
+
   it("custom: plugin renderer and setup/cleanup lifecycle", () => {
     const calls: string[] = [];
     const plugin: Plugin = {

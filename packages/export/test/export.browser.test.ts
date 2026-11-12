@@ -88,7 +88,7 @@ describe("export in Chromium", () => {
     }
   });
 
-  it("shows an animated GIF on the live page as its first frame, at the same size", async () => {
+  it("shows an animated GIF on the live page as its first frame, as an <img> at the same size and as a background", async () => {
     // 1x1 GIF, red then blue, looping.
     const gif =
       "data:image/gif;base64,R0lGODlhAQABAIABAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAQABAAACAkQBACH5BAAKAAAALAAAAAABAAEAAAICTAEAOw==";
@@ -96,7 +96,7 @@ describe("export in Chromium", () => {
     frame.setAttribute("sandbox", "allow-same-origin");
     frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
     const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
-    frame.srcdoc = `<body style="margin:0"><img src="${gif}">`;
+    frame.srcdoc = `<style>i{display:block;height:4px;background:url(${gif})}</style><body style="margin:0"><img src="${gif}"><i></i>`;
     document.body.append(frame);
     try {
       await loaded;
@@ -110,6 +110,12 @@ describe("export in Chromium", () => {
       await stage.holdImages();
       const img = doc.querySelector("img") as HTMLImageElement;
       expect([img.src.slice(0, 15), img.complete, img.width]).toEqual(["data:image/png;", true, 1]);
+      // A stylesheet background is overridden inline, as the stylesheet cannot be rewritten in place.
+      const bg = (doc.querySelector("i") as HTMLElement).style;
+      expect([bg.backgroundImage.slice(0, 20), bg.getPropertyPriority("background-image")]).toEqual([
+        'url("data:image/png;',
+        "important",
+      ]);
     } finally {
       frame.remove();
     }

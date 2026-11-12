@@ -1,6 +1,7 @@
 import type { CSSMap, Point, TextLayer } from "../../types";
 import { applyLayerStyle } from "../sanitize";
 import { clamp01, contentDiv, type LayerView, type MountEnv, Shell, Transient } from "./common";
+import { holdAllCssImages } from "./still-css";
 import { showStill } from "./still-image";
 import { TextIndex, type TextRun } from "./typing";
 
@@ -160,7 +161,7 @@ function holdInlineImages(root: HTMLElement, doc: Document, gone: () => boolean)
  * Text block. Reveal kinds: "type" (default; characters appear in place without reflow), "fade",
  * "stamp" (quick scale-in), "none" (appears at once). A typed text measures its carets in the
  * stage's read phase ({@link LayerView.measure}): the block at the typed position, and the next
- * one near its end.
+ * one near its end. Animated CSS images (backgrounds, list markers) show still copies (see still-css.ts).
  */
 export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView {
   const shell = new Shell(env, layer, z);
@@ -170,6 +171,9 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
   env.inlineStyles(content);
   let gone = false;
   const decode = holdInlineImages(content, env.doc, () => gone);
+  // Inline elements carry their own backgrounds (style attributes) only when the markup names a url().
+  const styled = layer.html.includes("url(") ? content.querySelectorAll<HTMLElement>("[style]") : [];
+  const held = holdAllCssImages([content, ...styled], env.doc);
   shell.shell.append(content);
   const mode = layer.reveal === "fade" || layer.reveal === "stamp" || layer.reveal === "none" ? layer.reveal : "type";
   const transient = new Transient();
@@ -184,7 +188,7 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
   /** Typing boundary of `units`, clamped to the text. */
   const boundary = (units: number): number => Math.max(0, Math.min(getIndex().total, Math.round(units)));
 
-  return {
+  const view: LayerView = {
     outer: shell.outer,
     el: content,
     reveal(p) {
@@ -254,4 +258,6 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
       index = null;
     },
   };
+  if (held) view.decode = () => Promise.all([held, decode?.()]).then(() => undefined);
+  return view;
 }

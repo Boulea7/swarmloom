@@ -1,3 +1,4 @@
+import { holdCssImages } from "./layers/still-css";
 import { isSafeDeclaration } from "./sanitize";
 import {
   adoptSheet,
@@ -28,6 +29,8 @@ export interface StageDom {
   readonly ui: HTMLElement;
   /** True while the host is in the document. */
   readonly attached: boolean;
+  /** Settles once an animated Blueprint.background image shows its still copy (see still-css.ts); null when none. */
+  readonly backgroundHeld: Promise<void> | null;
   /**
    * Building (false, the initial state) or live (true, an inline stage after go-live). While the
    * stage builds, the world is a visual replay: hidden from assistive technology and inert, so
@@ -88,8 +91,11 @@ export function buildDom(o: DomOptions): StageDom {
   scroller.tabIndex = o.mode === "inline" ? 0 : -1;
   scroller.setAttribute("role", "region");
   scroller.setAttribute("aria-label", "SwarmLoom stage");
+  let backgroundHeld: Promise<void> | null = null;
   if (isSafeDeclaration("background", o.background)) {
-    (o.backgroundOnBackdrop ? backdrop : scroller).style.setProperty("background", o.background);
+    const painted = o.backgroundOnBackdrop ? backdrop : scroller;
+    painted.style.setProperty("background", o.background);
+    backgroundHeld = holdCssImages(painted, doc);
   }
   const sizer = div(doc, "sizer");
   const world = div(doc, "world");
@@ -154,6 +160,7 @@ export function buildDom(o: DomOptions): StageDom {
     worldRoot,
     canvas,
     ui,
+    backgroundHeld,
     get attached() {
       return attached;
     },
