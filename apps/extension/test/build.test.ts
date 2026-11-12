@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { addTree } from "../scripts/amo-source.mjs";
+import { addTree, spawnCommand } from "../scripts/amo-source.mjs";
 import { auditPackage } from "../scripts/audit.mjs";
 import { placeholderIcon } from "../scripts/icons.mjs";
 import { cspProblems, GECKO_ID, manifestFor, messageKeys, validateManifest } from "../scripts/manifest.mjs";
@@ -173,6 +173,17 @@ describe("packaging helpers", () => {
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
+  });
+
+  it("starts pnpm through the shell on Windows for --verify (Corepack installs pnpm.cmd)", () => {
+    const args = ["-F", "@swarmloom/extension", "exec", "node", "scripts/build.mjs", "--target", "firefox"];
+    expect(spawnCommand("pnpm", args, "linux")).toEqual({ file: "pnpm", args, shell: false });
+    expect(spawnCommand("pnpm", args, "win32")).toEqual({
+      file: "pnpm -F @swarmloom/extension exec node scripts/build.mjs --target firefox",
+      args: [],
+      shell: true,
+    });
+    expect(() => spawnCommand("pnpm", ["C:\\Temp Dir\\x & y"], "win32")).toThrow(/Windows shell/);
   });
 });
 

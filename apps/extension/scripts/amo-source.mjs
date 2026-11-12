@@ -123,10 +123,31 @@ export function addTree(dir, files, base = repo) {
   }
 }
 
+/**
+ * How to spawn a fixed command. On Windows, pnpm from Corepack or npm is `pnpm.cmd`, which only a
+ * shell resolves; the arguments are joined into the command line there (an args array with `shell`
+ * is not escaped and is deprecated, DEP0190), so only plain constant arguments are accepted.
+ * @param {string} cmd @param {string[]} args @param {NodeJS.Platform} [platform]
+ * @returns {{ file: string; args: string[]; shell: boolean }}
+ */
+export function spawnCommand(cmd, args, platform = process.platform) {
+  if (platform !== "win32") return { file: cmd, args, shell: false };
+  const unsafe = [cmd, ...args].find((a) => !/^[\w@:./=+-]+$/.test(a));
+  if (unsafe !== undefined) throw new Error(`cannot pass ${JSON.stringify(unsafe)} through the Windows shell`);
+  return { file: [cmd, ...args].join(" "), args: [], shell: true };
+}
+
 /** @param {string} cmd @param {string[]} args @param {string} cwd */
 function run(cmd, args, cwd) {
-  const result = spawnSync(cmd, args, { cwd, stdio: "inherit", env: { ...process.env, CI: "1" } });
-  if (result.status !== 0) throw new Error(`${cmd} ${args.join(" ")} failed in ${cwd}`);
+  const spawn = spawnCommand(cmd, args);
+  const result = spawnSync(spawn.file, spawn.args, {
+    cwd,
+    shell: spawn.shell,
+    stdio: "inherit",
+    env: { ...process.env, CI: "1" },
+  });
+  if (result.status !== 0)
+    throw new Error(`${cmd} ${args.join(" ")} failed in ${cwd}`, result.error ? { cause: result.error } : undefined);
 }
 
 /**
