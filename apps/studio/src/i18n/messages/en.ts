@@ -209,7 +209,7 @@ export const en = {
   "export.web.noCodec": "This browser can't encode video at this size. Try a smaller size or the command line.",
   "export.cli.title": "Render with the command line",
   "export.cli.body":
-    "Renders frame by frame with the same seed, so the video matches this preview. Needs Node.js and Chrome.",
+    "Renders frame by frame with the same seed, so the video matches this preview. Needs Node.js, Chrome and an installed swarmloom CLI.",
   "export.cli.format": "Format",
   "export.cli.copy": "Copy command",
   "export.cli.copied": "Copied",

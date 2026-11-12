@@ -205,7 +205,7 @@ export const es: StudioCatalog = {
     "Este navegador no puede codificar vídeo de este tamaño. Prueba un tamaño menor o la línea de comandos.",
   "export.cli.title": "Renderizar con la línea de comandos",
   "export.cli.body":
-    "Renderiza fotograma a fotograma con la misma semilla, así que el vídeo coincide con esta vista previa. Requiere Node.js y Chrome.",
+    "Renderiza fotograma a fotograma con la misma semilla, así que el vídeo coincide con esta vista previa. Requiere Node.js, Chrome y la CLI de swarmloom instalada.",
   "export.cli.format": "Formato",
   "export.cli.copy": "Copiar comando",
   "export.cli.copied": "Copiado",

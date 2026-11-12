@@ -206,7 +206,7 @@ export const fr: StudioCatalog = {
     "Ce navigateur ne sait pas encoder de vidéo à cette taille. Essayez une taille plus petite ou la ligne de commande.",
   "export.cli.title": "Rendu en ligne de commande",
   "export.cli.body":
-    "Rendu image par image avec la même graine : la vidéo correspond à cet aperçu. Nécessite Node.js et Chrome.",
+    "Rendu image par image avec la même graine : la vidéo correspond à cet aperçu. Nécessite Node.js, Chrome et la CLI swarmloom installée.",
   "export.cli.format": "Format",
   "export.cli.copy": "Copier la commande",
   "export.cli.copied": "Copié",

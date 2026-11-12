@@ -206,7 +206,7 @@ export const de: StudioCatalog = {
     "Dieser Browser kann Video in dieser Größe nicht kodieren. Wähle eine kleinere Größe oder die Kommandozeile.",
   "export.cli.title": "Mit der Kommandozeile rendern",
   "export.cli.body":
-    "Rendert Bild für Bild mit demselben Seed, das Video entspricht also dieser Vorschau. Benötigt Node.js und Chrome.",
+    "Rendert Bild für Bild mit demselben Seed, das Video entspricht also dieser Vorschau. Benötigt Node.js, Chrome und eine installierte swarmloom-CLI.",
   "export.cli.format": "Format",
   "export.cli.copy": "Befehl kopieren",
   "export.cli.copied": "Kopiert",

@@ -96,3 +96,15 @@ test("CI typechecks the release scripts through the root typecheck", () => {
   const steps = parse(read(".github/workflows/ci.yml")).jobs.check.steps;
   assert.ok(steps.some((/** @type {{ run?: string }} */ step) => step.run === "pnpm typecheck"));
 });
+
+test("CI runs the real CLI render tests, with ffmpeg required, on every OS it checks", () => {
+  // The check job may skip them (SWARMLOOM_TEST_DEPS=optional) only because another job runs them on that OS.
+  /** @type {Record<string, { "runs-on": string, strategy?: { matrix: { os: string[] } }, env?: Record<string, string>, steps: { run?: string, env?: Record<string, string> }[] }>} */
+  const jobs = parse(read(".github/workflows/ci.yml")).jobs;
+  const covered = Object.values(jobs).flatMap((job) => {
+    const optional = (/** @type {Record<string, string> | undefined} */ env) => env?.SWARMLOOM_TEST_DEPS === "optional";
+    const runs = job.steps.some((step) => step.run?.includes("apps/cli/test/render.test.ts") && !optional(step.env));
+    return runs && !optional(job.env) ? (job.strategy?.matrix.os ?? [job["runs-on"]]) : [];
+  });
+  for (const os of jobs.check.strategy?.matrix.os ?? []) assert.ok(covered.includes(os), os);
+});

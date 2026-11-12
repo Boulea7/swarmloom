@@ -175,7 +175,7 @@ export const ko: StudioCatalog = {
   "export.web.noCodec": "이 브라우저는 이 크기의 영상을 인코딩할 수 없습니다. 더 작은 크기나 명령줄을 사용하세요.",
   "export.cli.title": "명령줄로 렌더링",
   "export.cli.body":
-    "같은 시드로 한 프레임씩 렌더링하므로 이 미리보기와 같은 영상이 나옵니다. Node.js와 Chrome이 필요합니다.",
+    "같은 시드로 한 프레임씩 렌더링하므로 이 미리보기와 같은 영상이 나옵니다. Node.js, Chrome, 설치된 swarmloom CLI가 필요합니다.",
   "export.cli.format": "형식",
   "export.cli.copy": "명령 복사",
   "export.cli.copied": "복사했습니다",

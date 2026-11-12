@@ -181,7 +181,7 @@ export const ja: StudioCatalog = {
     "このブラウザはこのサイズの動画をエンコードできません。小さいサイズかコマンドラインを使ってください。",
   "export.cli.title": "コマンドラインでレンダリング",
   "export.cli.body":
-    "同じシードで1フレームずつレンダリングするので、このプレビューと同じ動画になります。Node.js と Chrome が必要です。",
+    "同じシードで1フレームずつレンダリングするので、このプレビューと同じ動画になります。Node.js、Chrome、インストール済みの swarmloom CLI が必要です。",
   "export.cli.format": "形式",
   "export.cli.copy": "コマンドをコピー",
   "export.cli.copied": "コピーしました",

@@ -82,7 +82,7 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 
 /**
  * Export dialog: a frame-exact export in this page (WebCodecs and Mediabunny, loaded when the
- * dialog first opens) and the `npx swarmloom render` command that makes the same file. Browsers
+ * dialog first opens) and the `npx --no swarmloom render` command that makes the same file. Browsers
  * without WebCodecs get the command only.
  */
 export function createExporter(deps: ExportDeps): Exporter {
