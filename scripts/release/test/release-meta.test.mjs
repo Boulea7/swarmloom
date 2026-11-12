@@ -103,7 +103,8 @@ test("CI runs the real CLI render tests, with ffmpeg required, on every OS it ch
   const jobs = parse(read(".github/workflows/ci.yml")).jobs;
   const covered = Object.values(jobs).flatMap((job) => {
     const optional = (/** @type {Record<string, string> | undefined} */ env) => env?.SWARMLOOM_TEST_DEPS === "optional";
-    const runs = job.steps.some((step) => step.run?.includes("apps/cli/test/render.test.ts") && !optional(step.env));
+    const files = ["render.test.ts", "snapshot.test.ts", "launch.test.ts"].map((file) => `apps/cli/test/${file}`);
+    const runs = job.steps.some((step) => files.every((file) => step.run?.includes(file)) && !optional(step.env));
     return runs && !optional(job.env) ? (job.strategy?.matrix.os ?? [job["runs-on"]]) : [];
   });
   for (const os of jobs.check.strategy?.matrix.os ?? []) assert.ok(covered.includes(os), os);
