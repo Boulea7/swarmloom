@@ -165,9 +165,10 @@ function playerOptions(
  * toolbar off, `step()` advances it, `audioWav()` renders the soundtrack (for the video's length when
  * the driver passes it) and `dispose()` releases everything. Errors reject with messages meant for the CLI user.
  *
- * Unless `live` is off or `reducedMotion` is on, the player goes live once the finale settles; from
- * the moment the stage is live every step also seeks the page's animations to the frame time
- * (see {@link LiveStage}), so the tail plays the finished page deterministically.
+ * Unless `live` is off or `reducedMotion` is on, the player goes live once the finale settles (a
+ * "live" cue goes live at its time in any case); from the moment the stage is live every step also
+ * seeks the page's animations to the frame time and its animated images hold still copies (see
+ * {@link LiveStage}), so the tail plays the finished page deterministically.
  */
 export function createRenderApi(deps: RenderDeps): RenderApi {
   let active: Active | null = null;
@@ -230,7 +231,9 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         });
         live = stage;
         const goesLive = init.live && !init.reducedMotion;
-        if (goesLive) await stage.holdImages();
+        // A live cue goes live with `live: false` or `reducedMotion` too: hold the images whenever the
+        // page can be shown, or its GIFs play on the wall clock from then on.
+        if (goesLive || init.cues.some((cue) => cue.action === "live")) await stage.holdImages();
         const started = new RenderSession({
           player: playerOptions(init, loaded, host, () => stage.goLive(started.elapsed)),
           tailMs: init.tail,

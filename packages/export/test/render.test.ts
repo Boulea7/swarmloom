@@ -8,6 +8,7 @@ import type {
 } from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { base64ToBytes, bytesToBase64, createRenderApi, type RenderDeps, type RenderInit } from "../src/index";
+import { LiveStage } from "../src/render/live";
 import { ClockPlayer } from "./fake-player";
 
 const blueprint = {
@@ -233,6 +234,20 @@ describe("render page protocol", () => {
     expect(goLive).not.toHaveBeenCalled();
     for (let i = 0; i < 3; i++) await api.step(40);
     expect(goLive).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [{}, true],
+    [{ live: false }, false],
+    [{ reducedMotion: true }, false],
+    [{ live: false, cues: [{ at: 400, action: "live" as const }] }, true],
+    [{ reducedMotion: true, cues: [{ at: 400, action: "live" as const }] }, true],
+  ])("holds the live page's animated images whenever it can go live (%j)", async (options, held) => {
+    const hold = vi.spyOn(LiveStage.prototype, "holdImages");
+    const { api } = setup();
+    await api.init({ ...base, ...options });
+    expect(hold).toHaveBeenCalledTimes(held ? 1 : 0);
+    hold.mockRestore();
   });
 
   it("resolves init and each step only after three animation frames when it awaits paint", async () => {
