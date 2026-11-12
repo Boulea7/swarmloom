@@ -217,6 +217,24 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
     TIMEOUT,
   );
 
+  it(
+    "shows the image next to a local HTML file",
+    async (ctx) => {
+      requireRenderPage(ctx);
+      const args = ["render", path.join(FIXTURES, "page/index.html"), "-o", "local.mp4", "--no-sound", "--quiet"];
+      const extra = ["--width", "320", "--height", "200", "--fps", "10", "--tail", "500", "--finale", "none"];
+      const run = startCli([...args, ...extra, "--overlays", "none"], { SWARMLOOM_RENDER_DIR: EXPORT_RENDER_DIR });
+      const { code, stderr } = await run.done;
+      expect(code, stderr).toBe(0);
+      // Mean colour of a patch inside the 300x100 image (top left near 8,80) in each frame. fill.png is
+      // magenta; a missing or blocked one leaves a white box with a broken-image icon.
+      const patch = ["-vf", "crop=100:70:20:100,scale=1:1:flags=area", "-pix_fmt", "rgb24", "-f", "rawvideo"];
+      const [r = 0, g = 0, b = 0] = (await decode(path.join(work, "local.mp4"), patch)).subarray(-3);
+      expect(r > 200 && g < 60 && b > 200, `last frame's patch is rgb(${r}, ${g}, ${b})`).toBe(true);
+    },
+    TIMEOUT,
+  );
+
   const fakePage = { SWARMLOOM_RENDER_DIR: path.join(FIXTURES, "render") };
 
   it(

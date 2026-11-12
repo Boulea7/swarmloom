@@ -15,7 +15,8 @@ import { findBrowser } from "../src/discovery/browser";
 import { systemHost } from "../src/discovery/host";
 import { findOptional, skipReason } from "./real-deps";
 
-const SNAPSHOT_DOUBLE = path.join(import.meta.dirname, "fixtures/snapshot.js");
+const FIXTURES = path.join(import.meta.dirname, "fixtures");
+const SNAPSHOT_DOUBLE = path.join(FIXTURES, "snapshot.js");
 /**
  * 2 s, 2 fps, 16x16 VP9, as a data: URL so it is seekable to any time (a server without range requests
  * allows only 0). `ffmpeg -f lavfi -i testsrc2=size=16x16:rate=2:duration=2 -c:v libvpx-vp9 -b:v 10k`
@@ -76,6 +77,21 @@ describe.skipIf(missing)(`snapshot in a real browser${missing ? ` (skipped: ${mi
       listener.close();
       await rm(dir, { recursive: true, force: true });
     }
+  }, 120_000);
+
+  it("loads the style sheet next to a local HTML file", async () => {
+    const out: string[] = [];
+    const io = { out: (line: string) => out.push(line), err: () => {} };
+    const argv = [path.join(FIXTURES, "page/index.html"), "-o", "-", "--chrome", chrome as string, "--quiet"];
+    const code = await snapshotCommand.run(argv, {
+      io,
+      cwd: FIXTURES,
+      env: {},
+      assets: { snapshotBundle: SNAPSHOT_DOUBLE },
+    });
+    expect(code).toBe(0);
+    // style.css sets it; without the file the body stays transparent.
+    expect(JSON.parse(out.join("\n")).background).toBe("rgb(1, 2, 3)");
   }, 120_000);
 
   it("captures animations in a pose that does not depend on when the capture ran", async () => {

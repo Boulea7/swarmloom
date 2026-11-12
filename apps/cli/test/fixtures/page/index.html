@@ -4,10 +4,12 @@
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="script-src 'none'" />
     <title>Fixture page</title>
+    <!-- Served from its own folder so relative assets load: snapshot uses style.css and fill.png, render
+         only fill.png (it leaves <link> style sheets out). The page fits a 320x200 view without scrolling. -->
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <h1>Fixture</h1>
-    <p>Served from its own folder so relative assets load.</p>
+    <img src="fill.png" alt="" width="300" height="100" />
   </body>
 </html>
