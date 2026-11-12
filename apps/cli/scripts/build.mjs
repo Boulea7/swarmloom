@@ -3,7 +3,7 @@
 //   dist/cli.js       the command (ESM, Node 20+; only playwright-core stays external)
 //   dist/snapshot.js  IIFE injected into pages by `snapshot` and web page renders
 //   dist/render/      the headless render page, copied from @swarmloom/export (rebuilt first when
-//                     its source stamp shows it is older than this checkout)
+//                     it is gone or its source stamp shows it is older than this checkout)
 //   dist/studio/      the Studio PWA, copied from @swarmloom/studio
 // `--check` (prepublishOnly) fails when anything above is missing instead of warning.
 import { cp, realpath, rm, stat } from "node:fs/promises";
@@ -27,8 +27,8 @@ async function exists(file) {
 
 /**
  * Makes sure the render page in @swarmloom/export was built from this checkout: the adapters and the
- * engine run inside it, so a stale page renders with old code. Rebuilds it when its source stamp
- * does not match; false when that fails.
+ * engine run inside it, so a stale page renders with old code. Rebuilds it when it is gone or its
+ * source stamp does not match; false when that fails.
  */
 async function freshRenderPage() {
   try {
@@ -37,7 +37,7 @@ async function freshRenderPage() {
     const stale = await staleFiles(pkgDir);
     if (stale.length === 0) return true;
     const more = stale.length > 1 ? ` and ${stale.length - 1} more` : "";
-    console.log(`swarmloom build: the render page is older than ${stale[0]}${more}; rebuilding it`);
+    console.log(`swarmloom build: rebuilding the render page (out of date: ${stale[0]}${more})`);
     const vite = await import(pathToFileURL(createRequire(path.join(pkgDir, "package.json")).resolve("vite")).href);
     await vite.build({ configFile: path.join(pkgDir, "vite.render.config.ts"), logLevel: "warn" });
     return true;
