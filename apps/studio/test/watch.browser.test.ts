@@ -62,7 +62,18 @@ it("hands the phone the settings the watch plays with, not the wrist-only ones",
   app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
 
   root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
-  const overrides = { speed: 3, intro: "outline", opening: true, liveTop: true } as const;
+  // The rest at their defaults too: the phone's own saved settings must not replace them.
+  const overrides = {
+    agents: "auto",
+    speed: 3,
+    seed: 1,
+    labels: "names",
+    finale: "flock",
+    intro: "outline",
+    follow: "tour",
+    opening: true,
+    liveTop: true,
+  } as const;
   const url = routeToUrl(
     { source: { kind: "example", id: "notes" }, autoplay: true, overrides },
     `${location.origin}${location.pathname}`,

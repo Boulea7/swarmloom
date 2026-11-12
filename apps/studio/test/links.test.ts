@@ -3,7 +3,14 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { normalizeSourceUrl, parseRoute, type Route, routeToUrl } from "../src/route";
 import { DEFAULT_SETTINGS, impactOf, playerOptionsFrom } from "../src/settings";
-import { decodeShare, encodeShare, MAX_INFLATED_BYTES, ShareError, sanitizeShareName } from "../src/share";
+import {
+  decodeShare,
+  encodeShare,
+  MAX_INFLATED_BYTES,
+  SHARE_SETTING_KEYS,
+  ShareError,
+  sanitizeShareName,
+} from "../src/share";
 import type { OpenedSource } from "../src/source";
 import { buildShareLink } from "../src/views/share-link";
 
@@ -37,17 +44,18 @@ describe("share links", () => {
     expect(decoded).toEqual({ name: "a.md", text: "hi", settings: { seed: 7 } });
   });
 
-  // Both shift the build's timeline and its end, so a link without them plays a different show.
+  // The recipient's Studio puts a link's settings over its own saved ones, so a link leaving out a
+  // setting at its default plays the recipient's value. Opening and glide to the top shift the timeline.
   it.each([
     ["an example, in the query", { ref: { kind: "example", id: "svg-chart" }, name: "chart.svg" }],
     ["a local text, in the hash", { ref: { kind: "file", name: "notes.md" }, name: "notes.md", text: "# N" }],
-  ])("carries the opening and the glide to the top for %s", async (_label, opened) => {
+  ])("carries every performance setting, defaults too, for %s", async (_label, opened) => {
     const settings = { ...DEFAULT_SETTINGS, opening: true, liveTop: true };
     const link = await buildShareLink(opened as OpenedSource, settings, BASE);
     if (!link.ok) throw new Error(link.reason);
     const { source, overrides } = parseRoute(link.url);
     const carried = source?.kind === "shared" ? (await decodeShare(source.payload)).settings : overrides;
-    expect(carried).toEqual({ opening: true, liveTop: true });
+    expect(carried).toEqual(Object.fromEntries(SHARE_SETTING_KEYS.map((key) => [key, settings[key]])));
   });
 
   // The extension's Studio opens file: URLs; anywhere else such a link would open nothing.

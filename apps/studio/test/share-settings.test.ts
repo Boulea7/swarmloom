@@ -3,7 +3,8 @@ import { mountStudio, type StudioApp } from "../src/app";
 import type { StudioTarget } from "../src/services";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { decodeShare, encodeShare } from "../src/share";
-import { HOSTED_STUDIO } from "../src/views/share-link";
+import type { OpenedSource } from "../src/source";
+import { buildShareLink, HOSTED_STUDIO } from "../src/views/share-link";
 import { fakeServices } from "./fakes";
 
 let app: StudioApp | null = null;
@@ -56,7 +57,7 @@ it("shares a link's settings on, shows them, and lets Restore defaults clear the
   vi.spyOn(navigator.clipboard, "writeText").mockImplementation(async (text) => void copied.push(text));
   byLabel("Share")?.click();
   const link = new URL(await until(() => copied[0]));
-  expect((await decodeShare(new URLSearchParams(link.hash.slice(1)).get("d") ?? "")).settings).toEqual(shared);
+  expect((await decodeShare(new URLSearchParams(link.hash.slice(1)).get("d") ?? "")).settings).toMatchObject(shared);
 
   // Restore defaults while the saved settings already are the defaults.
   studio.context.toggleSettings();
@@ -73,7 +74,30 @@ it("shares from the extension's Studio a link to the hosted Studio", async () =>
   byLabel("Share")?.click();
   const link = await until(() => copied[0]);
   expect(link.split(/[?#]/)[0]).toBe(HOSTED_STUDIO);
-  expect((await decodeShare(new URLSearchParams(new URL(link).hash.slice(1)).get("d") ?? "")).settings).toEqual(shared);
+  expect((await decodeShare(new URLSearchParams(new URL(link).hash.slice(1)).get("d") ?? "")).settings).toMatchObject(
+    shared,
+  );
+});
+
+// The recipient's saved settings are what a link's settings go over; a link must not leave defaults to them.
+it("plays a link made at the default settings with them, not with the recipient's saved ones", async () => {
+  const opened = { ref: { kind: "file", name: "notes.md" }, name: "notes.md", text: "# N" } as OpenedSource;
+  const link = await buildShareLink(opened, DEFAULT_SETTINGS, `${location.origin}/`);
+  if (!link.ok) throw new Error(link.reason);
+  history.replaceState(null, "", `/?lang=en${new URL(link.url).hash}`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const { services, log } = fakeServices({
+    manifest: { version: 1, entries: [] },
+    examplesBase: "https://studio.test/x/",
+  });
+  const saved = { ...DEFAULT_SETTINGS, seed: 9, speed: 2, opening: true, liveTop: true };
+  const storage = { getItem: () => JSON.stringify(saved), setItem: () => undefined } as unknown as Storage;
+  app = await mountStudio(root, { ...services, storage });
+  await until(() => root.querySelector(".play-big"));
+  const defaults = { seed, speed, opening: false, liveTop: false };
+  expect(app.context.settings).toMatchObject(defaults);
+  expect(log.players.at(-1)).toMatchObject({ seed, speed, opening: 0, liveTop: false });
 });
 
 it("leaves a link's settings behind with its view", async () => {
