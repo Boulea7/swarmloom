@@ -19,6 +19,9 @@ async function frameOf(html: string): Promise<{ win: Window; rasterizer: FrameRa
   frames.push(frame);
   await loaded;
   const win = frame.contentWindow as Window;
+  // As the export does through player.ready(): Firefox may dispatch srcdoc's initial loadingdone
+  // after load, which otherwise invalidates the first far-box cache on a slower test runner.
+  await win.document.fonts.ready;
   return { win, rasterizer: rasterizerOf(win) };
 }
 
