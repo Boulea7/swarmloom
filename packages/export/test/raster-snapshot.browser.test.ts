@@ -303,8 +303,10 @@ it("keeps the native look of form controls and the UA's placeholder colour", asy
   // A clone given the UA's border or background as author styles draws a green fallback bar.
   // The native bars are different blues (Firefox's darker than Chromium's, WebKit's rgb(52,132,228)).
   expect(blue > 150 && green < 180 && red < 80).toBe(true);
-  // A resolved text fill colour on the root clone, inherited down to the placeholder, drew it black.
+  // A resolved text fill colour on the root clone, inherited down to the placeholder, drew it black;
+  // a blank field would pass that alone, so the grey glyphs must be there too (about 1200 pixels).
   expect(Math.min(...text)).toBeGreaterThan(80);
+  expect(text.filter((red) => red < 240).length).toBeGreaterThan(200);
 });
 
 it("draws a video's poster, and its controls over a dark backdrop when it has no picture", async () => {
