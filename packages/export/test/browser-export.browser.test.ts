@@ -9,7 +9,7 @@ import {
 } from "mediabunny";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import emblem from "../../../examples/svg/emblem.svg?raw";
-import { VideoFileWriter } from "../src/browser/encode";
+import { VideoFileWriter, webCodecsProbe } from "../src/browser/encode";
 import { type BrowserExportOptions, type BrowserExportResult, exportVideo } from "../src/browser/index";
 import { frameMicros } from "../src/browser/schedule";
 import type { RenderApi } from "../src/render/protocol";
@@ -98,6 +98,18 @@ async function decodeAudio(track: InputAudioTrack): Promise<{ seconds: number; p
   return { seconds, peak };
 }
 
+/** Types of the top-level boxes of an MP4 file, in order. */
+async function topLevelBoxes(blob: Blob): Promise<string[]> {
+  const types: string[] = [];
+  for (let offset = 0; offset < blob.size; ) {
+    const header = new DataView(await blob.slice(offset, offset + 16).arrayBuffer());
+    const size = header.getUint32(0);
+    types.push(String.fromCharCode(...new Uint8Array(header.buffer, 4, 4)));
+    offset += size === 1 ? Number(header.getBigUint64(8)) : size === 0 ? blob.size : size;
+  }
+  return types;
+}
+
 /** Summed RGB difference of two RGBA images at byte offset `i`. */
 function pixelDiff(a: Uint8ClampedArray, b: Uint8ClampedArray, i: number): number {
   return Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
@@ -124,6 +136,12 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
   expect(container.childElementCount).toBe(0);
 
   const input = new Input({ source: new BlobSource(first.blob), formats: ALL_FORMATS });
+  if (first.plan.container === "mp4") {
+    // Streamed into the file, the media still comes after the index (fast start, as from the CLI).
+    const boxes = await topLevelBoxes(first.blob);
+    expect(boxes.indexOf("moov")).toBeGreaterThan(-1);
+    expect(boxes.indexOf("moov")).toBeLessThan(boxes.indexOf("mdat"));
+  }
   const video = await input.getPrimaryVideoTrack();
   expect(video?.codec).toBe(first.plan.video);
   expect([video?.displayWidth, video?.displayHeight]).toEqual([1280, 720]);
@@ -153,14 +171,23 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
   const second = await exportClip();
   expect(second.frameSha256).toEqual(first.frameSha256);
 
-  // Without hashing the encoder takes the canvas itself: the same picture, no hashes.
-  const plain = await exportClip({ hashFrames: false, maxDurationMs: 100 });
+  // Without hashing the encoder takes the canvas itself: the same picture, no hashes. This one is
+  // WebM (VP9), as where H.264 is missing, whose header the muxer writes again at the end.
+  const plain = await exportClip({
+    hashFrames: false,
+    maxDurationMs: 100,
+    probe: {
+      ...webCodecsProbe,
+      video: async (codec, ...size) => codec === "vp9" && webCodecsProbe.video(codec, ...size),
+    },
+  });
   expect(plain.frameSha256).toEqual([]);
-  const plainVideo = await new Input({
-    source: new BlobSource(plain.blob),
-    formats: ALL_FORMATS,
-  }).getPrimaryVideoTrack();
+  expect([plain.extension, plain.blob.type]).toEqual(["webm", "video/webm"]);
+  const plainInput = new Input({ source: new BlobSource(plain.blob), formats: ALL_FORMATS });
+  const plainVideo = await plainInput.getPrimaryVideoTrack();
   if (!plainVideo) throw new Error("No video track");
+  expect([plainVideo.codec, (await plainVideo.computePacketStats()).packetCount]).toEqual(["vp9", 3]);
+  expect((await plainInput.getPrimaryAudioTrack())?.codec).toBe(plain.plan.audio);
   const [plainStart] = await decodeFrames(plainVideo, [0]);
   expect(meanDiff(plainStart as Uint8ClampedArray, start)).toBeLessThan(3);
 });
