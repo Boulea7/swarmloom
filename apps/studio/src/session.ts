@@ -63,6 +63,8 @@ const END_STEP_PASSES = 24;
 const MAX_POSITION_BEFORE_END = 0.99;
 /** Player states after the build: the scrubber is full. */
 const BUILD_ENDED: ReadonlySet<PlayerState> = new Set(["finale", "done", "live"]);
+/** Sound settings a player keeps while muted and takes only when made: setSound() toggles just `sound`. */
+const SOUND_CHOICE = ["soundPack", "volume", "beatHits"] as const;
 
 function layoutWidth(host: HTMLElement, preferred: number | undefined): number {
   const width = preferred ?? (host.clientWidth || host.ownerDocument.documentElement.clientWidth || 1280);
@@ -132,6 +134,10 @@ export class Session {
   private planExact = false;
 
   private settings: StudioSettings;
+  /** Settings the current player was made with: its {@link SOUND_CHOICE} stays these. */
+  private madeWith: StudioSettings | null = null;
+  /** Sound was on at the last {@link apply} (or when the player was made). */
+  private soundWasOn = false;
   /** The current player's clock: Studio's own, so {@link hold} can stop it. */
   private clock: PreviewClock | null = null;
   /** {@link hold} is on; a new player starts held too. */
@@ -224,11 +230,16 @@ export class Session {
    * (new player) or {@link reload} (new adapter run) is still needed.
    * The language setting is not one of them: the resolved locale arrives through {@link setLocale}
    * once Studio's strings for it have loaded.
+   * Turning sound on is live, but when the sound pack, volume or beat hits changed since the player
+   * was made (while muted, without a restart) the impact is "rebuild": the player still holds the
+   * old ones. This also covers the toolbar's unmute, which reaches here after {@link adopt}.
    */
   apply(next: StudioSettings): SettingsImpact {
     const prev = this.settings;
-    const impact = impactOf({ ...prev, locale: next.locale }, next);
+    let impact = impactOf({ ...prev, locale: next.locale }, next);
     this.settings = next;
+    const unmuted = next.sound && !this.soundWasOn;
+    this.soundWasOn = next.sound;
     const player = this.player;
     if (player) {
       if (prev.speed !== next.speed) player.setSpeed(next.speed);
@@ -236,6 +247,9 @@ export class Session {
       if (prev.follow !== next.follow) player.setFollow(next.follow);
       // Speed and follow mode change the pace, so a seek (a replay) ends somewhere else.
       if (prev.speed !== next.speed || prev.follow !== next.follow) this.resetPlan(this.plannedMs);
+      const made = this.madeWith;
+      const stale = made !== null && SOUND_CHOICE.some((key) => made[key] !== next[key]);
+      if (unmuted && stale && (impact === "live" || impact === "none")) impact = "rebuild";
     }
     return impact;
   }
@@ -390,6 +404,8 @@ export class Session {
     }
     this.player = player;
     this.clock = clock;
+    this.madeWith = this.settings;
+    this.soundWasOn = this.settings.sound;
     this.resetPlan(0);
     this.unsubscribe.push(
       player.on("progress", (e) => {
