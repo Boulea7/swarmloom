@@ -20,4 +20,7 @@ SWARMLOOM_CHROME=$HOME/bin/chromium pnpm -F @swarmloom/adapter-pdf sample
 The script fails when the output reaches 300 KB. Fonts come from the machine, so other machines may produce
 slightly different bytes. The committed file is the reference.
 
-The text, the invented chart values and the artwork are original. License: MIT.
+The text, the invented chart values and the artwork are original. License: MIT. The fonts embedded in the
+file are not: it carries subsets of Liberation Sans and Liberation Serif 1.07.4 (GPL v2 with a font embedding
+exception) and Noto Sans CJK SC glyphs (SIL Open Font License 1.1). [`SOURCES.md`](SOURCES.md) lists them with
+their licence texts; update it when a new run embeds other fonts.
