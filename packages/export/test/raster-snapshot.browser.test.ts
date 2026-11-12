@@ -165,5 +165,8 @@ it("draws a video's poster, and its controls over a dark backdrop when it has no
   await rasterizer.draw(ctx);
   const at = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data.slice(0, 3));
   expect(at(50, 25)).toEqual([255, 0, 0]);
-  expect(at(5, 55).every((c) => c < 64)).toBe(true);
+  // The dark backdrop, then the play button (greyed until metadata loads) and the timeline over it.
+  expect(Math.max(...at(5, 55))).toBeLessThan(64);
+  expect(Math.min(...at(25, 52))).toBeGreaterThan(64);
+  expect(Math.min(...at(50, 78))).toBeGreaterThan(64);
 });
