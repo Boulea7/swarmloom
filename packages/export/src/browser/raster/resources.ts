@@ -66,11 +66,19 @@ export class ResourceCache {
   readonly #fetch: typeof fetch;
   readonly #onWarning: (message: string) => void;
   readonly #gate: ResourceGate;
+  readonly #reported = new Set<string>();
 
   constructor(fetcher: typeof fetch, onWarning: (message: string) => void, gate: ResourceGate) {
     this.#fetch = fetcher;
     this.#onWarning = onWarning;
     this.#gate = gate;
+  }
+
+  /** Reports `message` through `onWarning`, once however many frames meet the same problem. */
+  report(message: string): void {
+    if (this.#reported.has(message)) return;
+    this.#reported.add(message);
+    this.#onWarning(message);
   }
 
   /** The data URL when already known (data URLs map to themselves), else undefined. */

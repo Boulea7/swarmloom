@@ -150,3 +150,18 @@ it("keeps the native look of form controls and the UA's placeholder colour", asy
     greyText: true,
   });
 });
+
+it("draws a video's poster, and its controls over a dark backdrop when it has no picture", async () => {
+  const red = encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2"><rect width="4" height="2" fill="red"/></svg>',
+  );
+  const { rasterizer } = await frameOf(
+    `<body style="margin:0"><video width=100 height=50 style="display:block" poster="data:image/svg+xml,${red}"></video>` +
+      '<video controls width=100 height=50 style="display:block"></video>',
+  );
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  await rasterizer.draw(ctx);
+  const at = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data.slice(0, 3));
+  expect(at(50, 25)).toEqual([255, 0, 0]);
+  expect(at(5, 55).every((c) => c < 64)).toBe(true);
+});

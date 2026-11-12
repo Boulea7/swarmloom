@@ -704,14 +704,115 @@ function canvasDataUrl(canvas: HTMLCanvasElement): string {
   }
 }
 
-/** Draws the current frame of a video into a PNG data URL (blank when it has none or is cross-origin). */
-function videoDataUrl(video: HTMLVideoElement): string {
-  if (video.readyState < 2 || video.videoWidth === 0) return BLANK_IMAGE;
+/** Whether a video has a frame to show. */
+function hasFrame(video: HTMLVideoElement): boolean {
+  return video.readyState >= 2 && video.videoWidth > 0;
+}
+
+/**
+ * Whether a video shows its poster: it has one, and no frame yet, or it has neither played nor
+ * moved from the start (a seek to the start shows the frame on the page; it cannot be told apart).
+ */
+function showsPoster(video: HTMLVideoElement): boolean {
+  if (!video.poster) return false;
+  return !hasFrame(video) || (video.paused && video.played.length === 0 && video.currentTime === 0);
+}
+
+/**
+ * The `src` (or shared class) of an `<img>` showing what a video shows: its poster, else its current
+ * frame as a PNG, else nothing. A frame from another site cannot be read and is left blank.
+ */
+function videoSource(walk: Walk, video: HTMLVideoElement): string {
+  if (showsPoster(video)) return embedUrl(walk, video.poster, "i");
+  if (!hasFrame(video)) return ` src="${BLANK_IMAGE}"`;
   const canvas = video.ownerDocument.createElement("canvas");
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext("2d")?.drawImage(video, 0, 0);
-  return canvasDataUrl(canvas);
+  try {
+    return ` src="${canvas.toDataURL("image/png")}"`;
+  } catch {
+    const url = video.currentSrc;
+    const name = url.length > 80 ? `${url.slice(0, 77)}...` : url;
+    walk.resources.report(
+      `The video ${name} could not be drawn in the frame (another site without CORS); it is left blank`,
+    );
+    return ` src="${BLANK_IMAGE}"`;
+  }
+}
+
+/** Seconds as the media controls show them: m:ss, or h:mm:ss from an hour on. */
+function clockText(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const ss = String(s % 60).padStart(2, "0");
+  const m = Math.floor(s / 60) % 60;
+  const h = Math.floor(s / 3600);
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+}
+
+/** Opacity of the controls' shade by offset from its top edge, 110 px above the bottom. */
+const SHADE: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [0.18, 0.09],
+  [0.36, 0.3],
+  [0.55, 0.6],
+  [0.73, 0.86],
+  [0.91, 0.99],
+  [1, 1],
+];
+
+/**
+ * Chromium's media controls over a paused video, `w` x `h` CSS px, as an SVG data URL: the shade
+ * along the bottom, play button, time, volume, fullscreen and menu buttons and the timeline, on a
+ * dark backdrop when there is no picture. The browser draws them in a shadow tree no page can read,
+ * so this is a likeness: buttons greyed until the video has loaded its metadata.
+ */
+function controlsImage(video: HTMLVideoElement, w: number, h: number, picture: boolean): string {
+  const buttons = video.readyState >= 1 ? "" : ' opacity="0.3"';
+  const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+  const clock = clockText(video.currentTime);
+  const time = duration > 0 ? `${clock} / ${clockText(duration)}` : clock;
+  const played = duration > 0 ? Math.min(1, video.currentTime / duration) * (w - 32) : 0;
+  // The middle of the buttons' row.
+  const y = h - 48;
+  const stops = SHADE.map(([o, a]) => `<stop offset="${o}" stop-opacity="${a}"/>`).join("");
+  const svg = [
+    `<svg xmlns="${SVG_NS}" width="${w}" height="${h}">`,
+    `<linearGradient id="s" x2="0" y2="1">${stops}</linearGradient>`,
+    picture ? "" : '<rect width="100%" height="100%" fill="#333"/>',
+    `<rect y="${h - 110}" width="100%" height="110" fill="url(#s)"/>`,
+    `<g fill="#fff"${buttons}>`,
+    `<path d="M20 ${y - 5.5}L29.5 ${y}L20 ${y + 5.5}z"/>`,
+    `<path d="M${w - 128} ${y - 3}h3l4.5-4v14l-4.5-4h-3z"/>`,
+    [-5, 0, 5].map((dy) => `<circle cx="${w - 24}" cy="${y + dy}" r="1.75"/>`).join(""),
+    '<g fill="none" stroke="#fff" stroke-width="1.5">',
+    `<path d="M${w - 118} ${y - 3}a4 4 0 0 1 0 6M${w - 116} ${y - 6}a7 7 0 0 1 0 12"/>`,
+    `<path d="M${w - 77} ${y - 2}v-4h4M${w - 71} ${y - 6}h4v4M${w - 67} ${y + 2}v4h-4M${w - 73} ${y + 6}h-4v-4"/>`,
+    "</g></g>",
+    `<text x="48" y="${y + 5}" font-family="Roboto,Arial,sans-serif" font-size="14" fill="#fff">${time}</text>`,
+    `<rect x="16" y="${h - 24}" width="${Math.max(0, w - 32)}" height="4" rx="2" fill="#fff" fill-opacity="0.3"/>`,
+    played > 0 ? `<rect x="16" y="${h - 24}" width="${played}" height="4" rx="2" fill="#fff"/>` : "",
+    "</svg>",
+  ].join("");
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * The inside of a video's box when it shows its controls: the picture (`source`, see
+ * {@link videoSource}) fitted into the content box as the video fits it, and the controls over it.
+ */
+function videoPlayer(video: HTMLVideoElement, cs: CSSStyleDeclaration, source: string): string {
+  const left = px(cs, "padding-left");
+  const top = px(cs, "padding-top");
+  const w = Math.max(0, video.clientWidth - left - px(cs, "padding-right"));
+  const h = Math.max(0, video.clientHeight - top - px(cs, "padding-bottom"));
+  const box = `display:block;position:absolute;left:${left}px;top:${top}px;width:${w}px;height:${h}px`;
+  const fit = `object-fit:${cs.getPropertyValue("object-fit")};object-position:${cs.getPropertyValue("object-position")}`;
+  const picture = showsPoster(video) || hasFrame(video);
+  return (
+    (picture ? `<img${source} style="${escapeAttr(`${box};${fit}`)}"/>` : "") +
+    `<img src="${controlsImage(video, w, h, picture)}" style="${box}"/>`
+  );
 }
 
 /** Draws a loaded image into a PNG data URL; used when its URL cannot be fetched. */
@@ -980,8 +1081,11 @@ function* emitElement(
     override["transform-box"] = "view-box";
   }
   const frame = local === "iframe" && !svg;
-  if (frame) {
-    // The frame's document is drawn into a box that must size and contain it like the frame did.
+  // A video shows its controls while paused (playing, they hide once the pointer is away).
+  const player = local === "video" && !svg && (el as HTMLVideoElement).controls && (el as HTMLVideoElement).paused;
+  if (frame || player) {
+    // The frame's document (the video's picture and controls) is drawn into a box that must size
+    // and contain it like the element did.
     override["overflow-x"] = "hidden";
     override["overflow-y"] = "hidden";
     if (cs.getPropertyValue("display") === "inline") override.display = "inline-block";
@@ -1018,13 +1122,17 @@ function* emitElement(
   } else if (canvas) {
     attrs = ` src="${canvasSource(walk, canvas, overlay)}"`;
   } else if (local === "video" && !svg) {
-    attrs = ` src="${videoDataUrl(el as HTMLVideoElement)}"`;
+    attrs = videoSource(walk, el as HTMLVideoElement);
   }
 
   if (frame) {
     walk.out.push(`<div${xmlns}${style}>`);
     yield* emitFrame(walk, el as HTMLIFrameElement, cs);
     walk.out.push("</div>");
+    return;
+  }
+  if (player) {
+    walk.out.push(`<div${xmlns}${style}>${videoPlayer(el as HTMLVideoElement, cs, attrs)}</div>`);
     return;
   }
   if (tag === "img") {
@@ -1420,7 +1528,8 @@ async function walkFrame(
  * walk pauses every few milliseconds and starts over if the page changed meanwhile.
  *
  * Known limits: pseudo-elements other than `::before`/`::after` (custom `::marker`,
- * `::first-letter`) fall back to defaults; cross-origin images without CORS are left blank;
+ * `::first-letter`) fall back to defaults; cross-origin images and videos without CORS are left
+ * blank; a paused video's controls are a likeness of Chromium's;
  * WebGL canvases show what `toDataURL` (in the image) or `drawImage` (as overlays) returns at
  * capture time; `position: sticky` does not stick;
  * SMIL animations of keyword attributes (enumerations, `preserveAspectRatio`, `orient`) show the
