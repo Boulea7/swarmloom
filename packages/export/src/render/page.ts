@@ -45,6 +45,8 @@ export interface PageRenderOptions {
    * requests itself.
    */
   network?: "https" | "none";
+  /** Wait for the page's next few animation frames after init() and each step(); see `RenderDeps.awaitPaint`. */
+  awaitPaint?: boolean;
 }
 
 /**
@@ -53,8 +55,9 @@ export interface PageRenderOptions {
  * page and the frame Studio exports in.
  */
 export function createPageRenderApi(options: PageRenderOptions = {}): RenderApi {
-  const { network } = options;
+  const { network, awaitPaint = false } = options;
   return createRenderApi({
+    awaitPaint,
     load: (input, ctx, { format, height }) => {
       const context: AdapterContext = network ? ({ ...ctx, network } as AdapterContext) : ctx;
       return load(input, context, { format, registry: renderFormats(height) });

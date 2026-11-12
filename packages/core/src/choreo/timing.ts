@@ -116,8 +116,13 @@ export const REDUCED_FADE_MS: Range = [150, 250];
 /** Single-line text narrower than min(240 px, 25% of the viewport) is clicked, not dragged. */
 export const TEXT_CLICK_MAX_WIDTH_PX = 240;
 export const TEXT_CLICK_MAX_VIEW_SHARE = 0.25;
-/** I-beam settling into the new text box (80-130 ms). */
+/** I-beam settling beside the new text box (80-130 ms). */
 export const IBEAM_NUDGE_MS: Range = [80, 130];
+/**
+ * How far left of a text box the I-beam rests while it types, stage px (plus up to 4): clear of
+ * the first glyph, and of the arrow it turns back into when the task ends.
+ */
+export const IBEAM_PARK_PX = 16;
 /** Breath before the first keystroke (70-150 ms) and after the last one (90-170 ms). */
 export const TYPE_START_MS: Range = [70, 150];
 export const TYPE_END_MS: Range = [90, 170];

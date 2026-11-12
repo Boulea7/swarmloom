@@ -56,6 +56,16 @@ describe("planner", () => {
     expect(s.status[at("copy")]).toBe(AVAILABLE);
   });
 
+  it("gives an image revealed by typing (a PDF text line) the typing role", () => {
+    const image = (id: string, reveal?: "type" | "sweep"): Layer =>
+      ({ id, kind: "image", box: { x: 0, y: 0, w: 300, h: 20 }, src: "data:,", reveal }) as Layer;
+    expect(plan([image("line", "type"), image("photo", "sweep"), image("plain")]).roles).toEqual([
+      "type",
+      "image",
+      "image",
+    ]);
+  });
+
   it("follows reading order (rows, then left to right) and lets priority override it", () => {
     const layers = [box("c", 400, 300), box("b", 400, 20), box("a", 20, 24), box("d", 20, 300)];
     expect(ids(plan(layers), plan(layers).order)).toEqual(["a", "b", "d", "c"]);

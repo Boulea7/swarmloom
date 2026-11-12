@@ -7,7 +7,7 @@ import type {
   SourceInput,
 } from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { base64ToBytes, bytesToBase64, createRenderApi, type RenderInit } from "../src/index";
+import { base64ToBytes, bytesToBase64, createRenderApi, type RenderDeps, type RenderInit } from "../src/index";
 import { ClockPlayer } from "./fake-player";
 
 const blueprint = {
@@ -19,7 +19,7 @@ const blueprint = {
 };
 const base: RenderInit = { input: { name: "a.md", text: "# Hi" }, width: 320, height: 200, fps: 25, tail: 200 };
 
-function setup(make: (input: SourceInput) => Blueprint = () => blueprint) {
+function setup(make: (input: SourceInput) => Blueprint = () => blueprint, deps: Pick<RenderDeps, "awaitPaint"> = {}) {
   const players: ClockPlayer[] = [];
   const loads: { input: SourceInput; format?: string; width: number }[] = [];
   const dispose = vi.fn();
@@ -37,6 +37,7 @@ function setup(make: (input: SourceInput) => Blueprint = () => blueprint) {
       return player;
     },
     renderAudioWav: audio,
+    ...deps,
   });
   return { api, players, loads, dispose, audio };
 }
@@ -220,6 +221,46 @@ describe("render page protocol", () => {
     expect(goLive).toHaveBeenCalledTimes(calls);
   });
 
+  it("goes live at a live cue instead of when the finale settles", async () => {
+    const { api, players } = setup();
+    await api.init({ ...base, tail: 2000, cues: [{ at: 1400, action: "live" }] });
+    const [player] = players as [ClockPlayer];
+    const goLive = vi.spyOn(player, "goLive");
+    for (let i = 0; i < 30; i++) await api.step(40);
+    player.state = "done";
+    await api.step(40);
+    await api.step(40);
+    expect(goLive).not.toHaveBeenCalled();
+    for (let i = 0; i < 3; i++) await api.step(40);
+    expect(goLive).toHaveBeenCalledOnce();
+  });
+
+  it("resolves init and each step only after three animation frames when it awaits paint", async () => {
+    const { api } = setup(undefined, { awaitPaint: true });
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
+    const runFrames = async (from: number, to: number) => {
+      for (let i = from; i < to; i++) {
+        await vi.waitFor(() => expect(frames).toHaveLength(i + 1));
+        frames[i]?.(i * 16);
+      }
+    };
+    const init = api.init(base);
+    await runFrames(0, 3);
+    await init;
+    let stepped = false;
+    const step = api.step(40).then(() => {
+      stepped = true;
+    });
+    await runFrames(3, 5);
+    await Promise.resolve();
+    expect(stepped).toBe(false);
+    await runFrames(5, 6);
+    await step;
+    expect(stepped).toBe(true);
+    raf.mockRestore();
+  });
+
   it("keeps the player's realtime sound off and renders the soundtrack from its log", async () => {
     const { api, players, audio } = setup();
     await api.init({ ...base, pack: "soft" });
@@ -255,6 +296,7 @@ describe("render page protocol", () => {
       [{ ...base, width: 0 }, "width must be a number within 16..8192"],
       [{ ...base, fps: Number.NaN }, "fps must be a number"],
       [{ ...base, theme: "neon" }, "theme must be one of auto, light, dark"],
+      [{ ...base, overlays: "some" }, "overlays must be one of full, minimal, none"],
       [{ ...base, live: "yes" }, "live must be a boolean"],
       [{ ...base, input: { name: "a", base64: "%%%" } }, "not valid base64"],
       [{ ...base, blueprint: { version: 2, size: { w: 1, h: 1 }, layers: [] } }, "blueprint must be a version 1"],

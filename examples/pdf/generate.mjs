@@ -125,8 +125,8 @@ const html = `<!doctype html>
   takes the finished result apart into boxes, lines of text, paths and pictures, then puts it back together
   in reading order: frames first, then the words inside them, then the details.</p>
   <p>Every cursor is an independent worker. When one finishes a task it picks the nearest open one, so the
-  swarm spreads across the page and gathers where the work is. The timing comes from a seeded clock, which
-  means the same file and the same seed always produce the same film, frame for frame.</p>
+  swarm spreads across the page and gathers where the work is. With the same input, settings, browser and
+  fonts, a fixed seed and a virtual clock make exports repeatable.</p>
   <h2>One engine, many formats</h2>
   <p>Each format has a small adapter that reads the file and describes what to build. The engine never needs
   to know where a layer came from.</p>

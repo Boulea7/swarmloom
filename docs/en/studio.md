@@ -93,7 +93,7 @@ Studio always has an ordinary responsive layout. Supported Chromium environments
 - Vertical dual screen: stage above, controls and dialogs below.
 - Fold or rotate: recompute presentation without resetting the seed or timeline.
 
-`?watch=1` or a watch-sized screen (up to 320 × 400) uses the tiny player; a narrow window on a bigger screen and `?import=1` links keep the normal Studio. It shows a static poster first, is muted by default, and has a large play button, progress and **Open on phone**. It does not depend on poorly supported round-display media queries.
+`?watch=1` or a watch-sized screen (up to 320 × 400) uses the tiny player; a narrow window on a bigger screen and `?import=1` links keep the normal Studio. It shows a static poster first, is muted by default, draws no rulers or size badges, and has a large play button, progress and **Open on phone**. While a build plays or is paused, the controls sit small along the bottom and fade soon after you start or resume. With `?round=1` the stage plays inside the square that fits the circle, so the circle never crops the text. It does not depend on poorly supported round-display media queries.
 
 ## Export and sharing
 

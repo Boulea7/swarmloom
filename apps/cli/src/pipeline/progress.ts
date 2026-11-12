@@ -13,6 +13,21 @@ export function formatClock(seconds: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
+/**
+ * Joins `fields` with two spaces and leaves out the trailing fields that do not fit in `width`
+ * columns, so a narrow terminal never shows half a word. Only a first field wider than `width` is cut.
+ */
+export function fitFields(fields: readonly string[], width: number): string {
+  let line = fields[0] ?? "";
+  if (line.length > width) return line.slice(0, width);
+  for (let i = 1; i < fields.length; i++) {
+    const next = `${line}  ${fields[i]}`;
+    if (next.length > width) break;
+    line = next;
+  }
+  return line;
+}
+
 export interface ProgressUpdate {
   frame: number;
   built: number;
@@ -52,7 +67,7 @@ export class Progress {
       const now = performance.now();
       if (!u.done && now - this.lastDraw < REDRAW_MS) return;
       this.lastDraw = now;
-      this.draw(this.line(ratio, frames, u, now));
+      this.draw(fitFields(this.fields(ratio, frames, u, now), this.columns()));
     } else {
       const quarter = Math.floor(ratio * 4);
       if (quarter > this.lastQuarter && quarter < 4) {
@@ -65,7 +80,7 @@ export class Progress {
   /** Shows a phase after the frame loop ("encoding", "muxing audio"). */
   phase(label: string): void {
     if (this.quiet) return;
-    if (this.io.tty) this.draw(label);
+    if (this.io.tty) this.draw(fitFields([label], this.columns()));
     else this.io.err(label);
   }
 
@@ -75,22 +90,27 @@ export class Progress {
     this.drawn = false;
   }
 
+  /** Columns a redrawn line may use: one less than the terminal's, so it never wraps. */
+  private columns(): number {
+    return Math.max(20, (this.io.tty?.columns ?? 80) - 1);
+  }
+
   private draw(text: string): void {
     const tty = this.io.tty;
     if (!tty) return;
-    const width = Math.max(20, tty.columns - 1);
-    tty.write(`\r\u001b[2K${text.length > width ? text.slice(0, width) : text}`);
+    tty.write(`\r\u001b[2K${text}`);
     this.drawn = true;
   }
 
-  private line(ratio: number, frames: number, u: ProgressUpdate, now: number): string {
+  private fields(ratio: number, frames: number, u: ProgressUpdate, now: number): string[] {
     const filled = Math.round(ratio * BAR_WIDTH);
     const bar = `${"█".repeat(filled)}${"░".repeat(BAR_WIDTH - filled)}`;
     const elapsed = (now - this.started) / 1000;
     const perFrame = elapsed / frames;
     const remaining = Math.max(0, this.estimatedFrames - frames);
     const eta = u.done ? "done" : frames >= 5 ? `${formatClock(perFrame * remaining)} left` : "estimating";
-    const layers = u.total > 0 ? `  layers ${u.built}/${u.total}` : "";
-    return `rendering ${bar} ${String(Math.round(ratio * 100)).padStart(3)}%  frame ${frames}  ${eta}${layers}`;
+    const fields = [`rendering ${bar} ${String(Math.round(ratio * 100)).padStart(3)}%`, `frame ${frames}`, eta];
+    if (u.total > 0) fields.push(`layers ${u.built}/${u.total}`);
+    return fields;
   }
 }

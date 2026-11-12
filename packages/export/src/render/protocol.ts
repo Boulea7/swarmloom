@@ -1,4 +1,4 @@
-import type { Blueprint, LabelMode, SoundEvent } from "@swarmloom/core";
+import type { Blueprint, LabelMode, OverlayLevel, SoundEvent } from "@swarmloom/core";
 
 /** Input of a render: what `SourceInput` carries, serialisable across the driver boundary. */
 export interface RenderInput {
@@ -16,14 +16,18 @@ export interface RenderInput {
 }
 
 /** Player actions a render can schedule (see {@link RenderInit.cues}). */
-export const CUE_ACTIONS = ["pause", "resume", "finish"] as const;
+export const CUE_ACTIONS = ["pause", "resume", "finish", "live"] as const;
 export type CueAction = (typeof CUE_ACTIONS)[number];
 
 /** A player action applied at a fixed video time. */
 export interface RenderCue {
   /** Video time in ms (frame `n` shows `n * 1000 / fps`); applied on the first frame at or after it. */
   at: number;
-  /** "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly. */
+  /**
+   * "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly,
+   * "live" goes live now instead of when the finale settles (the cursors leave and the page plays; an
+   * unfinished build completes at once), also with `live: false`.
+   */
   action: CueAction;
 }
 
@@ -41,6 +45,11 @@ export interface RenderInit {
   seed?: number;
   theme?: "auto" | "light" | "dark";
   labels?: LabelMode;
+  /**
+   * Editing marks drawn while building: "full" (default), "minimal" (no size badges, distance
+   * labels, guide lines or rulers) or "none" (cursors, name tags and content only).
+   */
+  overlays?: OverlayLevel;
   /** Default true. `false` renders a silent soundtrack. */
   sound?: boolean;
   finale?: "flock" | "halo" | "none";
@@ -79,9 +88,10 @@ export interface RenderInfo {
   /** Number of layers in the blueprint. */
   layers: number;
   /**
-   * SHA-256 (hex) of the blueprint's JSON, so a capture can record exactly what was played. Object
-   * URLs and the driver's own input URL (random per take) are normalized first, so takes of the same
-   * input and settings report the same hash. Empty without Web Crypto.
+   * SHA-256 (hex) of the blueprint's JSON, so a capture can record exactly what was played. Addresses
+   * that differ between runs are normalized first (the directory the driver served the input from,
+   * other addresses on the render page's origin, blob: URLs), so the same input and settings give the
+   * same hash every time. Empty without Web Crypto.
    */
   blueprintSha256: string;
 }
@@ -98,9 +108,15 @@ export interface RenderStep {
 
 /** The protocol the CLI drives through Playwright on `dist/render/index.html`. */
 export interface RenderApi {
-  /** Loads the input with a VirtualClock and controls off; the first frame (t = 0) is ready when it resolves. */
+  /**
+   * Loads the input with a VirtualClock and controls off; the first frame (t = 0) is ready when it
+   * resolves (and painted, on the CLI's render page, which waits for an animation frame).
+   */
   init(o: RenderInit): Promise<RenderInfo>;
-  /** Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame. */
+  /**
+   * Advances the clock by `ms` and resolves once `player.ready()` has resolved for the new frame (and,
+   * on the CLI's render page, once the page has had an animation frame to paint it).
+   */
   step(ms: number): Promise<RenderStep>;
   /**
    * Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for `durationMs`. Pass the
@@ -124,6 +140,7 @@ declare global {
 }
 
 const LABELS = ["names", "agents", "roles", "none"] as const;
+const OVERLAYS = ["full", "minimal", "none"] as const;
 const THEMES = ["auto", "light", "dark"] as const;
 const FINALES = ["flock", "halo", "none"] as const;
 const FOLLOWS = ["tour", "none"] as const;
@@ -238,6 +255,7 @@ export function parseInit(raw: unknown): ParsedInit {
     seed: number(raw, "seed", -(2 ** 31), 2 ** 32, true) ?? 1,
     theme: oneOf(raw, "theme", THEMES) ?? "auto",
     labels: oneOf(raw, "labels", LABELS),
+    overlays: oneOf(raw, "overlays", OVERLAYS),
     sound: sound ?? true,
     finale: oneOf(raw, "finale", FINALES),
     locale: optionalString(raw, "locale"),

@@ -73,11 +73,26 @@ const ESCAPES = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u0
 // biome-ignore lint/suspicious/noControlCharactersInRegex: printable text only (no C0/C1 controls).
 const PRINTABLE_SHORT = /^[^\u0000-\u001f\u007f-\u009f]{1,3}$/u;
 
+/** Terminal output without its escape sequences. */
+export function plainText(data: string): string {
+  return data.replace(ESCAPES, "");
+}
+
 /** Output that looks like the echo of one keystroke: 1-3 printable characters or a backspace echo. */
 function looksTyped(data: string): boolean {
-  const plain = data.replace(ESCAPES, "");
+  const plain = plainText(data);
   if (PRINTABLE_SHORT.test(plain)) return true;
   return plain === "\b \b" || plain === "\b";
+}
+
+/**
+ * Whether output that came right after a keystroke is its echo: no text after a line break (the
+ * echo of Enter is only the break; text after it is program output or the next prompt).
+ */
+function looksEcho(data: string): boolean {
+  const plain = plainText(data);
+  const nl = plain.indexOf("\n");
+  return nl < 0 || /^[\r\n]*$/.test(plain.slice(nl));
 }
 
 /** Without input events, keystrokes are inferred from short output events at human pace. */
@@ -115,9 +130,12 @@ export function buildTimeline(rec: CastRecording, options: TimelineOptions = {})
     gaps.push(Math.min(raw, i === 0 ? startLimit : idleLimit) / speed);
     let isTyped: boolean;
     if (recordedInput) {
-      // Echo of a keystroke arrives right after it and belongs to the same typing step.
+      // Echo of a keystroke arrives right after it and belongs to the same typing step. Once the
+      // echo broke the line, what follows is output, however quickly it comes.
       if (ev.code === "i") lastInput = ev.t;
-      isTyped = ev.code === "i" || (ev.code === "o" && ev.t - lastInput <= 150 && ev.data.length <= 16);
+      isTyped =
+        ev.code === "i" || (ev.code === "o" && ev.t - lastInput <= 150 && ev.data.length <= 16 && looksEcho(ev.data));
+      if (isTyped && ev.code === "o" && ev.data.includes("\n")) lastInput = Number.NEGATIVE_INFINITY;
     } else {
       isTyped = ev.code === "o" && inferTyped(source, i, prevTyped);
     }

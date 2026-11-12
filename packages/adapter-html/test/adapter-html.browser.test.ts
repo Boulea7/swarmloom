@@ -41,7 +41,7 @@ describe("html examples in Chromium", () => {
     expect(byRole(blueprint, "heading").map((l) => ("text" in l ? l.text : ""))).toEqual([
       "Watch a swarm of cursors weave it into being.",
       "Many formats, one stage",
-      "The same build, every time",
+      "Repeatable builds",
       "Sound that follows the hands",
       "How it works",
     ]);

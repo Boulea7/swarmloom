@@ -67,7 +67,7 @@ Render a file or web page to a video of the swarm building it, with sound by def
 | `--width <px>` | `1280` | Viewport width in CSS px, 16–7680 |
 | `--height <px>` | `720` | Viewport height in CSS px, 16–7680 |
 | `--scale <n>` | `1` | Pixels per CSS px; the video is width and height times this value, 0.25–4. Neither side may exceed 8192 px |
-| `--fps <n>` | `30` | Frames per second, 1–120; each frame advances `1000 / fps` ms |
+| `--fps <n>` | `30` | Frames per second, 1–120; each frame advances `1000 / fps` ms. The player steps once per frame, so another fps gives a slightly different build, not every other frame of the same one |
 | `--max-duration <s>` | `120` | Stop the video at this many seconds, 1–3600; warns when the build has not finished |
 | `--duration <s>` | Off | Exact video length, 0.1–3600 s: keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
 
@@ -81,14 +81,15 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--speed <n>` | `1` | Build-speed multiplier, 0.05–16 |
 | `--seed <n>` | `1` | Random seed, 0–4294967295; the same input, settings and seed give the same video |
 | `--theme <theme>` | `auto` | `auto`, `light` or `dark` |
-| `--labels <mode>` | `names` | `names`, `agents`, `roles` or `none` |
+| `--labels <mode>` | `names` | `names`, `agents`, `roles` or `none` (`none` also hides status bubbles such as "running") |
+| `--overlays <level>` | `full` | Editing marks drawn while building. `minimal` hides size badges, distance labels, guide lines and rulers; `none` also hides selections, frames, pen lines, carets and status bubbles, leaving the cursors, their name tags and the content |
 | `--finale <finale>` | `flock` | `flock`, `halo` or `none` |
 | `--follow <mode>` | `tour` | `tour` scrolls the page along with the build; `none` does not scroll |
 | `--tail <ms>` | `2500` | Hold time after the build finishes, 0–60000 ms: the finale, then the page goes live, the cursors leave and the page's own animations (CSS, SVG SMIL, Lottie) play on video time; an HTML document swaps in the real page, its animated images held on their first frame |
 | `--no-live` | Go live | Keep the finale through the whole tail instead of going live |
 | `--locale <tag>` | `en-US` | Language of the toolbar strings and the page, a BCP 47 tag such as `zh-CN` |
 | `--bpm <n>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid), 40–240 |
-| `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume` or `finish` (complete the build quickly). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
+| `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume`, `finish` (complete the build quickly) or `live` (go live then instead of when the finale settles, also with `--no-live`; an unfinished build completes at once). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
 | `--no-sound` | Sound on | Leave out the soundtrack; GIF and WebP never have one |
 | `--no-remote` | Loaded | Do not load `https:` images and fonts the input links to. Scripts, style sheets, data requests and `http:` files from other sites are never loaded |
 
@@ -100,7 +101,7 @@ For takes that can be checked and repeated. These files and `--output` must all 
 | --- | --- | --- |
 | `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
 | `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
-| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256, player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: file paths, in the arguments and the outputs, are relative to the manifest (a file neither in its folder nor in a folder above it appears by name only), programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted` |
+| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256 (the blueprint's addresses that change per run, such as the served input path, links resolved against the render page and `blob:` URLs, are normalized first), player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: file paths, in the arguments and the outputs, are relative to the manifest (a file neither in its folder nor in a folder above it appears by name only), programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted` |
 
 ### Programs and logging
 
@@ -174,6 +175,8 @@ Local HTML files are treated as untrusted:
 - From other sites only `https:` images and fonts load. Every other request is blocked; the CLI reports how many, and `--verbose` lists each one.
 
 Web page URLs run their scripts as usual.
+
+Before the capture, the page's CSS animations and transitions are stopped in a fixed pose: finite ones at their end, endless ones half a cycle in, so two captures of the same page match. `render` of a URL captures the same way. Animations that start later, for example on scroll, and animation done by scripts are captured as they are.
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -267,7 +270,7 @@ swarmloom doctor
 
 ## Output and exit codes
 
-Progress goes to stderr and never mixes with file data: a progress bar with the time left on terminals, one line per quarter otherwise. The first Ctrl+C stops the render, closes the browser, stops ffmpeg and removes temporary files; a second one exits at once. The CLI only ends processes it started. With `SWARMLOOM_DEBUG=1`, unexpected errors include a stack trace.
+Progress goes to stderr and never mixes with file data: a progress bar with the time left on terminals (fields that do not fit a narrow terminal are left out whole), one line per quarter otherwise. The first Ctrl+C stops the render, closes the browser, stops ffmpeg and removes temporary files; a second one exits at once. The CLI only ends processes it started. With `SWARMLOOM_DEBUG=1`, unexpected errors include a stack trace.
 
 | Code | Meaning |
 | --- | --- |
@@ -279,6 +282,6 @@ Progress goes to stderr and never mixes with file data: a progress bar with the 
 
 ## Determinism
 
-The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once it is ready, without relying on the browser's BeginFrame. Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
+The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once it is ready and three animation frames have passed, so the browser has painted, rastered and shown it; the browser runs without a frame rate limit, so this wait stays short. BeginFrame control is not used. (A screenshot taken before the browser had rastered the frame could draw rounded corners and other anti-aliased edges a shade differently between runs, at scales such as 0.5, 2.5 or 3.) Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
 
 Deterministic validation compares raw frames and PCM, not MP4/WebM bytes; the per-frame PNG hashes and the sound log hash that `--manifest-out` records can be compared across two runs directly. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.

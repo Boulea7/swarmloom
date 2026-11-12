@@ -349,7 +349,7 @@ export interface AgentApi {
   press(): void;
   release(): void;
   setCursor(shape: CursorShape): void;
-  /** Short status bubble next to the cursor, e.g. "typing". Empty string hides it. */
+  /** Short status bubble next to the cursor, e.g. "running". Empty string hides it. */
   say(text: string): void;
   sound(name: SoundName, opts?: { pitch?: number; vel?: number }): void;
   /**
@@ -437,6 +437,13 @@ export interface Plugin {
   /** Map a stage point to a screen point (3D projection). Default identity. */
   project?(p: Point): Point;
   /**
+   * Optional: where a cursor without a task rests next, in stage px, or null for the default (a
+   * spot in the middle of the viewport `vp`). Called whenever an idle cursor picks a new spot;
+   * `rng` is that cursor's seeded stream, so the same seed picks the same spots. Lets a plugin
+   * keep idle cursors off text the stage cannot see (a terminal screen, a canvas).
+   */
+  restSpot?(vp: Rect, rng: Rng): Point | null;
+  /**
    * Optional: a fresh instance for one player. When present, every player calls it once at creation
    * and uses the result (same `name`) for its tasks, renderers, setup and frame, so plugins that keep
    * state can serve several players created from the same LoadedSource at once.
@@ -450,7 +457,19 @@ export interface Plugin {
 
 export type PlayerState = "idle" | "intro" | "building" | "paused" | "finale" | "done" | "live" | "destroyed";
 
+/**
+ * Name tags on the cursors: their names, "Agent 01" numbers, what each one is doing, or nothing.
+ * "none" also leaves out the cursors' status bubbles ("running"), so the cursors carry no text.
+ */
 export type LabelMode = "names" | "agents" | "roles" | "none";
+
+/**
+ * Editing marks drawn while building. "full" draws all of them. "minimal" leaves out the measuring
+ * marks: size badges, distance labels, guide lines and rulers. "none" also leaves out selections,
+ * empty frames, pen lines and anchors, carets and the cursors' status bubbles, so only the cursors,
+ * their name tags and the content remain. The intro icon and the halo finale are always drawn.
+ */
+export type OverlayLevel = "full" | "minimal" | "none";
 
 export interface ThemeSpec {
   /** Cursor colours, cycled across agents. */
@@ -481,6 +500,8 @@ export interface PlayerOptions {
   sound?: boolean | SoundOptions;
   theme?: "auto" | "light" | "dark" | ThemeSpec;
   labels?: LabelMode | string[];
+  /** Optional. Editing marks drawn while building (see {@link OverlayLevel}). Default "full". */
+  overlays?: OverlayLevel;
   /** "scroll": swarm follows user scrolling; "tour": auto-scroll at build pace; "none": static. */
   follow?: "scroll" | "tour" | "none";
   /** "auto" follows prefers-reduced-motion: quick cross-fade build, no flocking. */

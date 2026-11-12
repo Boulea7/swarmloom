@@ -65,7 +65,11 @@ Swarm:
       --speed <n>         Build speed multiplier (0.05-16). Default: 1
       --seed <n>          Random seed; the same seed gives the same video (0-4294967295). Default: 1
       --theme <theme>     auto | light | dark. Default: auto
-      --labels <mode>     names | agents | roles | none. Default: names
+      --labels <mode>     names | agents | roles | none (no name tags and no status bubbles).
+                          Default: names
+      --overlays <level>  full | minimal | none. minimal hides size badges, distance labels, guide
+                          lines and rulers; none also hides selections, frames, pen lines, carets
+                          and status bubbles. Default: full
       --finale <finale>   flock | halo | none. Default: flock
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
@@ -76,7 +80,8 @@ Swarm:
                           notes, 40-240). Default: 112
       --cue <at>:<action> Player action at a fixed video time; repeatable. <at> is seconds (12.5),
                           milliseconds (12500ms) or beats from the start at --bpm (26b). <action> is
-                          pause (every cursor holds), resume, or finish (complete the build quickly).
+                          pause (every cursor holds), resume, finish (complete the build quickly) or
+                          live (go live then, not when the finale settles; also with --no-live).
                           Applied on the first frame at or after <at>; same-time cues in order given
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
@@ -130,6 +135,7 @@ const OPTIONS = {
   seed: { type: "string" },
   theme: { type: "string" },
   labels: { type: "string" },
+  overlays: { type: "string" },
   finale: { type: "string" },
   follow: { type: "string" },
   tail: { type: "string" },
@@ -215,6 +221,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     seed: readInt("seed", values.seed, 1, 0, 0xffffffff),
     theme: readEnum("theme", values.theme, ["auto", "light", "dark"], "auto"),
     labels: readEnum("labels", values.labels, ["names", "agents", "roles", "none"], "names"),
+    overlays: readEnum("overlays", values.overlays, ["full", "minimal", "none"], "full"),
     finale: readEnum("finale", values.finale, ["flock", "halo", "none"], "flock"),
     follow: readEnum("follow", values.follow, ["tour", "none"], "tour"),
     tail: readInt("tail", values.tail, 2500, 0, 60_000),
@@ -321,7 +328,7 @@ function trimTrailingDotsAndSpaces(segment: string): string {
   return segment.slice(0, end);
 }
 
-const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish)$/;
+const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish|live)$/;
 
 /**
  * Parses one --cue: "<time>[s|ms|b]:<action>"; beats ("b") count from the start of the video at `bpm`.

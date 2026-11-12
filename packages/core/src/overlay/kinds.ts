@@ -1,5 +1,6 @@
 import { pillSprite, roundRectPath, type Sprite, UI_FONT_STACK } from "../cursor/sprite";
 import { inkOn } from "../theme";
+import type { Point, Rect } from "../types";
 import { flag, isRect, num, numbers, type Props, str, strings } from "./props";
 import type { Tokens } from "./tokens";
 import type { ViewTransform } from "./view";
@@ -43,6 +44,8 @@ export interface PaintEnv {
   rulerInset: number;
   /** Loaded image for `src`, or null while loading / failed (loading starts on first call). */
   image(src: string): HTMLImageElement | null;
+  /** Name tag and status bubble boxes of this frame's cursors (CSS px); size badges keep clear of them. */
+  tags: readonly Rect[];
 }
 
 /**
@@ -167,12 +170,67 @@ const ghostRect: Painter = (ctx, rec, v, env) => {
   ctx.setLineDash(NO_DASH);
 };
 
+/** Gap between a size badge and its point, CSS px. */
+const BADGE_OFFSET = 6;
+/** Gap between a size badge and a name tag it moved away from, CSS px. */
+const BADGE_TAG_GAP = 2;
+
+const overlaps = (x: number, y: number, w: number, h: number, r: Rect): boolean =>
+  x < r.x + r.w && r.x < x + w && y < r.y + r.h && r.y < y + h;
+
+/**
+ * Where a size badge goes: below right of its point (x, y) when no box in `tags` (the cursors'
+ * name tags and status bubbles) covers that spot. Otherwise it takes the nearest spot that every
+ * box leaves clear, among the four corners around the point and the four sides of each box,
+ * inside the `width` x `height` canvas. Moving down counts half, so a badge goes under the
+ * dragging cursor's own tag rather than above its point when both are free. Null when no spot is
+ * clear: the badge then skips the frame instead of showing under a tag. Depends only on the
+ * arguments, so every run places it the same way.
+ */
+export function badgeOrigin(
+  x: number,
+  y: number,
+  badge: { w: number; h: number },
+  tags: readonly Rect[],
+  width: number,
+  height: number,
+): Point | null {
+  const { w, h } = badge;
+  const px = x + BADGE_OFFSET;
+  const py = y + BADGE_OFFSET;
+  if (!tags.some((t) => overlaps(px, py, w, h, t))) return { x: px, y: py };
+  const xs = [px, x - BADGE_OFFSET - w];
+  const ys = [py, y - BADGE_OFFSET - h];
+  for (const t of tags) {
+    xs.push(t.x + t.w + BADGE_TAG_GAP, t.x - BADGE_TAG_GAP - w);
+    ys.push(t.y + t.h + BADGE_TAG_GAP, t.y - BADGE_TAG_GAP - h);
+  }
+  let best: Point | null = null;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const cy of ys) {
+    if (cy < 0 || cy + h > height) continue;
+    for (const cx of xs) {
+      if (cx < 0 || cx + w > width) continue;
+      const dy = cy > py ? (cy - py) / 2 : cy - py;
+      const d = (cx - px) ** 2 + dy ** 2;
+      if (d >= bestD || tags.some((t) => overlaps(cx, cy, w, h, t))) continue;
+      best = { x: cx, y: cy };
+      bestD = d;
+    }
+  }
+  return best;
+}
+
 const sizeBadge: Painter = (ctx, rec, v, env) => {
   const p = rec.props;
   const text = str(p, "text");
   if (!text) return;
   const s = textLabel(rec, 0, env, v.dpr, text, str(p, "color") ?? env.tokens.select);
-  blit(ctx, s, toX(v, num(p, "x", 0)) + 6, toY(v, num(p, "y", 0)) + 6, v.dpr);
+  // On device pixels, like the tags, so the drawn badge keeps exactly the gap that was checked.
+  const x = Math.round(toX(v, num(p, "x", 0)) * v.dpr) / v.dpr;
+  const y = Math.round(toY(v, num(p, "y", 0)) * v.dpr) / v.dpr;
+  const at = badgeOrigin(x, y, s, env.tags, v.width, v.height);
+  if (at) blit(ctx, s, at.x, at.y, v.dpr);
 };
 
 const rubberBand: Painter = (ctx, rec, v, env) => {
@@ -443,6 +501,8 @@ const halo: Painter = (ctx, rec, v, env) => {
   const level = Math.max(0, Math.min(1, num(p, "level", 0)));
   const bands = numbers(p, "bands");
   const colors = strings(p, "colors");
+  const fade = Math.max(0, Math.min(1, num(p, "alpha", 1)));
+  if (fade <= 0) return;
   const rings = colors ? Math.min(6, colors.length) : 3;
   ctx.save();
   ctx.lineJoin = "round";
@@ -463,7 +523,7 @@ const halo: Painter = (ctx, rec, v, env) => {
       else ctx.lineTo(px, py);
     }
     ctx.closePath();
-    ctx.globalAlpha = Math.max(0.08, (0.78 - i * 0.14) * (0.45 + level * 0.55));
+    ctx.globalAlpha = fade * Math.max(0.08, (0.78 - i * 0.14) * (0.45 + level * 0.55));
     ctx.lineWidth = Math.max(1, 2.4 - i * 0.3);
     ctx.shadowBlur = (4 + 18 * level) * v.dpr;
     setStroke(ctx, env.tokens.select, color);

@@ -9,10 +9,14 @@ import { icon } from "../ui/icons";
 import { qrCode } from "./qr";
 import { thumbnail } from "./thumb";
 
-/** Player options for a wrist: a few cursors, no name tags, no toolbar, silent. */
+/**
+ * Player options for a wrist: a few cursors, no name tags, no rulers or size badges (they would
+ * cover a fifth of a small face), no toolbar, silent.
+ */
 export const WATCH_OVERRIDES: Partial<PlayerOptions> = {
   agents: 3,
   labels: "none",
+  overlays: "minimal",
   controls: false,
   sound: false,
   finale: "none",
@@ -23,6 +27,8 @@ export const WATCH_OVERRIDES: Partial<PlayerOptions> = {
 const CYCLE_DELAY_MS = 2400;
 /** Controls fade out this long after the last touch while playing. */
 const CONTROLS_IDLE_MS = 2600;
+/** Controls fade out this soon once playback starts or resumes: the wearer just asked to watch. */
+const PLAY_IDLE_MS = 600;
 
 type Item = { ref: SourceRef; title: string; entry?: ExampleEntry };
 
@@ -51,8 +57,9 @@ function playlist(ctx: AppContext): Item[] {
 /**
  * Watch face (`?watch=1`, or a watch-sized screen): a static poster first, one big
  * play button, a progress ring, muted playback that cycles through the light examples, and a QR
- * code to continue on a phone. `?round=1` keeps everything inside the inscribed square of a
- * circular display.
+ * code to continue on a phone. While a build plays or is paused, the controls sit small along the
+ * bottom and fade soon after play. `?round=1` keeps the stage and every control inside the
+ * inscribed square of a circular display.
  */
 export function createWatch(ctx: AppContext): View {
   const { i18n } = ctx;
@@ -221,13 +228,14 @@ export function createWatch(ctx: AppContext): View {
     }
   };
 
-  const showControls = (hold: boolean) => {
+  /** Shows the controls; unless `hold`, they fade `idleMs` later if still playing. */
+  const showControls = (hold: boolean, idleMs = CONTROLS_IDLE_MS) => {
     root.dataset.controls = "shown";
     window.clearTimeout(idleTimer);
     if (hold) return;
     idleTimer = window.setTimeout(() => {
       if (root.dataset.playing === "true" && !keyboardFocus()) root.dataset.controls = "hidden";
-    }, CONTROLS_IDLE_MS);
+    }, idleMs);
   };
 
   function wake(): void {
@@ -267,7 +275,7 @@ export function createWatch(ctx: AppContext): View {
         }
         if (next === "error") cycleTimer = window.setTimeout(() => advance(false), CYCLE_DELAY_MS);
         render();
-        if (next === "playing") showControls(false);
+        if (next === "playing") showControls(false, PLAY_IDLE_MS);
         if (next === "done" || next === "error") showControls(true);
       },
       onProgress: (built, total) => setProgress(total > 0 ? built / total : 0),
@@ -292,7 +300,7 @@ export function createWatch(ctx: AppContext): View {
     if (!player) return;
     if (state === "paused") {
       player.resume();
-      showControls(false);
+      showControls(false, PLAY_IDLE_MS);
     } else if (state === "done" || state === "live") {
       session.rebuild(true);
     } else if (state === "intro" || state === "building" || state === "finale") {

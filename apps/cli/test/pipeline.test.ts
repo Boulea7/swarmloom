@@ -10,6 +10,7 @@ import { InterruptedError } from "../src/errors";
 import { planMux, planVideo } from "../src/pipeline/encode";
 import { type FrameSource, runFrameLoop } from "../src/pipeline/frames";
 import { inputBase, isSiblingAsset, servedInput, toRenderInput } from "../src/pipeline/input";
+import { fitFields } from "../src/pipeline/progress";
 import { resolveRequestPath, startStaticServer } from "../src/server/static";
 import { guard } from "../src/util/async";
 
@@ -72,6 +73,16 @@ const FULL: FfmpegCaps = {
   encoders: new Set(["libx264", "libvpx-vp9", "libopus", "aac", "libwebp_anim", "ffv1"]),
   filters: new Set(["palettegen", "paletteuse"]),
 };
+
+describe("progress line", () => {
+  it("drops the fields that do not fit instead of cutting a word", () => {
+    const fields = [`rendering ${"█".repeat(2)}${"░".repeat(22)}   7%`, "frame 12", "0:41 left"];
+    expect(fitFields(fields, 80)).toBe(`${fields[0]}  frame 12  0:41 left`);
+    expect(fitFields(fields, 42)).toBe(fields[0]);
+    expect(fitFields(fields, 49)).toBe(`${fields[0]}  frame 12`);
+    expect(fitFields(["encoding the video"], 8)).toBe("encoding");
+  });
+});
 
 describe("guard", () => {
   it("observes the guarded promise when it gives up early (regression: crash on early Ctrl+C)", async () => {

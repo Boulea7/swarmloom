@@ -18,6 +18,8 @@ import {
   type TaskGen,
 } from "@swarmloom/core";
 import { readScreenData, type ScreenEvent, TerminalModel, type TerminalStepData, TerminalView } from "./model";
+import { type Grid, restCell, rowEnds, watchCell } from "./spots";
+import { plainText } from "./timeline";
 
 /** Plugin name listed in `Blueprint.plugins`. */
 export const TERMINAL_PLUGIN = "terminal";
@@ -32,6 +34,8 @@ const TICK_MS = 16;
 const MAX_KEY_SOUNDS = 2;
 /** Output steps longer than this show a "running" bubble. */
 const RUNNING_BUBBLE_MS = 900;
+/** Output that only prints a prompt: line breaks first, then at most this many characters on the new line. */
+const PROMPT_CHARS = 16;
 /** How often a weaver watching output follows the cursor row. */
 const FOLLOW_MS = 700;
 
@@ -40,6 +44,17 @@ function stepData(layer: CustomLayer): TerminalStepData | null {
   if (!d || typeof d.screen !== "string" || !Number.isInteger(d.index) || !Number.isInteger(d.from)) return null;
   if (!Number.isInteger(d.to) || (d.to as number) < (d.from as number)) return null;
   return d as TerminalStepData;
+}
+
+/** True when output events [from, to) only start a new line and print a short prompt on it (a continuation prompt). */
+function promptOnly(events: readonly ScreenEvent[], from: number, to: number): boolean {
+  let text = "";
+  for (let k = from; k < to; k++) {
+    const ev = events[k] as ScreenEvent;
+    if (ev[1] === "o") text += plainText(ev[2]);
+  }
+  const line = text.replace(/^[\r\n]+/, "");
+  return !/[\r\n]/.test(line) && line.length <= PROMPT_CHARS;
 }
 
 function keySound(data: string): { name: SoundName; vel: number } {
@@ -58,6 +73,8 @@ export function createTerminalPlugin(): Plugin {
   const stepModels = new WeakMap<CustomLayer, TerminalModel>();
   const views = new Map<CustomLayer, TerminalView>();
   const liveViews = new Set<TerminalView>();
+  /** The screen being played, where idle cursors look for a rest spot. */
+  let playing: { model: TerminalModel; box: Rect } | null = null;
 
   function modelFor(screen: CustomLayer | undefined): TerminalModel | null {
     if (screen?.kind !== "custom" || screen.task !== SCREEN_TASK) return null;
@@ -82,12 +99,33 @@ export function createTerminalPlugin(): Plugin {
     return { x: box.x + (s.x + 0.5) * cellW, y: box.y + (s.y + 0.8) * cellH };
   }
 
-  /** Where a weaver watches output: a little right of the cursor, kept inside the screen. */
+  function grid(model: TerminalModel): Grid {
+    const { cellW, cellH } = model.data;
+    return { cols: model.screen.cols, rows: model.screen.rows, cellW, cellH };
+  }
+
+  /**
+   * Where a weaver watches output: right of the text above the cursor row (output lands below it),
+   * clear of the text its bubble and tag would cover; else a little right of the cursor, inside the screen.
+   */
   function watchPoint(model: TerminalModel, box: Rect): Point {
     const { cellW, cellH } = model.data;
     const s = model.screen;
+    const cell = watchCell(rowEnds(s), grid(model), s.y);
+    if (cell) return { x: box.x + cell.x * cellW, y: box.y + cell.y * cellH };
     const x = Math.min(box.x + box.w - 16, box.x + (s.x + 4) * cellW);
     return { x: Math.max(box.x + 16, x), y: box.y + (s.y + 0.5) * cellH };
+  }
+
+  /** A rest spot for an idle cursor on the playing screen, clear of its text, when one is in view. */
+  function restSpot(vp: Rect, rng: () => number): Point | null {
+    if (!playing) return null;
+    const { model, box } = playing;
+    const { cellW, cellH } = model.data;
+    const cell = restCell(rowEnds(model.screen), grid(model), model.screen.y, rng);
+    if (!cell) return null;
+    const p = { x: box.x + cell.x * cellW, y: box.y + cell.y * cellH };
+    return p.x >= vp.x && p.x <= vp.x + vp.w && p.y >= vp.y && p.y <= vp.y + vp.h ? p : null;
   }
 
   const screenRenderer: LayerRenderer<CustomLayer> = {
@@ -112,6 +150,7 @@ export function createTerminalPlugin(): Plugin {
       if (view) view.root.style.opacity = "1";
     },
     unmount(layer) {
+      if (playing && playing.model === models.get(layer)) playing = null;
       const view = views.get(layer);
       if (!view) return;
       modelFor(layer)?.detach(view);
@@ -147,6 +186,8 @@ export function createTerminalPlugin(): Plugin {
   /** Focus click on the empty screen, then the screen fades in. */
   const screenTask: TaskFn<CustomLayer> = function* (agent, layer, stage): TaskGen {
     let pressed = false;
+    const model = modelFor(layer);
+    if (model) playing = { model, box: layer.box };
     try {
       const b = layer.box;
       yield* agent.moveTo(b.x + Math.min(48, b.w * 0.2), b.y + Math.min(28, b.h * 0.5));
@@ -180,15 +221,22 @@ export function createTerminalPlugin(): Plugin {
     const events = model.data.events;
     const box = screen.box;
     const span = t1 - t0;
+    playing = { model, box };
+    // A continuation prompt between two typed lines prints where the typing cursor already is.
+    const onScreen = agent.x >= box.x && agent.x <= box.x + box.w && agent.y >= box.y && agent.y <= box.y + box.h;
+    const inPlace = !step.input && onScreen && promptOnly(events, step.from, step.to);
     try {
       let now = t0;
-      const start = step.input ? caretPoint(model, box) : watchPoint(model, box);
-      const firstAt = (events[step.from] as ScreenEvent | undefined)?.[0] ?? t1;
-      const travel = Math.max(120, Math.min(420, firstAt - t0 - 40));
-      yield* agent.moveTo(start.x, start.y, { dur: travel, ease: "inOut" });
-      now += travel;
-      agent.setCursor(step.input ? "ibeam" : "arrow");
-      agent.say(step.input ? "typing" : span > RUNNING_BUBBLE_MS ? "running" : "");
+      if (!inPlace) {
+        const start = step.input ? caretPoint(model, box) : watchPoint(model, box);
+        const firstAt = (events[step.from] as ScreenEvent | undefined)?.[0] ?? t1;
+        const travel = Math.max(120, Math.min(420, firstAt - t0 - 40));
+        yield* agent.moveTo(start.x, start.y, { dur: travel, ease: "inOut" });
+        now += travel;
+        agent.setCursor(step.input ? "ibeam" : "arrow");
+      }
+      // The I-beam and the key sounds show typing; a bubble there would cover the line above the caret.
+      agent.say(!step.input && span > RUNNING_BUBBLE_MS ? "running" : "");
       let lastFollow = now;
       let i = step.from;
       while (i < step.to) {
@@ -208,17 +256,19 @@ export function createTerminalPlugin(): Plugin {
             yield* agent.moveTo(c.x, c.y, { dur: 40, ease: "out" });
             now += 40;
           }
-        } else if (now - lastFollow > FOLLOW_MS) {
+        } else if (!inPlace && now - lastFollow > FOLLOW_MS) {
           const w = watchPoint(model, box);
-          yield* agent.moveTo(w.x, w.y, { dur: 220, ease: "inOut" });
-          now += 220;
+          if (Math.abs(w.x - agent.x) > 1 || Math.abs(w.y - agent.y) > 1) {
+            yield* agent.moveTo(w.x, w.y, { dur: 220, ease: "inOut" });
+            now += 220;
+          }
           lastFollow = now;
         }
         i = j;
       }
     } finally {
       agent.say("");
-      agent.setCursor("arrow");
+      if (!inPlace) agent.setCursor("arrow");
       stage.finish(layer.id);
     }
   };
@@ -242,6 +292,7 @@ export function createTerminalPlugin(): Plugin {
     frame(now) {
       for (const view of liveViews) view.tick(now);
     },
+    restSpot,
   });
 }
 
