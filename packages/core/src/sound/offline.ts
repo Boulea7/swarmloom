@@ -1,7 +1,7 @@
 import type { SoundEvent, SoundOptions } from "../types";
 import { offlineContextCtor } from "./audio-context";
 import { createMasterBus } from "./bus";
-import { type AdmittedEvent, EventPolicy } from "./policy";
+import { type AdmittedEvent, EventPolicy, HIT_EARLY_MS } from "./policy";
 import { resolveSettings, type SoundSettings } from "./settings";
 import { Synth } from "./synth";
 
@@ -148,11 +148,22 @@ export async function renderOffline(
   const synth = new Synth(ctx, createMasterBus(ctx, { volume: settings.volume, muted: false }), settings);
   const admitted = enabled ? admitAll(events, settings).filter((ev) => ev.at < durationMs) : [];
 
+  // Events in time order; one the grid moved past the slice end waits in `later` without holding
+  // back the events after it, which would otherwise start late, at the next slice's suspend point.
+  // Hits may sound up to HIT_EARLY_MS before their time, so the scan looks that far past the end.
   let next = 0;
+  let later: AdmittedEvent[] = [];
   const scheduleUntil = (endSeconds: number): void => {
-    while (next < admitted.length && admitted[next].at / 1000 < endSeconds) {
-      const ev = admitted[next++];
+    const endMs = endSeconds * 1000;
+    const due = (ev: AdmittedEvent): boolean => {
+      if (ev.at >= endMs) return false;
       synth.play(ev, ev.at / 1000);
+      return true;
+    };
+    later = later.filter((ev) => !due(ev));
+    while (next < admitted.length && admitted[next].t < endMs + HIT_EARLY_MS) {
+      const ev = admitted[next++];
+      if (!due(ev)) later.push(ev);
     }
   };
 
