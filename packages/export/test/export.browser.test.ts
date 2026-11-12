@@ -1,10 +1,14 @@
 import { createPlayer } from "@swarmloom/core";
 import { describe, expect, it } from "vitest";
+import { server } from "vitest/browser";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
 import { LiveStage, watchShadowRoots } from "../src/render/live";
 
-describe("export in Chromium", () => {
-  it("detects live recording support", async () => {
+// These cases also run in Firefox; Region Capture and classic scrollbars are Chromium's.
+const chromium = server.browser === "chromium";
+
+describe("export in the browser", () => {
+  it.runIf(chromium)("detects live recording support", async () => {
     // Chromium ships getDisplayMedia, Region/Element Capture and MediaRecorder with WebM.
     expect(canRecordElement()).toBe(true);
     await expect(recordElement(document.createElement("div"))).rejects.toThrow("in the document");
@@ -38,7 +42,8 @@ describe("export in Chromium", () => {
         .find((el) => el !== null);
       if (!scroller) throw new Error("No stage scroller in the render host");
       // The real inline scroller reserves its gutter, and the host is widened by exactly that much.
-      expect(scroller.offsetWidth).toBeGreaterThan(scroller.clientWidth);
+      // Headless Firefox draws overlay scrollbars, which take no gutter.
+      if (chromium) expect(scroller.offsetWidth).toBeGreaterThan(scroller.clientWidth);
       expect(scroller.clientWidth).toBe(320);
     } finally {
       api.dispose();

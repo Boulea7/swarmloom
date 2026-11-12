@@ -18,12 +18,15 @@ const executablePath = localChrome();
 const firefoxPath = process.env.SWARMLOOM_FIREFOX || undefined;
 
 /**
- * Browser tests that also run in Firefox, whose SVG foreignObject rasterising and WebCodecs differ
- * from Chromium's: the in-browser exporter and its rasteriser. Tests that use Chromium-only APIs
- * (CDP, as in export-media) stay out.
+ * Browser tests that also run in Firefox, whose SVG foreignObject rasterising, WebCodecs, animated
+ * images and scrolling differ from Chromium's: the in-browser exporter and its rasteriser, the
+ * stage's frame determinism (still GIFs, exact scroll offsets) and the go-live page. Files built on
+ * Chromium-only APIs (CDP, as in export-media) stay out; single Chromium-only cases skip themselves.
  */
 const firefoxTests = [
+  "packages/core/test/stage/stage.browser.test.ts",
   "packages/export/test/browser-export.browser.test.ts",
+  "packages/export/test/export.browser.test.ts",
   "packages/export/test/raster*.browser.test.ts",
 ];
 
