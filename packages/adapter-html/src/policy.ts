@@ -3,13 +3,30 @@
  *  - "https": images and fonts from any https: URL, fetched without a referrer (the default in
  *    the Studio and the CLI; a setting can turn it off). Nothing else leaves the machine.
  *  - "none": only data: and blob: URLs.
+ * Under both, images and fonts on the {@link localOrigin} of the document's base load too.
  * Style sheets, scripts, media, frames and connections are never fetched from the network.
  */
 export type NetworkPolicy = "https" | "none";
 
-/** CSP source list for images and fonts under a policy. */
-export function sourceList(policy: NetworkPolicy): string {
-  return policy === "https" ? "data: blob: https:" : "data: blob:";
+/**
+ * Origin of a plain `http:` document base: the server the document itself came from, such as the
+ * CLI's loopback server, which publishes the images and fonts next to a local input file. Its
+ * images and fonts are local, as in the Markdown adapter. Undefined for any other base.
+ */
+export function localOrigin(base: string | undefined): string | undefined {
+  if (!base) return undefined;
+  try {
+    const u = new URL(base);
+    return u.protocol === "http:" ? u.origin : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** CSP source list for images and fonts under a policy, with the {@link localOrigin} of `base`. */
+export function sourceList(policy: NetworkPolicy, base?: string): string {
+  const local = localOrigin(base);
+  return `${policy === "https" ? "data: blob: https:" : "data: blob:"}${local ? ` ${local}` : ""}`;
 }
 
 const DATA_IMAGE = /^data:image\/(?:png|gif|jpeg|webp|avif|svg\+xml|bmp|x-icon)[;,]/i;
@@ -28,7 +45,8 @@ function resolve(url: string, base: string | undefined): URL | undefined {
 /**
  * The URL an image or font reference may load under a policy (absolute), or undefined when it is
  * refused. Relative references resolve against `base`; without a base they are refused, because
- * they would otherwise hit the host page's own server.
+ * they would otherwise hit the host page's own server. `http:` URLs load only from the base's
+ * {@link localOrigin}.
  */
 export function allowedResource(
   url: string,
@@ -42,6 +60,7 @@ export function allowedResource(
   if (/^blob:/i.test(v)) return v;
   const u = resolve(v, base);
   if (!u) return undefined;
+  if (u.protocol === "http:") return u.origin === localOrigin(base) ? u.href : undefined;
   return u.protocol === "https:" && policy === "https" ? u.href : undefined;
 }
 

@@ -17,7 +17,16 @@ import { sanitizeCss, sanitizeTree } from "./paged/sanitize";
 import { type SnapshotHtmlFn, snapshotPaged } from "./paged/snapshot";
 import { deskCss } from "./paged/theme";
 import { PLAIN_DESK, PLAIN_PAGE, plainCss, renderPlain } from "./plain";
-import { fitSheets, hasOverfullSheets, markHeadings, PREVIEW_CLASS, PREVIEW_WRAPPER, renderPreview } from "./preview";
+import {
+  fitSheets,
+  hasOverfullSheets,
+  markHeadings,
+  PREVIEW_CLASS,
+  PREVIEW_WRAPPER,
+  renderPreview,
+  wordLineHeight,
+  wordLineHeights,
+} from "./preview";
 
 export { DocxError, type DocxErrorCode } from "./errors";
 export { checkXml, MAX_XML_DEPTH } from "./xml";
@@ -172,10 +181,13 @@ async function previewSheets(
   const pages = reparseContent(sandbox.root, rendered);
   for (const node of Array.from(sandbox.styles.children)) {
     if (node.localName !== "style") node.remove();
-    else node.textContent = rewriteFontFamilies(sanitizeCss(node.textContent ?? ""));
+    else node.textContent = wordLineHeights(rewriteFontFamilies(sanitizeCss(node.textContent ?? "")));
   }
   for (const el of Array.from(sandbox.root.querySelectorAll<HTMLElement>("[style*='font-family']"))) {
     if (el.style.fontFamily) el.style.fontFamily = withFontFallbacks(el.style.fontFamily);
+  }
+  for (const el of Array.from(sandbox.root.querySelectorAll<HTMLElement>("[style*='line-height']"))) {
+    if (el.style.lineHeight) el.style.lineHeight = wordLineHeight(el.style.lineHeight);
   }
   const heading = markHeadings(sandbox.root, headingStyles(styles));
   fitSheets(pages, sandbox.width);

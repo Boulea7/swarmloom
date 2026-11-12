@@ -196,6 +196,15 @@ describe("builtin choreographies", () => {
     expect(play(text("lost", "Lost", { snaps: ["nope"] })).timeline.sounds("snap")).toHaveLength(0);
   });
 
+  it("rests the I-beam just left of the text box while it types, off the first glyph", () => {
+    const { agent, timeline } = play(
+      text("para", "Weave it back together.", { box: { x: 100, y: 200, w: 640, h: 72 } }),
+    );
+    expect(timeline.sounds("key").length).toBeGreaterThan(5);
+    expect(agent.x).toBeLessThanOrEqual(100 - 16);
+    expect(agent.y).toBeGreaterThan(200);
+  });
+
   it("types snapping text beside its guide without covering neighbouring content", () => {
     // A feature card: icon on top, then a heading on a shared baseline guide, then a paragraph.
     const card: Layer = { id: "card", kind: "box", box: { x: 940, y: 640, w: 290, h: 215 }, style: {} };
@@ -218,6 +227,26 @@ describe("builtin choreographies", () => {
       expect(Math.abs(dy), `seed ${seed}`).toBeGreaterThan(8);
       expect(713 + dy, `seed ${seed}`).toBeGreaterThanOrEqual(700);
       expect(713 + 22 + dy, `seed ${seed}`).toBeLessThanOrEqual(750);
+    }
+  });
+
+  // A 360 px world, as a phone or watch stage lays it out: the stage cuts off whatever leaves it.
+  const narrow = { x: 0, y: 0, w: 360, h: 640 };
+  it.each([
+    ["left edge, guide on axis x", "x", { x: 32, y: 200, w: 296, h: 82 }],
+    ["full width, guide on axis y", "y", { x: 4, y: 200, w: 352, h: 36 }],
+  ] as const)("types snapping text inside a narrow world (%s)", (_name, axis, box) => {
+    const pos = axis === "x" ? box.x : box.y + box.h;
+    const line: Layer = { id: "g", kind: "guide", box: { x: 0, y: 0, w: 0, h: 0 }, axis, pos };
+    const title = text("title", "Watch a swarm of cursors", { snaps: ["g"], box });
+    for (let seed = 1; seed <= 12; seed++) {
+      const timeline = new Timeline();
+      run(taskFor(title), fakeAgent(timeline, { seed }), title, fakeStage(timeline, [line, title], narrow), timeline);
+      const typedAt = timeline.of("style").find((e) => e.css?.translate)?.css?.translate ?? "";
+      const [dx = Number.NaN, dy = Number.NaN] = typedAt.split(" ").map(Number.parseFloat);
+      expect(box.x + dx, `seed ${seed}`).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.w + dx, `seed ${seed}`).toBeLessThanOrEqual(narrow.w);
+      expect(box.y + dy, `seed ${seed}`).toBeGreaterThanOrEqual(0);
     }
   });
 

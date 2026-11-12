@@ -31,7 +31,7 @@ describe("terminalAdapter on the example session", () => {
       expect(run.total).toBeGreaterThan(10_000);
       expect(run.total).toBeLessThan(40_000);
       expect(run.sounds.filter((s) => s === "key").length).toBeGreaterThan(20);
-      expect(run.bubbles).toContain("typing");
+      expect(run.bubbles).not.toContain("typing");
       expect(run.cursors).toContain("ibeam");
 
       const view = run.host.querySelector('[role="log"]') as HTMLElement;

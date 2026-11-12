@@ -2,6 +2,7 @@ import type { Blueprint } from "@swarmloom/core";
 import type { BrowserContext, Page } from "playwright-core";
 import { briefMessage, CliError, errorMessage, RenderError } from "../errors";
 import { guard } from "../util/async";
+import { freezePageAnimations, LOOP_PHASE } from "./freeze";
 import type { PageLog } from "./launch";
 
 /** Global installed by dist/snapshot.js (src/inject/snapshot.ts). */
@@ -48,9 +49,10 @@ export function parseBlueprint(json: string): Blueprint {
 }
 
 /**
- * Opens `url` in a new page of `context`, waits for it to settle, injects the snapshot script and
- * captures the page as a Blueprint (images inlined, lazy content pre-scrolled, a viewport screenshot
- * supplied for WebGL canvases, videos and cross-origin frames). The page is closed afterwards.
+ * Opens `url` in a new page of `context`, waits for it to settle, freezes its animations (see
+ * {@link freezePageAnimations}), injects the snapshot script and captures the page as a Blueprint
+ * (images inlined, lazy content pre-scrolled, a viewport screenshot supplied for WebGL canvases,
+ * videos and cross-origin frames). The page is closed afterwards.
  *
  * The snapshot script is evaluated over DevTools, so it runs even where the page's CSP blocks scripts.
  * @param context Create it with bypassCSP for web pages, so their CSP does not hold back the capture.
@@ -81,6 +83,8 @@ export async function snapshotPage(context: BrowserContext, opts: PageSnapshotOp
     // Best effort: late XHR content and web fonts. Pages that never go idle are captured as they are.
     await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
     await page.evaluate(() => document.fonts?.ready.then(() => undefined)).catch(() => {});
+    // Freeze before the screenshot: it stands in for canvases and videos, so it must show the same pose.
+    await page.evaluate(freezePageAnimations, LOOP_PHASE).catch(() => {});
 
     const cdp = await context.newCDPSession(page);
     const shot = (await cdp.send("Page.captureScreenshot", { format: "png" })) as { data: string };

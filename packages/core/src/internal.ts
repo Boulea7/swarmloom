@@ -17,6 +17,7 @@ import type {
   Blueprint,
   CursorShape,
   Layer,
+  OverlayLevel,
   Player,
   Plugin,
   Point,
@@ -73,6 +74,8 @@ export interface AgentView {
   scale: number;
   /** Heading in radians for flocking (cursor art may tilt slightly); optional. */
   angle?: number;
+  /** Hang the name tag below left of the hotspot: the cursor works on text that runs to its right. */
+  tagLeft?: boolean;
 }
 
 export interface StageOptions {
@@ -88,6 +91,8 @@ export interface StageOptions {
   initialScroll?: number;
   /** Seeded RNG for any visual jitter; the stage must never call Math.random or Date.now. */
   rng: () => number;
+  /** Editing marks drawn on the overlay canvas. Default "full". */
+  overlays?: OverlayLevel;
 }
 
 /**
@@ -181,7 +186,7 @@ export type CreateStageFn = (opts: StageOptions) => Stage;
  *  selection    { x, y, w, h, color?, handles?: boolean, label?: string }
  *  caret        { x, y, h, color? }                                 blinking text caret (blink driven by `now` in render)
  *  icon         { x, y, size, src?: string, alpha?: number }        intro icon (blueprint.icon or a generic glyph)
- *  halo         { x, y, r, level: number, bands?: number[], colors?: string[] }  audio-reactive ring glow
+ *  halo         { x, y, r, level: number, bands?: number[], colors?: string[], alpha? }  audio-reactive ring glow (alpha 0..1, default 1)
  */
 
 /* ================================================================== */

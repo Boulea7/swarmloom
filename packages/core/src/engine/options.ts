@@ -1,4 +1,4 @@
-import type { Blueprint, LabelMode, PlayerOptions, SoundOptions } from "../types";
+import type { Blueprint, LabelMode, OverlayLevel, PlayerOptions, SoundOptions } from "../types";
 import { AUTO_MAX_AGENTS, AUTO_MIN_AGENTS, BASE_SHARE, MAX_AGENTS, REFERENCE_AREA } from "./constants";
 import { clamp } from "./easing";
 
@@ -79,6 +79,15 @@ export function resolveLabels(labels: PlayerOptions["labels"]): LabelMode | read
   if (Array.isArray(labels)) return labels.filter((l): l is string => typeof l === "string");
   if (LABEL_MODES.includes(labels as LabelMode)) return labels as LabelMode;
   throw new RangeError(`labels must be one of ${LABEL_MODES.join(", ")} or a list of strings`);
+}
+
+const OVERLAY_LEVELS: readonly OverlayLevel[] = ["full", "minimal", "none"];
+
+/** Validates PlayerOptions.overlays (default "full"). */
+export function resolveOverlays(overlays: PlayerOptions["overlays"]): OverlayLevel {
+  if (overlays === undefined) return "full";
+  if (OVERLAY_LEVELS.includes(overlays)) return overlays;
+  throw new RangeError(`overlays must be one of ${OVERLAY_LEVELS.join(", ")}, got ${String(overlays)}`);
 }
 
 /** Normalizes PlayerOptions.sound (default: enabled). */

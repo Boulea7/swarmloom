@@ -1,6 +1,7 @@
 import type { AgentView } from "../internal";
 import type { ViewTransform } from "../overlay/view";
 import { inkOn } from "../theme";
+import type { Rect } from "../types";
 import { cursorSprite } from "./art";
 import { ARROW_HEADING, shapeDef } from "./shapes";
 import { type PillStyle, pillSprite, type Sprite, UI_FONT_STACK } from "./sprite";
@@ -40,6 +41,39 @@ const BUBBLE_FONT = `500 11px ${UI_FONT_STACK}`;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), hi);
 
+/** Gap between the hotspot and a name tag flipped to its left or above it, CSS px at scale 1. */
+const FLIP_GAP = 4;
+
+/**
+ * Top-left corner of a cursor's name tag, CSS px. The tag sits at `offset` from the hotspot
+ * (below right, or below left with `left`, mirrored); where it would cross an edge of the
+ * `width` x `height` canvas it flips to the other side of the hotspot or above it, then it is
+ * kept inside the canvas. Depends only on the arguments, so the same cursor path places tags the
+ * same way in every run.
+ */
+export function tagOrigin(
+  cx: number,
+  cy: number,
+  offset: { x: number; y: number },
+  size: number,
+  tag: { w: number; h: number },
+  width: number,
+  height: number,
+  left = false,
+): { x: number; y: number } {
+  let x: number;
+  if (left) {
+    x = cx - offset.x * size - tag.w;
+    if (x < 0) x = cx + offset.x * size;
+  } else {
+    x = cx + offset.x * size;
+    if (x + tag.w > width) x = cx - FLIP_GAP * size - tag.w;
+  }
+  let y = cy + offset.y * size;
+  if (y + tag.h > height) y = cy - FLIP_GAP * size - tag.h;
+  return { x: Math.max(0, Math.min(x, width - tag.w)), y: Math.max(0, Math.min(y, height - tag.h)) };
+}
+
 /** Wraps an angle to (-PI, PI]. */
 function wrapAngle(a: number): number {
   const t = (a + Math.PI) % (Math.PI * 2);
@@ -72,8 +106,31 @@ export class CursorPainter {
     this.#agents.clear();
   }
 
-  /** Draws visible agents; returns how many were drawn. */
-  draw(ctx: CanvasRenderingContext2D, agents: readonly AgentView[], view: ViewTransform): number {
+  /**
+   * Boxes (CSS px) of the name tags, and of the status bubbles unless `bubbles` is false, that
+   * {@link draw} would draw for the visible agents, so marks painted below the cursors can keep
+   * clear of them.
+   */
+  tagBoxes(agents: readonly AgentView[], view: ViewTransform, bubbles = true): Rect[] {
+    if (view.dpr !== this.#dpr) {
+      this.clear();
+      this.#dpr = view.dpr;
+    }
+    const boxes: Rect[] = [];
+    for (const a of agents) {
+      const at = this.#visible(a, view);
+      if (!at) continue;
+      const cache = this.#agentCache(a, this.#frame);
+      const tag = cache.tag;
+      if (tag) boxes.push({ ...this.#tagAt(a, at.cx, at.cy, tag, view), w: tag.w, h: tag.h });
+      const b = bubbles ? cache.bubbleSprite : null;
+      if (b) boxes.push({ ...this.#bubbleAt(at.cx, at.cy, b, view.dpr), w: b.w, h: b.h });
+    }
+    return boxes;
+  }
+
+  /** Draws visible agents (with their status bubbles unless `bubbles` is false); returns how many were drawn. */
+  draw(ctx: CanvasRenderingContext2D, agents: readonly AgentView[], view: ViewTransform, bubbles = true): number {
     const dpr = view.dpr;
     if (dpr !== this.#dpr) {
       this.clear();
@@ -83,12 +140,9 @@ export class CursorPainter {
     let drawn = 0;
     for (let i = 0; i < agents.length; i++) {
       const a = agents[i];
-      if (!a || !(a.alpha > 0.004)) continue;
-      const cx = view.originX + a.x * view.scale;
-      const cy = view.originY + a.y * view.scale;
-      if (!(cx > -CULL_LEFT && cy > -CULL_LEFT && cx < view.width + CULL_RIGHT && cy < view.height + CULL_LEFT)) {
-        continue; // also rejects NaN
-      }
+      const at = a ? this.#visible(a, view) : null;
+      if (!a || !at) continue;
+      const { cx, cy } = at;
       const def = shapeDef(a.shape);
       const sprite = this.#cursor(a.color, a.shape);
       const size = clamp(Number.isFinite(a.scale) ? a.scale : 1, 0, 4);
@@ -110,15 +164,13 @@ export class CursorPainter {
       const cache = this.#agentCache(a, frame);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (cache.tag) {
-        const tx = Math.round((cx + def.tag.x * size) * dpr) / dpr;
-        const ty = Math.round((cy + def.tag.y * size) * dpr) / dpr;
-        ctx.drawImage(cache.tag.canvas, tx, ty, cache.tag.w, cache.tag.h);
+        const t = this.#tagAt(a, cx, cy, cache.tag, view);
+        ctx.drawImage(cache.tag.canvas, t.x, t.y, cache.tag.w, cache.tag.h);
       }
-      if (cache.bubbleSprite) {
+      if (bubbles && cache.bubbleSprite) {
         const b = cache.bubbleSprite;
-        const bx = Math.round((cx + 6 - b.ax) * dpr) / dpr;
-        const by = Math.round((cy - 6 - b.ay) * dpr) / dpr;
-        ctx.drawImage(b.canvas, bx, by, b.w, b.h);
+        const at = this.#bubbleAt(cx, cy, b, dpr);
+        ctx.drawImage(b.canvas, at.x, at.y, b.w, b.h);
       }
       drawn++;
     }
@@ -126,6 +178,29 @@ export class CursorPainter {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (frame % PRUNE_AFTER === 0) this.#prune(frame);
     return drawn;
+  }
+
+  /** Hotspot in CSS px when the agent is drawn this frame (visible and near the canvas), else null. */
+  #visible(a: AgentView, view: ViewTransform): { cx: number; cy: number } | null {
+    if (!(a.alpha > 0.004)) return null;
+    const cx = view.originX + a.x * view.scale;
+    const cy = view.originY + a.y * view.scale;
+    // Also rejects NaN.
+    return cx > -CULL_LEFT && cy > -CULL_LEFT && cx < view.width + CULL_RIGHT && cy < view.height + CULL_LEFT
+      ? { cx, cy }
+      : null;
+  }
+
+  /** Top-left corner of the agent's name tag on device pixels, CSS px. */
+  #tagAt(a: AgentView, cx: number, cy: number, tag: Sprite, view: ViewTransform): { x: number; y: number } {
+    const size = clamp(Number.isFinite(a.scale) ? a.scale : 1, 0, 4);
+    const at = tagOrigin(cx, cy, shapeDef(a.shape).tag, size, tag, view.width, view.height, a.tagLeft === true);
+    return { x: Math.round(at.x * view.dpr) / view.dpr, y: Math.round(at.y * view.dpr) / view.dpr };
+  }
+
+  /** Top-left corner of a status bubble (tail tip above right of the hotspot) on device pixels, CSS px. */
+  #bubbleAt(cx: number, cy: number, b: Sprite, dpr: number): { x: number; y: number } {
+    return { x: Math.round((cx + 6 - b.ax) * dpr) / dpr, y: Math.round((cy - 6 - b.ay) * dpr) / dpr };
   }
 
   #cursor(color: string, shape: string): Sprite {

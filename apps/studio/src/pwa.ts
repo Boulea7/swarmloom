@@ -81,7 +81,9 @@ export function registerServiceWorker(win: Window, toast: Toaster, i18n: () => S
     });
   };
   container.register(url, { scope: "./" }).then(
-    (registration) => {
+    (registration: ServiceWorkerRegistration | undefined) => {
+      // A host that blocks service workers (automation, some embedded browsers) resolves without one.
+      if (!registration) return;
       if (registration.waiting && hadController) offerUpdate(registration.waiting);
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;

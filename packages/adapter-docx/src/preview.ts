@@ -127,6 +127,28 @@ export function inheritHeadersAndFooters(body: unknown): void {
   }
 }
 
+/**
+ * Word's single line spacing is the font's own line height, about 1.15 em for common fonts (the DOC
+ * adapter uses the same factor). docx-preview writes "auto" spacing, a multiple of single (`w:line` /
+ * 240), as a bare factor of the font size, so single-spaced text gets `line-height: 1` and tall glyphs
+ * such as CJK touch the table borders above and below.
+ */
+export const SINGLE_LINE = 1.15;
+
+/** A bare CSS line-height factor (docx-preview's "auto" spacing) scaled to Word's single line; other values unchanged. */
+export function wordLineHeight(value: string): string {
+  const factor = /^\s*(\d+(?:\.\d+)?|\.\d+)\s*$/.exec(value)?.[1];
+  return factor === undefined ? value : String(Math.round(Number(factor) * SINGLE_LINE * 1000) / 1000);
+}
+
+/** {@link wordLineHeight} for every `line-height` declaration of a style sheet; lengths (exact, at least) stay. */
+export function wordLineHeights(css: string): string {
+  return css.replace(
+    /(line-height\s*:\s*)([^;}!]+)/gi,
+    (_m, prop: string, value: string) => `${prop}${wordLineHeight(value)}`,
+  );
+}
+
 const NOTE_REFERENCES = new Set(["footnoteReference", "endnoteReference"]);
 const MAX_MODEL_DEPTH = 64;
 

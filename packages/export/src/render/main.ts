@@ -5,6 +5,7 @@
 
 import { createPageRenderApi } from "./page";
 
-window.__swarmloom = createPageRenderApi();
+// The CLI screenshots each frame, so every step waits until the browser has painted it.
+window.__swarmloom = createPageRenderApi({ awaitPaint: true });
 // Drivers may wait for this instead of polling for window.__swarmloom.
 document.documentElement.dataset.swarmloom = "ready";

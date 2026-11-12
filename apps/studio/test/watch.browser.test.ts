@@ -44,8 +44,9 @@ it("keeps focus inside the watch QR dialog until it closes", async () => {
   expect(document.activeElement).toBe(phone);
 });
 
-it("keeps the faded watch controls on screen while one has keyboard focus", async () => {
-  history.replaceState(null, "", `${location.pathname}?watch=1`);
+/** Mounts the watch face at `query` with a build that keeps running, so the controls are due to fade. */
+async function mountRunning(query: string): Promise<HTMLElement> {
+  history.replaceState(null, "", `${location.pathname}${query}`);
   const root = document.createElement("div");
   document.body.append(root);
   const manifest = {
@@ -57,7 +58,6 @@ it("keeps the faded watch controls on screen while one has keyboard focus", asyn
     examplesBase: `${location.origin}/examples/`,
     fetch: async () => new Response("# Notes\n"),
   });
-  // A build that keeps running, so the controls are due to fade.
   const createPlayer = fake.services.createPlayer;
   fake.services.createPlayer = (options) =>
     new Proxy(createPlayer(options), {
@@ -65,6 +65,11 @@ it("keeps the faded watch controls on screen while one has keyboard focus", asyn
         key === "play" ? () => player.play().then(() => new Promise<void>(() => undefined)) : Reflect.get(player, key),
     });
   app = await mountStudio(root, fake.services);
+  return root;
+}
+
+it("keeps the faded watch controls on screen while one has keyboard focus", async () => {
+  const root = await mountRunning("?watch=1");
 
   const play = root.querySelector<HTMLButtonElement>(".watch-play");
   for (let i = 0; i < 4 && document.activeElement !== play; i++) await userEvent.keyboard("{Tab}");
@@ -74,4 +79,21 @@ it("keeps the faded watch controls on screen while one has keyboard focus", asyn
   await expect.poll(() => face?.dataset.playing).toBe("true");
   await new Promise((resolve) => setTimeout(resolve, 2900)); // past the 2.6 s fade-out delay
   expect([face?.dataset.controls, document.activeElement]).toEqual(["shown", play]);
+});
+
+it("plays a round face inside its inscribed square and clears the controls soon after resume", async () => {
+  const root = await mountRunning("?watch=1&round=1");
+  const face = root.querySelector<HTMLElement>(".view-watch");
+  const play = root.querySelector<HTMLButtonElement>(".watch-play");
+  play?.click();
+  await expect.poll(() => face?.dataset.playing).toBe("true");
+  const outer = root.querySelector(".watch-face")?.getBoundingClientRect().width ?? 0;
+  const stage = root.querySelector(".watch-stage")?.getBoundingClientRect().width ?? 0;
+  expect(stage / outer).toBeCloseTo(1 / Math.SQRT2, 2);
+
+  play?.click(); // pause
+  play?.click(); // resume
+  expect(face?.dataset.controls).toBe("shown");
+  await new Promise((resolve) => setTimeout(resolve, 1000)); // well before the 2.6 s fade after a touch
+  expect(face?.dataset.controls).toBe("hidden");
 });

@@ -68,6 +68,19 @@ describe("prepareDocument", () => {
     expect(rewriteCssUrls("a{background:url(https://x.dev/i.png)}", "none")).toBe('a{background:url("data:,")}');
   });
 
+  it("loads images and fonts from the plain-http server the document came from, under either policy", () => {
+    // The CLI serves a local input and the files next to it from its loopback server.
+    const base = "http://127.0.0.1:4100/input/t0k/landing.html";
+    const html =
+      "<!DOCTYPE html><style>@font-face{font-family:I;src:url(Inter.woff2)}</style>" +
+      '<img src="hero.svg"><img src="http://127.0.0.2:4100/x.png">';
+    const out = prepareDocument(html, window, { baseUrl: base, network: "none" });
+    const srcs = Array.from(parse(out.html).images, (img) => img.getAttribute("src"));
+    expect(srcs).toEqual(["http://127.0.0.1:4100/input/t0k/hero.svg", null]);
+    expect(out.html).toContain('url("http://127.0.0.1:4100/input/t0k/Inter.woff2")');
+    expect(out.html).toContain("font-src data: blob: http://127.0.0.1:4100;");
+  });
+
   it("rejects documents over the element limit", () => {
     const big = `<!DOCTYPE html><body>${"<i></i>".repeat(50)}</body>`;
     expect(() => prepareDocument(big, window, { maxElements: 40 })).toThrow(/over the 40 limit/);

@@ -69,7 +69,7 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `clock` | `Clock` | Defaults to `RealtimeClock`; use `VirtualClock` for frame export |
 | `sound` | `boolean` / `SoundOptions` | Enable, volume, pack, BPM and beat synchronisation |
 | `theme` | `auto` / `light` / `dark` / `ThemeSpec` | Named theme or custom palette |
-| `labels` | `LabelMode` / `string[]` | `names`, `agents`, `roles`, `none` or custom labels |
+| `labels` | `LabelMode` / `string[]` | `names`, `agents`, `roles`, `none` or custom labels; `none` also hides status bubbles |
 | `follow` | `scroll` / `tour` / `none` | Follow the user, tour automatically, or keep a fixed viewport |
 | `reducedMotion` | `auto` / `boolean` | Defaults to the system reduced-motion preference |
 | `intro` | `boolean` | Enable the icon orbit and fan-out introduction |
@@ -293,6 +293,7 @@ Choreography rules:
 - Use `agent.rng`, not `Math.random()` or `Date.now()`.
 - Remove overlays, release presses and call `stage.finish()` in `finally`.
 - `setup()` may return cleanup; `frame(now, dt)` uses engine time.
+- Optional `restSpot(vp, rng)` returns where an idle cursor rests next (stage px), so idle cursors stay off text the stage cannot see, such as a terminal screen; null keeps the default wandering in the middle of the viewport. Use only the given `rng` for randomness.
 - A plugin that keeps state provides `perPlayer()`: every player calls it once and uses the fresh instance, so one `LoadedSource` can drive several players at once.
 - `stage.reducedMotion` is true when the player builds without motion; keep still poses then instead of starting animations.
 - Avoid per-frame DOM allocation and repeated layout reads.

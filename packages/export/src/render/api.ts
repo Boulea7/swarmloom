@@ -1,6 +1,5 @@
 import type {
   AdapterContext,
-  Blueprint,
   LoadedSource,
   Player,
   PlayerOptions,
@@ -10,6 +9,7 @@ import type {
 } from "@swarmloom/core";
 import { base64ToBytes, bytesToBase64 } from "../base64";
 import { RenderSession } from "../session";
+import { blueprintSha256 } from "./digest";
 import { LiveStage, livePageOf, watchShadowRoots } from "./live";
 import {
   type ParsedInit,
@@ -32,10 +32,20 @@ export interface RenderDeps {
   renderAudioWav(events: readonly SoundEvent[], durationMs: number, opts?: RenderOfflineOptions): Promise<Uint8Array>;
   /** Document the stage is mounted in. Default `globalThis.document`. */
   document?: Document;
+  /**
+   * Resolve `init()` and each `step()` only after the page's next few animation frames, so the
+   * browser has painted, rastered and shown the new state before the driver takes a screenshot (the
+   * CLI). Default false: a driver that draws the frames itself (Studio's in-page export) needs no paint.
+   */
+  awaitPaint?: boolean;
 }
 
 const SAMPLE_RATE = 48_000;
 const HOST_ID = "swarmloom-render";
+/** Animation frames init() and step() wait for with `awaitPaint` (see {@link paintFrames}). */
+const PAINT_FRAMES = 3;
+/** Longest wait for those frames (a hidden page gets none). */
+const FRAME_WAIT_MS = 1000;
 
 interface Active {
   init: ParsedInit;
@@ -43,6 +53,8 @@ interface Active {
   session: RenderSession;
   live: LiveStage;
   host: HTMLElement;
+  /** Window whose animation frames init() and step() wait for, or null when they do not wait. */
+  paint: Window | null;
 }
 
 function toSourceInput({ input }: ParsedInit): { source: SourceInput; format?: string } {
@@ -89,56 +101,29 @@ function mountHost(doc: Document, width: number, height: number): HTMLElement {
   return host;
 }
 
-/** The render page's origin when it is http(s); opaque origins ("null") match nothing. */
-function httpOrigin(doc: Document): string | undefined {
-  const location = doc.location;
-  if (!location || (location.protocol !== "http:" && location.protocol !== "https:")) return undefined;
-  return location.origin;
-}
-
-/** Directory `inputUrl` is served from when it is on the render page's own origin (the driver's server). */
-function servedDir(inputUrl: string | undefined, pageOrigin: string | undefined): string | undefined {
-  if (!inputUrl || !pageOrigin) return undefined;
-  try {
-    const dir = new URL(".", inputUrl);
-    return dir.origin === pageOrigin ? dir.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
- * The blueprint's JSON without what changes from take to take: object URLs (random ids) become
- * "blob:1", "blob:2", ... in order of first appearance, the directory the driver serves the input
- * from (random port and path, see {@link servedDir}) becomes "input:/", and any other URL on the
- * render page's own origin (random port) starts with "page:/". Snapshots resolve in-page anchors
- * such as Markdown footnote links against the render page's URL. Remote URLs stay.
+ * Resolves after the page's next PAINT_FRAMES animation frames, after FRAME_WAIT_MS at the latest.
+ *
+ * The first frame paints the state a step left. Chromium rasters and activates that commit before
+ * it starts another main frame, so by the later frames the regular raster workers have drawn it.
+ * A screenshot requested before that forces the commit through a different raster path, and only
+ * sometimes, by timing: rounded corners and other anti-aliased edges then came out a shade apart
+ * between two runs of the same render (one frame in a few hundred at --scale 0.5, 2.5 or 3).
  */
-function stableJson(blueprint: Blueprint, inputUrl: string | undefined, pageOrigin: string | undefined): string {
-  const blobs = new Map<string, string>();
-  let json = JSON.stringify(blueprint).replace(/blob:[^"\\\s)']+/g, (url) => {
-    const known = blobs.get(url);
-    if (known) return known;
-    const id = `blob:${blobs.size + 1}`;
-    blobs.set(url, id);
-    return id;
+function paintFrames(view: Window | null): Promise<void> {
+  if (!view || typeof view.requestAnimationFrame !== "function") return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = view.setTimeout(resolve, FRAME_WAIT_MS);
+    const frame = (left: number): void => {
+      if (left > 0) {
+        view.requestAnimationFrame(() => frame(left - 1));
+        return;
+      }
+      view.clearTimeout(timer);
+      resolve();
+    };
+    frame(PAINT_FRAMES);
   });
-  const dir = servedDir(inputUrl, pageOrigin);
-  if (dir) json = json.replaceAll(dir, "input:/");
-  // With the trailing slash, so a different port that starts with the same digits stays.
-  return pageOrigin ? json.replaceAll(`${pageOrigin}/`, "page:/") : json;
-}
-
-/**
- * SHA-256 (hex) of the blueprint's {@link stableJson}, equal for takes of the same input and settings;
- * empty when the page has no Web Crypto (not a secure context).
- */
-async function blueprintSha256(blueprint: Blueprint, inputUrl: string | undefined, doc: Document): Promise<string> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) return "";
-  const json = stableJson(blueprint, inputUrl, httpOrigin(doc));
-  const digest = await subtle.digest("SHA-256", new TextEncoder().encode(json));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function playerOptions(
@@ -167,6 +152,7 @@ function playerOptions(
   if (init.agents !== undefined) options.agents = init.agents;
   if (init.speed !== undefined) options.speed = init.speed;
   if (init.labels !== undefined) options.labels = init.labels;
+  if (init.overlays !== undefined) options.overlays = init.overlays;
   if (init.finale !== undefined) options.finale = init.finale;
   if (init.locale !== undefined) options.locale = init.locale;
   return options;
@@ -255,8 +241,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         });
         session = started;
         await session.start();
-        const sha = await blueprintSha256(loaded.blueprint, init.input.url, doc);
-        active = { init, loaded, session, live: stage, host };
+        const sha = await blueprintSha256(loaded.blueprint, init.input.url, doc.location?.origin);
+        const paint = deps.awaitPaint ? view : null;
+        active = { init, loaded, session, live: stage, host, paint };
+        await paintFrames(paint);
         const eta = session.player.eta();
         return {
           estimatedMs: Math.round((Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail),
@@ -275,9 +263,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
     },
 
     async step(ms: number): Promise<RenderStep> {
-      const { session, live } = activeRender();
+      const { session, live, paint } = activeRender();
       const status = await session.step(ms);
       live.sync(session.elapsed);
+      await paintFrames(paint);
       return status;
     },
 

@@ -148,6 +148,24 @@ describe("buildTimeline", () => {
     expect(tl.events.map((e) => e.typed)).toEqual([false, true, true, true, false]);
   });
 
+  it("counts only keystroke echo as typing, not output or a prompt right after the Enter", () => {
+    const rec: CastRecording = {
+      version: 2,
+      cols: 20,
+      rows: 4,
+      skipped: 0,
+      events: [
+        { t: 0, code: "i", data: "q" },
+        { t: 1, code: "o", data: "q" },
+        { t: 100, code: "i", data: "\r" },
+        { t: 101, code: "o", data: "\r\n\u001b[?2004l\r" },
+        { t: 103, code: "o", data: "ok\r\n" },
+        { t: 135, code: "o", data: "\u001b[?2004h\r\r\n$ " },
+      ],
+    };
+    expect(buildTimeline(rec).events.map((e) => e.typed)).toEqual([true, true, true, true, false, false]);
+  });
+
   it("fits long sessions into the budget and keeps steps short", () => {
     const events = Array.from({ length: 400 }, (_, i) => ({ t: i * 1000, code: "o" as const, data: `line ${i}\r\n` }));
     const tl = buildTimeline(

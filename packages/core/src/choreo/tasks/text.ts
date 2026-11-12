@@ -14,6 +14,7 @@ import { type FontMetrics, scaleMetrics, textMetrics, typingUnits } from "../tex
 import {
   FADE_MS,
   IBEAM_NUDGE_MS,
+  IBEAM_PARK_PX,
   pick,
   TEXT_CLICK_MAX_VIEW_SHARE,
   TEXT_CLICK_MAX_WIDTH_PX,
@@ -35,7 +36,8 @@ export function opensWithClick(rect: Rect, metrics: FontMetrics, view: Rect): bo
 
 /**
  * Opens a text box at `rect`: a short single-line text is clicked at its line start, anything
- * else is dragged out at its final width and one line high. Ends with the I-beam inside the box.
+ * else is dragged out at its final width and one line high. Ends with the I-beam resting just left
+ * of the first line, so neither it nor its name tag covers the text it types.
  */
 function* openTextBox(scope: TaskScope, rect: Rect, metrics: FontMetrics): Generator<Yield, EditFrame, unknown> {
   const { agent } = scope;
@@ -53,7 +55,8 @@ function* openTextBox(scope: TaskScope, rect: Rect, metrics: FontMetrics): Gener
     frame = new EditFrame(placed.selection, lineBox, rect);
   }
   scope.cursor("ibeam");
-  const nudge = clampPoint({ x: rect.x + 4 + agent.rng() * 6, y: rect.y + lineBox.h * 0.55 }, view, VIEW_MARGIN_PX);
+  const park = { x: rect.x - IBEAM_PARK_PX - agent.rng() * 4, y: rect.y + lineBox.h * 0.55 };
+  const nudge = clampPoint(park, view, VIEW_MARGIN_PX);
   yield* agent.moveTo(nudge.x, nudge.y, { dur: pick(agent.rng, IBEAM_NUDGE_MS), ease: "out" });
   return frame;
 }

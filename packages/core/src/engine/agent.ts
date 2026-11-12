@@ -61,6 +61,9 @@ const MAX_CARRY_SPEED = 600;
 
 type TravelOptions = { dur?: number; ease?: Ease };
 
+/** Movement (stage px) after which a resting agent no longer counts as staying where it typed. */
+const STILL_PX = 1;
+
 /**
  * One cursor: implements the choreography-facing {@link AgentApi}, carries its free-motion
  * state and a reusable {@link AgentView} for the stage.
@@ -100,9 +103,11 @@ export class Agent implements AgentApi {
   run: TaskRun | null = null;
   /** Player time when the agent last became idle. */
   idleSince = 0;
-  /** Free-motion target: viewport fractions for wandering, stage px otherwise. */
+  /** Free-motion target: viewport fractions for wandering (stage px when `targetAbs`), stage px otherwise. */
   targetX = 0;
   targetY = 0;
+  /** The wander target is a plugin's rest spot in stage px, not viewport fractions. */
+  targetAbs = false;
   /** Physics time until which the current wander target is kept. */
   holdUntil = 0;
   /** Side edge used to enter or leave: -1 left, 1 right. */
@@ -122,6 +127,9 @@ export class Agent implements AgentApi {
 
   readonly view: AgentView;
   readonly #host: AgentHost;
+  /** Where the agent last showed the I-beam (NaN when it moved on since); see {@link syncView}. */
+  #textX = Number.NaN;
+  #textY = Number.NaN;
 
   /**
    * @param rng Agent stream: draws the movement personality, then drives free motion.
@@ -205,9 +213,20 @@ export class Agent implements AgentApi {
     this.bubble = "";
   }
 
-  /** Copies the current state into {@link view} (no allocation). */
+  /**
+   * Copies the current state into {@link view} (no allocation). While the agent shows the I-beam,
+   * and afterwards until it moves on, its name tag hangs on the left, off the text it types.
+   */
   syncView(): AgentView {
     const v = this.view;
+    if (this.shape === "ibeam") {
+      this.#textX = this.x;
+      this.#textY = this.y;
+    } else if (Math.abs(this.x - this.#textX) > STILL_PX || Math.abs(this.y - this.#textY) > STILL_PX) {
+      this.#textX = Number.NaN;
+      this.#textY = Number.NaN;
+    }
+    v.tagLeft = !Number.isNaN(this.#textX);
     v.label = this.label;
     v.x = this.x;
     v.y = this.y;

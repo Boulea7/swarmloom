@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { builtinPlugin, choreoHelpers } from "../../src/choreo/index";
-import { FINALE_SETTLE_MS, IDLE_RUSH_MS } from "../../src/engine/constants";
+import { Agent } from "../../src/engine/agent";
+import { EXIT_MS, FINALE_SETTLE_MS, IDLE_RUSH_MS } from "../../src/engine/constants";
 import type { EngineSettings } from "../../src/engine/engine";
 import { autoAgentCount, type FollowMode } from "../../src/engine/options";
+import { createRng } from "../../src/rng";
 import type { AgentApi, Layer, PlayerState, Plugin, Rect, StageApi, TaskFn, TaskGen } from "../../src/types";
 import { blueprintOf, box, harness, samplePage, testPlugin, text } from "./fakes";
 
@@ -382,6 +384,23 @@ describe("Engine", () => {
     expect(h.sound.destroyed).toBe(true);
   });
 
+  it("goLive() fades the halo out while the cursors leave instead of dropping it in one frame", async () => {
+    const h = harness(samplePage(), { intro: false, finale: "halo" });
+    void h.engine.play();
+    h.until(() => h.engine.state === "done");
+    h.engine.goLive();
+    h.run(1);
+    const alpha = () => h.stage.live("halo")[0]?.props.alpha as number;
+    const first = alpha();
+    h.run(10);
+    expect(first).toBeGreaterThan(alpha());
+    expect(alpha()).toBeGreaterThan(0);
+    h.run(Math.ceil(EXIT_MS / 16));
+    await Promise.resolve();
+    expect(h.stage.live("halo")).toHaveLength(0);
+    expect(h.stage.calls.goLive).toBe(1);
+  });
+
   it("keeps player time equal to clock time over long ticks after goLive() (low-fps export tail)", () => {
     const h = harness(samplePage(), { intro: false });
     void h.engine.play();
@@ -416,25 +435,69 @@ describe("Engine", () => {
     expect(h.stage.calls.reset).toBe(2);
   });
 
+  it("rests idle cursors at the spot a plugin's restSpot picks", () => {
+    const spot = { x: 700, y: 60 };
+    const slow: Plugin = {
+      name: "slow",
+      tasks: {
+        box: function* (_agent, layer, stage): TaskGen {
+          yield 15_000;
+          stage.finish(layer.id);
+        },
+      },
+      restSpot: () => spot,
+    };
+    const h = harness(blueprintOf([box("a", 20, 600)]), { intro: false, agents: 3 }, { plugins: [testPlugin, slow] });
+    let at: { x: number; y: number }[] = [];
+    const render = h.stage.render.bind(h.stage);
+    h.stage.render = (now, agents) => {
+      at = agents.map((a) => ({ x: a.x, y: a.y }));
+      render(now, agents);
+    };
+    void h.engine.play();
+    h.run(480);
+    expect(h.engine.state).toBe("building");
+    // Two cursors wait while the third works.
+    expect(at.filter((p) => Math.hypot(p.x - spot.x, p.y - spot.y) < 12)).toHaveLength(2);
+  });
+
   it("sizes the crew automatically and labels agents per mode", () => {
     expect(autoAgentCount(0, 390 * 844)).toBe(8);
     expect(autoAgentCount(260, 1280 * 800)).toBeGreaterThan(30);
     expect(autoAgentCount(100_000, 2560 * 1440)).toBe(64);
-    const labels = (mode: EngineSettings["labels"]): string[] => {
+    const shown = (mode: EngineSettings["labels"], key: "label" | "bubble" = "label"): string[] => {
       const h = harness(samplePage(), { labels: mode, intro: false, agents: 3 });
       const seen = new Set<string>();
       const render = h.stage.render.bind(h.stage);
       h.stage.render = (now, agents) => {
-        for (const a of agents) seen.add(a.label);
+        for (const a of agents) seen.add(a[key]);
         render(now, agents);
       };
       void h.engine.play();
-      h.run(90);
+      if (key === "bubble") h.until(() => h.engine.state === "finale");
+      else h.run(90);
       return [...seen].sort();
     };
+    const labels = (mode: EngineSettings["labels"]) => shown(mode);
     expect(labels("agents")).toEqual(["Agent 01", "Agent 02", "Agent 03"]);
     expect(labels("roles")).toEqual(expect.arrayContaining(["", "role.layout"]));
     expect(labels("none")).toEqual([""]);
     expect(labels(["Ann", "Bo"])).toEqual(["Ann", "Bo"]);
+    // "none" also hides the status bubbles ("typing"), which covered the line above in terminal takes.
+    expect(shown("names", "bubble")).toContain("typing");
+    expect(shown("none", "bubble")).toEqual([""]);
+  });
+});
+
+describe("Agent", () => {
+  it("hangs its tag on the left while it shows the I-beam and until it moves on", () => {
+    const agent = new Agent(0, "Ada", "#5B5BF7", createRng(1), { emitSound: () => {} });
+    expect(agent.syncView().tagLeft).toBe(false);
+    agent.setCursor("ibeam");
+    expect(agent.syncView().tagLeft).toBe(true);
+    agent.setCursor("arrow");
+    expect(agent.syncView().tagLeft).toBe(true);
+    agent.x += 5;
+    expect(agent.syncView().tagLeft).toBe(false);
   });
 });

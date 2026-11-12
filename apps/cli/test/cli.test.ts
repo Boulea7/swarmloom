@@ -63,6 +63,7 @@ describe("render options", () => {
         seed: 1,
         theme: "auto",
         labels: "names",
+        overlays: "full",
         finale: "flock",
         tail: 2500,
         live: true,
@@ -91,6 +92,7 @@ describe("render options", () => {
     [["a.md", "-o", "x.mov"], "Cannot tell the video format"],
     [["a.md", "-o", "x.mp4", "--format", "gif"], "--output ends in .mp4 but --format is gif"],
     [["a.md", "--format", "avi"], "--format must be one of"],
+    [["a.md", "--overlays", "some"], "--overlays must be one of"],
     [["a.md", "--speed", "0"], "--speed must be a number at least 0.05"],
     [["a.md", "--speed", "1e3"], "--speed must be a number"],
     [["a.md", "--width", "7680", "--scale", "2"], "larger than 8192 px"],
@@ -113,7 +115,7 @@ describe("render options", () => {
 
   it("resolves a fixed length, beat cues on exact frames and the evidence paths", () => {
     const argv = ["a.svg", "-o", "take.mp4", "--duration", "24", "--bpm", "90", "--cue", "26b:pause"];
-    const extra = ["--cue", "18.5:finish", "--cue", "500ms:resume", "--events-out", "ev/e.json"];
+    const extra = ["--cue", "18.5:finish", "--cue", "500ms:resume", "--cue", "20:live", "--events-out", "ev/e.json"];
     const opts = parseRenderOptions([...argv, ...extra, "--manifest-out", "m.json"], cwd);
     if (opts === "help") throw new Error("unexpected help");
     expect(opts).toMatchObject({ fixedLength: true, maxDurationMs: 24_000, settings: { bpm: 90 } });
@@ -122,6 +124,7 @@ describe("render options", () => {
       [520, "pause"],
       [555, "finish"],
       [15, "resume"],
+      [600, "live"],
     ]);
     expect(opts.cues[0]?.at).toBeCloseTo(17_333.333, 3);
     expect(opts.eventsOut).toBe(path.join(cwd, "ev/e.json"));

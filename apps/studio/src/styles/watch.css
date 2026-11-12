@@ -53,6 +53,13 @@
   overflow: hidden;
 }
 
+/* The circle would crop the stage's edges, and with them the text the camera zooms into: a round
+   face plays inside its inscribed square. */
+.view-watch[data-round="true"] .watch-stage {
+  inset: var(--safe);
+  border-radius: 4cqmin;
+}
+
 .watch-poster .thumb {
   inset: 0;
 }
@@ -159,11 +166,6 @@
 }
 
 .watch-play {
-  width: clamp(56px, 30cqmin, 112px);
-  height: clamp(56px, 30cqmin, 112px);
-}
-
-.watch-play {
   display: grid;
   flex-shrink: 0;
   place-items: center;
@@ -178,8 +180,9 @@
   cursor: pointer;
 }
 
+/* Over a playing stage, light or dark, the controls need their own dark backing to be seen. */
 .view-watch[data-playing="true"] .watch-play {
-  background: oklch(97% 0.006 277 / 0.18);
+  background: var(--watch-scrim);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
@@ -192,6 +195,23 @@
 .view-watch[data-round="true"] .watch-title {
   font-size: clamp(11px, 5.2cqmin, 15px);
   -webkit-line-clamp: 1;
+}
+
+/* While a build plays (or is paused), the controls sit small along the bottom so the stage stays in
+   view: no title, the play button in a row with the others. */
+.view-watch[data-phase="playing"] .watch-safe {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 5cqmin;
+}
+
+.view-watch[data-phase="playing"] .watch-title {
+  display: none;
+}
+
+.view-watch[data-phase="playing"] .watch-play {
+  width: clamp(40px, 20cqmin, 64px);
+  height: clamp(40px, 20cqmin, 64px);
 }
 
 .view-watch[data-round="true"] .watch-play-icon {
@@ -227,6 +247,12 @@
   background: oklch(97% 0.006 277 / 0.16);
   color: var(--watch-ink);
   cursor: pointer;
+}
+
+.view-watch[data-phase="playing"] .watch-actions .watch-icon-btn {
+  background: var(--watch-scrim);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 /* A modal <dialog> in the top layer, laid exactly over the face it covers. */
