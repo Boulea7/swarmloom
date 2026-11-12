@@ -822,7 +822,9 @@ function overlayOf(
     const clipX = contain || style.getPropertyValue("overflow-x") !== "visible";
     const clipY = contain || style.getPropertyValue("overflow-y") !== "visible";
     if (!clipX && !clipY) continue;
-    if (roundedCorners(style) || style.getPropertyValue("overflow-clip-margin") !== "0px") return null;
+    // WebKit has no overflow-clip-margin and reads it as "", which is the 0px default.
+    const margin = style.getPropertyValue("overflow-clip-margin");
+    if (roundedCorners(style) || (margin !== "" && margin !== "0px")) return null;
     const r = el.getBoundingClientRect();
     // Borders in CSS px of the viewport: the client rect is scaled with the box, its borders too.
     const box = el as HTMLElement;
