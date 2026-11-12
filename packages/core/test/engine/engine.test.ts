@@ -532,6 +532,20 @@ describe("Engine", () => {
     expect(h.stage.calls.reset).toBe(2);
   });
 
+  it("seek() after finish() in a reduced-motion opening replays, matching a fresh seek", () => {
+    const settings = { seed: 7, reducedMotion: true, opening: 1500 };
+    const fresh = harness(samplePage(), settings);
+    fresh.engine.seek(1000);
+    const h = harness(samplePage(), settings);
+    void h.engine.play();
+    h.run(30);
+    h.engine.finish();
+    h.engine.seek(1000);
+    expect(h.engine.state).toBe(fresh.engine.state);
+    expect(h.stage.hash.value).toBe(fresh.stage.hash.value);
+    expect([...h.stage.reveals]).toEqual([...fresh.stage.reveals]);
+  });
+
   it("rests idle cursors at the spot a plugin's restSpot picks", () => {
     const spot = { x: 700, y: 60 };
     const slow: Plugin = {

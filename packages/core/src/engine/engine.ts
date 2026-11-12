@@ -439,9 +439,13 @@ export class Engine implements Player {
     let s = this.#state === "paused" ? this.#resumeState : this.#state;
     if ((s !== "intro" && s !== "building") || this.#fade) return;
     if (this.#opening) {
-      // Skips the rest of the opening; reduced motion then already fades everything in.
+      // Skips the rest of the opening; reduced motion then already fades everything in, but early,
+      // so the run is rushed all the same and a later seek() must replay it.
       this.#endOpening();
-      if (this.#fade) return;
+      if (this.#fade) {
+        this.#rushed = true;
+        return;
+      }
       s = this.#state;
     }
     if (s === "intro") this.#fanOut();
