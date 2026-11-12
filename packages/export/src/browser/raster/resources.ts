@@ -127,7 +127,9 @@ export class ResourceCache {
       return drawn(fallback) ?? this.#blank(url, "the network setting does not allow it");
     }
     try {
-      const response = await this.#fetch(target, { credentials: "omit" });
+      // The adapters load remote images and fonts without a referrer (docs/en/privacy.md); the
+      // exporting page may have the default policy, so the fetch says so itself.
+      const response = await this.#fetch(target, { credentials: "omit", referrerPolicy: "no-referrer" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await blobToDataUrl(await response.blob());
     } catch (error) {
