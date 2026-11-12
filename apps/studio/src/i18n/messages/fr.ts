@@ -144,6 +144,8 @@ export const fr: StudioCatalog = {
   "settings.finale.flock": "Nuée",
   "settings.finale.halo": "Halo",
   "settings.finale.none": "Aucun",
+  "settings.opening": "Montrer d’abord l’original",
+  "settings.liveTop": "Revenir en haut à la fin",
   "settings.follow": "Caméra",
   "settings.follow.tour": "Visite",
   "settings.follow.scroll": "Mon défilement",

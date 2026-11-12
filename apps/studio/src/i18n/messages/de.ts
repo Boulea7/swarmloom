@@ -144,6 +144,8 @@ export const de: StudioCatalog = {
   "settings.finale.flock": "Schwarm",
   "settings.finale.halo": "Halo",
   "settings.finale.none": "Keiner",
+  "settings.opening": "Zuerst das Original zeigen",
+  "settings.liveTop": "Am Ende nach oben",
   "settings.follow": "Kamera",
   "settings.follow.tour": "Rundgang",
   "settings.follow.scroll": "Mein Scrollen",

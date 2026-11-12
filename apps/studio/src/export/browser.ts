@@ -1,6 +1,6 @@
 import type { RenderInput } from "@swarmloom/export";
 import type { ExportSettings } from "@swarmloom/export/browser";
-import type { StudioSettings } from "../settings";
+import { OPENING_MS, type StudioSettings } from "../settings";
 import type { OpenedSource } from "../source";
 import { stem } from "./cli";
 
@@ -50,7 +50,7 @@ export interface ExportChoices {
  * the default tail), except the sound pack.
  */
 export function exportSettingsOf(s: StudioSettings, choices: ExportChoices): ExportSettings {
-  return {
+  const settings: ExportSettings = {
     seed: s.seed,
     speed: s.speed,
     agents: s.agents,
@@ -62,6 +62,9 @@ export function exportSettingsOf(s: StudioSettings, choices: ExportChoices): Exp
     pack: s.soundPack,
     locale: choices.locale,
   };
+  if (s.opening) settings.opening = OPENING_MS;
+  if (s.liveTop) settings.liveTop = true;
+  return settings;
 }
 
 /** Download name: the source's stem plus the container's extension. */

@@ -143,6 +143,8 @@ export const es: StudioCatalog = {
   "settings.finale.flock": "Bandada",
   "settings.finale.halo": "Halo",
   "settings.finale.none": "Ninguno",
+  "settings.opening": "Mostrar primero el original",
+  "settings.liveTop": "Volver arriba al final",
   "settings.follow": "Cámara",
   "settings.follow.tour": "Recorrido",
   "settings.follow.scroll": "Mi desplazamiento",

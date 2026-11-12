@@ -118,6 +118,8 @@ export const ko: StudioCatalog = {
   "settings.finale.flock": "무리 짓기",
   "settings.finale.halo": "후광",
   "settings.finale.none": "없음",
+  "settings.opening": "먼저 원본 보여 주기",
+  "settings.liveTop": "끝나면 맨 위로 돌아가기",
   "settings.follow": "카메라",
   "settings.follow.tour": "투어",
   "settings.follow.scroll": "내 스크롤 따라가기",
