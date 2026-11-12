@@ -1,5 +1,5 @@
 import type { ShadowWatch } from "../../render/live";
-import type { FontWatch } from "./fonts";
+import { FontFaceCache, type FontWatch } from "./fonts";
 import { networkGate, ResourceCache, type ResourcePolicy } from "./resources";
 import { type CanvasOverlay, type FrameSnapshot, type SnapshotStats, snapshotFrame } from "./snapshot";
 import { readBaseline, type StyleBaseline } from "./styles";
@@ -68,7 +68,10 @@ function drawOverlay(
 export class FrameRasterizer {
   readonly #o: RasterizerOptions;
   readonly #resources: ResourceCache;
+  readonly #faces: FontFaceCache;
   #baseline: StyleBaseline | null = null;
+  /** The last font rules drawn and their URI encoding, kept while the next frames use the same. */
+  #fontUri = { css: "", uri: "" };
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -77,6 +80,7 @@ export class FrameRasterizer {
       (message) => options.onWarning?.(message),
       networkGate(options.network ?? "https", options.document.baseURI),
     );
+    this.#faces = new FontFaceCache((url) => this.#resources.resolve(url));
   }
 
   /** Serialises the current frame (exposed for diagnostics and tests). */
@@ -94,6 +98,7 @@ export class FrameRasterizer {
       },
       this.#baseline,
       this.#resources,
+      this.#faces,
       signal,
     );
   }
@@ -107,11 +112,17 @@ export class FrameRasterizer {
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     signal?: AbortSignal,
   ): Promise<SnapshotStats> {
-    const { svg, stats, overlays } = await this.snapshot(signal);
+    const {
+      parts: [head, fonts, tail],
+      stats,
+      overlays,
+    } = await this.snapshot(signal);
+    // Fonts are often megabytes and rarely change between frames: they are encoded once.
+    if (fonts !== this.#fontUri.css) this.#fontUri = { css: fonts, uri: encodeURIComponent(fonts) };
     const img = new Image();
     // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
     // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
-    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(head)}${this.#fontUri.uri}${encodeURIComponent(tail)}`;
     await decoded(img);
     const { width, height } = ctx.canvas;
     ctx.fillStyle = "#fff";

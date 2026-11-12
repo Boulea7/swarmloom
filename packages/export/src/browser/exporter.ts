@@ -171,7 +171,9 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * Opus when the browser can encode it, else the video is silent.
  *
  * The page stays responsive: the loop yields to the event loop between frames, and the snapshot of a
- * frame pauses every few milliseconds (cancelling takes effect at the next pause).
+ * frame pauses every few milliseconds (cancelling takes effect at the next pause). Drawing a frame
+ * decodes its image in one task, which grows with the web fonts it embeds (in Chromium about 40 ms
+ * per MB of the faces the frame's text uses).
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).

@@ -1,6 +1,6 @@
 import { yieldTask } from "../schedule";
-import { cssString, familiesOf, fontFaceRule, fontFaceRules, type WatchedFace } from "./fonts";
-import { BLANK_IMAGE, bytesToDataUrl, type ResourceCache } from "./resources";
+import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
+import { BLANK_IMAGE, type ResourceCache } from "./resources";
 import { type InheritedValues, type StyleBaseline, styleText } from "./styles";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -78,13 +78,15 @@ const INVALID_XML =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: these are exactly the characters XML 1.0 forbids.
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 const CSS_URL = /url\("((?:[^"\\]|\\.)*)"\)/g;
+const NON_ASCII = /[\u0080-\u{10ffff}]/u;
+const NON_ASCII_ALL = /[\u0080-\u{10ffff}]/gu;
 /**
  * Marks a resource in the markup until its data URL is known: a kind letter and an index between
  * private-use characters (they survive escaping). Kinds: "a" an attribute value, "i" the source of
  * an `<img>`, "c" a CSS `url()` in a style attribute, "s" one in a rule of the snapshot's sheet,
- * "f" one in an `@font-face` rule, "k" the pixels of a canvas.
+ * "k" the pixels of a canvas. `@font-face` rules are embedded on their own ({@link FontFaceCache}).
  */
-const TOKEN = /\uE000([acfiks])(\d+)\uE001/g;
+const TOKEN = /\uE000([aciks])(\d+)\uE001/g;
 /** HTML elements without content, so without `::before`/`::after` boxes worth reading. */
 const VOID = new Set(["img", "input", "br", "hr", "wbr", "area", "col", "select", "textarea"]);
 /**
@@ -162,6 +164,12 @@ export interface CanvasOverlay {
 /** One serialised frame. */
 export interface FrameSnapshot {
   svg: string;
+  /**
+   * `svg` in three pieces: before its `@font-face` rules, the rules, and after them. The rules are
+   * the same string object from frame to frame while the fonts stay the same, so whoever encodes
+   * the image can encode them once.
+   */
+  parts: readonly [string, string, string];
   stats: SnapshotStats;
   /** Canvases to draw over the image, in paint order (a WebGL model, then the cursor layer). */
   overlays: CanvasOverlay[];
@@ -227,7 +235,8 @@ interface Walk {
   shadowRootOf: (host: Element) => ShadowRoot | null;
   out: string[];
   rules: string[];
-  families: Set<string>;
+  /** Fonts the walk saw asked for: computed `font-style|font-weight|font-stretch`, a newline, `font-family`. */
+  fonts: Set<string>;
   /** Resources by token index, and the index of each URL. */
   urls: ResourceUse[];
   urlIndex: Map<string, number>;
@@ -271,7 +280,7 @@ function docView(win: Window & typeof globalThis, width: number, height: number,
  * more than once in shareable places are defined once in the sheet: a page bitmap cropped into
  * many layers would otherwise be inlined in every one of them.
  */
-function embedUrl(walk: Walk, url: string, kind: "a" | "i" | "c" | "s" | "f", fallback?: () => string | null): string {
+function embedUrl(walk: Walk, url: string, kind: "a" | "i" | "c" | "s", fallback?: () => string | null): string {
   if (!url || url.startsWith("#")) return url;
   let index = walk.urlIndex.get(url);
   if (index === undefined) {
@@ -286,12 +295,12 @@ function embedUrl(walk: Walk, url: string, kind: "a" | "i" | "c" | "s" | "f", fa
   return `\uE000${kind}${index}\uE001`;
 }
 
-/** Tokens for the `url()`s of a CSS value written in a style attribute ("c"), a rule ("s") or `@font-face` ("f"). */
-function embedCssUrls(walk: Walk, value: string, kind: "c" | "s" | "f"): string {
+/** Tokens for the `url()`s of a CSS value written in a style attribute ("c") or a rule ("s"). */
+function embedCssUrls(walk: Walk, value: string, kind: "c" | "s"): string {
   if (!value.includes("url(")) return value;
   return value.replace(CSS_URL, (match, raw: string) => {
-    const url = raw.replace(/\\(.)/g, "$1");
-    if (!url || url.startsWith("#") || (kind === "f" && url.startsWith("data:"))) return match;
+    const url = raw.includes("\\") ? raw.replace(/\\(.)/g, "$1") : raw;
+    if (!url || url.startsWith("#")) return match;
     return embedUrl(walk, url, kind);
   });
 }
@@ -878,10 +887,16 @@ function pseudoRules(
     if (!content || content === "none" || content === "normal") continue;
     cls ??= `sl${walk.nextClass++}`;
     const { text } = styleText(walk.baseline, ps, inherited, undefined, props);
-    if (!hollow) for (const family of familiesOf(ps.getPropertyValue("font-family"))) walk.families.add(family);
+    if (!hollow) useFonts(walk, ps);
     walk.rules.push(`.${cls}${pseudo}{${embedCssUrls(walk, text, "s")};content:${embedCssUrls(walk, content, "s")}}`);
   }
   return cls;
+}
+
+/** Records the fonts the text of a box may be drawn in. */
+function useFonts(walk: Walk, cs: CSSStyleDeclaration): void {
+  const face = `${cs.getPropertyValue("font-style")}|${cs.getPropertyValue("font-weight")}|${cs.getPropertyValue("font-stretch")}`;
+  walk.fonts.add(`${face}\n${cs.getPropertyValue("font-family")}`);
 }
 
 /** Emits a text node, shifted when its parent is a scrolled container. */
@@ -969,7 +984,7 @@ function* emitElement(
   // An empty box away from the viewport shows nothing: only what sets its size and place counts.
   const props = hollow ? walk.baseline.layout : walk.baseline.props;
   const { text: styleBody, inherited } = styleText(walk.baseline, cs, parent, override, props);
-  if (!hollow) for (const family of familiesOf(cs.getPropertyValue("font-family"))) walk.families.add(family);
+  if (!hollow) useFonts(walk, cs);
 
   let tag = svg || ns !== XHTML_NS ? local : local === "html" || local === "body" ? "div" : local;
   if (!XML_NAME.test(tag)) tag = "span";
@@ -1102,65 +1117,77 @@ function* emitDocument(
   walk.out.push("</div></div>");
 }
 
-/** Data URLs of binary font faces, made once per face rather than for every frame. */
-const faceData = new WeakMap<WatchedFace, Promise<string>>();
-
-/** `@font-face` rules the frame uses, with their sources embedded. */
-async function fontCss(walk: Walk, source: SnapshotSource, docs: readonly Document[]): Promise<string> {
-  const rules: string[] = [];
-  const used = (family: string) => walk.families.has(family.replace(/^["']|["']$/g, "").toLowerCase());
-  const sheets: CSSStyleSheet[] = [];
-  for (const doc of docs) {
-    sheets.push(...Array.from(doc.styleSheets), ...doc.adoptedStyleSheets);
-  }
-  for (const root of source.shadowRoots()) sheets.push(...Array.from(root.styleSheets), ...root.adoptedStyleSheets);
+/**
+ * `@font-face` rules the frame uses, with their sources embedded, each face once: KaTeX fonts, for
+ * one, are declared in the page, in the stage's sheet and through the FontFace API.
+ */
+async function fontCss(
+  walk: Walk,
+  source: SnapshotSource,
+  docs: readonly Document[],
+  cache: FontFaceCache,
+): Promise<string> {
+  const faces: FaceSource[] = [];
+  const sheets = new Set<CSSStyleSheet>();
+  const add = (list: Iterable<CSSStyleSheet>) => {
+    for (const sheet of list) sheets.add(sheet);
+  };
+  for (const doc of docs) add([...Array.from(doc.styleSheets), ...doc.adoptedStyleSheets]);
+  for (const root of source.shadowRoots()) add([...Array.from(root.styleSheets), ...root.adoptedStyleSheets]);
   const win = source.document.defaultView;
   for (const sheet of sheets) {
     // Sheets that do not apply (disabled, or for other media) declare no fonts for this frame.
     const media = sheet.media.mediaText;
     if (sheet.disabled || (media && win && !win.matchMedia(media).matches)) continue;
-    for (const rule of fontFaceRules(sheet)) {
-      if (used(rule.style.getPropertyValue("font-family"))) rules.push(embedCssUrls(walk, rule.cssText, "f"));
-    }
+    for (const rule of fontFaceRules(sheet)) faces.push(cache.rule(rule));
   }
-  for (const face of source.faces()) {
-    if (!used(face.family)) continue;
-    if (typeof face.source === "string") {
-      const src = face.source.replace(/url\((['"]?)([^'")]+)\1\)/g, (match, _q, url: string) =>
-        url.startsWith("data:") ? `url(${cssString(url)})` : url.startsWith("#") ? match : embedUrl(walk, url, "f"),
-      );
-      rules.push(fontFaceRule(face, src));
-    } else {
-      let data = faceData.get(face);
-      if (!data) {
-        data = bytesToDataUrl(face.source, "font/ttf");
-        faceData.set(face, data);
-      }
-      rules.push(fontFaceRule(face, `url(${cssString(await data)})`));
-    }
+  for (const face of source.faces()) faces.push(cache.face(face));
+  const asked = new Map<string, Set<string>>();
+  for (const use of walk.fonts) {
+    const [face = "", families = ""] = use.split("\n");
+    for (const family of familiesOf(families)) asked.set(family, (asked.get(family) ?? new Set()).add(face));
   }
-  return rules.join("\n");
+  return cache.block(faces, { faces: asked, chars: () => frameChars(walk) });
 }
 
 /**
- * Style sheet of the snapshot: the reset every clone starts from, the resources used more than
- * once, pseudo-elements and fonts.
+ * Code points beyond ASCII the frame may show: those of its markup (text, attribute values such as
+ * input values, pseudo-element content), each with its upper and lower case for `text-transform`.
  */
-function sheet(rules: readonly string[], fonts: string, shared: readonly string[]): string {
+function frameChars(walk: Walk): number[] {
+  const seen = new Set<string>();
+  for (const text of [...walk.out, ...walk.rules]) {
+    if (NON_ASCII.test(text)) for (const [char] of text.matchAll(NON_ASCII_ALL)) seen.add(char);
+  }
+  const chars = new Set<number>();
+  for (const char of seen) {
+    for (const cased of [char, char.toUpperCase(), char.toLowerCase()]) {
+      for (const unit of cased) chars.add(unit.codePointAt(0) as number);
+    }
+  }
+  return Array.from(chars).sort((a, b) => a - b);
+}
+
+/**
+ * Style sheet of the snapshot after its fonts (which open it, see {@link FrameSnapshot.parts}): the
+ * reset every clone starts from, the resources used more than once and pseudo-elements. Ends the
+ * `<style>` element.
+ */
+function sheetAfterFonts(rules: readonly string[], shared: readonly string[]): string {
   // Only the clones inside the foreignObject: resetting the wrapping `<svg>` and `<foreignObject>`
   // would turn their width and height (geometry properties) to `auto`, and Firefox then draws
   // nothing of the foreignObject.
   // The image is drawn in the host's forced colours (Windows high contrast) like a page; the clones
   // inherit this opt-out and keep the colours they were given, as in the CLI's browser.
   const css = [
-    fonts,
+    "",
     "foreignObject{forced-color-adjust:none}",
     "foreignObject *{all:unset}",
     "style{display:none!important}",
     ...shared,
     ...rules,
   ].join("\n");
-  return `<style><![CDATA[${css.replace(/]]>/g, "]]]]><![CDATA[>")}]]></style>`;
+  return `${css.replace(/]]>/g, "]]]]><![CDATA[>")}]]></style>`;
 }
 
 /**
@@ -1199,8 +1226,6 @@ function tokenText(walk: Walk, data: readonly string[], kind: string, index: num
       return shared ? `var(--slr${index})` : escapeAttr(`url(${cssString(url)})`);
     case "s":
       return shared ? `var(--slr${index})` : sheetSafe(`url(${cssString(url)})`);
-    case "f":
-      return sheetSafe(`url(${cssString(url)})`);
     default:
       return escapeAttr(url);
   }
@@ -1270,7 +1295,7 @@ async function walkFrame(
     shadowRootOf: (host) => byHost.get(host) ?? source.shadowRootOf(host),
     out: [],
     rules: [],
-    families: new Set(),
+    fonts: new Set(),
     urls: [],
     urlIndex: new Map(),
     canvases: [],
@@ -1326,6 +1351,7 @@ export async function snapshotFrame(
   source: SnapshotSource,
   baseline: StyleBaseline,
   resources: ResourceCache,
+  faces: FontFaceCache,
   signal?: AbortSignal,
 ): Promise<FrameSnapshot> {
   let walk: Walk | null = null;
@@ -1339,19 +1365,21 @@ export async function snapshotFrame(
       // Cross-origin frames are drawn empty.
     }
   }
-  const fonts = await fontCss(walk, source, docs);
+  const fonts = await fontCss(walk, source, docs, faces);
   for (const { index } of walk.overlays) walk.canvases[index] = BLANK_IMAGE;
   const data = await Promise.all(walk.urls.map(({ url, fallback }) => resources.resolve(url, fallback)));
-  walk.out.splice(1, 0, sheet(walk.rules, fonts, sharedRules(walk, data)));
   walk.out.push("</div>");
   const done = walk;
-  const markup = walk.out
-    .join("")
-    .replace(TOKEN, (_m, kind: string, index: string) => tokenText(done, data, kind, Number(index)));
+  const resolved = (text: string) =>
+    text.replace(TOKEN, (_m, kind: string, index: string) => tokenText(done, data, kind, Number(index)));
+  // The fonts sit between the root box and the rest of the sheet, out of reach of the token pass:
+  // they are embedded already, and often megabytes long.
+  const [root = "", ...body] = walk.out;
   const { width, height } = source;
-  const svg =
+  const head =
     `<svg xmlns="${SVG_NS}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
-    `<foreignObject x="0" y="0" width="${width}" height="${height}">${markup}</foreignObject></svg>`;
+    `<foreignObject x="0" y="0" width="${width}" height="${height}">${root}<style><![CDATA[`;
+  const tail = `${resolved(sheetAfterFonts(walk.rules, sharedRules(walk, data)) + body.join(""))}</foreignObject></svg>`;
   const overlays = walk.overlays.map(({ canvas, x, y, width: w, height: h, clip }) => ({
     canvas,
     x,
@@ -1360,5 +1388,5 @@ export async function snapshotFrame(
     height: h,
     clip,
   }));
-  return { svg, stats: walk.stats, overlays };
+  return { svg: head + fonts + tail, parts: [head, fonts, tail], stats: walk.stats, overlays };
 }
