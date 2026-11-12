@@ -393,6 +393,22 @@ describe("stage: reveal semantics per kind", () => {
         return url;
       },
     },
+    {
+      // A recorded demo runs to many megabytes: only its first frame is read.
+      name: "17 MB blob:",
+      src: async () => {
+        const gif = new Uint8Array(await (await fetch(GIF_RED_BLUE)).arrayBuffer());
+        // A third frame of 255-byte data sub-blocks, then the trailer.
+        const big = new Uint8Array(gif.length + 11 + 17 * 1024 * 1024 + 2);
+        big.set(gif.subarray(0, -1));
+        big.set([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2], gif.length - 1);
+        let at = gif.length + 10;
+        for (; at + 256 < big.length - 2; at += 256) big[at] = 255;
+        const url = URL.createObjectURL(new Blob([big.subarray(0, at), Uint8Array.of(0, 0x3b)], { type: "image/gif" }));
+        cleanups.push(() => URL.revokeObjectURL(url));
+        return url;
+      },
+    },
   ])("image: an animated GIF ($name URL) shows its first frame as a still copy", async ({ src }) => {
     const { stage } = mount([{ id: "g", kind: "image", box: { x: 0, y: 0, w: 40, h: 40 }, src: await src() }]);
     stage.reveal("g", 1);

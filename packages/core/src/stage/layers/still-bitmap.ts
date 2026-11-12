@@ -3,10 +3,15 @@
  * plays them on the browser's own clock, which neither the world freeze nor an export's seek
  * reaches, so frames showing one would depend on wall time. They are shown as their first frame
  * instead (the default image, which canvas drawing and createImageBitmap use for animations too),
- * re-encoded as a PNG `data:` URL. A still bitmap is read only as far as its header says so.
+ * re-encoded as a PNG `data:` URL. A still bitmap is read only as far as its header says so, an
+ * animated GIF, or an APNG whose first frame is its default image, only up to the end of that frame.
  */
 
-/** Largest animated file turned into a still copy (bytes); larger ones keep their own clock. */
+/**
+ * Most bytes read to find the first frame (a GIF or APNG one ends within them), and largest animated
+ * file of other kinds (WebP, AVIF, an APNG that hides its default image) decoded whole; larger ones
+ * keep their own clock.
+ */
 const MAX_BITMAP_BYTES = 16 * 1024 * 1024;
 /** Bytes read before the rest: enough for the header of every still format but GIF. */
 const HEAD_BYTES = 48 * 1024;
@@ -27,31 +32,55 @@ function u32be(b: Uint8Array, at: number): number {
   return (((b[at] ?? 0) << 24) | ((b[at + 1] ?? 0) << 16) | ((b[at + 2] ?? 0) << 8) | (b[at + 3] ?? 0)) >>> 0;
 }
 
+/** Where the blocks of a GIF start: after its header and global color table. */
+function gifBlocks(b: Uint8Array): number {
+  const packed = b[10] as number;
+  return 13 + (packed & 0x80 ? 3 << ((packed & 7) + 1) : 0);
+}
+
+/**
+ * Where the GIF block at `at` (an image descriptor or an extension, `b[at]` 0x2c or 0x21) ends, after
+ * its data sub-blocks; undefined when `b` ends first.
+ */
+function gifBlockEnd(b: Uint8Array, at: number): number | undefined {
+  if (b[at] === 0x2c) {
+    const local = b[at + 9];
+    if (local === undefined) return undefined;
+    // Descriptor, local color table and the LZW minimum code size, then the data sub-blocks.
+    at += 11 + (local & 0x80 ? 3 << ((local & 7) + 1) : 0);
+  } else {
+    at += 2;
+  }
+  for (;;) {
+    const size = b[at];
+    if (size === undefined) return undefined;
+    at += size + 1;
+    if (size === 0) return at;
+  }
+}
+
 /** A GIF animates when it has a second image descriptor. */
 function gif(b: Uint8Array): Animation {
-  const packed = b[10] as number;
-  let at = 13 + (packed & 0x80 ? 3 << ((packed & 7) + 1) : 0);
   let frames = 0;
-  while (at < b.length) {
+  for (let at: number | undefined = gifBlocks(b); at !== undefined && at < b.length; at = gifBlockEnd(b, at)) {
     const block = b[at];
-    if (block === 0x2c) {
-      if (++frames > 1) return "image/gif";
-      const local = b[at + 9];
-      if (local === undefined) return undefined;
-      // Descriptor, local color table and the LZW minimum code size, then the data sub-blocks.
-      at += 11 + (local & 0x80 ? 3 << ((local & 7) + 1) : 0);
-    } else if (block === 0x21) {
-      at += 2;
-    } else {
-      // The trailer, or bytes no decoder reads past.
-      return null;
-    }
-    for (;;) {
-      const size = b[at];
-      if (size === undefined) return undefined;
-      at += size + 1;
-      if (size === 0) break;
-    }
+    if (block === 0x2c && ++frames > 1) return "image/gif";
+    // The trailer, or bytes no decoder reads past.
+    if (block !== 0x2c && block !== 0x21) return null;
+  }
+  return undefined;
+}
+
+/**
+ * The first frame of an animated GIF as a GIF of its own: the bytes up to the end of the first
+ * image's data, then the trailer. Undefined when `b` ends before that.
+ */
+function gifFirstFrame(b: Uint8Array): Uint8Array | undefined {
+  for (let at: number | undefined = gifBlocks(b); at !== undefined && at < b.length; ) {
+    const image = b[at] === 0x2c;
+    if (!image && b[at] !== 0x21) return undefined;
+    at = gifBlockEnd(b, at);
+    if (image && at !== undefined) return concat([b.subarray(0, at), Uint8Array.of(0x3b)]);
   }
   return undefined;
 }
@@ -64,6 +93,34 @@ function png(b: Uint8Array): Animation {
     if (type === "acTL") return "image/png";
     if (type === "IDAT" || type === "IEND") return null;
     at += 12 + u32be(b, at);
+  }
+  return undefined;
+}
+
+const IEND = Uint8Array.of(0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82);
+
+/**
+ * The first frame of an APNG as a still PNG, when that frame is its default image (an fcTL chunk
+ * comes before the image data): its chunks up to the first frame data chunk (fdAT) but the animation
+ * control ones (acTL, fcTL), then IEND. Null when the default image is not part of the animation,
+ * undefined when `b` ends before the cut.
+ */
+function apngFirstFrame(b: Uint8Array): Uint8Array | null | undefined {
+  const kept: Uint8Array[] = [b.subarray(0, 8)];
+  let framed = false;
+  let image = false;
+  for (let at = 8; at + 8 <= b.length; ) {
+    const type = ascii(b, at + 4, 4);
+    if (type === "fdAT" || type === "IEND") return image ? concat([...kept, IEND]) : null;
+    const end = at + 12 + u32be(b, at);
+    if (end > b.length) return undefined;
+    if (type === "IDAT") {
+      if (!framed) return null;
+      image = true;
+    }
+    if (type === "fcTL") framed ||= !image;
+    else if (type !== "acTL") kept.push(b.subarray(at, end));
+    at = end;
   }
   return undefined;
 }
@@ -93,6 +150,22 @@ export function animatedBitmapType(b: Uint8Array): Animation {
   return null;
 }
 
+/**
+ * What the leading bytes `b` of an image file (all of it when `done`) give a still copy: the type and
+ * the bytes its first frame decodes from (a GIF or APNG cut after that frame), null when there is none
+ * (a still image or other file, or an animation too large to read), undefined when more bytes are
+ * needed. `length` is the file's size when known, so one too large to read whole is let go at once.
+ */
+function firstFrame(b: Uint8Array, done: boolean, length = 0): { type: string; bytes: Uint8Array } | null | undefined {
+  const type = animatedBitmapType(b);
+  if (type === null) return null;
+  if (type === undefined) return done || b.length > MAX_BITMAP_BYTES ? null : undefined;
+  const cut = type === "image/gif" ? gifFirstFrame(b) : type === "image/png" ? apngFirstFrame(b) : null;
+  if (cut) return { type, bytes: cut };
+  if (b.length > MAX_BITMAP_BYTES || (cut === null && length > MAX_BITMAP_BYTES)) return null;
+  return done ? { type, bytes: b } : undefined;
+}
+
 /** PNG `data:` URL of the first frame of an animated bitmap; null when this browser cannot decode it. */
 export async function firstFrameUrl(bytes: Uint8Array, type: string, doc: Document): Promise<string | null> {
   if (typeof createImageBitmap !== "function") return null;
@@ -114,12 +187,20 @@ export async function firstFrameUrl(bytes: Uint8Array, type: string, doc: Docume
   }
 }
 
-/** Bytes of a `data:` URL body, or null when it does not decode (binary percent-encoding too). */
-function dataBytes(body: string, base64: boolean): Uint8Array | null {
-  let text = body.replace(/%([0-9a-f]{2})/gi, (_all, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+/**
+ * Bytes of a `data:` URL body, or null when it does not decode (binary percent-encoding too). A
+ * `prefix` of the body leaves out a percent escape or base64 quantum it ends inside.
+ */
+function dataBytes(body: string, base64: boolean, prefix = false): Uint8Array | null {
+  const partial = !prefix ? 0 : body.endsWith("%") ? 1 : body.at(-2) === "%" ? 2 : 0;
+  let text = body
+    .slice(0, body.length - partial)
+    .replace(/%([0-9a-f]{2})/gi, (_all, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
   if (base64) {
+    text = text.replace(/\s+/g, "");
+    if (prefix) text = text.slice(0, text.length - (text.length % 4));
     try {
-      text = atob(text.replace(/\s+/g, ""));
+      text = atob(text);
     } catch {
       return null;
     }
@@ -130,8 +211,9 @@ function dataBytes(body: string, base64: boolean): Uint8Array | null {
 }
 
 /**
- * An animated bitmap `data:` URL as its type and bytes, or null for anything else. Only the head is
- * decoded until the header says the image may animate.
+ * An animated bitmap `data:` URL as its type and the bytes its first frame decodes from (see
+ * {@link firstFrame}), or null for anything else. The body is decoded from its head, twice as much
+ * at each step, until the header says the image is still or the first frame has ended.
  */
 export function animatedDataUrl(src: string): { type: string; bytes: Uint8Array } | null {
   const comma = src.indexOf(",");
@@ -139,19 +221,17 @@ export function animatedDataUrl(src: string): { type: string; bytes: Uint8Array 
   const base64 = /;base64$/i.test(src.slice(0, comma).trim());
   const hash = src.indexOf("#", comma);
   const body = src.slice(comma + 1, hash < 0 ? undefined : hash);
-  if (body.length > MAX_BITMAP_BYTES * 3) return null;
+  const length = base64 ? (body.length * 3) / 4 : body.length / 3;
   // Whole base64 quanta, so the head decodes on its own.
-  const headChars = base64 ? (HEAD_BYTES / 3) * 4 : HEAD_BYTES;
-  if (body.length > headChars) {
-    const head = dataBytes(body.slice(0, headChars), base64);
-    if (head && animatedBitmapType(head) === null) return null;
+  for (let chars = base64 ? (HEAD_BYTES / 3) * 4 : HEAD_BYTES; ; chars *= 2) {
+    const done = chars >= body.length;
+    const bytes = dataBytes(done ? body : body.slice(0, chars), base64, !done);
+    const frame = bytes && firstFrame(bytes, done, length);
+    if (frame !== undefined) return frame;
   }
-  const bytes = dataBytes(body, base64);
-  const type = bytes && bytes.length <= MAX_BITMAP_BYTES ? animatedBitmapType(bytes) : null;
-  return bytes && type ? { type, bytes } : null;
 }
 
-function join(chunks: Uint8Array[], size: number): Uint8Array {
+function concat(chunks: Uint8Array[], size = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)): Uint8Array {
   if (chunks.length === 1) return chunks[0] as Uint8Array;
   const out = new Uint8Array(size);
   let at = 0;
@@ -164,15 +244,17 @@ function join(chunks: Uint8Array[], size: number): Uint8Array {
 
 /**
  * Still copy of a fetched image file when it is an animated bitmap, else null. A still file is read
- * only as far as its header (the response is cancelled there).
+ * only as far as its header, an animated GIF or APNG as far as its first frame (see
+ * {@link firstFrame}; the response is cancelled there).
  */
 export async function stillBitmapResponse(res: Response, doc: Document): Promise<string | null> {
-  if (Number(res.headers.get("content-length")) > MAX_BITMAP_BYTES) return null;
+  const length = Number(res.headers.get("content-length")) || 0;
   const reader = res.body?.getReader();
   if (!reader) return null;
-  const chunks: Uint8Array[] = [];
+  let chunks: Uint8Array[] = [];
   let size = 0;
-  let probed = false;
+  // Probed at the head, then each time the bytes read double, up to the most read.
+  let probe = HEAD_BYTES;
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -180,17 +262,12 @@ export async function stillBitmapResponse(res: Response, doc: Document): Promise
         chunks.push(value);
         size += value.byteLength;
       }
-      if (size > MAX_BITMAP_BYTES) return null;
-      if (!done) {
-        if (!probed && size >= HEAD_BYTES) {
-          probed = true;
-          if (animatedBitmapType(join(chunks, size)) === null) return null;
-        }
-        continue;
-      }
-      const bytes = join(chunks, size);
-      const type = animatedBitmapType(bytes);
-      return type ? await firstFrameUrl(bytes, type, doc) : null;
+      if (!done && size < probe) continue;
+      const bytes = concat(chunks, size);
+      chunks = [bytes];
+      const frame = firstFrame(bytes, done, length);
+      if (frame !== undefined) return frame && (await firstFrameUrl(frame.bytes, frame.type, doc));
+      probe = Math.min(size * 2, MAX_BITMAP_BYTES + 1);
     }
   } finally {
     void reader.cancel().catch(() => undefined);
