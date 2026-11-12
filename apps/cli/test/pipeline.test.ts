@@ -10,7 +10,7 @@ import { InterruptedError } from "../src/errors";
 import { planMux, planVideo } from "../src/pipeline/encode";
 import { type FrameSource, runFrameLoop } from "../src/pipeline/frames";
 import { inputBase, isSiblingAsset, servedInput, toRenderInput } from "../src/pipeline/input";
-import { fitFields } from "../src/pipeline/progress";
+import { fitFields, Progress } from "../src/pipeline/progress";
 import { resolveRequestPath, startStaticServer } from "../src/server/static";
 import { guard } from "../src/util/async";
 
@@ -81,6 +81,20 @@ describe("progress line", () => {
     expect(fitFields(fields, 42)).toBe(fields[0]);
     expect(fitFields(fields, 49)).toBe(`${fields[0]}  frame 12`);
     expect(fitFields(["encoding the video"], 8)).toBe("encoding");
+  });
+
+  it("keeps the percent and time left on a narrow terminal and never wraps", () => {
+    const draw = (columns: number) => {
+      let line = "";
+      const tty = { columns, write: (chunk: string) => (line = chunk.replace("\r\u001b[2K", "")) };
+      new Progress({ out() {}, err() {}, tty }, 1, false).update({ frame: 11, built: 1, total: 1, done: false });
+      expect(line.length).toBeLessThan(columns);
+      return line.replace(/\d+:\d\d left/, "T left");
+    };
+    expect(draw(80)).toBe(`rendering ${"█".repeat(22)}░░  92%  T left  frame 12  layers 1/1`);
+    expect(draw(30)).toBe("rendering  92%  T left");
+    expect(draw(36)).toBe(`rendering ${"█".repeat(8)}░  92%  T left`);
+    expect(draw(10)).toBe("92%");
   });
 });
 
