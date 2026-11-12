@@ -1,6 +1,6 @@
 import type { Blueprint } from "@swarmloom/core";
 import type { BrowserContext, Page } from "playwright-core";
-import { briefMessage, CliError, errorMessage, RenderError } from "../errors";
+import { briefMessage, CliError, errorMessage, InterruptedError, RenderError } from "../errors";
 import { guard } from "../util/async";
 import { freezePageAnimations, freezePageVideos, LOOP_PHASE } from "./freeze";
 import type { PageLog } from "./launch";
@@ -10,6 +10,8 @@ export const SNAPSHOT_GLOBAL = "__swarmloomSnapshot";
 
 /** Longest wait for the page's videos to load their metadata and reach their frozen frame. */
 const VIDEO_FREEZE_TIMEOUT_MS = 3000;
+/** Longest wait for one call of the animation freeze, which takes at most about 2 s on its own. */
+const ANIMATION_FREEZE_TIMEOUT_MS = 5000;
 
 export interface PageSnapshotOptions {
   url: string;
@@ -120,9 +122,21 @@ export async function snapshotPage(context: BrowserContext, opts: PageSnapshotOp
       throw fail("Pre-scrolling the page failed", error);
     }
     // After the scroll pass, which starts reveal transitions, and before the screenshot: it stands in
-    // for canvases and videos, so it must show the same pose.
-    await page.evaluate(freezePageAnimations, LOOP_PHASE).catch(() => {});
+    // for canvases and videos, so it must show the same pose. Again after the videos, whose pauses fire
+    // `pause` events that may start new animations. Best effort: a page that stops its own timers and
+    // frames is captured as it is.
+    const freezeAnimations = () =>
+      guard(
+        page.evaluate(freezePageAnimations, LOOP_PHASE),
+        "Freezing animations",
+        ANIMATION_FREEZE_TIMEOUT_MS,
+        opts.signal,
+      ).catch((error: unknown) => {
+        if (error instanceof InterruptedError) throw error;
+      });
+    await freezeAnimations();
     await page.evaluate(freezePageVideos, { phase: LOOP_PHASE, timeoutMs: VIDEO_FREEZE_TIMEOUT_MS }).catch(() => {});
+    await freezeAnimations();
 
     const cdp = await context.newCDPSession(page);
     const shot = (await cdp.send("Page.captureScreenshot", { format: "png" })) as { data: string };

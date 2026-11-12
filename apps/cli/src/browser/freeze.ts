@@ -8,35 +8,57 @@ export const LOOP_PHASE = 0.5;
  * their delay. Without it an endless pulse was read at a different pose in every run, so two renders
  * of the same URL built different pages.
  *
+ * Finishing an animation fires `animationend` or `transitionend` with the next frame, and pages often
+ * start a new loop there (a spinner after an entrance, a blinking caret after a typewriter). So after
+ * each pass it waits two frames and freezes the animations that appeared, until a pass finds none or
+ * after a few passes for a page that keeps starting new ones.
+ *
  * Self-contained: Playwright sends its source to the page. Open shadow roots are frozen too; closed
- * roots and child frames are out of reach. Animations a later scroll starts still run, so the CLI calls
- * it after the pre-scroll pass that starts reveal-on-scroll transitions.
+ * roots and child frames are out of reach. Animations a later scroll or a later event starts still
+ * run, so the CLI calls it after the pre-scroll pass that starts reveal-on-scroll transitions and again
+ * after {@link freezePageVideos}, whose pauses fire `pause` events.
  * @returns How many animations were frozen.
  */
-export function freezePageAnimations(phase: number): number {
-  const all = new Set<Animation>();
-  const roots: (Document | ShadowRoot)[] = [document];
-  for (let i = 0; i < roots.length; i++) {
-    const root = roots[i] as Document | ShadowRoot;
-    if (typeof root.getAnimations === "function") for (const anim of root.getAnimations()) all.add(anim);
-    for (const el of root.querySelectorAll("*")) if (el.shadowRoot) roots.push(el.shadowRoot);
-  }
-  let frozen = 0;
-  for (const anim of all) {
-    const timing = anim.effect?.getComputedTiming();
-    if (!timing) continue;
-    try {
-      if (Number.isFinite(timing.endTime)) {
-        anim.finish();
-      } else {
-        const cycle = typeof timing.duration === "number" && Number.isFinite(timing.duration) ? timing.duration : 0;
-        anim.pause();
-        anim.currentTime = (timing.delay ?? 0) + phase * cycle;
-      }
-      frozen++;
-    } catch {
-      // finish() throws for zero playback rates; such animations already sit still.
+export async function freezePageAnimations(phase: number): Promise<number> {
+  const collect = () => {
+    const all = new Set<Animation>();
+    const roots: (Document | ShadowRoot)[] = [document];
+    for (let i = 0; i < roots.length; i++) {
+      const root = roots[i] as Document | ShadowRoot;
+      if (typeof root.getAnimations === "function") for (const anim of root.getAnimations()) all.add(anim);
+      for (const el of root.querySelectorAll("*")) if (el.shadowRoot) roots.push(el.shadowRoot);
     }
+    return all;
+  };
+  const frame = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+      setTimeout(resolve, 200);
+    });
+  const seen = new Set<Animation>();
+  let frozen = 0;
+  for (let pass = 0; pass < 5; pass++) {
+    const fresh = [...collect()].filter((anim) => !seen.has(anim));
+    if (fresh.length === 0) break;
+    for (const anim of fresh) {
+      seen.add(anim);
+      const timing = anim.effect?.getComputedTiming();
+      if (!timing) continue;
+      try {
+        if (Number.isFinite(timing.endTime)) {
+          anim.finish();
+        } else {
+          const cycle = typeof timing.duration === "number" && Number.isFinite(timing.duration) ? timing.duration : 0;
+          anim.pause();
+          anim.currentTime = (timing.delay ?? 0) + phase * cycle;
+        }
+        frozen++;
+      } catch {
+        // finish() throws for zero playback rates; such animations already sit still.
+      }
+    }
+    // The events of this pass fire with the next frame; their handlers may start new animations.
+    for (let i = 0; i < 2; i++) await frame();
   }
   return frozen;
 }
