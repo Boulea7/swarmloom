@@ -81,6 +81,18 @@ describe("prepareDocument", () => {
     expect(out.html).toContain("font-src data: blob: http://127.0.0.1:4100;");
   });
 
+  it("never takes the local origin from the document's own <base>", () => {
+    const html =
+      '<!DOCTYPE html><head><base href="http://tracker.example/"></head>' +
+      '<img src="p.gif"><div style="background:url(q.png)"></div>';
+    for (const baseUrl of [undefined, "http://127.0.0.1:4100/in/doc.html"]) {
+      const out = prepareDocument(html, window, { baseUrl, network: "none" });
+      expect(out.html).not.toContain("tracker.example/p.gif");
+      expect(out.html).not.toContain("tracker.example/q.png");
+      expect(out.html).toContain(`img-src data: blob:${baseUrl ? " http://127.0.0.1:4100" : ""};`);
+    }
+  });
+
   it("rejects documents over the element limit", () => {
     const big = `<!DOCTYPE html><body>${"<i></i>".repeat(50)}</body>`;
     expect(() => prepareDocument(big, window, { maxElements: 40 })).toThrow(/over the 40 limit/);
