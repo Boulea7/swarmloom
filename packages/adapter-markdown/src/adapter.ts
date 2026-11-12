@@ -25,8 +25,9 @@ export interface MarkdownAdapterOptions {
   /** Base URL for relative links and images. Default: the input URL. */
   baseUrl?: string;
   /**
-   * Allow `https:` images, fetched without a referrer. Default true. A host can turn them off per
-   * load with {@link MarkdownLoadContext.network} `"none"`.
+   * Allow `https:` images. Default true. A host can turn them off per load with
+   * {@link MarkdownLoadContext.network} `"none"`. `<img>` loads without a referrer; posters, SVG
+   * images and CSS backgrounds in raw HTML follow the host page's referrer policy.
    */
   remoteImages?: boolean;
   /** Maps relative image paths to URLs, e.g. blob: URLs of files dropped with the document (folder or zip). */
