@@ -543,6 +543,28 @@ describe("Studio in a browser", () => {
     }
   });
 
+  it("keeps a long-named action toast and its button on a 240px-tall player screen", async () => {
+    await page.viewport(240, 240);
+    try {
+      const { root } = await mount("?import=1");
+      const { i18n, navigate } = app?.context ?? {};
+      // `import` keeps the player, not the watch face, on this watch-sized screen.
+      navigate?.({ source: { kind: "file", name: "a.md" }, import: true }, { local: { name: "a.md", text: "# A" } });
+      await until(() => document.documentElement.dataset.view === "player");
+      // The toast sits above the player controls here, its least room on any screen.
+      app?.toast.show(i18n?.t("launch.ready", { name: `${"W".repeat(240)}.md` }) ?? "", {
+        icon: "open",
+        action: { label: i18n?.t("home.open") ?? "", run: () => undefined },
+      });
+      for (const el of root.querySelectorAll<HTMLElement>(".toast, .toast-action")) {
+        const r = el.getBoundingClientRect();
+        expect([r.top >= 0, r.bottom <= innerHeight], el.className).toEqual([true, true]);
+      }
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
   it("keeps the drop zone's cursors clear of a long German title on a 320px phone", async () => {
     await page.viewport(320, 568);
     try {

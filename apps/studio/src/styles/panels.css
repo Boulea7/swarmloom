@@ -341,8 +341,10 @@
 
 /* Toasts */
 .toasts {
+  /* The region's gap to the bottom edge; a toast fits in the room above it. */
+  --toasts-bottom: calc(20px + env(safe-area-inset-bottom));
   position: fixed;
-  inset: auto 0 calc(20px + env(safe-area-inset-bottom));
+  inset: auto 0 var(--toasts-bottom);
   z-index: 50;
   display: grid;
   justify-items: center;
@@ -351,7 +353,7 @@
 }
 
 :root[data-view="player"] .toasts {
-  bottom: calc(68px + env(safe-area-inset-bottom));
+  --toasts-bottom: calc(68px + env(safe-area-inset-bottom));
 }
 
 .toast {
@@ -374,10 +376,16 @@
   padding-right: 16px;
 }
 
-/* A long file name wraps inside the toast instead of pushing it, and its action, off a phone screen. */
+/* A long file name wraps inside the toast instead of pushing it, and its action, off a phone screen.
+   Past four lines (6em at the inherited 1.5 line height), or the room left on a short window
+   (12px above the toast, 16px of its padding), the text scrolls: an action toast stays until
+   used, so its button must never rise above the top edge. */
 .toast-text {
   flex: 1;
   min-width: 0;
+  max-height: min(6em, calc(100dvh - var(--toasts-bottom) - 28px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   overflow-wrap: anywhere;
 }
 
