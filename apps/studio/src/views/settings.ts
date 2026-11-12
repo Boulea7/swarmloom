@@ -5,6 +5,7 @@ import {
   AGENT_RANGE,
   FINALES,
   FOLLOWS,
+  INTROS,
   LABEL_MODES,
   MOTIONS,
   parseSeed,
@@ -161,6 +162,13 @@ export function settingsForm(o: SettingsFormOptions): HTMLElement {
       value: settings.finale,
       onChange: (finale) => o.onChange({ finale }),
     }),
+    segmented({
+      legend: i18n.t("settings.intro"),
+      name: nextId("intro"),
+      choices: choices(i18n, INTROS, "settings.intro"),
+      value: settings.intro,
+      onChange: (intro) => o.onChange({ intro }),
+    }),
   );
 
   const look = group(
@@ -208,6 +216,12 @@ export function settingsForm(o: SettingsFormOptions): HTMLElement {
           choices: choices(i18n, SOUND_PACKS, "settings.pack"),
           value: settings.soundPack,
           onChange: (soundPack) => o.onChange({ soundPack }),
+        }),
+        toggle({
+          label: i18n.t("settings.beatHits"),
+          hint: i18n.t("settings.beatHits.hint"),
+          checked: settings.beatHits,
+          onChange: (beatHits) => o.onChange({ beatHits }),
         }),
         volume.root,
       );

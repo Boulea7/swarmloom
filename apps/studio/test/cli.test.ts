@@ -82,20 +82,25 @@ describe("CLI command", () => {
   });
 
   it("writes the export dialog's choices, and the in-page export uses the same settings", () => {
-    const settings = { ...DEFAULT_SETTINGS, follow: "scroll" as const, remoteAssets: false };
+    const settings = { ...DEFAULT_SETTINGS, follow: "scroll" as const, remoteAssets: false, intro: "outline" as const };
     const choices = { sound: false, scheme: "dark" as const, locale: "zh-CN" };
     const base = { target: "a.md", targetIsFile: false, name: "a.md", settings, format: "mp4" as const };
     // The dialog's length limit is not the CLI default, so long builds stop at the same frame.
     const dialog = { width: 1080, height: 1920, fps: 60, maxDuration: EXPORT_MAX_SECONDS, ...choices };
     expect(buildCliCommand({ ...base, ...dialog }).text).toBe(
-      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --locale zh-CN --no-sound --no-remote",
+      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --intro outline --locale zh-CN --no-sound --no-remote",
     );
     expect(exportSettingsOf(settings, choices)).toMatchObject({
       theme: "dark",
       follow: "tour",
+      intro: "outline",
       sound: false,
       locale: "zh-CN",
     });
+    // Keys on the beat need the soundtrack: the same flag on both paths.
+    const beat = { ...base, ...dialog, sound: true, settings: { ...settings, beatHits: true } };
+    expect(buildCliCommand(beat).text).toContain("--intro outline --locale zh-CN --beat-sync all --no-remote");
+    expect(exportSettingsOf(beat.settings, { ...choices, sound: true })).toMatchObject({ beatSync: "all" });
     // English, the light scheme and 30 fps are the CLI defaults.
     const plain = { ...base, settings: DEFAULT_SETTINGS, width: 1280, height: 720, fps: 30, scheme: "light" as const };
     expect(buildCliCommand({ ...plain, locale: "en-GB" }).text).toBe("npx swarmloom render a.md -o a.mp4 --seed 1");
