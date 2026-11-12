@@ -239,6 +239,8 @@ const fragment = await snapshotHtml("<h1>Hello</h1>", {
 | `inlineImages` | false; convert same-origin images to data URLs for another document |
 | `signal` | Cancel the snapshot |
 
+`prescroll(document, signal?)` runs the same pre-pass on its own. To fix the pose of animations after the pre-pass and before the snapshot, call it first, then call `snapshot()` with `prescroll: false`.
+
 `snapshotHtml()` additionally requires `width` and accepts `css`, `document`, `baseUrl`, `background`, `scheme` and `icon`.
 
 ::: warning Security boundary

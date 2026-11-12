@@ -9,7 +9,8 @@ export const LOOP_PHASE = 0.5;
  * of the same URL built different pages.
  *
  * Self-contained: Playwright sends its source to the page. Open shadow roots are frozen too; closed
- * roots and child frames are out of reach. Animations a later scroll starts still run.
+ * roots and child frames are out of reach. Animations a later scroll starts still run, so the CLI calls
+ * it after the pre-scroll pass that starts reveal-on-scroll transitions.
  * @returns How many animations were frozen.
  */
 export function freezePageAnimations(phase: number): number {

@@ -3,6 +3,7 @@
  * into a SwarmLoom Blueprint.
  */
 export { domAdapter } from "./adapter";
+export { prescroll } from "./capture/scroller";
 export { snapshotHtml } from "./sandbox";
 export { snapshot } from "./snapshot";
 export type { SnapshotHtmlOptions, SnapshotOptions } from "./types";

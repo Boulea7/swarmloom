@@ -239,6 +239,8 @@ const fragment = await snapshotHtml("<h1>Hello</h1>", {
 | `inlineImages` | false；同源图片转 data URL，便于跨文档播放 |
 | `signal` | 取消快照 |
 
+`prescroll(document, signal?)` 单独执行同一遍预滚动。需要在预滚动之后、快照之前固定动画姿态时，先调用它，再以 `prescroll: false` 调用 `snapshot()`。
+
 `snapshotHtml()` 额外要求 `width`，并支持 `css`、`document`、`baseUrl`、`background`、`scheme` 和 `icon`。
 
 ::: warning 安全边界

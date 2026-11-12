@@ -182,7 +182,7 @@ Local HTML files are treated as untrusted:
 
 Web page URLs run their scripts as usual.
 
-Before the capture, the page's CSS animations and transitions are stopped in a fixed pose: finite ones at their end, endless ones half a cycle in, so two captures of the same page match. Videos that play or are set to autoplay pause the same way: looping ones halfway through, others at their end (on their first frame when the server does not accept range requests). `render` of a URL captures the same way. Animations that start later, for example on scroll, and animation done by scripts are captured as they are.
+Before the capture, the page is scrolled through once, so lazy content loads and reveal-on-scroll effects start. Then its CSS animations and transitions are stopped in a fixed pose: finite ones at their end, endless ones half a cycle in, so two captures of the same page match. Videos that play or are set to autoplay pause the same way: looping ones halfway through, others at their end (on their first frame when the server does not accept range requests). `render` of a URL captures the same way. Animations that start after that and animation done by scripts are captured as they are.
 
 | Option | Default | Description |
 | --- | --- | --- |

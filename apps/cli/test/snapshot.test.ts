@@ -117,6 +117,35 @@ h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
     }
   }, 120_000);
 
+  it("freezes the transitions the pre-scroll pass starts", async () => {
+    // A card below the fold slides 100 px over 60 s once it scrolls into view: read at its end state.
+    const page = `<!doctype html><title>t</title><style>
+.card { transition: transform 60s linear } .card.in { transform: translateX(100px) }
+</style><div style="height: 3000px"></div><p class="card">card</p>
+<script>new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) e.target.classList.add("in");
+}).observe(document.querySelector(".card"));</script>`;
+    const server = createServer((_req, res) => res.setHeader("content-type", "text/html").end(page));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const out: string[] = [];
+      const io = { out: (line: string) => out.push(line), err: () => {} };
+      const argv = [url, "-o", "-", "--chrome", chrome as string, "--quiet"];
+      const code = await snapshotCommand.run(argv, {
+        io,
+        cwd: tmpdir(),
+        env: {},
+        assets: { snapshotBundle: SNAPSHOT_DOUBLE },
+      });
+      expect(code).toBe(0);
+      const { layers } = JSON.parse(out.join("\n")) as { layers: { text: string; box: { x: number } }[] };
+      expect(layers.map((l) => [l.text, Math.round(l.box.x)])).toEqual([["card", 108]]);
+    } finally {
+      server.close();
+    }
+  }, 120_000);
+
   it("stops playing videos in the same pose as animations", async () => {
     const page = `<!doctype html><title>t</title>
 <video id="loop" autoplay muted loop playsinline src="${CLIP}"></video>
