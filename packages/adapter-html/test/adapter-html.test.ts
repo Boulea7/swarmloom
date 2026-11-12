@@ -122,6 +122,16 @@ describe("rewriteCssUrls", () => {
       'p{background:image-set("https://x.dev/i.png" 1x)}',
       'p{background:image-set(url("data:,") 1x)}',
     ],
+    [
+      "an image-set string from var()",
+      "p{--a:'http://x.dev/i.png';background:image-set(var(--a) 1x)}",
+      "p{--a:'http://x.dev/i.png';background:invalid(var(--a) 1x)}",
+    ],
+    [
+      "an image-set string from if()",
+      'p{cursor:-webkit-image-set(linear-gradient(red,blue) 1x,if(else:"https://x.dev/i.png") 2x),auto}',
+      'p{cursor:invalid(linear-gradient(red,blue) 1x,if(else:"https://x.dev/i.png") 2x),auto}',
+    ],
     ["a quote in a local reference", "p{fill:url('#a\")x')}", 'p{fill:url("#a%22%29x")}'],
   ])("refuses %s under network none", (_label, css, out) => {
     expect(rewriteCssUrls(css, "none")).toBe(out);
@@ -130,6 +140,13 @@ describe("rewriteCssUrls", () => {
   it("keeps escapes in selectors, and url( in strings and comments, as written", () => {
     const css = '.md\\:flex::after{content:"url(x)";background:url(#g)}/* url(x) */';
     expect(rewriteCssUrls(css, "none")).toBe('.md\\:flex::after{content:"url(x)";background:url("#g")}/* url(x) */');
+  });
+
+  it("keeps an image-set whose functions cannot compute a URL string", () => {
+    const css = 'p{background:image-set(linear-gradient(rgb(0 0 0),red) 1x,"a.png" type("image/png") 2x)}';
+    expect(rewriteCssUrls(css, "https", "https://x.dev/")).toBe(
+      'p{background:image-set(linear-gradient(rgb(0 0 0),red) 1x,url("https://x.dev/a.png") type("image/png") 2x)}',
+    );
   });
 });
 

@@ -58,6 +58,14 @@ const CSS_URL_REST =
   /[ \t\n]*(?:(["'])((?:(?!\1)[^\\\n]|\\[\s\S])*)(?:\1|\\?$|(?=\n))|((?:[^\x00-\x20"'()\\\x7f]|\\[^\n])*))[ \t\n]*(?:\)|$)/y;
 /** Functions that take a plain string as an image URL, as in `image-set("a.png" 1x)`. */
 const URL_STRING_FUNCTIONS = new Set(["image-set", "-webkit-image-set", "image", "src"]);
+/**
+ * Functions an image function may contain that never compute one of its URL strings: image
+ * functions, `type()`, gradients, colors and math. Any other function there (`var()`, `env()`,
+ * `attr()`, `if()`, a custom `--fn()`) can put a string in place when the browser computes the
+ * value, after this check, so the image function around it is refused whole.
+ */
+const IMAGE_ARGUMENT_FUNCTION =
+  /^(?:(?:-webkit-)?(?:image-set|(?:repeating-)?(?:linear|radial|conic)-gradient)|image|src|type|rgba?|hsla?|hwb|(?:ok)?(?:lab|lch)|color(?:-mix)?|calc|min|max|clamp)$/;
 /** SVG presentation attributes the browser reads as CSS, where a `url()` can name another document. */
 const CSS_ATTRIBUTES = [
   "style",
@@ -131,9 +139,10 @@ function cssUrl(url: string): string {
  * Applies the network policy to CSS text (`<style>` content or a style attribute): every `url()`
  * and every string an image function takes as a URL (`image-set("a.png" 1x)`) becomes an absolute
  * allowed URL or an empty data: URL, `@import` rules are removed, and a `url(` the browser would
- * not read as one URL becomes `invalid(`. The text is read token by token like the browser does,
- * so CSS escapes (`\75rl(`, `@\69mport`) cannot hide a request; the rest of the text, escapes in
- * selectors included, is kept as written. `local` is as in {@link allowedResource}.
+ * not read as one URL becomes `invalid(`, as does an image function holding a function that could
+ * compute a URL string later (`image-set(var(--a) 1x)`). The text is read token by token like the
+ * browser does, so CSS escapes (`\75rl(`, `@\69mport`) cannot hide a request; the rest of the
+ * text, escapes in selectors included, is kept as written. `local` is as in {@link allowedResource}.
  */
 export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string, local?: string): string {
   if (!/[(@]/.test(css)) return css;
@@ -148,8 +157,9 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
   const token = new RegExp(CSS_TOKEN);
   const rest = new RegExp(CSS_URL_REST);
   const out: string[] = [];
-  // One entry per open parenthesis: true inside a function that takes strings as image URLs.
-  const parens: boolean[] = [];
+  // One entry per open parenthesis: for a function that takes strings as image URLs, the index of
+  // its name in `out`; -1 for any other parenthesis.
+  const parens: number[] = [];
   // Parenthesis depth of the `@import` rule being removed, or -1.
   let dropDepth = -1;
   for (let at = 0; at < text.length; ) {
@@ -161,7 +171,7 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
     const dropping = dropDepth >= 0;
     let emit = tok;
     if (quote !== undefined) {
-      if (parens.at(-1)) emit = url(body ?? "");
+      if ((parens.at(-1) ?? -1) >= 0) emit = url(body ?? "");
     } else if (name !== undefined) {
       const id = decodeCssEscapes(name).toLowerCase();
       if (atSign && id === "import") {
@@ -177,10 +187,15 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
           emit = url(u[2] ?? u[3] ?? "");
         } else {
           emit = "invalid(";
-          parens.push(false);
+          parens.push(-1);
         }
-      } else if (paren) parens.push(!atSign && URL_STRING_FUNCTIONS.has(id));
-    } else if (tok === "(") parens.push(false);
+      } else if (paren) {
+        const image = parens.find((i) => i >= 0);
+        if (image !== undefined && !atSign && !IMAGE_ARGUMENT_FUNCTION.test(id)) out[image] = "invalid(";
+        // Inside a removed @import nothing is written, so there is no name to refuse later.
+        parens.push(!atSign && !dropping && URL_STRING_FUNCTIONS.has(id) ? out.length : -1);
+      }
+    } else if (tok === "(") parens.push(-1);
     else if (tok === ")") parens.pop();
     if (dropping) {
       // The rule ends at its `;` (removed with it), at a brace, or where its enclosing `(` closes.
