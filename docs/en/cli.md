@@ -114,7 +114,8 @@ For takes that can be checked and repeated. These files and `--output` must all 
 | --- | --- | --- |
 | `--chrome <path>` | Auto-detect | Chrome/Chromium/Edge/Brave executable; see [`doctor`](#doctor) for the search order |
 | `--ffmpeg <path>` | Auto-detect | ffmpeg 4+ executable |
-| `-q, --quiet` | Off | Errors only: no progress, warnings or summary |
+| `--require-sandbox` | Off | Fail when the browser's sandbox does not start (as root, or with user namespaces turned off, as in many containers) instead of running the browser without it |
+| `-q, --quiet` | Off | Errors only: no progress, warnings or summary. The warning that the browser runs without its sandbox still shows |
 | `--verbose` | Off | Echo the render page's console and every blocked request to stderr |
 
 ### Examples
@@ -190,7 +191,8 @@ Before the capture, the page's CSS animations and transitions are stopped in a f
 | `--width <px>` | `1280` | Viewport width in CSS px, 16–7680 |
 | `--height <px>` | `720` | Viewport height in CSS px, 16–7680 |
 | `--chrome <path>` | Auto-detect | Browser executable |
-| `-q, --quiet` | Off | Errors only |
+| `--require-sandbox` | Off | Fail when the browser's sandbox does not start instead of running the browser without it |
+| `-q, --quiet` | Off | Errors only. The warning that the browser runs without its sandbox still shows |
 | `--verbose` | Off | Echo the page's console and every blocked request to stderr |
 
 ```bash

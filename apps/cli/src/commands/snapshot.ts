@@ -28,7 +28,10 @@ them load; other files in that folder are not served, and only https images and 
       --width <px>      Viewport width in CSS px (16-7680). Default: 1280
       --height <px>     Viewport height in CSS px (16-7680). Default: 720
       --chrome <path>   Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then auto-detect
-  -q, --quiet           Errors only
+      --require-sandbox
+                        Fail when the browser's sandbox does not start (as root, or with user
+                        namespaces turned off) instead of running the browser without it
+  -q, --quiet           Errors only. The warning that the browser runs without its sandbox still shows
       --verbose         Echo the page's console and blocked requests to stderr
   -h, --help            Show this help
 
@@ -41,6 +44,7 @@ const OPTIONS = {
   width: { type: "string" },
   height: { type: "string" },
   chrome: { type: "string" },
+  "require-sandbox": { type: "boolean" },
   quiet: { type: "boolean", short: "q" },
   verbose: { type: "boolean" },
   help: { type: "boolean", short: "h" },
@@ -62,6 +66,7 @@ export interface SnapshotOptions {
   width: number;
   height: number;
   chrome?: string;
+  requireSandbox: boolean;
   quiet: boolean;
   verbose: boolean;
 }
@@ -82,6 +87,7 @@ export function parseSnapshotOptions(argv: string[], cwd: string): SnapshotOptio
     width: readInt("width", values.width, 1280, 16, 7680),
     height: readInt("height", values.height, 720, 16, 7680),
     chrome: values.chrome,
+    requireSandbox: values["require-sandbox"] ?? false,
     quiet: values.quiet ?? false,
     verbose: values.verbose ?? false,
   };
@@ -143,8 +149,12 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       cleanup.defer(() => local.server.close());
       url = local.url;
     }
-    const browser = await launchBrowser(browserPath, (message) => {
-      if (!opts.quiet) warn(io, message);
+    const browser = await launchBrowser(browserPath, {
+      // Local pages open with their scripts off (LOCAL_PAGE_HEADERS).
+      webPages: !file,
+      requireSandbox: opts.requireSandbox,
+      // A security downgrade, so it shows under --quiet too.
+      onUnsandboxed: (message) => warn(io, message),
     });
     cleanup.defer(() => browser.close());
     const context = await newContext(browser, {

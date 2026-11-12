@@ -117,8 +117,11 @@ Programs:
       --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then
                           Playwright's chromium-headless-shell, then an installed browser
       --ffmpeg <path>     ffmpeg 4+ executable. Default: SWARMLOOM_FFMPEG, then PATH
+      --require-sandbox   Fail when the browser's sandbox does not start (as root, or with user
+                          namespaces turned off) instead of running the browser without it
 
-  -q, --quiet             Errors only: no progress, warnings or summary
+  -q, --quiet             Errors only: no progress, warnings or summary. The warning that the
+                          browser runs without its sandbox still shows
       --verbose           Echo the render page's console and blocked requests to stderr
   -h, --help              Show this help
 
@@ -168,6 +171,7 @@ const OPTIONS = {
   "live-top": { type: "boolean" },
   chrome: { type: "string" },
   ffmpeg: { type: "string" },
+  "require-sandbox": { type: "boolean" },
   quiet: { type: "boolean", short: "q" },
   verbose: { type: "boolean" },
   help: { type: "boolean", short: "h" },
@@ -212,6 +216,7 @@ export interface RenderOptions {
   remoteAssets: boolean;
   chrome?: string;
   ffmpeg?: string;
+  requireSandbox: boolean;
   quiet: boolean;
   verbose: boolean;
 }
@@ -310,6 +315,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     settings,
     chrome: values.chrome,
     ffmpeg: values.ffmpeg,
+    requireSandbox: values["require-sandbox"] ?? false,
     quiet: values.quiet ?? false,
     verbose: values.verbose ?? false,
   };
@@ -597,6 +603,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
         ? { audio: Boolean(opts.audioOut), events: Boolean(opts.eventsOut), manifest: Boolean(opts.manifestOut) }
         : undefined,
       remoteAssets: opts.remoteAssets,
+      requireSandbox: opts.requireSandbox,
       quiet: opts.quiet,
       verbose: opts.verbose,
     },
@@ -608,6 +615,8 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       renderDir,
       snapshotBundle: assets.snapshotBundle,
       tmpRoot: ctx.tmpRoot,
+      // A security downgrade, so it shows under --quiet too.
+      onUnsandboxed: (message) => warn(io, message),
     },
   );
   await writeEvidence(opts, summary, {

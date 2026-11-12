@@ -51,8 +51,12 @@ async function checkBrowser(io: CliIo, host: HostEnv, flag: string | undefined):
   }
   try {
     let unsandboxed = false;
-    const launched = launchBrowser(found.path, () => {
-      unsandboxed = true;
+    const launched = launchBrowser(found.path, {
+      webPages: false,
+      requireSandbox: false,
+      onUnsandboxed: () => {
+        unsandboxed = true;
+      },
     });
     const browser = await guard(launched, "Starting the browser", 70_000);
     const version = browser.version();
@@ -63,7 +67,7 @@ async function checkBrowser(io: CliIo, host: HostEnv, flag: string | undefined):
         io,
         "warn",
         "  sandbox",
-        "Does not start here, so the browser runs without it; only open pages you trust",
+        "Does not start here, so the browser runs without it and web pages get no WebGL; only open pages you trust",
         "Run as a normal user (not root) with user namespaces turned on",
       );
     }

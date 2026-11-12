@@ -114,7 +114,8 @@ swarmloom render <file|url> [options]
 | --- | --- | --- |
 | `--chrome <path>` | 自动探测 | Chrome/Chromium/Edge/Brave 可执行文件，探测顺序见 [`doctor`](#doctor) |
 | `--ffmpeg <path>` | 自动探测 | ffmpeg 4+ 可执行文件 |
-| `-q, --quiet` | 关闭 | 只输出错误，不显示进度、警告和结果摘要 |
+| `--require-sandbox` | 关闭 | 浏览器沙箱起不来时（以 root 运行，或关闭了 user namespace，许多容器都是这样）直接失败，而不是不带沙箱运行浏览器 |
+| `-q, --quiet` | 关闭 | 只输出错误，不显示进度、警告和结果摘要。浏览器不带沙箱运行时的警告仍会显示 |
 | `--verbose` | 关闭 | 把渲染页的控制台输出和每个被拦截的请求写到 stderr |
 
 ### 示例
@@ -190,7 +191,8 @@ swarmloom snapshot <url|file.html> [options]
 | `--width <px>` | `1280` | 视口宽度，CSS px，范围 16–7680 |
 | `--height <px>` | `720` | 视口高度，CSS px，范围 16–7680 |
 | `--chrome <path>` | 自动探测 | 浏览器可执行文件 |
-| `-q, --quiet` | 关闭 | 只输出错误 |
+| `--require-sandbox` | 关闭 | 浏览器沙箱起不来时直接失败，而不是不带沙箱运行浏览器 |
+| `-q, --quiet` | 关闭 | 只输出错误。浏览器不带沙箱运行时的警告仍会显示 |
 | `--verbose` | 关闭 | 把页面的控制台输出和每个被拦截的请求写到 stderr |
 
 ```bash
