@@ -77,8 +77,9 @@ jobs:
           echo "::warning::apt mirrors unreachable, installing the browsers without their system packages"
           pnpm exec playwright install chromium firefox
       - run: pnpm test:browser
-      # The in-browser exporter, the stage and the live page in Firefox too: its foreignObject rasterising, native
-      # controls, media queries, WebCodecs and scrolling differ from Chromium's. The webkit job runs them in WebKit.
+      # The in-browser exporter, the stage, the live page and the offline sound render in Firefox too: its foreignObject
+      # rasterising, native controls, media queries, WebCodecs, scrolling and OfflineAudioContext slicing differ from
+      # Chromium's. The webkit job runs them in WebKit.
       - run: pnpm test:firefox
       # Builds the --e2e Chromium package and drives it in Playwright's Chromium (apps/extension/test/e2e).
       - run: pnpm test:e2e
