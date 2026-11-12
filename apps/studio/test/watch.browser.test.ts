@@ -285,6 +285,31 @@ it("says a link is too long for a QR code instead of throwing", async () => {
   expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
 });
 
+// A QR code holds 2.3 KB, but past ~650 bytes its modules get too small to scan off a watch face.
+it("keeps the watch QR code small enough to scan, with a notice for a longer #d= link", async () => {
+  history.replaceState(null, "", `${location.pathname}?watch=1`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
+  // 1000 characters that barely compress: a link of about 1.2 KB, a valid share but past the cap.
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let x = 1;
+  const text = Array.from({ length: 1000 }, () => {
+    x = (x * 48271) % 2147483647;
+    return chars[x % 62];
+  }).join("");
+  const local = { name: "notes.md", text };
+  const opened = { ref: { kind: "file", name: local.name }, name: local.name, text } as OpenedSource;
+  expect((await buildShareLink(opened, app.context.settings, `${location.origin}${location.pathname}`)).ok).toBe(true);
+  app.context.navigate({ source: { kind: "file", name: local.name }, autoplay: true }, { local });
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+  const caption = root.querySelector(".watch-qr-caption");
+  await expect.poll(() => caption?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
+  expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
+});
+
 it.each([
   { size: 100, round: true },
   { size: 140, round: true },
