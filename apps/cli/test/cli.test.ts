@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import pkg from "../package.json" with { type: "json" };
 import { parseRenderOptions, sameFileKey } from "../src/commands/render";
+import { systemHost } from "../src/discovery/host";
 import { run } from "../src/run";
 
 const cwd = path.resolve("/work");
@@ -198,6 +199,33 @@ describe("render input", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["win32", ["-o", "report?.mp4"], 'The output cannot be saved as "report?.mp4" on Windows'],
+    [
+      "win32",
+      ["-f", "png-seq", "-o", "frames", "--events-out", "NUL.json"],
+      '--events-out cannot be saved as "NUL.json"',
+    ],
+    ["linux", ["-f", "png-seq", "-o", "frames", "--events-out", "."], "--events-out is a directory"],
+  ] as const)(
+    "refuses on %s an output that could only be written after the capture: %j",
+    async (platform, args, message) => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "swarmloom-cli-"));
+      try {
+        await writeFile(path.join(dir, "take.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
+        const err: string[] = [];
+        // Any executable passes the browser lookup; the check must stop the run before a browser starts.
+        const argv = ["render", "take.svg", ...args, "--chrome", process.execPath];
+        const host = { ...systemHost({}), platform };
+        const code = await run(argv, { io: { out: () => {}, err: (l) => err.push(l) }, cwd: dir, env: {}, host });
+        expect(err.join("\n")).toContain(message);
+        expect(code).toBe(1);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("documented examples", () => {

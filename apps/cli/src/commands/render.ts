@@ -463,18 +463,73 @@ export function resolveOutput(
   return { output, format: inferred };
 }
 
+/**
+ * Refuses outputs that would fail only when they are written, after the whole capture: a png-seq
+ * directory that is not empty, a file path that is a directory, and a path the file system refuses
+ * to look up (a name that is too long, a parent that is a file). Only a missing path is fine.
+ * @throws UsageError naming the output.
+ */
 async function checkOutputPath(opts: RenderOptions): Promise<void> {
-  if (opts.format === "png-seq") {
-    if (!(await isMissingOrEmptyDir(opts.output))) {
+  if (opts.format === "png-seq" && !(await isMissingOrEmptyDir(opts.output))) {
+    throw new UsageError(
+      `Output directory is not empty: ${opts.output}`,
+      "Choose a new or empty directory for png-seq.",
+    );
+  }
+  for (const [label, file] of outputPaths(opts)) {
+    if (file === opts.output && opts.format === "png-seq") continue;
+    const info = await stat(file).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw new UsageError(`${label} cannot be written to ${file} (${error.code ?? error.message})`);
+    });
+    if (info?.isDirectory()) throw new UsageError(`${label} is a directory: ${file}`);
+  }
+}
+
+/**
+ * Names Windows opens as a device whatever follows a dot or spaces: "NUL.mp4" and "com1 .wav" are the
+ * device, not a file. The superscript digits are reserved too.
+ */
+const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?= *(?:\.|$))/i;
+
+/**
+ * Characters Win32 refuses in a file name (`:` names an NTFS stream of another file), and a trailing
+ * dot or space, which Win32 drops, so the file would be saved under another name.
+ */
+const WINDOWS_UNSAFE = /[<>:"|?*]|[. ]$/;
+
+/** Whether Windows cannot save a file under exactly this name (Studio's export checks the same). */
+function windowsCannotHold(name: string): boolean {
+  return WINDOWS_DEVICE.test(name) || WINDOWS_UNSAFE.test(name) || [...name].some((ch) => ch.charCodeAt(0) < 0x20);
+}
+
+/**
+ * On Windows, refuses an output whose file name Win32 cannot create. The video and the evidence files
+ * are moved into place after the whole capture, so such a name would otherwise fail only then.
+ * @throws UsageError naming the output.
+ */
+function checkWindowsNames(opts: RenderOptions, platform: NodeJS.Platform): void {
+  if (platform !== "win32") return;
+  for (const [label, file] of outputPaths(opts)) {
+    const name = path.win32.basename(file);
+    if (windowsCannotHold(name)) {
       throw new UsageError(
-        `Output directory is not empty: ${opts.output}`,
-        "Choose a new or empty directory for png-seq.",
+        `${label} cannot be saved as "${name}" on Windows`,
+        'Use a name without < > : " | ? * or control characters, not ending in a dot or space, and not a device name such as NUL or COM1.',
       );
     }
-    return;
   }
-  const info = await stat(opts.output).catch(() => null);
-  if (info?.isDirectory()) throw new UsageError(`Output is a directory: ${opts.output}`);
+}
+
+/** The video and the evidence outputs that were asked for, with their names for messages. */
+function outputPaths(opts: RenderOptions): [string, string][] {
+  const outputs: [string, string | undefined][] = [
+    ["The output", opts.output],
+    ["--audio-out", opts.audioOut],
+    ["--events-out", opts.eventsOut],
+    ["--manifest-out", opts.manifestOut],
+  ];
+  return outputs.filter((entry): entry is [string, string] => entry[1] !== undefined);
 }
 
 /**
@@ -487,14 +542,7 @@ async function checkInputKept(opts: RenderOptions, cwd: string): Promise<void> {
   if (isWebUrl(opts.input)) return;
   const input = inputFilePath(opts.input, cwd);
   const inputId = await fileId(input);
-  const outputs: [string, string | undefined][] = [
-    ["The output", opts.output],
-    ["--audio-out", opts.audioOut],
-    ["--events-out", opts.eventsOut],
-    ["--manifest-out", opts.manifestOut],
-  ];
-  for (const [label, file] of outputs) {
-    if (!file) continue;
+  for (const [label, file] of outputPaths(opts)) {
     if (sameFileKey(file) === sameFileKey(input) || (inputId !== null && (await fileId(file)) === inputId)) {
       throw new UsageError(`${label} would overwrite the input ${input}`, "Write every output to another file.");
     }
@@ -562,6 +610,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   const source = await resolveSource(opts.input, { cwd: ctx.cwd, signal: ctx.signal });
   await checkInputKept(opts, ctx.cwd);
   const host = ctx.host ?? systemHost(ctx.env);
+  checkWindowsNames(opts, host.platform);
   const browser = findBrowser(host, { flag: opts.chrome, playwright: installedPlaywright() });
   let ffmpeg: { path: string; caps: FfmpegCaps; version: FfmpegVersion } | undefined;
   if (opts.format !== "png-seq") {
