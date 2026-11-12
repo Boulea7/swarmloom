@@ -80,7 +80,7 @@ export class FrameRasterizer {
       (message) => options.onWarning?.(message),
       networkGate(options.network ?? "https", options.document.baseURI),
     );
-    this.#faces = new FontFaceCache((url) => this.#resources.resolve(url));
+    this.#faces = new FontFaceCache((url) => this.#resources.font(url));
   }
 
   /** Serialises the current frame (exposed for diagnostics and tests). */
