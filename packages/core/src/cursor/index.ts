@@ -46,10 +46,12 @@ const FLIP_GAP = 4;
 
 /**
  * Top-left corner of a cursor's name tag, CSS px. The tag sits at `offset` from the hotspot
- * (below right, or below left with `left`, mirrored); where it would cross an edge of the
- * `width` x `height` canvas it flips to the other side of the hotspot or above it, then it is
- * kept inside the canvas. Depends only on the arguments, so the same cursor path places tags the
- * same way in every run.
+ * (below right, or below left with `left`, mirrored). While the hotspot is on the `width` x `height`
+ * canvas, a tag that would cross an edge flips to the other side of the hotspot or above it, then it
+ * is kept inside the canvas. Once the hotspot is off the canvas the tag keeps its plain offset,
+ * neither flipped nor clamped, so it leaves the frame with its cursor instead of staying behind at
+ * the edge (see {@link tagFade}). Depends only on the arguments, so the same cursor path places tags
+ * the same way in every run.
  */
 export function tagOrigin(
   cx: number,
@@ -61,17 +63,35 @@ export function tagOrigin(
   height: number,
   left = false,
 ): { x: number; y: number } {
-  let x: number;
-  if (left) {
-    x = cx - offset.x * size - tag.w;
-    if (x < 0) x = cx + offset.x * size;
-  } else {
-    x = cx + offset.x * size;
-    if (x + tag.w > width) x = cx - FLIP_GAP * size - tag.w;
-  }
+  let x = left ? cx - offset.x * size - tag.w : cx + offset.x * size;
   let y = cy + offset.y * size;
+  if (!(cx >= 0 && cx < width && cy >= 0 && cy < height)) return { x, y };
+  if (left) {
+    if (x < 0) x = cx + offset.x * size;
+  } else if (x + tag.w > width) {
+    x = cx - FLIP_GAP * size - tag.w;
+  }
   if (y + tag.h > height) y = cy - FLIP_GAP * size - tag.h;
   return { x: Math.max(0, Math.min(x, width - tag.w)), y: Math.max(0, Math.min(y, height - tag.h)) };
+}
+
+/**
+ * Opacity factor (0..1) of a name tag placed by {@link tagOrigin}: 1 while the hotspot is on the
+ * canvas, then falling to 0 as the hotspot moves past an edge by the tag's offset on that axis, by
+ * when the cursor art has left the frame too. A tag that trails its cursor across the left or top
+ * edge would otherwise stay on the canvas with no cursor beside it.
+ */
+export function tagFade(
+  cx: number,
+  cy: number,
+  offset: { x: number; y: number },
+  size: number,
+  width: number,
+  height: number,
+): number {
+  const outX = Math.max(-cx, cx - width, 0) / Math.max(offset.x * size, 1);
+  const outY = Math.max(-cy, cy - height, 0) / Math.max(offset.y * size, 1);
+  return clamp(1 - Math.max(outX, outY), 0, 1);
 }
 
 /** Wraps an angle to (-PI, PI]. */
@@ -122,7 +142,10 @@ export class CursorPainter {
       if (!at) continue;
       const cache = this.#agentCache(a, this.#frame);
       const tag = cache.tag;
-      if (tag) boxes.push({ ...this.#tagAt(a, at.cx, at.cy, tag, view), w: tag.w, h: tag.h });
+      if (tag) {
+        const t = this.#tagAt(a, at.cx, at.cy, tag, view);
+        if (t.fade > 0) boxes.push({ x: t.x, y: t.y, w: tag.w, h: tag.h });
+      }
       const b = bubbles ? cache.bubbleSprite : null;
       if (b) boxes.push({ ...this.#bubbleAt(at.cx, at.cy, b, view.dpr), w: b.w, h: b.h });
     }
@@ -147,7 +170,8 @@ export class CursorPainter {
       const sprite = this.#cursor(a.color, a.shape);
       const size = clamp(Number.isFinite(a.scale) ? a.scale : 1, 0, 4);
       const s = size * (a.pressed ? PRESSED_SCALE : 1);
-      ctx.globalAlpha = Math.min(a.alpha, 1);
+      const alpha = Math.min(a.alpha, 1);
+      ctx.globalAlpha = alpha;
       let tilt = 0;
       if (this.#tilt && def.tilts && typeof a.angle === "number" && Number.isFinite(a.angle)) {
         tilt = clamp(wrapAngle(a.angle - ARROW_HEADING) * 0.12, -MAX_TILT, MAX_TILT);
@@ -163,9 +187,13 @@ export class CursorPainter {
 
       const cache = this.#agentCache(a, frame);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (cache.tag) {
-        const t = this.#tagAt(a, cx, cy, cache.tag, view);
-        ctx.drawImage(cache.tag.canvas, t.x, t.y, cache.tag.w, cache.tag.h);
+      const tag = cache.tag;
+      const t = tag ? this.#tagAt(a, cx, cy, tag, view) : null;
+      if (tag && t && t.fade > 0) {
+        // A tag trailing its cursor off the canvas fades with it (see tagFade).
+        ctx.globalAlpha = alpha * t.fade;
+        ctx.drawImage(tag.canvas, t.x, t.y, tag.w, tag.h);
+        ctx.globalAlpha = alpha;
       }
       if (bubbles && cache.bubbleSprite) {
         const b = cache.bubbleSprite;
@@ -191,11 +219,22 @@ export class CursorPainter {
       : null;
   }
 
-  /** Top-left corner of the agent's name tag on device pixels, CSS px. */
-  #tagAt(a: AgentView, cx: number, cy: number, tag: Sprite, view: ViewTransform): { x: number; y: number } {
+  /** Top-left corner of the agent's name tag on device pixels, CSS px, and its {@link tagFade}. */
+  #tagAt(
+    a: AgentView,
+    cx: number,
+    cy: number,
+    tag: Sprite,
+    view: ViewTransform,
+  ): { x: number; y: number; fade: number } {
     const size = clamp(Number.isFinite(a.scale) ? a.scale : 1, 0, 4);
-    const at = tagOrigin(cx, cy, shapeDef(a.shape).tag, size, tag, view.width, view.height, a.tagLeft === true);
-    return { x: Math.round(at.x * view.dpr) / view.dpr, y: Math.round(at.y * view.dpr) / view.dpr };
+    const offset = shapeDef(a.shape).tag;
+    const at = tagOrigin(cx, cy, offset, size, tag, view.width, view.height, a.tagLeft === true);
+    return {
+      x: Math.round(at.x * view.dpr) / view.dpr,
+      y: Math.round(at.y * view.dpr) / view.dpr,
+      fade: tagFade(cx, cy, offset, size, view.width, view.height),
+    };
   }
 
   /** Top-left corner of a status bubble (tail tip above right of the hotspot) on device pixels, CSS px. */

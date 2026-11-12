@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tagOrigin } from "../../src/cursor/index";
+import { tagFade, tagOrigin } from "../../src/cursor/index";
 import { badgeOrigin } from "../../src/overlay/kinds";
 
 const tag = { w: 40, h: 18 };
@@ -10,9 +10,16 @@ describe("tagOrigin", () => {
     ["in the open, below right of the hotspot", 100, 100, { x: 113, y: 117 }],
     ["near the right edge, flipped to the left", 700, 100, { x: 656, y: 117 }],
     ["near the bottom edge, flipped above", 100, 400, { x: 113, y: 378 }],
-    ["past the right edge, kept on the canvas", 730, 100, { x: 680, y: 117 }],
+    // Regression: a joiner 40 px left of the canvas drew its tag alone at x = 0.
+    ["past the left edge, leaving with the cursor", -40, 100, { x: -27, y: 117 }],
+    ["past the right edge, leaving with the cursor", 730, 100, { x: 743, y: 117 }],
   ])("places the tag %s", (_case, cx, cy, expected) => {
     expect(tagOrigin(cx, cy, offset, 1, tag, 720, 405)).toEqual(expected);
+  });
+
+  it("fades a tag out as its hotspot moves past an edge by the tag offset", () => {
+    expect([0, -6.5, -13, -40].map((cx) => tagFade(cx, 100, offset, 1, 720, 405))).toEqual([1, 0.5, 0, 0]);
+    expect(tagFade(100, -17, offset, 1, 720, 405)).toBe(0);
   });
 
   it("hangs the tag below left beside text, and flips it right at the left edge", () => {
