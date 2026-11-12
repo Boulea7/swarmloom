@@ -14,7 +14,9 @@
  * Updates wait until the page asks (`MSG_SKIP_WAITING`), so a running build is never cut off.
  * Windows already open then keep the page they opened with, so an older release's shell and
  * assets stay cached until each of those windows has closed or reloaded: their lazy chunks (an
- * adapter, the exporter) still load, offline too, after the host dropped them.
+ * adapter, the exporter) still load, offline too, after the host dropped them. Only the newest
+ * release drops files: a worker with a newer one installing or waiting leaves the newer files alone
+ * (they are not in its lists) and the clean-up to that worker, which takes over without reinstalling.
  * Remote files (other origins) are never cached.
  */
 
@@ -54,6 +56,8 @@ const indexUrl = new URL("./", scope).href;
 const assetsUrl = new URL("assets/", scope).href;
 const examplesUrl = new URL("examples/", scope).href;
 const shareUrl = new URL(SHARE_TARGET_PATH, scope).href;
+/** Every hashed asset of this release, as URLs. */
+const RELEASE_ASSETS = new Set(__ASSETS__.map((path) => new URL(path, scope).href));
 
 /**
  * Cache lookups ignore `Vary`. Every cached file is a same-origin static file, so no request header
@@ -100,16 +104,29 @@ async function openWindows(): Promise<string[]> {
   return windows.filter((client) => client.url.startsWith(scope)).map((client) => client.id);
 }
 
-/** Drops the shells of older releases and the assets this release does not list. */
-async function dropOldReleases(): Promise<void> {
+/**
+ * Whether a newer release is installing or waiting. Its shell and its assets are not in this
+ * release's lists, and it does not install again when it takes over (offline too), so they stay.
+ */
+function newerRelease(): boolean {
+  return Boolean(self.registration.installing ?? self.registration.waiting);
+}
+
+/**
+ * Drops the shells of older releases and the assets this release does not list. Stops, returning
+ * false, once a newer release is installing or waiting: it drops this release's files after it.
+ */
+async function dropOldReleases(): Promise<boolean> {
   for (const name of await caches.keys()) {
+    if (newerRelease()) return false;
     if (name.startsWith(SHELL_PREFIX) && name !== SHELL_CACHE) await caches.delete(name);
   }
-  const current = new Set(__ASSETS__.map((path) => new URL(path, scope).href));
   const assets = await caches.open(ASSET_CACHE);
   for (const request of await assets.keys()) {
-    if (!current.has(request.url)) await assets.delete(request);
+    if (newerRelease()) return false;
+    if (!RELEASE_ASSETS.has(request.url)) await assets.delete(request);
   }
+  return true;
 }
 
 /** Drops share-target items nobody picked up in time. */
@@ -136,7 +153,7 @@ function tidy(): Promise<void> {
     if (record) {
       const open = new Set(await openWindows());
       if (((await record.json()) as string[]).some((id) => open.has(id))) return;
-      await dropOldReleases();
+      if (!(await dropOldReleases())) return;
       await shell.delete(OLD_WINDOWS_URL);
     }
     tidied = true;
@@ -149,8 +166,9 @@ function tidy(): Promise<void> {
 async function activate(): Promise<void> {
   // Read before claiming: every Studio window open now runs an older release (or none yet).
   const old = await openWindows();
-  if (old.length === 0) await dropOldReleases();
-  else await (await caches.open(SHELL_CACHE)).put(OLD_WINDOWS_URL, new Response(JSON.stringify(old)));
+  await (await caches.open(SHELL_CACHE)).put(OLD_WINDOWS_URL, new Response(JSON.stringify(old)));
+  // With none open, this drops older releases now (or, a newer one pending, leaves the record).
+  await tidy();
   await expireInbox();
   await self.clients.claim();
 }
