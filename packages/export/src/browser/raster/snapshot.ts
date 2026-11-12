@@ -80,13 +80,6 @@ const INVALID_XML =
 const CSS_URL = /url\("((?:[^"\\]|\\.)*)"\)/g;
 const NON_ASCII = /[\u0080-\u{10ffff}]/u;
 const NON_ASCII_ALL = /[\u0080-\u{10ffff}]/gu;
-/**
- * Marks a resource in the markup until its data URL is known: a kind letter and an index between
- * private-use characters (they survive escaping). Kinds: "a" an attribute value, "i" the source of
- * an `<img>`, "c" a CSS `url()` in a style attribute, "s" one in a rule of the snapshot's sheet,
- * "k" the pixels of a canvas. `@font-face` rules are embedded on their own ({@link FontFaceCache}).
- */
-const TOKEN = /\uE000([aciks])(\d+)\uE001/g;
 /** HTML elements without content, so without `::before`/`::after` boxes worth reading. */
 const VOID = new Set(["img", "input", "br", "hr", "wbr", "area", "col", "select", "textarea"]);
 /**
@@ -253,6 +246,8 @@ interface Walk {
   deadline: number;
   stats: SnapshotStats;
   nextClass: number;
+  /** Random part of this walk's resource tokens (see {@link token}). */
+  key: string;
 }
 
 /** Per-frame state of one document (the frame itself or the live page inside it). */
@@ -278,7 +273,29 @@ function docView(win: Window & typeof globalThis, width: number, height: number,
 }
 
 /**
- * A token for a resource URL, resolved after the walk (see {@link TOKEN} for the kinds). URLs used
+ * Marks a resource in the markup until its data URL is known: the walk's key, a kind letter and an
+ * index between private-use characters (they survive escaping). Kinds: "a" an attribute value, "i"
+ * the source of an `<img>`, "c" a CSS `url()` in a style attribute, "s" one in a rule of the
+ * snapshot's sheet, "k" the pixels of a canvas. `@font-face` rules are embedded on their own
+ * ({@link FontFaceCache}). The page's text keeps its own private-use characters (icon fonts use
+ * them), so the key is what tells a token from text spelling one: it is random for every walk.
+ */
+function token(walk: Walk, kind: "a" | "i" | "c" | "s" | "k", index: number): string {
+  return `\uE000${walk.key}${kind}${index}\uE001`;
+}
+
+/** Matches the tokens of the walk with `key` (see {@link token}). */
+function tokenPattern(key: string): RegExp {
+  return new RegExp(`\uE000${key}([aciks])(\\d+)\uE001`, "g");
+}
+
+/** A random token key: 16 hex digits. */
+function tokenKey(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * A token for a resource URL, resolved after the walk (see {@link token} for the kinds). URLs used
  * more than once in shareable places are defined once in the sheet: a page bitmap cropped into
  * many layers would otherwise be inlined in every one of them.
  */
@@ -294,7 +311,7 @@ function embedUrl(walk: Walk, url: string, kind: "a" | "i" | "c" | "s", fallback
   use.fallback ??= fallback;
   if (kind === "i" || kind === "c" || kind === "s") use.shared++;
   if (kind === "i") use.images++;
-  return `\uE000${kind}${index}\uE001`;
+  return token(walk, kind, index);
 }
 
 /** Tokens for the `url()`s of a CSS value written in a style attribute ("c") or a rule ("s"). */
@@ -706,7 +723,7 @@ function canvasSource(walk: Walk, canvas: HTMLCanvasElement, overlay: CanvasOver
   if (!overlay) return canvasDataUrl(canvas);
   const index = walk.canvases.push(null) - 1;
   walk.overlays.push({ ...overlay, index });
-  return `\uE000k${index}\uE001`;
+  return token(walk, "k", index);
 }
 
 /** `translate` value that adds an offset to the element's own `translate`. */
@@ -1488,7 +1505,7 @@ function sheetSafe(css: string): string {
   return css.replace(/]]>/g, "]]\\>");
 }
 
-/** Markup for one token once every resource has its data URL (see {@link TOKEN}). */
+/** Markup for one token once every resource has its data URL (see {@link token}). */
 function tokenText(walk: Walk, data: readonly string[], kind: string, index: number): string {
   if (kind === "k") return walk.canvases[index] ?? BLANK_IMAGE;
   const url = data[index] ?? BLANK_IMAGE;
@@ -1580,6 +1597,7 @@ async function walkFrame(
     deadline: 0,
     stats: { elements: 0, culled: 0, restarts },
     nextClass: 0,
+    key: tokenKey(),
   };
   const { width, height } = source;
   walk.out.push(
@@ -1647,8 +1665,9 @@ export async function snapshotFrame(
   const data = await Promise.all(walk.urls.map(({ url, fallback }) => resources.resolve(url, fallback)));
   walk.out.push("</div>");
   const done = walk;
+  const tokens = tokenPattern(walk.key);
   const resolved = (text: string) =>
-    text.replace(TOKEN, (_m, kind: string, index: string) => tokenText(done, data, kind, Number(index)));
+    text.replace(tokens, (_m, kind: string, index: string) => tokenText(done, data, kind, Number(index)));
   // The fonts sit between the root box and the rest of the sheet, out of reach of the token pass:
   // they are embedded already, and often megabytes long.
   const [root = "", ...body] = walk.out;

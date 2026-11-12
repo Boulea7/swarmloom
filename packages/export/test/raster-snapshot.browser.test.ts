@@ -103,6 +103,19 @@ it("writes live form state without duplicating authored attributes", async () =>
   await expect(pixel(rasterizer, 0, 0)).resolves.toHaveLength(3);
 });
 
+it("leaves page text that spells a resource token as it is", async () => {
+  const forged = "\uE000i0\uE001";
+  const { rasterizer } = await frameOf(
+    `<style>p::after{content:"${forged}"}</style><body style="margin:0">` +
+      `<p title="${forged}" style="margin:0;height:50px;color:rgb(255,0,0);background:rgb(255,0,0)">${forged}</p></body>`,
+  );
+  const { svg } = await rasterizer.snapshot();
+  // In the page's style element and the ::after rule, the title and the text.
+  expect(svg.split(forged)).toHaveLength(5);
+  // Taken for a token, the title would get an unescaped src="..." and the SVG would not decode.
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+});
+
 it("flattens open shadow roots the watch never saw", async () => {
   const { rasterizer } = await frameOf(
     '<body style="margin:0"><div><template shadowrootmode=open>' +
