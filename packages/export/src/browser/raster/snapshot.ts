@@ -334,6 +334,8 @@ interface Walk {
   onCanvas: Set<Element>;
   /** SVG elements kept from boxes left out or written empty; null once they are being written. */
   kept: KeptElements[] | null;
+  /** What {@link contentEdge} found for each box read, at its top and bottom edges. */
+  edges: { start: Map<Element, Edge | null>; end: Map<Element, Edge | null> };
   watch: ChangeWatch | null;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
@@ -712,18 +714,25 @@ function holdsContent(cs: CSSStyleDeclaration): boolean {
  */
 function sharedMargin(own: number, edge: Edge | null): number | null {
   if (!edge) return null;
-  const all = [own, ...edge.margins];
-  const collapsed = all.every((m) => m >= 0) ? Math.max(...all) : all.every((m) => m <= 0) ? Math.min(...all) : null;
+  const low = Math.min(own, edge.low);
+  const high = Math.max(own, edge.high);
+  const collapsed = low >= 0 ? high : high <= 0 ? low : null;
   if (collapsed === null) return null;
   return collapsed === own || edge.sure ? collapsed : null;
 }
 
 /** Margins of a box's content that may collapse with its own at one edge (see {@link edgeMargins}). */
 interface Edge {
-  /** CSS px. */
-  margins: number[];
+  /** The smallest and the largest of them, CSS px: `Infinity` and `-Infinity` when there are none. */
+  low: number;
+  high: number;
   /** They collapse with it for sure; false when they only may. */
   sure: boolean;
+}
+
+/** An {@link Edge} without margins. */
+function noMargins(): Edge {
+  return { low: Number.POSITIVE_INFINITY, high: Number.NEGATIVE_INFINITY, sure: true };
 }
 
 /** An edge of a box's content ends in a line (text, an inline box, a preserved space). */
@@ -744,30 +753,74 @@ type EdgeItem = typeof LINE | typeof NONE | { box: Element; cs: CSSStyleDeclarat
  * block with no height.
  */
 function edgeMargins(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView, start: boolean): Edge | null {
+  const content = contentEdge(walk, el, cs, view, start);
+  // With no margins to collapse, whether they would does not matter.
+  if (!content?.sure || content.low > content.high) return content;
+  return holdsMargins(el, cs) === false && !cleared(cs, start) ? content : { ...content, sure: false };
+}
+
+/** Whether clearance may keep a box's top margin from collapsing with its parent's. */
+function cleared(cs: CSSStyleDeclaration, start: boolean): boolean {
+  return start && cs.getPropertyValue("clear") !== "none";
+}
+
+/**
+ * The margins of the content of `el` at one edge as {@link edgeMargins} finds them, but for what
+ * `el` itself adds: whether it lets them collapse with its own. Remembered for the walk: the boxes
+ * of a chain share its end, so the wrappers of a framework's deep markup, each written with the
+ * margin passed through it ({@link passedMargin}), read each box of the chain once rather than
+ * once per wrapper above it.
+ */
+function contentEdge(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView, start: boolean): Edge | null {
+  const known = start ? walk.edges.start : walk.edges.end;
   const side = start ? "top" : "bottom";
-  // Clearance keeps a box's top margin from collapsing with its parent's, when there is any.
-  const cleared = (style: CSSStyleDeclaration) => start && style.getPropertyValue("clear") !== "none";
-  const edge: Edge = { margins: [], sure: holdsMargins(el, cs) === false && !cleared(cs) };
+  // Boxes of the chain not read before, each with what it adds: its item's margin, and whether
+  // that margin and the ones below surely collapse with its own as far as the box goes.
+  const chain: { box: Element; margin: number; sure: boolean }[] = [];
   let box = el;
   let style = cs;
+  let found: Edge | null | undefined;
   for (;;) {
-    if (px(style, `border-${side}-width`) > 0 || px(style, `padding-${side}`) > 0) return edge;
-    const item = edgeItem(walk, box, style, view, start, edge);
-    if (item === null) return null;
-    if (item === LINE || item === NONE) return edge;
-    if (!start && !autoHeight(box, style)) edge.sure = false;
+    found = known.get(box);
+    if (found !== undefined) break;
+    if (px(style, `border-${side}-width`) > 0 || px(style, `padding-${side}`) > 0) {
+      found = noMargins();
+      break;
+    }
+    const step = noMargins();
+    const item = edgeItem(walk, box, style, view, start, step);
+    if (item === null || item === LINE || item === NONE) {
+      found = item === null ? null : step;
+      break;
+    }
+    if (!start && !autoHeight(box, style)) step.sure = false;
     // An inside marker may make a line before the content.
     const marker = style.getPropertyValue("display") === "list-item";
-    if (start && marker && style.getPropertyValue("list-style-position") === "inside") edge.sure = false;
-    edge.margins.push(px(item.cs, `margin-${side}`));
-    if (cleared(item.cs)) edge.sure = false;
+    if (start && marker && style.getPropertyValue("list-style-position") === "inside") step.sure = false;
+    const margin = px(item.cs, `margin-${side}`);
+    if (cleared(item.cs, start)) step.sure = false;
     const holds = holdsMargins(item.box, item.cs);
-    if (holds === true) return edge;
+    if (holds === true) {
+      found = { low: margin, high: margin, sure: step.sure };
+      break;
+    }
     // Generated block content, or a block that may collapse through and join its other margin.
-    if (item.pseudo || holds === null || item.box.getBoundingClientRect().height <= 0) return null;
+    if (item.pseudo || holds === null || item.box.getBoundingClientRect().height <= 0) {
+      found = null;
+      break;
+    }
+    chain.push({ box, margin, sure: step.sure });
     box = item.box;
     style = item.cs;
   }
+  known.set(box, found);
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const { box: up, margin, sure } = chain[i] as (typeof chain)[number];
+    if (found)
+      found = { low: Math.min(margin, found.low), high: Math.max(margin, found.high), sure: sure && found.sure };
+    known.set(up, found);
+  }
+  return found;
 }
 
 /**
@@ -2450,6 +2503,7 @@ async function walkFrame(
     path: [],
     onCanvas: new Set(),
     kept: [],
+    edges: { start: new Map(), end: new Map() },
     watch,
     deadline: 0,
     stats: { elements: 0, culled: 0, restarts },

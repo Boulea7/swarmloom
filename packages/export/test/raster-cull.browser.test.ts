@@ -128,6 +128,24 @@ it.for<[string, (i: number) => string]>([
   },
 );
 
+it("reads each box of a deep wrapper chain once for the margins passed through it", async () => {
+  // Framework markup: a paragraph's bottom margin collapses through every plain wrapper around it.
+  const depth = 40;
+  const { win, rasterizer } = await frameOf(
+    `<body style="margin:0">${"<div>".repeat(depth)}<p style="margin:0 0 30px">deep</p>${"</div>".repeat(depth)}`,
+  );
+  const read = win.getComputedStyle.bind(win);
+  let afters = 0;
+  win.getComputedStyle = (el, pseudo) => {
+    if (pseudo === "::after") afters++;
+    return read(el, pseudo);
+  };
+  const { svg } = await rasterizer.snapshot();
+  expect(svg).toContain(">deep<");
+  // Once to write it, once for its bottom edge: not once per wrapper above it as well.
+  expect(afters).toBeLessThan(3 * depth);
+});
+
 it("writes far boxes empty around SVG ids, keeping the clip paths, gradients and symbols drawn elsewhere", async () => {
   // Cards as design tools export their icons: a clip path or gradient with an id inside each.
   const icon = (i: number) =>
