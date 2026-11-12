@@ -78,3 +78,24 @@ describe("export progress bar", () => {
     }
   });
 });
+
+describe("switch", () => {
+  // Off is the state that faded into the panel: its outline and its knob need 3:1 as well.
+  it.each(["light", "dark"])("keeps an off switch's outline and knob at 3:1 or more in the %s theme", (theme) => {
+    if (theme === "dark") document.documentElement.dataset.theme = "dark";
+    const panel = document.createElement("div");
+    panel.className = "panel";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.className = "switch";
+    panel.append(input);
+    document.body.append(panel);
+
+    const under = getComputedStyle(panel).backgroundColor;
+    const style = getComputedStyle(input);
+    const outline = style.boxShadow.match(/^(?:[a-z-]+\([^)]*\)|#\w+)/)?.[0] ?? "";
+    const knob = paint(under, style.backgroundColor, getComputedStyle(input, "::before").backgroundColor);
+    expect(contrast(paint(under, outline), paint(under))).toBeGreaterThanOrEqual(3);
+    expect(contrast(knob, paint(under, style.backgroundColor))).toBeGreaterThanOrEqual(3);
+  });
+});
