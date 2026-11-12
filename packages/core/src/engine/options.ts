@@ -90,6 +90,18 @@ export function resolveOverlays(overlays: PlayerOptions["overlays"]): OverlayLev
   throw new RangeError(`overlays must be one of ${OVERLAY_LEVELS.join(", ")}, got ${String(overlays)}`);
 }
 
+/** Longest opening accepted, ms. */
+export const MAX_OPENING_MS = 600_000;
+
+/** Validates PlayerOptions.opening (default 0, no opening). */
+export function resolveOpening(opening: PlayerOptions["opening"]): number {
+  if (opening === undefined) return 0;
+  if (typeof opening !== "number" || !Number.isFinite(opening) || opening < 0 || opening > MAX_OPENING_MS) {
+    throw new RangeError(`opening must be a number of ms within 0..${MAX_OPENING_MS}, got ${String(opening)}`);
+  }
+  return opening;
+}
+
 /** Normalizes PlayerOptions.sound (default: enabled). */
 export function resolveSound(sound: PlayerOptions["sound"]): SoundOptions {
   if (sound === undefined || sound === true) return { enabled: true };

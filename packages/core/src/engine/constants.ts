@@ -73,6 +73,8 @@ export const INTRO_SPAN_MS = 1000;
 export const ICON_SIZE = 56;
 export const ICON_FADE_IN_MS = 320;
 export const ICON_FADE_OUT_MS = 320;
+/** Opening: the original fades into the blank canvas over this long (as the overlay fades in over a page). */
+export const OPENING_FADE_MS = 520;
 
 /* Follow, unlock, crew --------------------------------------------------------------------- */
 
@@ -119,6 +121,10 @@ export const FINALE_SETTLE_MS = 1200;
 export const NONE_FADE_MS = 600;
 /** Go live: cursors leave this long before the stage fades out. */
 export const EXIT_MS = 450;
+/** Go live with `liveTop`: the glide back to the top takes MIN + px * PER_PX ms, at most MAX. */
+export const LIVE_TOP_MIN_MS = 400;
+export const LIVE_TOP_PER_PX_MS = 0.25;
+export const LIVE_TOP_MAX_MS = 1200;
 /** Alpha change rate for entering / leaving agents, per second. */
 export const ALPHA_RATE = 5;
 

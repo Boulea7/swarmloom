@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { builtinPlugin, choreoHelpers } from "../../src/choreo/index";
 import { Agent } from "../../src/engine/agent";
-import { EXIT_MS, FINALE_SETTLE_MS, IDLE_RUSH_MS } from "../../src/engine/constants";
+import { EXIT_MS, FINALE_SETTLE_MS, IDLE_RUSH_MS, OPENING_FADE_MS } from "../../src/engine/constants";
 import type { EngineSettings } from "../../src/engine/engine";
 import { autoAgentCount, type FollowMode } from "../../src/engine/options";
 import { createRng } from "../../src/rng";
@@ -398,6 +398,59 @@ describe("Engine", () => {
     h.run(Math.ceil(EXIT_MS / 16));
     await Promise.resolve();
     expect(h.stage.live("halo")).toHaveLength(0);
+    expect(h.stage.calls.goLive).toBe(1);
+  });
+
+  it("opening: the finished original holds, fades at its time, then the same build runs that much later", () => {
+    const ms = 10;
+    const plain = harness(samplePage(), { seed: 7 });
+    void plain.engine.play();
+    plain.until(() => plain.engine.state === "finale", 120_000, ms);
+    const h = harness(samplePage(), { seed: 7, opening: 300 });
+    const alphas: (number | null)[] = [];
+    Object.assign(h.stage, { original: (a: number | null) => alphas.push(a) });
+    void h.engine.play();
+    h.run(29, ms);
+    // Holding: the original shows, no swell, no icon, no cursors, nothing built yet.
+    expect(h.engine.state).toBe("intro");
+    expect(alphas).toEqual([1]);
+    expect(h.engine.soundLog).toEqual([]);
+    expect(h.stage.live("icon")).toHaveLength(0);
+    h.run(2, ms);
+    expect(h.engine.soundLog).toEqual([{ t: 300, name: "swell", pan: 0 }]);
+    h.until(() => h.engine.state === "finale", 120_000, ms);
+    // The original faded out to nothing, then the stage was blanked once for the build.
+    const fade = alphas.slice(1) as number[];
+    expect(fade.every((a, i) => i === 0 || a <= (fade[i - 1] as number))).toBe(true);
+    expect(fade.at(-1)).toBeLessThan(0.01);
+    expect(h.stage.calls.reset).toBe(1);
+    const shift = 300 + OPENING_FADE_MS;
+    const after = h.engine.soundLog.slice(1);
+    const before = plain.engine.soundLog.slice(1);
+    expect(after.map((e) => e.name)).toEqual(before.map((e) => e.name));
+    for (const [i, e] of after.entries()) expect(e.t - shift).toBeCloseTo(before[i]?.t as number, 6);
+    expect(h.stage.finished).toEqual(plain.stage.finished);
+  });
+
+  it("liveTop: go live glides back to the top while the cursors leave, then dissolves there", async () => {
+    const page = blueprintOf(
+      Array.from({ length: 24 }, (_, i) => box(`r${i}`, (i % 2) * 400, Math.floor(i / 2) * 150, 300, 100)),
+      { w: 800, h: 1800 },
+    );
+    const h = harness(page, { intro: false, follow: "tour", liveTop: true });
+    void h.engine.play();
+    h.until(() => h.engine.state === "finale");
+    expect(h.engine.scrollY).toBeGreaterThan(1000);
+    h.engine.goLive();
+    const ys: number[] = [];
+    for (let f = 0; f < 120 && h.stage.calls.goLive === 0; f++) {
+      h.run(1);
+      ys.push(h.engine.scrollY);
+      await Promise.resolve();
+    }
+    expect(ys.length).toBeGreaterThan(Math.ceil(EXIT_MS / 16));
+    expect(ys.every((y, i) => i === 0 || y <= (ys[i - 1] as number))).toBe(true);
+    expect(ys.at(-1)).toBe(0);
     expect(h.stage.calls.goLive).toBe(1);
   });
 
