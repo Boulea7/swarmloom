@@ -1,3 +1,4 @@
+import type { PlayerEvent } from "@swarmloom/core";
 import { afterEach, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
@@ -74,9 +75,14 @@ it("hands the phone the settings the watch plays with, not the wrist-only ones",
 /**
  * Mounts the watch face at `query`, with two examples (so **Next** shows), the first called `title`.
  * With `hold`, the build keeps running, so the controls are due to fade; without, it finishes as
- * soon as it starts.
+ * soon as it starts. A player state instead ends the first build in that state, as the engine
+ * reports "finale" or "done" (a resume after a pause returns there), and holds every later one.
  */
-async function mountWatch(query: string, hold = true, title = "Notes"): Promise<HTMLElement> {
+async function mountWatch(
+  query: string,
+  hold: boolean | "finale" | "done" = true,
+  title = "Notes",
+): Promise<HTMLElement> {
   history.replaceState(null, "", `${location.pathname}${query}`);
   const root = document.createElement("div");
   document.body.append(root);
@@ -93,14 +99,29 @@ async function mountWatch(query: string, hold = true, title = "Notes"): Promise<
     fetch: async () => new Response("# Notes\n"),
   });
   const createPlayer = fake.services.createPlayer;
+  let end = typeof hold === "string" ? hold : undefined;
   if (hold)
-    fake.services.createPlayer = (options) =>
-      new Proxy(createPlayer(options), {
-        get: (player, key) =>
-          key === "play"
-            ? () => player.play().then(() => new Promise<void>(() => undefined))
-            : Reflect.get(player, key),
+    fake.services.createPlayer = (options) => {
+      const finish = end;
+      end = undefined;
+      let report: ((event: PlayerEvent) => void) | undefined;
+      return new Proxy(createPlayer(options), {
+        get: (player, key) => {
+          if (key === "on")
+            return (type: PlayerEvent["type"], fn: (event: PlayerEvent) => void) => {
+              if (type === "state") report = fn;
+              return player.on(type, fn);
+            };
+          if (key === "play")
+            return () =>
+              player
+                .play()
+                .then(() => (finish ? report?.({ type: "state", state: finish }) : new Promise<void>(() => undefined)));
+          if (key === "resume" && finish) return () => report?.({ type: "state", state: finish });
+          return Reflect.get(player, key);
+        },
       });
+    };
   app = await mountStudio(root, fake.services);
   return root;
 }
@@ -116,6 +137,25 @@ it("keeps the faded watch controls on screen while one has keyboard focus", asyn
   await expect.poll(() => face?.dataset.playing).toBe("true");
   await new Promise((resolve) => setTimeout(resolve, 2900)); // past the 2.6 s fade-out delay
   expect([face?.dataset.controls, document.activeElement]).toEqual(["shown", play]);
+});
+
+it.each([
+  { press: "pause", end: "finale", phase: "done" },
+  { press: "replay", end: "done", phase: "playing" },
+] as const)("stays on the example when the wearer presses $press at the end", async ({ press, end, phase }) => {
+  const root = await mountWatch("?watch=1", end);
+  const face = root.querySelector<HTMLElement>(".view-watch");
+  const title = root.querySelector(".watch-title");
+  const play = root.querySelector<HTMLButtonElement>(".watch-play");
+  const example = title?.textContent;
+  play?.click();
+  await expect.poll(() => face?.dataset.phase).toBe("done");
+  play?.click();
+  await new Promise((resolve) => setTimeout(resolve, 2900)); // past the 2.4 s move to the next example
+  expect([title?.textContent, face?.dataset.phase]).toEqual([example, phase]);
+  if (press !== "pause") return;
+  play?.click(); // resume: the finale plays out and the face moves on again
+  await expect.poll(() => title?.textContent, { timeout: 4000 }).not.toBe(example);
 });
 
 it("plays a round face inside its inscribed square and clears the controls soon after resume", async () => {
