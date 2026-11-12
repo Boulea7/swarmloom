@@ -88,7 +88,7 @@ const dispose = () => {
 | `volume` | 0–1 主音量 |
 | `pack` | `studio`、`soft`、`8bit`、`silent-keys` 或自定义包 ID |
 | `bpm` | 音乐网格速度 |
-| `beatSync` | 音符与任务起点是否按拍量化 |
+| `beatSync` | 声音对齐 `bpm` 网格：`true`（默认）时放置音符、散开音与完成和弦落在下一个八分音符；`"all"` 时按键、点击、吸附、钢笔锚点和标题跳字也落到最近的十六分音符（最多提前 30 ms 或推后 60 ms，每种声音每个十六分音符一次，离得更远的不发声）；`false` 时都按原时刻发声 |
 
 `ThemeSpec` 可提供 `palette`、`accent`、`select` 和 `chrome`。光标颜色按 `palette` 顺序循环。
 
@@ -342,4 +342,4 @@ const wav = await renderAudioWav(soundLog, durationMs);
 
 `swarmloom render` 命令行用的就是同一套逐帧流程，见 [CLI](./cli.md)。
 
-核心还导出 `renderOffline()` 和 `encodeWav()`，供自定义音频管线使用。视频导出应始终等待 `player.ready()`，避免在字体和图片未解码时捕获。
+核心还导出 `renderOffline()`、`soundTimes()`（每个事件在同样设置下实际发声的时刻，不发声为 `null`）和 `encodeWav()`，供自定义音频管线使用。视频导出应始终等待 `player.ready()`，避免在字体和图片未解码时捕获。

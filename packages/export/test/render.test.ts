@@ -133,6 +133,18 @@ describe("render page protocol", () => {
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
   });
 
+  it("renders the soundtrack with the beat sync asked for", async () => {
+    const { api, audio } = setup();
+    await api.init({ ...base, bpm: 124, beatSync: "all" });
+    await api.step(40);
+    await api.audioWav();
+    expect(audio.mock.calls[0]?.[2]?.sound).toEqual({ enabled: true, pack: undefined, bpm: 124, beatSync: "all" });
+    api.dispose();
+    await expect(api.init({ ...base, beatSync: false } as unknown as RenderInit)).rejects.toThrow(
+      'beatSync must be true or "all"',
+    );
+  });
+
   it("changes the build speed at speed cues, on the frame that reaches them", async () => {
     const { api, players } = setup();
     await api.init({

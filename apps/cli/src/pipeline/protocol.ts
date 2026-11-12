@@ -48,6 +48,8 @@ export interface RenderInit {
   reducedMotion?: boolean;
   /** Musical grid tempo of placement notes. */
   bpm?: number;
+  /** "all" also puts keys, clicks, snaps and pen anchors on sixteenth notes (render pages without it ignore it). */
+  beatSync?: true | "all";
   /** Sound pack id ("studio", "soft", "8bit", "silent-keys"). */
   pack?: string;
   /** Player actions at fixed video times (pause, resume, finish, live, speed). */

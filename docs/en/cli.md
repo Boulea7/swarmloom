@@ -89,6 +89,7 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--no-live` | Go live | Keep the finale through the whole tail instead of going live |
 | `--locale <tag>` | `en-US` | Language of the toolbar strings and the page, a BCP 47 tag such as `zh-CN` |
 | `--bpm <n>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid), 40–240 |
+| `--beat-sync <set>` | `notes` | `notes` or `all`. `all` also puts keys, clicks, snaps and pen anchors on the nearest sixteenth note (at most 30 ms early or 60 ms late, one per sound and sixteenth) and leaves out the ones farther off |
 | `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume`, `finish` (complete the build quickly), `live` (go live then instead of when the finale settles, also with `--no-live`; an unfinished build completes at once) or `speed=<n>` (build speed from then on, 0.05–16; `--cue 0:speed=0.6 --cue 17b:speed=0.45` hurries only the start). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
 | `--no-sound` | Sound on | Leave out the soundtrack; GIF and WebP never have one |
 | `--no-remote` | Loaded | Do not load `https:` images and fonts the input links to. Scripts, style sheets, data requests and `http:` files from other sites are never loaded |
@@ -100,7 +101,7 @@ For takes that can be checked and repeated. These files and `--output` must all 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
-| `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
+| `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number and `at`, when the soundtrack plays it (on the beat grid; `null` when it stays silent) |
 | `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256 (the blueprint's addresses that change per run, such as the served input path, links resolved against the render page and `blob:` URLs, are normalized first), player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: file paths, in the arguments and the outputs, are relative to the manifest (a file neither in its folder nor in a folder above it appears by name only), programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted` |
 
 ### Programs and logging

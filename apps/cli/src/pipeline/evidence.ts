@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { SoundEvent } from "@swarmloom/core";
+import { type SoundEvent, soundTimes } from "@swarmloom/core";
 import type { PlatformFont } from "./driver";
 import type { FrameImageType, OutputFormat } from "./encode";
 import { inputFilePath, isWebUrl, type RenderSource } from "./input";
@@ -24,7 +24,7 @@ import type { PlayerSettings } from "./render";
 
 /** Bumped when a field changes meaning; readers must check it. */
 export const MANIFEST_VERSION = 1;
-/** Bumped when the events file changes shape. */
+/** Bumped when a field of the events file changes meaning or goes away (new fields may appear). */
 export const EVENTS_VERSION = 1;
 
 /** A cue as given on the command line and as resolved for the render. */
@@ -80,13 +80,16 @@ export function soundLogJson(events: readonly SoundEvent[]): string {
 }
 
 /**
- * The --events-out document: the sound log plus the nearest frame of each event. Event times are
- * when the engine raised them; with --bpm, "note", "fanout" and "chord" sound at the next eighth note.
+ * The --events-out document: the sound log plus the nearest frame of each event and the time the
+ * soundtrack plays it. Event times (`t`) are when the engine raised them; `at` is where the mixer puts
+ * the sound (the beat grid moves "note", "fanout" and "chord", and with --beat-sync all the hits too),
+ * or null when it stays silent. `at` is worked out the same way without a soundtrack (--no-sound, GIF).
  */
 export function eventsDocument(
   events: readonly SoundEvent[],
-  meta: { fps: number; frames: number; durationMs: number; bpm?: number },
+  meta: { fps: number; frames: number; durationMs: number; bpm?: number; beatSync?: true | "all" },
 ): string {
+  const heard = soundTimes(events, { bpm: meta.bpm, sound: { beatSync: meta.beatSync ?? true } });
   const doc = {
     version: EVENTS_VERSION,
     timeBase: "engine ms on the frames' clock: frame n shows n * 1000 / fps; time held by a pause cue is included",
@@ -96,7 +99,7 @@ export function eventsDocument(
     bpm: meta.bpm ?? null,
     count: events.length,
     soundLogSha256: sha256Hex(soundLogJson(events)),
-    events: events.map((e) => ({ ...e, frame: Math.round((e.t * meta.fps) / 1000) })),
+    events: events.map((e, i) => ({ ...e, frame: Math.round((e.t * meta.fps) / 1000), at: heard[i] ?? null })),
   };
   return `${JSON.stringify(doc, null, 1)}\n`;
 }
@@ -184,7 +187,7 @@ export function buildManifest(m: ManifestInput): Record<string, unknown> {
       controls: false,
       intro: true,
       reducedMotion: settings.reducedMotion ?? false,
-      beatSync: true,
+      beatSync: settings.beatSync ?? true,
     },
     cues: m.cues.map(({ spec, at, frame, action, speed }) =>
       speed === undefined ? { spec, atMs: at, frame, action } : { spec, atMs: at, frame, action, speed },

@@ -274,7 +274,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       const { init, session } = activeRender();
       if (session.elapsed <= 0) throw new Error("Nothing rendered yet: call step() before audioWav()");
       const events = init.sound ? session.soundLog : [];
-      const sound = { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: true };
+      const sound = { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: init.beatSync };
       const length = durationMs ?? session.elapsed;
       const wav = await deps.renderAudioWav(events, length, { sampleRate: SAMPLE_RATE, channels: 2, sound });
       return bytesToBase64(wav);

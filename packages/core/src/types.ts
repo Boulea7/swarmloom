@@ -312,9 +312,15 @@ export interface SoundOptions {
   volume?: number;
   /** Sound pack id: "studio" (default), "soft", "8bit", "silent-keys" (musical events only, no keys or clicks). */
   pack?: string;
-  /** Musical grid tempo; notes and task starts quantize to it when `beatSync` is on. */
+  /** Musical grid tempo (default 112); `beatSync` snaps sounds to its eighth and sixteenth notes. */
   bpm?: number;
-  beatSync?: boolean;
+  /**
+   * true (default): placement notes, the fan-out and the final chord sound on the next eighth note.
+   * "all": also keys, clicks, snaps, pen anchors and heading ticks, each on the nearest sixteenth
+   * note at most 30 ms earlier or 60 ms later, one per sound and sixteenth; a hit with no line that
+   * close stays silent. false: every sound plays when it happens.
+   */
+  beatSync?: boolean | "all";
 }
 
 /* ------------------------------------------------------------------ */

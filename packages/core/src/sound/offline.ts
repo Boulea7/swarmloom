@@ -69,9 +69,9 @@ function plan(durationMs: number, opts: RenderOfflineOptions): RenderPlan {
 }
 
 /** Runs admission over the time-ordered events; the result is independent of the audio context. */
-function admitAll(events: readonly SoundEvent[], durationMs: number, settings: SoundSettings): AdmittedEvent[] {
-  const { bpm, beatSync, pack } = settings;
-  const policy = new EventPolicy({ bpm, beatSync, voiced: (name) => pack.voices[name] !== undefined });
+function admitAll(events: readonly SoundEvent[], settings: SoundSettings): AdmittedEvent[] {
+  const { bpm, beatSync, beatHits, pack } = settings;
+  const policy = new EventPolicy({ bpm, beatSync, beatHits, voiced: (name) => pack.voices[name] !== undefined });
   const ordered = events
     .map((ev, index) => ({ ev, index }))
     .filter(({ ev }) => typeof ev === "object" && ev !== null && Number.isFinite(ev.t))
@@ -80,9 +80,32 @@ function admitAll(events: readonly SoundEvent[], durationMs: number, settings: S
   const admitted: AdmittedEvent[] = [];
   for (const { ev, index } of ordered) {
     const event = policy.admit(ev, index);
-    if (event && event.at < durationMs) admitted.push(event);
+    if (event) admitted.push(event);
   }
   return admitted;
+}
+
+/**
+ * When each event of a sound log is heard in {@link renderOffline}'s output for the same options:
+ * engine ms (on the beat grid where beat sync moves it), or null for an event that stays silent (no
+ * voice in the pack, over a rate limit, a note sharing its eighth, a hit off the beat with
+ * `beatSync: "all"`). Pure and browser-free, so capture tools can log heard times next to the events.
+ *
+ * @param events Sound events, usually `Player.soundLog`; the result is in the same order.
+ * @param opts The pack, tempo and sound settings `renderOffline` gets (sample rate and volume are ignored).
+ */
+export function soundTimes(events: readonly SoundEvent[], opts: RenderOfflineOptions = {}): (number | null)[] {
+  if (!Array.isArray(events)) throw new TypeError("soundTimes() needs an array of sound events");
+  const sound = typeof opts.sound === "object" && opts.sound !== null ? opts.sound : {};
+  const times: (number | null)[] = events.map(() => null);
+  if (opts.sound === false || sound.enabled === false) return times;
+  const settings = resolveSettings({
+    pack: opts.pack ?? sound.pack,
+    bpm: opts.bpm ?? sound.bpm,
+    beatSync: sound.beatSync,
+  });
+  for (const event of admitAll(events, settings)) times[event.index] = event.at;
+  return times;
 }
 
 function startRendering(ctx: OfflineAudioContext): Promise<AudioBuffer> {
@@ -123,7 +146,7 @@ export async function renderOffline(
 
   const ctx = new Ctor(channels, length, sampleRate);
   const synth = new Synth(ctx, createMasterBus(ctx, { volume: settings.volume, muted: false }), settings);
-  const admitted = enabled ? admitAll(events, durationMs, settings) : [];
+  const admitted = enabled ? admitAll(events, settings).filter((ev) => ev.at < durationMs) : [];
 
   let next = 0;
   const scheduleUntil = (endSeconds: number): void => {

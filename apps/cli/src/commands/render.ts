@@ -78,6 +78,9 @@ Swarm:
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
       --bpm <n>           Tempo the placement notes, the fan-out and the final chord snap to (eighth
                           notes, 40-240). Default: 112
+      --beat-sync <set>   notes | all. all also puts keys, clicks, snaps and pen anchors on the
+                          nearest sixteenth note (up to 30 ms early or 60 ms late, one per sound
+                          and sixteenth) and leaves out the ones too far off. Default: notes
       --cue <at>:<action> Player action at a fixed video time; repeatable. <at> is seconds (12.5),
                           milliseconds (12500ms) or beats from the start at --bpm (26b). <action> is
                           pause (every cursor holds), resume, finish (complete the build quickly),
@@ -92,7 +95,8 @@ Swarm:
 Capture evidence (for repeatable takes; see the README):
       --audio-out <file>  Also write the soundtrack as WAV (48 kHz stereo, same length as the video)
       --events-out <file> Also write the sound log (every sound event) as JSON, in engine ms on the
-                          frames' clock, with each event's frame number
+                          frames' clock, with each event's frame number and the time the soundtrack
+                          plays it (on the beat grid, or null when it stays silent)
       --manifest-out <file>
                           Write a JSON manifest: arguments, input and blueprint SHA-256, player
                           settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256
@@ -131,6 +135,7 @@ const OPTIONS = {
   "max-duration": { type: "string" },
   duration: { type: "string" },
   bpm: { type: "string" },
+  "beat-sync": { type: "string" },
   cue: { type: "string", multiple: true },
   "audio-out": { type: "string" },
   "events-out": { type: "string" },
@@ -235,6 +240,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   };
   if (values.locale !== undefined) settings.locale = readLocale(values.locale);
   if (values.bpm !== undefined) settings.bpm = readNumber("bpm", values.bpm, 120, { min: 40, max: 240 });
+  if (readEnum("beat-sync", values["beat-sync"], ["notes", "all"], "notes") === "all") settings.beatSync = "all";
 
   if (values.duration !== undefined && values["max-duration"] !== undefined) {
     throw new UsageError("Use either --duration (exact length) or --max-duration (upper limit), not both");
@@ -605,7 +611,8 @@ async function writeEvidence(
     await writeAtomic(opts.audioOut, evidence.wav);
   }
   if (opts.eventsOut && evidence.events) {
-    const meta = { fps: opts.fps, frames: summary.frames, durationMs: summary.durationMs, bpm: opts.settings.bpm };
+    const { bpm, beatSync } = opts.settings;
+    const meta = { fps: opts.fps, frames: summary.frames, durationMs: summary.durationMs, bpm, beatSync };
     await writeAtomic(opts.eventsOut, eventsDocument(evidence.events, meta));
   }
   if (!opts.manifestOut) return;

@@ -76,6 +76,11 @@ export interface RenderInit {
   reducedMotion?: boolean;
   /** Musical grid tempo of placement notes (beat-synced builds). Default: the sound pack's tempo. */
   bpm?: number;
+  /**
+   * What snaps to that grid in the soundtrack (`SoundOptions.beatSync`): true (default) the notes,
+   * fan-out and final chord; "all" also keys, clicks, snaps and pen anchors, on sixteenth notes.
+   */
+  beatSync?: true | "all";
   /** Sound pack id ("studio", "soft", "8bit", "silent-keys"). Default "studio". */
   pack?: string;
   /** Player actions at fixed video times, e.g. a hold and a quick finish timed to music. Default none. */
@@ -225,7 +230,9 @@ function blueprintOf(raw: unknown): Blueprint | undefined {
 
 /** Init options after validation, with defaults filled in. */
 export type ParsedInit = RenderInit &
-  Required<Pick<RenderInit, "seed" | "tail" | "live" | "sound" | "follow" | "reducedMotion" | "theme" | "cues">>;
+  Required<
+    Pick<RenderInit, "seed" | "tail" | "live" | "sound" | "follow" | "reducedMotion" | "theme" | "cues" | "beatSync">
+  >;
 
 /**
  * Validates untrusted init options (they cross a process boundary) and fills defaults.
@@ -255,6 +262,8 @@ export function parseInit(raw: unknown): ParsedInit {
   if (reducedMotion !== undefined && typeof reducedMotion !== "boolean") fail("reducedMotion must be a boolean");
   const live = raw.live;
   if (live !== undefined && typeof live !== "boolean") fail("live must be a boolean");
+  const beatSync = raw.beatSync;
+  if (beatSync !== undefined && beatSync !== true && beatSync !== "all") fail('beatSync must be true or "all"');
   const blueprint = blueprintOf(raw.blueprint);
   return {
     input: source,
@@ -275,6 +284,7 @@ export function parseInit(raw: unknown): ParsedInit {
     follow: oneOf(raw, "follow", FOLLOWS) ?? "tour",
     reducedMotion: reducedMotion ?? false,
     bpm: number(raw, "bpm", 20, 400),
+    beatSync: beatSync ?? true,
     pack: optionalString(raw, "pack"),
     cues: cueList(raw.cues),
     ...(blueprint ? { blueprint } : {}),

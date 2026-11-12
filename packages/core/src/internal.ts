@@ -238,8 +238,9 @@ export interface ChoreoHelpers {
  *   pen      pitch: none                                 pen anchor tick
  *   swell / fanout / chord / sweep / pop                 one-shots (see PLAN)
  * pan: -1..1 from the cursor's x within the viewport.
- * Notes are quantized to the eighth-note grid of `bpm` (default 112) when beatSync is true (default true for "note").
- * Quantization is a PURE function of event.t so realtime and offline renders match.
+ * Notes, fan-out and chord are quantized to the eighth-note grid of `bpm` (default 112) when beatSync is on
+ * (the default); with beatSync "all" the other hits move to a nearby sixteenth note or stay silent.
+ * Quantization is a PURE function of the event sequence so realtime and offline renders match.
  */
 export interface SoundEngine {
   play(ev: SoundEvent): void;

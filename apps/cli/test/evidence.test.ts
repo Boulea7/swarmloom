@@ -50,11 +50,23 @@ describe("capture evidence", () => {
     ]);
   });
 
-  it("writes events with their nearest frame and a hash of the sound log alone", () => {
-    const doc = JSON.parse(eventsDocument(events, { fps: 30, frames: 60, durationMs: 2000, bpm: 90 }));
-    expect(doc).toMatchObject({ version: 1, fps: 30, frames: 60, bpm: 90, count: 2 });
-    expect(doc.events.map((e: { frame: number }) => e.frame)).toEqual([10, 30]);
-    expect(doc.soundLogSha256).toBe(sha256Hex(JSON.stringify(events)));
+  it("writes events with their nearest frame, the time they sound and a hash of the sound log alone", () => {
+    const keys = [{ t: 1100, name: "key", pan: 0 }];
+    const doc = JSON.parse(eventsDocument([...events, ...keys], { fps: 30, frames: 60, durationMs: 2000, bpm: 90 }));
+    expect(doc).toMatchObject({ version: 1, fps: 30, frames: 60, bpm: 90, count: 3 });
+    // An eighth at 90 bpm is 333.3 ms: the note is on a line, the chord moves to the next one.
+    expect(doc.events.map((e: { frame: number; at: number }) => [e.frame, e.at])).toEqual([
+      [10, 333.3333333333333],
+      [30, 1000],
+      [33, 1100],
+    ]);
+    expect(doc.soundLogSha256).toBe(sha256Hex(JSON.stringify([...events, ...keys])));
+    // With every hit on the beat, a key at 1150 ms moves to the sixteenth at 1166.7 ms; the one at 1100
+    // is left out (the lines at 1000 and 1166.7 ms are 100 ms early and 67 ms late).
+    const hits = [...keys, { t: 1150, name: "key", pan: 0 }];
+    const all = JSON.parse(eventsDocument(hits, { fps: 30, frames: 60, durationMs: 2000, bpm: 90, beatSync: "all" }));
+    expect(all.events[0].at).toBeNull();
+    expect(all.events[1].at).toBeCloseTo(1166.667, 3);
   });
 
   it("records settings, cues, programs and an aggregate of the frame hashes", () => {
