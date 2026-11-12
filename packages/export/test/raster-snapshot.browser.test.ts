@@ -458,6 +458,32 @@ it("walks the frame again only after a mutation, a scroll, an animation seek or 
   expect((await frame())[0]).toBe(6);
 });
 
+it("walks the frame again after a style sheet changes through the CSSOM without a mutation", async () => {
+  const { win, rasterizer } = await frameOf(
+    '<style>div { background: rgb(255, 0, 0) }</style><body style="margin:0"><div style="height:100px"></div></body>',
+  );
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  // A rule edited in place keeps the rule count.
+  ((win.document.styleSheets[0] as CSSStyleSheet).cssRules[0] as CSSStyleRule).style.background = "rgb(0, 0, 255)";
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  const adopted = new (win as Window & typeof globalThis).CSSStyleSheet();
+  adopted.replaceSync("div { background: rgb(0, 255, 0) }");
+  win.document.adoptedStyleSheets = [adopted];
+  expect(await frame()).toEqual([3, [0, 255, 0]]);
+  // Replaced with as many rules, then switched off.
+  adopted.replaceSync("div { background: rgb(255, 255, 0) }");
+  expect(await frame()).toEqual([4, [255, 255, 0]]);
+  adopted.disabled = true;
+  expect(await frame()).toEqual([5, [0, 0, 255]]);
+});
+
 it("watches a same-origin frame's document rather than walking it every frame, unless it cannot read it", async () => {
   const { win, rasterizer } = await frameOf(
     `<body style="margin:0"><iframe style="border:0;width:${SIZE}px;height:${SIZE}px" srcdoc="<body style='margin:0'>` +

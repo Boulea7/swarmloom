@@ -45,8 +45,8 @@ interface DrawnFrame {
   watch: StillWatch | null;
 }
 
-/** Whether two snapshots are made of the same pieces. */
-function sameParts(a: readonly string[], b: readonly string[]): boolean {
+/** Whether two lists hold the same strings in order (the pieces of two snapshots, the rules of the sheets). */
+function sameTexts(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((part, i) => part === b[i]);
 }
 
@@ -97,6 +97,8 @@ export class FrameRasterizer {
   #last: DrawnFrame | null = null;
   /** The boxes earlier snapshots wrote away from the viewport, written again while unchanged. */
   readonly #far = new FarCache<FarBox>();
+  /** The rules of the sheets before the last capture ({@link StillWatch.rules}). */
+  #rules: readonly string[] = [];
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -174,10 +176,13 @@ export class FrameRasterizer {
     // Its probe elements would count as a change.
     this.#baseline ??= readBaseline(document);
     const watch = new StillWatch({ document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() });
+    // The far cache does not read rules edited in place through the CSSOM; the still watch does.
+    if (!sameTexts(watch.rules, this.#rules)) this.#far.forget();
+    this.#rules = watch.rules;
     try {
       const { parts, stats, overlays, settled, pixels } = await this.snapshot(signal, scale);
       let img = this.#last?.img;
-      if (!img || !sameParts(parts, this.#last?.parts ?? [])) {
+      if (!img || !sameTexts(parts, this.#last?.parts ?? [])) {
         img = new Image();
         // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
         // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.

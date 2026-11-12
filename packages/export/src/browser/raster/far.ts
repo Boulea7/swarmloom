@@ -220,11 +220,15 @@ function ruleCount(sheet: CSSStyleSheet): number {
   }
 }
 
-function sheetsOf(target: Document | ShadowRoot): CSSStyleSheet[] {
+/** The style sheets of a document or shadow root: those of its elements, then the adopted ones. */
+export function sheetsOf(target: Document | ShadowRoot): CSSStyleSheet[] {
   return [...Array.from(target.styleSheets ?? []), ...(target.adoptedStyleSheets ?? [])] as CSSStyleSheet[];
 }
 
-/** The style sheets that apply in a scope, with what tells that one changed (not rules edited in place). */
+/**
+ * The style sheets that apply in a scope, with what tells that one changed (not rules edited in
+ * place, see {@link FarCache.forget}).
+ */
 function sheetState(targets: Iterable<Document | ShadowRoot>): unknown[] {
   const state: unknown[] = [];
   for (const target of targets) {
@@ -347,8 +351,9 @@ export interface FarSource {
  * all moves with it, an extent still away from the viewport; for a box with something laid out
  * against a box outside it, the same place and no change at all in its document, scroll offsets
  * included; for a box whose content flows around floats outside it, no change in its document but
- * scrolling. Rules edited in place through the CSSOM, form control state, custom element
- * definitions and custom states are not seen, as by the still check (`StillWatch`).
+ * scrolling. Form control state, custom element definitions and custom states are not seen, as by
+ * the still check (`StillWatch`), nor are rules edited in place through the CSSOM: the rasterizer
+ * reads those from the still check and drops every box ({@link forget}).
  */
 export class FarCache<T> {
   readonly #scopes = new Map<Document, Scope>();
@@ -465,6 +470,11 @@ export class FarCache<T> {
     for (const [el, entry] of this.#entries) if (entry.walk === this.#walk) kept.set(el, entry);
     this.#entries = kept;
     this.#scrolls = scrolls;
+  }
+
+  /** Drops every box kept, for a change it does not read itself (rules edited in place). */
+  forget(): void {
+    this.#entries.clear();
   }
 
   /** The boxes kept for the next walk (for tests and diagnostics). */
