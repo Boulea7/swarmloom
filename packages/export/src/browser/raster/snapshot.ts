@@ -762,12 +762,13 @@ const SHADE: readonly (readonly [number, number])[] = [
 ];
 
 /**
- * Chromium's media controls over a paused video, `w` x `h` CSS px, as an SVG data URL: the shade
- * along the bottom, play button, time, volume, fullscreen and menu buttons and the timeline, on a
- * dark backdrop when there is no picture. The browser draws them in a shadow tree no page can read,
- * so this is a likeness: buttons greyed until the video has loaded its metadata.
+ * Chromium's media controls over a paused video, `w` x `h` CSS px, as inline SVG: the shade along
+ * the bottom, play button, time, volume, fullscreen and menu buttons and the timeline, on a dark
+ * backdrop when there is no picture. The browser draws them in a shadow tree no page can read, so
+ * this is a likeness: buttons greyed until the video has loaded its metadata. Inline SVG, rather
+ * than another SVG image, also draws in Firefox inside the frame's own SVG image.
  */
-function controlsImage(video: HTMLVideoElement, w: number, h: number, picture: boolean): string {
+function controlsSvg(video: HTMLVideoElement, w: number, h: number, picture: boolean, box: string, id: string): string {
   const buttons = video.readyState >= 1 ? "" : ' opacity="0.3"';
   const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
   const clock = clockText(video.currentTime);
@@ -777,10 +778,10 @@ function controlsImage(video: HTMLVideoElement, w: number, h: number, picture: b
   const y = h - 48;
   const stops = SHADE.map(([o, a]) => `<stop offset="${o}" stop-opacity="${a}"/>`).join("");
   const svg = [
-    `<svg xmlns="${SVG_NS}" width="${w}" height="${h}">`,
-    `<linearGradient id="s" x2="0" y2="1">${stops}</linearGradient>`,
+    `<svg xmlns="${SVG_NS}" data-sl-controls="" width="${w}" height="${h}" style="${box}">`,
+    `<linearGradient id="${id}" x2="0" y2="1">${stops}</linearGradient>`,
     picture ? "" : '<rect width="100%" height="100%" fill="#333"/>',
-    `<rect y="${h - 110}" width="100%" height="110" fill="url(#s)"/>`,
+    `<rect y="${h - 110}" width="100%" height="110" fill="url(#${id})"/>`,
     `<g fill="#fff"${buttons}>`,
     `<path d="M20 ${y - 5.5}L29.5 ${y}L20 ${y + 5.5}z"/>`,
     `<path d="M${w - 128} ${y - 3}h3l4.5-4v14l-4.5-4h-3z"/>`,
@@ -794,14 +795,14 @@ function controlsImage(video: HTMLVideoElement, w: number, h: number, picture: b
     played > 0 ? `<rect x="16" y="${h - 24}" width="${played}" height="4" rx="2" fill="#fff"/>` : "",
     "</svg>",
   ].join("");
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  return svg;
 }
 
 /**
  * The inside of a video's box when it shows its controls: the picture (`source`, see
  * {@link videoSource}) fitted into the content box as the video fits it, and the controls over it.
  */
-function videoPlayer(video: HTMLVideoElement, cs: CSSStyleDeclaration, source: string): string {
+function videoPlayer(walk: Walk, video: HTMLVideoElement, cs: CSSStyleDeclaration, source: string): string {
   const left = px(cs, "padding-left");
   const top = px(cs, "padding-top");
   const w = Math.max(0, video.clientWidth - left - px(cs, "padding-right"));
@@ -811,7 +812,7 @@ function videoPlayer(video: HTMLVideoElement, cs: CSSStyleDeclaration, source: s
   const picture = showsPoster(video) || hasFrame(video);
   return (
     (picture ? `<img${source} style="${escapeAttr(`${box};${fit}`)}"/>` : "") +
-    `<img src="${controlsImage(video, w, h, picture)}" style="${box}"/>`
+    controlsSvg(video, w, h, picture, box, `sl${walk.nextClass++}`)
   );
 }
 
@@ -1132,7 +1133,7 @@ function* emitElement(
     return;
   }
   if (player) {
-    walk.out.push(`<div${xmlns}${style}>${videoPlayer(el as HTMLVideoElement, cs, attrs)}</div>`);
+    walk.out.push(`<div${xmlns}${style}>${videoPlayer(walk, el as HTMLVideoElement, cs, attrs)}</div>`);
     return;
   }
   if (tag === "img") {
@@ -1366,11 +1367,12 @@ function sheetAfterFonts(rules: readonly string[], shared: readonly string[]): s
   // would turn their width and height (geometry properties) to `auto`, and Firefox then draws
   // nothing of the foreignObject.
   // The image is drawn in the host's forced colours (Windows high contrast) like a page; the clones
-  // inherit this opt-out and keep the colours they were given, as in the CLI's browser.
+  // inherit this opt-out and keep the colours they were given, as in the CLI's browser. `:where`
+  // leaves the reset at element specificity, so the shared-resource classes below still override it.
   const css = [
     "",
     "foreignObject{forced-color-adjust:none}",
-    "foreignObject *{all:unset}",
+    "foreignObject *:where(:not([data-sl-controls]):not([data-sl-controls] *)){all:unset}",
     "style{display:none!important}",
     ...shared,
     ...rules,
