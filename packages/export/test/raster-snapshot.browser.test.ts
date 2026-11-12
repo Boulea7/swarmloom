@@ -76,12 +76,14 @@ it.for([
   ["passes on through an auto height", ""],
   // Here it stays inside on the page too: passed on, it would push the red box down.
   ["holds in with a set height", "height:40px"],
+  // A float's auto height takes it in too (a block formatting context): passed on, it pushes the cleared box down.
+  ["holds in a float", "float:left;width:100%"],
 ])("places what follows a written block by the margin its last content %s", async ([_name, height], { skip }) => {
   // Without CSS Typed OM no height reads as `auto`: the margin stays inside (a known limit).
   skip(server.browser === "firefox" && !height, "Firefox lacks CSS Typed OM");
   const block = `<div style="${height}"><x-text><p style="margin:0 0 30px">x</p>\n</x-text></div>`;
   const { win, rasterizer } = await frameOf(
-    `<body style="margin:0">${block}<div id=red style="height:50px;background:rgb(255,0,0)"></div></body>`,
+    `<body style="margin:0">${block}<div id=red style="clear:both;height:50px;background:rgb(255,0,0)"></div></body>`,
   );
   const top = Math.round((win.document.getElementById("red") as HTMLElement).getBoundingClientRect().top);
   expect([await pixel(rasterizer, 50, top - 2), await pixel(rasterizer, 50, top + 1)]).toEqual([

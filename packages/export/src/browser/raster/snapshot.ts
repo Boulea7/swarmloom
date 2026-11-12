@@ -772,12 +772,16 @@ function edgeMargins(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: Doc
 
 /**
  * Whether the block-level box `el` holds its content's margins in: true for a block formatting
- * context or a box laid out as a whole, false for a plain block, null when it may depend on the
- * engine (`align-content` on a block, a query container).
+ * context (a float or an absolutely positioned box among them, whose auto height takes in its last
+ * content's margin) or a box laid out as a whole, false for a plain block, null when it may depend
+ * on the engine (`align-content` on a block, a query container).
  */
 function holdsMargins(el: Element, cs: CSSStyleDeclaration): boolean | null {
   const display = cs.getPropertyValue("display");
   if (display !== "block" && display !== "list-item") return true;
+  if (cs.getPropertyValue("float") !== "none") return true;
+  const position = cs.getPropertyValue("position");
+  if (position === "absolute" || position === "fixed") return true;
   if (el.namespaceURI !== XHTML_NS || WHOLE.has(el.localName) || holdsContent(cs)) return true;
   if (el === el.ownerDocument.documentElement) return true;
   if (cs.getPropertyValue("column-count") !== "auto" || cs.getPropertyValue("column-width") !== "auto") return true;
