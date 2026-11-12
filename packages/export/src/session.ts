@@ -22,6 +22,17 @@ export interface SessionCue {
   action: "pause" | "resume" | "finish" | "live";
 }
 
+/** One stretch of scrolling in session time (see {@link RenderSession.scrollLog}). */
+export interface SessionScroll {
+  /** Session time of the last step before the view moved, ms. */
+  t: number;
+  /** Session time of the first step that showed the view at `to`, ms. */
+  end: number;
+  /** Top edge of the view before and after, stage px (`Player.scrollY`). */
+  from: number;
+  to: number;
+}
+
 /** Options for {@link RenderSession}. */
 export interface RenderSessionOptions {
   /** Player options; the session supplies its own `VirtualClock`. */
@@ -57,6 +68,8 @@ const BUILT: ReadonlySet<PlayerState> = new Set(["finale", "done", "live"]);
 export const MAX_STEP_MS = 10_000;
 /** Float slack when comparing summed frame steps with cue times. */
 const TIME_EPSILON = 1e-6;
+/** The view counts as moved between two steps when its top edge moved by more than this, px. */
+const SCROLL_EPSILON = 1e-3;
 
 function toError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error(String(reason));
@@ -90,6 +103,11 @@ export class RenderSession {
   #pausedAt: number | null = null;
   /** Sound log shifts: events from index `from` on are moved `shift` ms later (sorted by `from`). */
   readonly #shifts: { from: number; shift: number }[] = [];
+  readonly #scrolls: SessionScroll[] = [];
+  /** The stretch of scrolling the last step was part of, or null when the view stood still. */
+  #scroll: SessionScroll | null = null;
+  /** Top edge of the view after the last step (NaN when the player does not report it). */
+  #scrollY = Number.NaN;
 
   constructor(options: RenderSessionOptions) {
     const tail = options.tailMs ?? 0;
@@ -141,6 +159,17 @@ export class RenderSession {
     });
   }
 
+  /**
+   * Every stretch of scrolling so far, in session time (the view is the player's, `Player.scrollY`):
+   * the tour following the build, a go-live glide. A stretch runs from the last step before the view
+   * moved to the first step that showed it where it stopped; one still moving at the last step ends
+   * there.
+   * Empty for a player that does not report its scroll position.
+   */
+  get scrollLog(): readonly SessionScroll[] {
+    return this.#scroll ? [...this.#scrolls, { ...this.#scroll }] : this.#scrolls;
+  }
+
   /** Starts the intro and build at time 0 and resolves when the first frame is ready to capture. */
   async start(): Promise<SessionStatus> {
     this.#assertActive();
@@ -152,6 +181,7 @@ export class RenderSession {
       (error: unknown) => this.#fail(error),
     );
     this.#applyCues();
+    this.#scrollY = this.#readScroll();
     return this.#settle();
   }
 
@@ -172,6 +202,7 @@ export class RenderSession {
     this.clock.advance(ms);
     this.#applyCues();
     this.#goLiveWhenDone();
+    this.#trackScroll(ms);
     return this.#settle();
   }
 
@@ -218,6 +249,29 @@ export class RenderSession {
         this.#shifts.push({ from: logged, shift: before + this.#elapsed - this.#pausedAt });
         this.#pausedAt = null;
       }
+    }
+  }
+
+  #readScroll(): number {
+    const y = this.player.scrollY;
+    return typeof y === "number" && Number.isFinite(y) ? y : Number.NaN;
+  }
+
+  /** Extends, starts or ends the stretch of scrolling with the view after a step of `ms`. */
+  #trackScroll(ms: number): void {
+    const y = this.#readScroll();
+    const before = this.#scrollY;
+    this.#scrollY = y;
+    if (Number.isNaN(y) || Number.isNaN(before)) return;
+    const scroll = this.#scroll;
+    if (Math.abs(y - before) <= SCROLL_EPSILON) {
+      if (scroll) this.#scrolls.push(scroll);
+      this.#scroll = null;
+    } else if (scroll) {
+      scroll.to = y;
+      scroll.end = this.#elapsed;
+    } else {
+      this.#scroll = { t: this.#elapsed - ms, end: this.#elapsed, from: before, to: y };
     }
   }
 

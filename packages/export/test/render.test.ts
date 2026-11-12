@@ -130,6 +130,22 @@ describe("render page protocol", () => {
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
   });
 
+  it("passes the opening and liveTop on, and logs each stretch of scrolling on video time", async () => {
+    const { api, players } = setup();
+    await api.init({ ...base, opening: 500, liveTop: true });
+    const [player] = players as [ClockPlayer];
+    expect(player.options).toMatchObject({ opening: 500, liveTop: true });
+    // The view after each 40 ms step: still, down 100 px over two steps, still, up 40 px, still.
+    for (const y of [0, 0, 40, 100, 100, 100, 60, 60]) {
+      player.scrollY = y;
+      await api.step(40);
+    }
+    expect(await api.scrollLog()).toEqual([
+      { t: 80, end: 160, from: 0, to: 100 },
+      { t: 240, end: 280, from: 100, to: 60 },
+    ]);
+  });
+
   it("shifts the sounds a cue logs itself when it ends a pause", async () => {
     const { api } = setup();
     // Hold 300..500 ms; finish() ends the hold and fans out at once, which the video shows at 500 ms.

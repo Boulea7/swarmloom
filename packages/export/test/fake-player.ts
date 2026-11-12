@@ -12,6 +12,8 @@ export class ClockPlayer implements Player {
   state: PlayerState = "idle";
   progress = { built: 0, total: 4 };
   soundLog: SoundEvent[] = [];
+  /** Top edge of the view; tests move it between steps. */
+  scrollY = 0;
   readyCalls = 0;
   destroyed = false;
   readonly options: PlayerOptions;

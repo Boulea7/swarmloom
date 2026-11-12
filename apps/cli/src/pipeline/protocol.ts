@@ -39,8 +39,12 @@ export interface RenderInit {
   locale?: string;
   /** Hold time after the build completes (finale, then the live page), ms. */
   tail?: number;
+  /** Opening: the finished content shows this long (ms), then fades into the blank canvas. */
+  opening?: number;
   /** Go live once the finale settles: the finished page plays its own animations. Default true. */
   live?: boolean;
+  /** Going live glides back to the top first. */
+  liveTop?: boolean;
   follow?: "tour" | "none";
   /** Quick cross-fade build without flocking. */
   reducedMotion?: boolean;
@@ -56,6 +60,14 @@ export interface RenderInit {
    * ignores it and falls back to `input` (the fetched HTML plus its URL).
    */
   blueprint?: Blueprint;
+}
+
+/** One stretch of scrolling: the view's top edge went `from` -> `to` (content px) between `t` and `end` (video ms). */
+export interface RenderScroll {
+  t: number;
+  end: number;
+  from: number;
+  to: number;
 }
 
 export interface StepResult {
@@ -79,6 +91,8 @@ export interface RenderApi {
   audioWav(durationMs?: number): Promise<string>;
   /** Every sound event logged so far, on the frames' clock (optional: older render pages lack it). */
   soundLog?(): Promise<SoundEvent[]>;
+  /** Every stretch of scrolling so far, on the frames' clock (optional: older render pages lack it). */
+  scrollLog?(): Promise<RenderScroll[]>;
   dispose(): void;
 }
 
@@ -127,5 +141,21 @@ export function asSoundEvents(value: unknown): SoundEvent[] {
     if (typeof e.pitch === "number") event.pitch = e.pitch;
     if (typeof e.vel === "number") event.vel = e.vel;
     return event;
+  });
+}
+
+/**
+ * Validates scrollLog() output (untrusted JSON) into stretches with a fixed key order.
+ * @throws TypeError when it is not a list of stretches.
+ */
+export function asScrolls(value: unknown): RenderScroll[] {
+  if (!Array.isArray(value)) throw new TypeError("render page returned an invalid scrollLog() result");
+  return value.map((raw, i) => {
+    const s = (raw ?? {}) as Partial<RenderScroll>;
+    const fields = [s.t, s.end, s.from, s.to];
+    if (!fields.every((n) => typeof n === "number" && Number.isFinite(n))) {
+      throw new TypeError(`render page returned an invalid scroll at index ${i}`);
+    }
+    return { t: s.t as number, end: s.end as number, from: s.from as number, to: s.to as number };
   });
 }

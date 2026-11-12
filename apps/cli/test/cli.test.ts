@@ -71,6 +71,8 @@ describe("render options", () => {
       },
     });
     expect(parseRenderOptions(["a.md", "--no-live"], cwd)).toMatchObject({ settings: { live: false } });
+    const opening = parseRenderOptions(["a.md", "--bpm", "120", "--opening", "3b", "--live-top"], cwd);
+    expect(opening).toMatchObject({ settings: { opening: 1500, liveTop: true } });
   });
 
   it.each([
@@ -103,6 +105,8 @@ describe("render options", () => {
     [["a.md", "--duration", "4", "--cue", "8b:pause"], "counts beats, which needs --bpm"],
     [["a.md", "--duration", "4", "--bpm", "120", "--cue", "8b:pause"], "at or after the end of the video"],
     [["a.md", "--cue", "3:rewind"], "--cue must look like <time>:<action>"],
+    [["a.md", "--opening", "soon"], "--opening must be a time"],
+    [["a.md", "--opening", "61"], "--opening must be at most 60 s"],
     [["a.md", "--no-sound", "--audio-out", "a.wav"], "--audio-out needs sound"],
     [["a.md", "--bpm", "300"], "--bpm must be a number"],
     [["a.md", "-o", "x.mp4", "--manifest-out", "x.mp4"], "must be different files"],

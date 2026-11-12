@@ -19,7 +19,7 @@ import type { SoundEvent } from "@swarmloom/core";
 import type { PlatformFont } from "./driver";
 import type { FrameImageType, OutputFormat } from "./encode";
 import { inputFilePath, isWebUrl, type RenderSource } from "./input";
-import type { RenderCue, RenderInfo } from "./protocol";
+import type { RenderCue, RenderInfo, RenderScroll } from "./protocol";
 import type { PlayerSettings } from "./render";
 
 /** Bumped when a field changes meaning; readers must check it. */
@@ -82,11 +82,14 @@ export function soundLogJson(events: readonly SoundEvent[]): string {
 /**
  * The --events-out document: the sound log plus the nearest frame of each event. Event times are
  * when the engine raised them; with --bpm, "note", "fanout" and "chord" sound at the next eighth note.
+ * `scrolls` lists each stretch of scrolling on the same clock, with the frames it starts and ends on.
  */
 export function eventsDocument(
   events: readonly SoundEvent[],
   meta: { fps: number; frames: number; durationMs: number; bpm?: number },
+  scrolls: readonly RenderScroll[] = [],
 ): string {
+  const frameOf = (t: number) => Math.round((t * meta.fps) / 1000);
   const doc = {
     version: EVENTS_VERSION,
     timeBase: "engine ms on the frames' clock: frame n shows n * 1000 / fps; time held by a pause cue is included",
@@ -96,7 +99,8 @@ export function eventsDocument(
     bpm: meta.bpm ?? null,
     count: events.length,
     soundLogSha256: sha256Hex(soundLogJson(events)),
-    events: events.map((e) => ({ ...e, frame: Math.round((e.t * meta.fps) / 1000) })),
+    events: events.map((e) => ({ ...e, frame: frameOf(e.t) })),
+    scrolls: scrolls.map((s) => ({ ...s, frame: frameOf(s.t), endFrame: frameOf(s.end) })),
   };
   return `${JSON.stringify(doc, null, 1)}\n`;
 }
