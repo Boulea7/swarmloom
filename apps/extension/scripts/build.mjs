@@ -172,7 +172,7 @@ async function bundle(target, out, studioEntry) {
     charset: "utf8",
     logLevel: "warning",
     plugins: [noFormatAdapters],
-    // Whitespace and syntax minification keeps the content script inside its 150 KB gzip budget,
+    // Whitespace and syntax minification keeps the content script inside its gzip budget (audit.mjs),
     // while identifiers stay unmangled so store reviewers (AMO in particular) can still read the
     // shipped code; the AMO source package rebuilds it byte for byte.
     minifySyntax: true,
