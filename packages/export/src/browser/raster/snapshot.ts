@@ -1901,6 +1901,11 @@ function* emitElement(
   if (passed) override["margin-bottom"] = passed;
   // Nothing of it shows wherever it lands: a transform or offset that moved it away is not written.
   if (bare) override.visibility = cs.getPropertyValue("visibility") === "collapse" ? "collapse" : "hidden";
+  // WebKit does not include an SVG transform attribute in the computed transform. Its origin still
+  // has to be written: all:unset would otherwise put the clone's origin back at the box's centre.
+  if (svg && el.hasAttribute("transform")) {
+    override["transform-origin"] = cs.getPropertyValue("transform-origin") || "0px 0px";
+  }
   const motion = svg && walk.smil.moving.has(el) ? motionMatrix(el) : null;
   if (motion) {
     for (const name of MOTION_RESET) override[name] = "none";

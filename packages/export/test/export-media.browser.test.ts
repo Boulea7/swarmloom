@@ -113,8 +113,13 @@ const SCREENS: Host[] = [
 ];
 
 let container: HTMLElement;
-let observer: MutationObserver;
 let plain: string[];
+const contentWindow = Object.getOwnPropertyDescriptor(
+  HTMLIFrameElement.prototype,
+  "contentWindow",
+) as PropertyDescriptor & {
+  get(): Window | null;
+};
 
 /** Exports the page; also reports what the frame's `matchMedia` and the page's styles say mid-export. */
 async function exportPage(): Promise<{ hashes: string[]; seen: string | null }> {
@@ -147,23 +152,24 @@ beforeAll(async () => {
   container = document.createElement("div");
   document.body.append(container);
   // Vitest's browser runner wraps dynamic imports through a global of the test page; the export
-  // frame is a page of its own, so it gets a pass-through.
-  observer = new MutationObserver((records) => {
-    for (const record of records) {
-      for (const node of record.addedNodes) {
-        const win = (node as HTMLIFrameElement).contentWindow as (Window & Record<string, unknown>) | null;
-        if (win) win.__vitest_browser_runner__ = { wrapDynamicImport: (load: () => unknown) => load() };
-      }
-    }
+  // frame is a page of its own, so it gets a pass-through. WebKit replaces the initial about:blank
+  // window while srcdoc loads, so install it whenever the live contentWindow is read, not on the
+  // window the frame happened to have when it was appended.
+  Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
+    ...contentWindow,
+    get(this: HTMLIFrameElement) {
+      const win = contentWindow.get.call(this) as (Window & Record<string, unknown>) | null;
+      if (win) win.__vitest_browser_runner__ = { wrapDynamicImport: (load: () => unknown) => load() };
+      return win;
+    },
   });
-  observer.observe(container, { childList: true });
   const first = await exportPage();
   expect(first.seen).toBe(PINNED);
   plain = first.hashes;
 }, 120_000);
 
 afterAll(() => {
-  observer.disconnect();
+  Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", contentWindow);
   container.remove();
 });
 
