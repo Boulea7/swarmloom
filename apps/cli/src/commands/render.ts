@@ -95,8 +95,8 @@ Swarm:
                           milliseconds (12500ms) or beats at an explicit --bpm (26b). <action> is
                           pause (every cursor holds), resume, finish (complete the build quickly),
                           live (go live then, not when the finale settles; also with --no-live) or
-                          speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=2 then
-                          17b:speed=1 hurries only the start). Applied at the first 1/120 s
+                          speed=<n> (build speed from then on, 0.05-16; e.g. --cue 0:speed=2
+                          --cue 8:speed=1 hurries only the start). Applied at the first 1/120 s
                           step at or after <at>; at an fps that does not divide 120 (25, 50)
                           a frame time that comes first applies it. Either way the first frame
                           at or after <at> shows it; same-time cues in order given. The video

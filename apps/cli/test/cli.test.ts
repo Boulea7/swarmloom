@@ -288,4 +288,20 @@ describe("documented examples", () => {
       expect(() => parseRenderOptions(["a.md", ...flags], cwd), file).not.toThrow();
     }
   });
+
+  it("parse the cue examples in the CLI docs and the render help as written", async () => {
+    const root = path.resolve(import.meta.dirname, "../../..");
+    const docs = ["docs/cli.md", "docs/en/cli.md"].map((f) => readFileSync(path.join(root, f), "utf8"));
+    const texts = [...docs, (await capture(["render", "--help"])).out];
+    // A run of numeric flags around a concrete --cue, so a beat time brings the --bpm it needs.
+    const value = String.raw`\d[^\s\`)|\\]*`;
+    const run = new RegExp(`(?:--[a-z-]+ ${value} )*--cue ${value}(?: --[a-z-]+ ${value})*`, "g");
+    for (const text of texts) {
+      const examples = [...text.replace(/\\\n/g, " ").replace(/\s+/g, " ").matchAll(run)].map((m) => m[0]);
+      expect(examples.length).toBeGreaterThan(0);
+      for (const example of examples) {
+        expect(() => parseRenderOptions(["a.md", ...example.split(" ")], cwd), example).not.toThrow();
+      }
+    }
+  });
 });
