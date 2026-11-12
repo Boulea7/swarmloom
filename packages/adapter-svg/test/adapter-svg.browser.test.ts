@@ -282,7 +282,8 @@ describe("SMIL replay (decision C04)", () => {
     world.setAttribute("data-live", "");
     await new Promise((r) => setTimeout(r, 0));
     expect(spin()?.playState).toBe("running");
-    expect(Number(spin()?.currentTime)).toBeGreaterThanOrEqual(1500);
+    // The live clock may round its starting pose down by a fraction of a millisecond.
+    expect(Number(spin()?.currentTime)).toBeGreaterThanOrEqual(1500 - 1e-6);
     renderer?.unmount?.(smil);
     world.remove();
   });
