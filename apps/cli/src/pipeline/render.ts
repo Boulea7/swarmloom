@@ -121,7 +121,9 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     const server = await startStaticServer({ root: deps.renderDir, ...servedInput(job.source, base) });
     cleanup.defer(() => server.close());
     const origin = new URL(server.url).origin;
-    const browser = await launchBrowser(deps.browserPath);
+    const browser = await launchBrowser(deps.browserPath, (message) => {
+      if (!job.quiet) warn(io, message);
+    });
     cleanup.defer(() => browser.close());
     const evidence = job.evidence;
     const imageType = frameImageType(job.format, evidence?.manifest ?? false);

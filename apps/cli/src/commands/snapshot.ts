@@ -143,7 +143,9 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       cleanup.defer(() => local.server.close());
       url = local.url;
     }
-    const browser = await launchBrowser(browserPath);
+    const browser = await launchBrowser(browserPath, (message) => {
+      if (!opts.quiet) warn(io, message);
+    });
     cleanup.defer(() => browser.close());
     const context = await newContext(browser, {
       width: opts.width,

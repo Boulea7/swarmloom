@@ -13,6 +13,8 @@ import type { CliIo } from "../io";
  * factor it sees when it first lays out that size, and with --scale above 1 that changed from run
  * to run; a heading that grew to a new size then sat one pixel higher or lower for the rest of the
  * video in some takes of the same render.
+ * SwiftShader runs the WebGL of the pages it opens, web pages included, so it relies on the GPU
+ * process sandbox that launchBrowser keeps on.
  */
 export const CHROME_ARGS = [
   "--hide-scrollbars",
@@ -33,23 +35,49 @@ export const CHROME_ARGS = [
 const LAUNCH_TIMEOUT_MS = 60_000;
 
 /**
- * Launches the browser headless. Playwright's own signal handlers are disabled: the CLI handles
- * Ctrl+C itself so it can remove temporary files before exiting.
+ * Chromium's own reports that its sandbox cannot start: no usable user namespaces (Ubuntu 23.10+
+ * AppArmor, Docker's seccomp profile), running as root, or a SUID helper with the wrong owner or mode.
+ * Playwright sums up the first two as "Chromium sandboxing failed!".
+ */
+const SANDBOX_FAILURE = /sandboxing failed|no usable sandbox|without --no-sandbox|suid sandbox|move to new namespace/i;
+
+const UNSANDBOXED_WARNING =
+  "the browser's sandbox does not start on this machine (as root, or with user namespaces turned off), so it runs without one; only open pages you trust";
+
+/**
+ * Launches the browser headless with its sandbox on: render and snapshot open web pages with
+ * JavaScript on, and without the sandbox a bug such a page triggers in Chromium runs as the user.
+ * Where the sandbox cannot start, it launches once more without it and calls `onUnsandboxed` with
+ * a warning to show. Playwright's own signal handlers are disabled: the CLI handles Ctrl+C itself
+ * so it can remove temporary files before exiting.
  *
  * @throws MissingDependencyError when the executable does not start.
  */
-export async function launchBrowser(executablePath: string): Promise<Browser> {
+export async function launchBrowser(
+  executablePath: string,
+  onUnsandboxed: (warning: string) => void,
+): Promise<Browser> {
   const { chromium } = await import("playwright-core");
-  try {
-    return await chromium.launch({
+  const launch = (chromiumSandbox: boolean) =>
+    chromium.launch({
       executablePath,
       headless: true,
+      chromiumSandbox,
       args: CHROME_ARGS,
       timeout: LAUNCH_TIMEOUT_MS,
       handleSIGINT: false,
       handleSIGTERM: false,
       handleSIGHUP: false,
     });
+  try {
+    try {
+      return await launch(true);
+    } catch (error) {
+      if (!SANDBOX_FAILURE.test(errorMessage(error))) throw error;
+      const browser = await launch(false);
+      onUnsandboxed(UNSANDBOXED_WARNING);
+      return browser;
+    }
   } catch (error) {
     const first = errorMessage(error).split("\n")[0];
     throw new MissingDependencyError(
