@@ -176,17 +176,19 @@ it("paints the root's or body's background images over the whole canvas, placed 
 });
 
 it("keeps the native look of form controls and the UA's placeholder colour", async () => {
-  const { rasterizer } = await frameOf(
+  const { win, rasterizer } = await frameOf(
     '<body style="margin:0"><progress value=1 style="display:block;width:100px"></progress>' +
       '<input placeholder=MMMM style="display:block;border:0;padding:0;width:100px;font:bold 30px sans-serif">',
   );
   const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
   await rasterizer.draw(ctx);
-  const [red = 0, green = 0, blue = 0] = ctx.getImageData(50, 8, 1, 1).data;
+  // The bar's middle row: WebKit's native bar is 6px tall, Chromium's and Firefox's taller.
+  const bar = (win.document.querySelector("progress") as HTMLElement).getBoundingClientRect();
+  const [red = 0, green = 0, blue = 0] = ctx.getImageData(50, Math.floor(bar.top + bar.height / 2), 1, 1).data;
   const text = ctx.getImageData(0, 16, SIZE, 34).data.filter((_, i) => i % 4 === 0);
   // A clone given the UA's border or background as author styles draws a green fallback bar.
-  // Firefox's native bar is a darker blue than Chromium's; both stay blue.
-  expect(blue > 150 && green < 180 && red < 50).toBe(true);
+  // The native bars are different blues (Firefox's darker than Chromium's, WebKit's rgb(52,132,228)).
+  expect(blue > 150 && green < 180 && red < 80).toBe(true);
   // Chromium's root clone used to pin the placeholder to the root's resolved text fill colour.
   // Firefox does not apply author ::placeholder rules inside an SVG image (a documented
   // pseudo-element limit), so the grey-placeholder assertion is Chromium-specific.

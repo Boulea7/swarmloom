@@ -18,12 +18,13 @@ const executablePath = localChrome();
 const firefoxPath = process.env.SWARMLOOM_FIREFOX || undefined;
 
 /**
- * Browser tests that also run in Firefox, whose SVG foreignObject rasterising, WebCodecs, animated
- * images and scrolling differ from Chromium's: the in-browser exporter and its rasteriser, the
- * stage's frame determinism (still GIFs, exact scroll offsets) and the go-live page. Files built on
- * Chromium-only APIs (CDP, as in export-media) stay out; single Chromium-only cases skip themselves.
+ * Browser tests that also run in Firefox and WebKit, whose SVG foreignObject rasterising, native
+ * form and video controls, media queries, WebCodecs, animated images and scrolling differ from
+ * Chromium's: the in-browser exporter and its rasteriser, the stage's frame determinism (still GIFs,
+ * exact scroll offsets) and the go-live page. Files built on Chromium-only APIs (CDP, as in
+ * export-media) stay out; single engine-specific cases skip themselves or loosen their bounds.
  */
-const firefoxTests = [
+const crossBrowserTests = [
   "packages/core/test/stage/stage.browser.test.ts",
   "packages/export/test/browser-export.browser.test.ts",
   "packages/export/test/export.browser.test.ts",
@@ -66,13 +67,28 @@ export default defineConfig({
         extends: true,
         test: {
           name: "firefox",
-          include: firefoxTests,
+          include: crossBrowserTests,
           fileParallelism: false,
           browser: {
             enabled: true,
             headless: true,
             provider: playwright({ launchOptions: firefoxPath ? { executablePath: firefoxPath } : {} }),
             instances: [{ browser: "firefox" }],
+          },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Safari's engine: Playwright's WebKit build (needs its system libraries, as on CI's Ubuntu).
+          name: "webkit",
+          include: crossBrowserTests,
+          fileParallelism: false,
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright(),
+            instances: [{ browser: "webkit" }],
           },
         },
       },

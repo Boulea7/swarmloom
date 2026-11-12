@@ -70,16 +70,21 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       # --with-deps goes through the Ubuntu apt mirrors, whose DNS has failed for hours at a time.
-      # The runner image already carries Chrome's and Firefox's shared libraries, so then install the browsers alone.
-      - name: Install Chromium and Firefox
+      # The runner image already carries Chrome's and Firefox's shared libraries, so then install those two alone;
+      # WebKit's (GStreamer, libmanette, ...) are not on the image, so its tests skip with a warning.
+      - name: Install Chromium, Firefox and WebKit
+        id: browsers
         run: |
-          timeout 240 pnpm exec playwright install --with-deps chromium firefox && exit 0
-          echo "::warning::apt mirrors unreachable, installing the browsers without their system packages"
+          timeout 360 pnpm exec playwright install --with-deps chromium firefox webkit && exit 0
+          echo "::warning::apt mirrors unreachable, installing Chromium and Firefox without their system packages; the WebKit tests skip"
+          echo "webkit=skip" >> "$GITHUB_OUTPUT"
           pnpm exec playwright install chromium firefox
       - run: pnpm test:browser
-      # The in-browser exporter, the stage and the live page in Firefox too: its foreignObject rasterising,
-      # WebCodecs, animated images and scrolling differ from Chromium's.
+      # The in-browser exporter, the stage and the live page in Firefox and WebKit (Safari's engine) too: their
+      # foreignObject rasterising, native controls, media queries, WebCodecs and scrolling differ from Chromium's.
       - run: pnpm test:firefox
+      - if: steps.browsers.outputs.webkit != 'skip'
+        run: pnpm test:webkit
       # Builds the --e2e Chromium package and drives it in Playwright's Chromium (apps/extension/test/e2e).
       - run: pnpm test:e2e
       # The CLI tests on a real browser and ffmpeg (apps/cli/test/render.test.ts, snapshot.test.ts):

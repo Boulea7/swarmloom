@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { server } from "vitest/browser";
 import type { AgentView, Stage, StageOptions } from "../../src/internal";
 import { createRng } from "../../src/rng";
 import { createStage, stageStats } from "../../src/stage";
@@ -796,7 +797,9 @@ describe("stage: virtualization", () => {
     // A write per undrawn frame landed after that frame's task writes and forced a layout.
     expect(writes).toBe(1);
     const world = stage.root.querySelector(".world") as HTMLElement;
-    expect(world.getBoundingClientRect().top).toBeCloseTo(stage.toClient({ x: 0, y: 0 }).y, 0);
+    // WebKit keeps whole-pixel scroll offsets, so the world lands within a pixel of the exact one.
+    const off = Math.abs(world.getBoundingClientRect().top - stage.toClient({ x: 0, y: 0 }).y);
+    expect(off).toBeLessThan(server.browser === "webkit" ? 1 : 0.5);
     h.engine.destroy();
   });
 });

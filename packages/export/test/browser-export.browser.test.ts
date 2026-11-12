@@ -8,6 +8,7 @@ import {
   type InputVideoTrack,
 } from "mediabunny";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { server } from "vitest/browser";
 import emblem from "../../../examples/svg/emblem.svg?raw";
 import { VideoFileWriter, webCodecsProbe } from "../src/browser/encode";
 import { type BrowserExportOptions, type BrowserExportResult, exportVideo } from "../src/browser/index";
@@ -15,6 +16,11 @@ import { frameMicros } from "../src/browser/schedule";
 import type { RenderApi } from "../src/render/protocol";
 
 const FPS = 30;
+/**
+ * Mean per-channel difference a decoded frame may have from the one encoded. Playwright's Linux
+ * WebKit encodes through GStreamer, which loses a little more at the same bitrate.
+ */
+const LOSS = server.browser === "webkit" ? 6 : 3;
 /** Frames whose pixels are kept on their way into the encoder, to compare with the decoded file. */
 const CHECKED = [0, 59];
 const sent = new Map<number, Uint8ClampedArray<ArrayBuffer>>();
@@ -33,24 +39,37 @@ beforeAll(() => {
   container = document.createElement("div");
   document.body.append(container);
   // Vitest's browser runner wraps dynamic imports through a global of the test page; the export
-  // frame is a page of its own, so it gets a pass-through.
+  // frame is a page of its own, so it gets a pass-through: when added, and again on load in the
+  // capture phase, before the exporter's listener on the frame, as WebKit gives the srcdoc page a
+  // window other than the frame's first one.
   observer = new MutationObserver((records) => {
     for (const record of records) {
       for (const node of record.addedNodes) {
-        const win = (node as HTMLIFrameElement).contentWindow as (Window & Record<string, unknown>) | null;
-        if (win) win.__vitest_browser_runner__ = { wrapDynamicImport: (load: () => unknown) => load() };
-        if (node instanceof HTMLIFrameElement) onFrame?.(node);
+        if (!(node instanceof HTMLIFrameElement)) continue;
+        passThroughImports(node);
+        onFrame?.(node);
       }
     }
   });
   observer.observe(container, { childList: true });
+  container.addEventListener("load", onFrameLoad, true);
 });
 
 afterAll(() => {
   VideoFileWriter.prototype.addFrame = addFrame;
   observer.disconnect();
+  container.removeEventListener("load", onFrameLoad, true);
   container.remove();
 });
+
+function passThroughImports(frame: HTMLIFrameElement): void {
+  const win = frame.contentWindow as (Window & Record<string, unknown>) | null;
+  if (win) win.__vitest_browser_runner__ = { wrapDynamicImport: (load: () => unknown) => load() };
+}
+
+function onFrameLoad(event: Event): void {
+  if (event.target instanceof HTMLIFrameElement) passThroughImports(event.target);
+}
 
 function exportClip(extra: Partial<BrowserExportOptions> = {}): Promise<BrowserExportResult> {
   return exportVideo({
@@ -155,10 +174,10 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
   // Where the swarm moved between the two frames, each decoded frame matches its own.
   const moved = (i: number) => pixelDiff(start, end, i) > 48;
   for (const [k, pixels] of [start, end].entries()) {
-    expect(meanDiff(decoded[k], pixels)).toBeLessThan(3);
+    expect(meanDiff(decoded[k], pixels)).toBeLessThan(LOSS);
     expect(meanDiff(decoded[k], pixels, moved)).toBeLessThan(24);
   }
-  // Chromium and Firefox encode Opus in either container, so sound=true always gets a soundtrack here.
+  // Each engine here encodes Opus or AAC in either container, so sound=true always gets a soundtrack.
   expect(first.plan.audio).not.toBeNull();
   const audio = await input.getPrimaryAudioTrack();
   expect(audio?.codec).toBe(first.plan.audio);
@@ -189,7 +208,7 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
   expect([plainVideo.codec, (await plainVideo.computePacketStats()).packetCount]).toEqual(["vp9", 3]);
   expect((await plainInput.getPrimaryAudioTrack())?.codec).toBe(plain.plan.audio);
   const [plainStart] = await decodeFrames(plainVideo, [0]);
-  expect(meanDiff(plainStart as Uint8ClampedArray, start)).toBeLessThan(3);
+  expect(meanDiff(plainStart as Uint8ClampedArray, start)).toBeLessThan(LOSS);
 });
 
 it("cancelling removes the export frame at once, while it loads or starts", { timeout: 60_000 }, async () => {
@@ -207,27 +226,27 @@ it("cancelling removes the export frame at once, while it loads or starts", { ti
         controller.abort();
         return;
       }
-      // Cancel as the exporter calls init(), which needs a few tasks to load the input.
-      let api: RenderApi | undefined;
-      Object.defineProperty(added.contentWindow, "__swarmloom", {
-        configurable: true,
-        get: () => api,
-        set(value: RenderApi) {
-          const init = value.init;
-          value.init = (o) => {
-            const started = init.call(value, o);
-            started.then(
-              () => {
-                initialised = true;
-              },
-              () => undefined,
-            );
-            controller.abort();
-            return started;
-          };
-          api = value;
-        },
-      });
+      // Cancel as the exporter calls init(), which needs a few tasks to load the input. Wrapped on
+      // load in the capture phase, before the exporter's listener on the frame reads the API.
+      const wrapInit = (event: Event) => {
+        if (event.target !== added) return;
+        container.removeEventListener("load", wrapInit, true);
+        const api = (added.contentWindow as (Window & { __swarmloom?: RenderApi }) | null)?.__swarmloom;
+        if (!api) return;
+        const init = api.init;
+        api.init = (o) => {
+          const started = init.call(api, o);
+          started.then(
+            () => {
+              initialised = true;
+            },
+            () => undefined,
+          );
+          controller.abort();
+          return started;
+        };
+      };
+      container.addEventListener("load", wrapInit, true);
     };
     try {
       const error = await exportClip({ signal: controller.signal }).catch((e: unknown) => e);

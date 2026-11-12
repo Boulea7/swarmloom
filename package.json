@@ -15,6 +15,7 @@
     "test": "vitest run --project unit",
     "test:browser": "vitest run --project browser",
     "test:firefox": "vitest run --project firefox",
+    "test:webkit": "vitest run --project webkit",
     "test:e2e": "pnpm -F @swarmloom/extension test:e2e",
     "lint": "biome check .",
     "format": "biome format --write .",
