@@ -8,11 +8,18 @@ export const LOOP_PHASE = 0.5;
  * their delay. Without it an endless pulse was read at a different pose in every run, so two renders
  * of the same URL built different pages.
  *
- * Self-contained: Playwright sends its source to the page. Animations a later scroll starts still run.
+ * Self-contained: Playwright sends its source to the page. Open shadow roots are frozen too; closed
+ * roots and child frames are out of reach. Animations a later scroll starts still run.
  * @returns How many animations were frozen.
  */
 export function freezePageAnimations(phase: number): number {
-  const all = typeof document.getAnimations === "function" ? document.getAnimations() : [];
+  const all = new Set<Animation>();
+  const roots: (Document | ShadowRoot)[] = [document];
+  for (let i = 0; i < roots.length; i++) {
+    const root = roots[i] as Document | ShadowRoot;
+    if (typeof root.getAnimations === "function") for (const anim of root.getAnimations()) all.add(anim);
+    for (const el of root.querySelectorAll("*")) if (el.shadowRoot) roots.push(el.shadowRoot);
+  }
   let frozen = 0;
   for (const anim of all) {
     const timing = anim.effect?.getComputedTiming();

@@ -81,14 +81,19 @@ describe.skipIf(missing)(`snapshot in a real browser${missing ? ` (skipped: ${mi
   it("captures animations in a pose that does not depend on when the capture ran", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "swarmloom-snapshot-"));
     try {
-      // Body margin 8 px. A finite slide ends at +100 px; an endless one pauses half a cycle in, at +150 px.
+      // Body margin 8 px. A finite slide ends at +100 px; endless ones in the document and an open
+      // shadow root pause half a cycle in, at +150 px and 150 px wide.
       await writeFile(
         path.join(dir, "page.html"),
         `<!doctype html><title>t</title><style>
 @keyframes a { from { transform: translateX(0) } to { transform: translateX(100px) } }
 @keyframes b { from { transform: translateX(0) } to { transform: translateX(300px) } }
 h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
-</style><h1>once</h1><p>loop</p>`,
+#shadow { display: inline-block; animation: none }
+</style><h1>once</h1><h1 id="shadow">shadow<template shadowrootmode="open"><style>
+@keyframes inside { from { width: 0 } to { width: 300px } }
+.inner { display: block; height: 1px; animation: inside 1s linear infinite }
+</style><span class="inner"></span></template></h1><p>loop</p>`,
       );
       const out: string[] = [];
       const io = { out: (line: string) => out.push(line), err: () => {} };
@@ -100,11 +105,13 @@ h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
         assets: { snapshotBundle: SNAPSHOT_DOUBLE },
       });
       expect(code).toBe(0);
-      const { layers } = JSON.parse(out.join("\n")) as { layers: { text: string; box: { x: number } }[] };
+      const { layers } = JSON.parse(out.join("\n")) as { layers: { text: string; box: { x: number; w: number } }[] };
       expect(layers.map((l) => [l.text, Math.round(l.box.x)])).toEqual([
         ["once", 108],
+        ["shadow", 8],
         ["loop", 158],
       ]);
+      expect(Math.round(layers.find((l) => l.text === "shadow")?.box.w ?? 0)).toBe(150);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
