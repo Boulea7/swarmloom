@@ -269,8 +269,8 @@ Los dispositivos plegables no necesitan nada adicional: cuando el navegador admi
 
 ## Hoja de ruta
 
-- **Ahora**: Studio en línea, páginas web y 20 formatos de archivo, exportación fotograma a fotograma con la CLI y extensiones para Chrome / Edge / Firefox / Safari compiladas desde el código fuente.
-- **Próximamente**: la primera release de GitHub y paquetes de npm, publicación en tiendas y extensiones firmadas, exportación de video dentro de Studio y pruebas en teléfonos y dispositivos con Safari.
+- **Ahora**: Studio en línea, páginas web y 20 formatos de archivo, exportación de video fotograma a fotograma con la CLI o dentro de Studio, y extensiones para Chrome / Edge / Firefox / Safari compiladas desde el código fuente.
+- **Próximamente**: la primera release de GitHub y paquetes de npm, publicación en tiendas y extensiones firmadas, y pruebas en teléfonos y dispositivos con Safari.
 - **Más adelante**: más formatos y plataformas, sin prometer fechas. Comparte ideas en [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 
 ## Contribuciones y soporte

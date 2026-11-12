@@ -1,5 +1,5 @@
 import type { StudioI18n } from "./i18n";
-import type { InboxItem } from "./services";
+import type { InboxItem, StudioServices } from "./services";
 import { INBOX_CACHE, INBOX_HEADER, INBOX_PREFIX, MSG_SKIP_WAITING } from "./sw/protocol";
 import type { Toaster } from "./ui/toast";
 
@@ -44,6 +44,20 @@ export async function readInbox(id: string, scope: string): Promise<InboxItem[]>
   }
   await Promise.all(requests.map((r) => cache.delete(r)));
   return items;
+}
+
+type LaunchQueue = { setConsumer(fn: (params: { files: readonly FileSystemFileHandle[] }) => void): void };
+
+/**
+ * Hands files the OS opens with the installed app (File Handling `launchQueue`) to Studio. A file
+ * the OS will not let Studio read arrives as a rejected promise, so Studio can say why. Undefined
+ * when the browser has no launch queue.
+ */
+export function launchHandler(win: Window): StudioServices["onLaunch"] {
+  const queue = (win as Window & { launchQueue?: LaunchQueue }).launchQueue;
+  if (!queue || typeof queue.setConsumer !== "function") return undefined;
+  return (consumer) =>
+    queue.setConsumer((params) => consumer(Promise.all(params.files.map((handle) => handle.getFile()))));
 }
 
 /**

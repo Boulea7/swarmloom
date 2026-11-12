@@ -84,7 +84,7 @@ swarmloom render <file|url> [options]
 | `--labels <mode>` | `names` | `names`、`agents`、`roles` 或 `none` |
 | `--finale <finale>` | `flock` | `flock`、`halo` 或 `none` |
 | `--follow <mode>` | `tour` | `tour` 随构建滚动页面；`none` 不滚动 |
-| `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面 |
+| `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面，页面里的动图停在第一帧 |
 | `--no-live` | go live | 整个停留时间都保持收尾动画，不 go live |
 | `--locale <tag>` | `en-US` | 工具栏文字和页面的语言，BCP 47 标签，例如 `zh-CN` |
 | `--bpm <n>` | `112` | 放置音符、散开音与完成和弦对齐的速度（八分音符网格），范围 40–240 |
@@ -100,7 +100,7 @@ swarmloom render <file|url> [options]
 | --- | --- | --- |
 | `--audio-out <file>` | 关闭 | 另写一份音轨 WAV（48 kHz 立体声，与视频等长）；需要声音，不能与 `--no-sound`、GIF 或 WebP 同用 |
 | `--events-out <file>` | 关闭 | 另写一份声音事件日志 JSON：引擎毫秒、与帧同一时钟，并附每个事件的帧号 |
-| `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素。清单可直接分享：输出路径相对清单所在目录，程序只记文件名，不记工作目录，URL 的用户信息、查询串和片段写作 `redacted`；其他参数按原样记录，分享时宜用相对路径 |
+| `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素。清单可直接分享：参数和输出里的文件路径都相对清单所在目录记录（既不在该目录内、也不在其上级目录中的文件只记文件名），程序只记文件名，不记工作目录，URL 的用户信息、查询串和片段写作 `redacted` |
 
 ### 程序与日志
 

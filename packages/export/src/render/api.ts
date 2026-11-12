@@ -89,6 +89,13 @@ function mountHost(doc: Document, width: number, height: number): HTMLElement {
   return host;
 }
 
+/** The render page's origin when it is http(s); opaque origins ("null") match nothing. */
+function httpOrigin(doc: Document): string | undefined {
+  const location = doc.location;
+  if (!location || (location.protocol !== "http:" && location.protocol !== "https:")) return undefined;
+  return location.origin;
+}
+
 /** Directory `inputUrl` is served from when it is on the render page's own origin (the driver's server). */
 function servedDir(inputUrl: string | undefined, pageOrigin: string | undefined): string | undefined {
   if (!inputUrl || !pageOrigin) return undefined;
@@ -102,12 +109,14 @@ function servedDir(inputUrl: string | undefined, pageOrigin: string | undefined)
 
 /**
  * The blueprint's JSON without what changes from take to take: object URLs (random ids) become
- * "blob:1", "blob:2", ... in order of first appearance, and the directory the driver serves the
- * input from (random port and path, see {@link servedDir}) becomes "input:/". Remote URLs stay.
+ * "blob:1", "blob:2", ... in order of first appearance, the directory the driver serves the input
+ * from (random port and path, see {@link servedDir}) becomes "input:/", and any other URL on the
+ * render page's own origin (random port) starts with "page:/". Snapshots resolve in-page anchors
+ * such as Markdown footnote links against the render page's URL. Remote URLs stay.
  */
 function stableJson(blueprint: Blueprint, inputUrl: string | undefined, pageOrigin: string | undefined): string {
   const blobs = new Map<string, string>();
-  const json = JSON.stringify(blueprint).replace(/blob:[^"\\\s)']+/g, (url) => {
+  let json = JSON.stringify(blueprint).replace(/blob:[^"\\\s)']+/g, (url) => {
     const known = blobs.get(url);
     if (known) return known;
     const id = `blob:${blobs.size + 1}`;
@@ -115,7 +124,9 @@ function stableJson(blueprint: Blueprint, inputUrl: string | undefined, pageOrig
     return id;
   });
   const dir = servedDir(inputUrl, pageOrigin);
-  return dir ? json.replaceAll(dir, "input:/") : json;
+  if (dir) json = json.replaceAll(dir, "input:/");
+  // With the trailing slash, so a different port that starts with the same digits stays.
+  return pageOrigin ? json.replaceAll(`${pageOrigin}/`, "page:/") : json;
 }
 
 /**
@@ -125,7 +136,7 @@ function stableJson(blueprint: Blueprint, inputUrl: string | undefined, pageOrig
 async function blueprintSha256(blueprint: Blueprint, inputUrl: string | undefined, doc: Document): Promise<string> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return "";
-  const json = stableJson(blueprint, inputUrl, doc.location?.origin);
+  const json = stableJson(blueprint, inputUrl, httpOrigin(doc));
   const digest = await subtle.digest("SHA-256", new TextEncoder().encode(json));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -147,7 +158,10 @@ function playerOptions(
     reducedMotion: init.reducedMotion,
     controls: false,
     intro: true,
-    sound: init.sound ? { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: true } : false,
+    // Never realtime audio: the player logs every sound event anyway and audioWav() renders that log
+    // offline. An enabled player would open an AudioContext, and in a page with user activation (the
+    // Studio export frame after the click on Export) play every note aloud at export speed.
+    sound: false,
     onLive,
   };
   if (init.agents !== undefined) options.agents = init.agents;
@@ -229,10 +243,12 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
           onWarning: warn,
         });
         live = stage;
+        const goesLive = init.live && !init.reducedMotion;
+        if (goesLive) await stage.holdImages();
         const started = new RenderSession({
           player: playerOptions(init, loaded, host, () => stage.goLive(started.elapsed)),
           tailMs: init.tail,
-          live: init.live && !init.reducedMotion,
+          live: goesLive,
           cues: init.cues,
           createPlayer: deps.createPlayer,
           onWarning: (error) => warn(error.message),

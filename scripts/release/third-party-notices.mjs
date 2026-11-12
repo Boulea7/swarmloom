@@ -26,9 +26,12 @@
  * - `--check`: write nothing; also fails when a generated LICENSE.md on disk is stale;
  * - `--clean`: delete the generated LICENSE.md files after a local release;
  * - `--pages <dir>`: write a LICENSE.md into each app folder of the assembled GitHub Pages artifact
- *   instead (PAGES_APPS); the npm packages are left alone.
+ *   instead (PAGES_APPS); the npm packages are left alone;
+ * - `--app <name> <dir>`: write the LICENSE.md of one PAGES_APPS app into its build folder (the bookmarklet
+ *   Release ZIP is packed from apps/bookmarklet/dist).
+ * An app's LICENSE.md holds at least SwarmLoom's licence: unlike an npm tarball, nothing else adds it.
  *
- * Usage: node scripts/release/third-party-notices.mjs [--check | --clean | --pages <dir>]
+ * Usage: node scripts/release/third-party-notices.mjs [--check | --clean | --pages <dir> | --app <name> <dir>]
  */
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
@@ -408,7 +411,8 @@ export function noticeEntry(dir) {
  * @typedef {object} LicenseFile
  * @property {WorkspacePackage} pkg
  * @property {string} path where the LICENSE.md goes
- * @property {string | null} contents null when the package bundles no third-party code
+ * @property {string | null} contents null when an npm package bundles no third-party code (pnpm pack adds
+ *   the repository LICENSE instead)
  * @property {Set<string>} covered names of the packages the file covers
  */
 
@@ -419,9 +423,10 @@ export function noticeEntry(dir) {
  * @param {string} root repository root
  * @param {string} path where the file goes
  * @param {WholeTreeBuild} [wholeTree] see bundledPackages
+ * @param {boolean} [standalone] the file is the only licence shipped (an app folder): never null
  * @returns {LicenseFile}
  */
-function licenseFile(pkg, workspace, root, path, wholeTree) {
+function licenseFile(pkg, workspace, root, path, wholeTree, standalone = false) {
   /** @type {Map<string, NoticeEntry>} */
   const entries = new Map();
   for (const dir of bundledPackages(pkg, workspace, root, wholeTree).keys()) {
@@ -438,7 +443,7 @@ function licenseFile(pkg, workspace, root, path, wholeTree) {
   return {
     pkg,
     path,
-    contents: list.length ? renderLicenseFile(String(pkg.manifest.name), ownLicense, list) : null,
+    contents: list.length || standalone ? renderLicenseFile(String(pkg.manifest.name), ownLicense, list) : null,
     covered: new Set(list.map((entry) => entry.name)),
   };
 }
@@ -462,6 +467,20 @@ export function expectedLicenseFiles(root) {
 }
 
 /**
+ * @param {string} root
+ * @param {ReadonlyMap<string, WorkspacePackage>} workspace
+ * @param {string} name
+ * @param {PagesApp} app
+ * @param {string} folder where the app's build is, absolute or relative to `root`
+ * @returns {LicenseFile}
+ */
+function pagesAppLicenseFile(root, workspace, name, app, folder) {
+  const pkg = app.dir === undefined ? workspace.get(name) : { dir: app.dir, manifest: { name, private: true } };
+  if (!pkg) throw new Error(`${name} (PAGES_APPS) is not a workspace package`);
+  return licenseFile(pkg, workspace, root, resolve(root, folder, LICENSE_FILE), app.build, true);
+}
+
+/**
  * LICENSE.md of every app in PAGES_APPS, placed in the app's folder of the Pages artifact.
  * @param {string} root
  * @param {string} siteDir the assembled artifact, absolute or relative to `root`
@@ -469,11 +488,20 @@ export function expectedLicenseFiles(root) {
  */
 export function pagesLicenseFiles(root, siteDir) {
   const { workspace } = workspaceByName(root);
-  return [...PAGES_APPS].map(([name, app]) => {
-    const pkg = app.dir === undefined ? workspace.get(name) : { dir: app.dir, manifest: { name, private: true } };
-    if (!pkg) throw new Error(`${name} (PAGES_APPS) is not a workspace package`);
-    return licenseFile(pkg, workspace, root, resolve(root, siteDir, app.path, LICENSE_FILE), app.build);
-  });
+  return [...PAGES_APPS].map(([name, app]) => pagesAppLicenseFile(root, workspace, name, app, join(siteDir, app.path)));
+}
+
+/**
+ * LICENSE.md of one PAGES_APPS app, placed in a folder holding its build.
+ * @param {string} root
+ * @param {string} name
+ * @param {string} folder absolute or relative to `root`
+ * @returns {LicenseFile}
+ */
+export function appLicenseFile(root, name, folder) {
+  const app = PAGES_APPS.get(name);
+  if (!app) throw new Error(`${name} is not in PAGES_APPS (${[...PAGES_APPS.keys()].join(", ")})`);
+  return pagesAppLicenseFile(root, workspaceByName(root).workspace, name, app, folder);
 }
 
 /**
@@ -511,29 +539,26 @@ function uncoveredProblems(pkg, root, covered, workspaceNames) {
 }
 
 /**
- * Writes the LICENSE.md of every PAGES_APPS app into the assembled Pages artifact.
+ * Writes the LICENSE.md files of apps into the folders holding their builds.
  * @param {string} root
- * @param {string} siteDir
+ * @param {readonly LicenseFile[]} files from pagesLicenseFiles or appLicenseFile
  * @param {ReadonlySet<string>} workspaceNames
  * @returns {string[]} problems
  */
-function writePagesLicenseFiles(root, siteDir, workspaceNames) {
+function writeAppLicenseFiles(root, files, workspaceNames) {
   /** @type {string[]} */
   const problems = [];
   /** @param {string} path */
   const shown = (path) => (relative(root, path).startsWith("..") ? path : relative(root, path) || ".");
-  for (const { pkg, path, contents, covered } of pagesLicenseFiles(root, siteDir)) {
+  for (const { pkg, path, contents, covered } of files) {
     if (!existsSync(dirname(path))) {
-      problems.push(`${shown(dirname(path))} does not exist; copy the ${pkg.dir} build into the Pages artifact first`);
+      problems.push(`${shown(dirname(path))} does not exist; build ${pkg.dir} and copy its output there first`);
       continue;
     }
     problems.push(...uncoveredProblems(pkg, root, covered, workspaceNames));
-    if (contents === null) {
-      console.log(`third-party-notices: ${pkg.dir} bundles no third-party code, no ${LICENSE_FILE} needed`);
-      continue;
-    }
+    if (contents === null) throw new Error(`${pkg.dir}: an app's ${LICENSE_FILE} is never empty`);
     writeFileSync(path, contents);
-    console.log(`third-party-notices: wrote ${shown(path)} (${covered.size} packages)`);
+    console.log(`third-party-notices: wrote ${shown(path)} (${covered.size} third-party packages)`);
   }
   return problems;
 }
@@ -557,21 +582,31 @@ export function cleanLicenseFiles(root) {
 }
 
 function main() {
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     options: {
       check: { type: "boolean", default: false },
       clean: { type: "boolean", default: false },
       pages: { type: "string" },
+      app: { type: "string" },
     },
+    allowPositionals: true,
   });
-  if ([values.check, values.clean, values.pages !== undefined].filter(Boolean).length > 1) {
-    throw new Error("--check, --clean and --pages cannot be combined");
+  const modes = [values.check, values.clean, values.pages !== undefined, values.app !== undefined];
+  if (modes.filter(Boolean).length > 1) throw new Error("--check, --clean, --pages and --app cannot be combined");
+  if (positionals.length !== (values.app === undefined ? 0 : 1)) {
+    throw new Error(
+      "usage: node scripts/release/third-party-notices.mjs [--check | --clean | --pages <dir> | --app <name> <dir>]",
+    );
   }
   const root = fileURLToPath(new URL("../..", import.meta.url));
   const workspaceNames = new Set(readWorkspacePackages(root).map((pkg) => String(pkg.manifest.name)));
-  if (values.pages !== undefined) {
-    if (!values.pages) throw new Error("--pages needs the folder of the assembled Pages artifact");
-    const problems = writePagesLicenseFiles(root, values.pages, workspaceNames);
+  if (values.pages !== undefined || values.app !== undefined) {
+    if (values.pages === "") throw new Error("--pages needs the folder of the assembled Pages artifact");
+    const files =
+      values.app === undefined
+        ? pagesLicenseFiles(root, String(values.pages))
+        : [appLicenseFile(root, values.app, resolve(positionals[0]))];
+    const problems = writeAppLicenseFiles(root, files, workspaceNames);
     for (const problem of problems) console.error(`error: ${problem}`);
     return problems.length > 0 ? 1 : 0;
   }

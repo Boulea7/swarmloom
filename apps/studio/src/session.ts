@@ -81,6 +81,10 @@ export class Session {
   private planExact = false;
 
   private settings: StudioSettings;
+  /** The user's own settings, without what a share link carries. */
+  private base: StudioSettings;
+  /** Settings a share link carries for this visit; a key the user changes meanwhile is theirs again. */
+  private shared: Partial<StudioSettings> = {};
   private controller: AbortController | null = null;
   private unsubscribe: Array<() => void> = [];
   private destroyed = false;
@@ -88,10 +92,19 @@ export class Session {
 
   constructor(private readonly o: SessionOptions) {
     this.settings = o.settings;
+    this.base = o.settings;
   }
 
   get currentPhase(): SessionPhase {
     return this.phase;
+  }
+
+  /**
+   * Settings the preview plays with: the user's, plus those a share link carries for this visit.
+   * An export must use these, not the saved settings, to make the same performance.
+   */
+  get playSettings(): StudioSettings {
+    return this.settings;
   }
 
   /** Resolves and loads the source, then creates an idle player. Never throws: failures become the "error" phase. */
@@ -105,7 +118,10 @@ export class Session {
       if (!this.opened) {
         this.opened = await resolveSource(this.o.ref, { services: this.o.services, local: this.o.local, signal });
         // Settings carried by a share link apply to this visit only; they are never persisted.
-        if (this.opened.settings) this.settings = { ...this.settings, ...this.opened.settings };
+        if (this.opened.settings) {
+          this.shared = { ...this.opened.settings };
+          this.settings = { ...this.base, ...this.shared };
+        }
       }
       if (signal.aborted) return;
       this.setPhase("loading");
@@ -152,13 +168,20 @@ export class Session {
   }
 
   /**
-   * Applies new settings. Live ones go straight to the player; the returned impact tells the caller
+   * Applies the user's new saved settings over which a share link's settings stay, except the ones
+   * the user changed. Live ones go straight to the player; the returned impact tells the caller
    * whether a {@link rebuild} (new player) or {@link reload} (new adapter run) is still needed.
    * The language setting is not one of them: the resolved locale arrives through {@link setLocale}
    * once Studio's strings for it have loaded.
    */
-  apply(next: StudioSettings): SettingsImpact {
+  apply(saved: StudioSettings): SettingsImpact {
     const prev = this.settings;
+    // A share link's setting stays for the visit until the user changes that setting themselves.
+    for (const key of Object.keys(this.shared) as (keyof StudioSettings)[]) {
+      if (saved[key] !== this.base[key]) delete this.shared[key];
+    }
+    this.base = saved;
+    const next = { ...saved, ...this.shared };
     const impact = impactOf({ ...prev, locale: next.locale }, next);
     this.settings = next;
     const player = this.player;

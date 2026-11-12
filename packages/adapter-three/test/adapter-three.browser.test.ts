@@ -1,5 +1,5 @@
 import type { CustomLayer, LoadedSource, Plugin } from "@swarmloom/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createThreeAdapter, THREE_TASKS } from "../src/index";
 import { driveBuild } from "./helpers/drive";
 
@@ -83,7 +83,20 @@ describe("three adapter with the loom-bot sample", () => {
     "renders on a WebGL backdrop, builds, orbits and keeps anchors on screen",
     { timeout: 180_000 },
     () => {
-      const cleanup = plugin.setup?.({} as never, host);
+      // The host asks for reduced motion, the player does not: the player's setting decides (exports
+      // pin it, so the finale orbit must not depend on the machine).
+      const real = window.matchMedia.bind(window);
+      const media = vi
+        .spyOn(window, "matchMedia")
+        .mockImplementation((query) =>
+          query.includes("prefers-reduced-motion") ? ({ matches: true, media: query } as MediaQueryList) : real(query),
+        );
+      let cleanup: ReturnType<NonNullable<Plugin["setup"]>>;
+      try {
+        cleanup = plugin.setup?.({ reducedMotion: false } as never, host);
+      } finally {
+        media.mockRestore();
+      }
       try {
         const canvas = host.querySelector("canvas") as HTMLCanvasElement;
         expect(canvas).not.toBeNull();

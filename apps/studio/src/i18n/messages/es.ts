@@ -58,6 +58,40 @@ export const es: StudioCatalog = {
   "player.notes": "Se muestra con algunos cambios: {notes}",
   "player.fonts": "Las fuentes que faltan en este dispositivo se muestran con otras parecidas: {fonts}.",
   "player.fonts.more": "{count} más",
+  "note.lottie.noManifest": "El archivo .lottie no tiene manifiesto, así que se muestra su primera animación.",
+  "note.lottie.animations": "Este archivo .lottie contiene {count} animaciones; se muestra «{name}».",
+  "note.lottie.imageFormat": {
+    one: "Se omitió {count} imagen en un formato no compatible.",
+    other: "Se omitieron {count} imágenes en un formato no compatible.",
+  },
+  "note.lottie.imageExternal": {
+    one: "Se omitió {count} imagen que no está incrustada en el archivo.",
+    other: "Se omitieron {count} imágenes que no están incrustadas en el archivo.",
+  },
+  "note.lottie.footage": {
+    one: "Se quitó {count} recurso de audio o datos.",
+    other: "Se quitaron {count} recursos de audio o datos.",
+  },
+  "note.lottie.duplicate": {
+    one: "Se quitó {count} recurso que repite el ID de otro anterior.",
+    other: "Se quitaron {count} recursos que repiten el ID de otro anterior.",
+  },
+  "note.lottie.slots": {
+    one: "Se quitó {count} ranura de imagen; se muestran las imágenes del propio archivo.",
+    other: "Se quitaron {count} ranuras de imagen; se muestran las imágenes del propio archivo.",
+  },
+  "note.lottie.fontList": "Se quitó una lista de fuentes dañada.",
+  "note.lottie.webFonts": {
+    one: "{count} fuente web se sustituyó por una fuente instalada.",
+    other: "{count} fuentes web se sustituyeron por fuentes instaladas.",
+  },
+  "note.lottie.textOrder": "Los animadores de texto con orden de letras aleatorio se reproducen en un orden fijo.",
+  "note.lottie.audioLayers": "Las capas de audio no se reproducen.",
+  "note.lottie.dataLayers": "Las capas de datos no se reproducen.",
+  "note.lottie.expressions": {
+    one: "Se ignoró {count} expresión; su propiedad conserva los valores de sus fotogramas clave.",
+    other: "Se ignoraron {count} expresiones; sus propiedades conservan los valores de sus fotogramas clave.",
+  },
   "player.dismiss": "Cerrar",
   "player.retry": "Reintentar",
   "player.home": "Volver a Studio",
@@ -157,10 +191,16 @@ export const es: StudioCatalog = {
   "export.web.sound": "Añadiendo el sonido…",
   "export.web.finishing": "Terminando el archivo…",
   "export.web.ready": "Listo: {time} de duración, {size}.",
+  "export.web.blanks": {
+    one: "{count} imagen o fuente no se pudo leer y falta en el vídeo.",
+    other: "{count} imágenes o fuentes no se pudieron leer y faltan en el vídeo.",
+  },
   "export.web.silent": "Este navegador no puede codificar sonido, así que el vídeo no lo tiene.",
   "export.web.partial": "El vídeo se corta a los 10 minutos.",
   "export.web.cancelled": "Exportación cancelada.",
   "export.web.failed": "La exportación falló: {message}",
+  "export.web.loadFailed":
+    "No se pudo cargar el exportador. Comprueba la conexión, recarga la página y vuelve a intentarlo.",
   "export.web.noCodec":
     "Este navegador no puede codificar vídeo de este tamaño. Prueba un tamaño menor o la línea de comandos.",
   "export.cli.title": "Renderizar con la línea de comandos",
@@ -169,7 +209,9 @@ export const es: StudioCatalog = {
   "export.cli.format": "Formato",
   "export.cli.copy": "Copiar comando",
   "export.cli.copied": "Copiado",
-  "export.cli.save": "Guarda primero el contenido pegado como {name}.",
+  "export.cli.save": "Guarda este contenido como {name} y ejecuta el comando en esa carpeta.",
+  "export.cli.folder": "Ejecuta el comando en la carpeta que contiene {name}.",
+  "export.cli.rename": "Guarda una copia de {file} como {name} y ejecuta el comando en esa carpeta.",
   "export.cli.download": "Este enlace no se puede pegar con seguridad en una terminal. Descárgalo primero como {name}.",
 
   "watch.play": "Reproducir",
@@ -213,5 +255,6 @@ export const es: StudioCatalog = {
   "theme.label": "Tema: {theme}",
   "update.ready": "Hay una nueva versión de Studio.",
   "update.reload": "Recargar",
+  "launch.ready": "{name} está listo para abrir.",
   "offline.ready": "Studio ya funciona sin conexión.",
 };

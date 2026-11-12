@@ -14,7 +14,7 @@ import {
   saveSettings,
 } from "./settings";
 import { type LocalInput, readLocalFile } from "./source";
-import { createPanel, type Panel } from "./ui/dialog";
+import { createPanel, type Panel, topModal } from "./ui/dialog";
 import { h, isTyping } from "./ui/dom";
 import { createToaster, type Toaster } from "./ui/toast";
 import { syncThemeButton } from "./views/chrome";
@@ -108,6 +108,14 @@ export async function mountStudio(
   let view: View | null = null;
   let navigated = false;
   let destroyed = false;
+  // Files opened through the OS arrive after load. They may take over the view (and the `?launch=1`
+  // wait may send it home) only until the user navigates; after that the user's choice stays.
+  let launchOwnsView = true;
+  let launchTimer = 0;
+  const releaseLaunch = () => {
+    launchOwnsView = false;
+    win.clearTimeout(launchTimer);
+  };
 
   // Each local input is stored under its own key in the history entry that opened it, so Back and
   // Forward play that entry's file, never the one opened last.
@@ -345,7 +353,11 @@ export async function mountStudio(
     },
     appUrl,
     updateSettings,
-    navigate,
+    // Every view navigation is the user's.
+    navigate: (patch, opts) => {
+      releaseLaunch();
+      navigate(patch, opts);
+    },
     toggleSettings,
     settingsOpen: () => panels().settings.isOpen,
     openShortcuts: () => panels().shortcuts.open(true),
@@ -357,7 +369,9 @@ export async function mountStudio(
   const onKey = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) return;
     const { settings: drawer, shortcuts } = panels();
-    if (event.key === "Escape" && drawer.isOpen && !drawer.isModal) {
+    // A modal dialog (shortcuts, export, the watch QR code) covers the desktop drawer: Esc is its own.
+    const modal = topModal(doc);
+    if (event.key === "Escape" && drawer.isOpen && !drawer.isModal && !modal) {
       event.preventDefault();
       drawer.close();
       return;
@@ -367,6 +381,8 @@ export async function mountStudio(
       event.preventDefault();
       return;
     }
+    // A dialog of the view is open: no panel opens behind it (inert) or over it.
+    if (modal) return;
     if (isTyping(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.key === "?") {
       event.preventDefault();
@@ -377,6 +393,7 @@ export async function mountStudio(
     }
   };
   const onPop = (event: PopStateEvent) => {
+    releaseLaunch();
     route = parseRoute(win.location.href, routeOptions);
     local = localOf(event.state);
     navigated = true;
@@ -402,12 +419,14 @@ export async function mountStudio(
   systemDark?.addEventListener("change", onSystemScheme);
 
   // Files opened through the OS (`file_handlers`) arrive via the Launch Queue after load.
-  let launchTimer = 0;
   if (route.source?.kind === "launch") {
     route = { ...route, source: null };
     launchTimer = win.setTimeout(() => navigate({ source: null }, { replace: true }), LAUNCH_WAIT_MS);
   }
-  /** Opens the first launched file. One that cannot be read leaves `?launch=1` for home and says why. */
+  /**
+   * Opens the first launched file, or offers it in a toast once the user has navigated meanwhile.
+   * One that cannot be read leaves `?launch=1` for home and says why.
+   */
   const openLaunched = async (files: Promise<File[]>) => {
     let file: File | undefined;
     let input: LocalInput;
@@ -426,7 +445,15 @@ export async function mountStudio(
       return;
     }
     if (destroyed) return;
-    navigate({ source: { kind: "file", name: input.name }, autoplay: true }, { local: input, replace: true });
+    const source = { kind: "file", name: input.name } as const;
+    if (launchOwnsView) {
+      navigate({ source, autoplay: true }, { local: input, replace: true });
+      return;
+    }
+    toast.show(i18n.t("launch.ready", { name: input.name }), {
+      icon: "open",
+      action: { label: i18n.t("home.open"), run: () => ctx.navigate({ source, autoplay: true }, { local: input }) },
+    });
   };
   services.onLaunch?.((files) => void openLaunched(files));
 

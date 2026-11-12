@@ -5,11 +5,11 @@ description: Open files, play examples, adjust builds, share and export in Swarm
 
 # Studio
 
-::: warning Current status
-Studio's interface and export paths are still being implemented, and the deployment URL is a planned entry point. This page describes v1 behaviour.
+::: info Current status
+Studio is online at the address below, and **Export in this browser** works in browsers with WebCodecs. The command from **Render with the command line** needs the `swarmloom` CLI, which is not on npm yet; build it from source for now (see [CLI](./cli.md)). This page describes v1 behaviour.
 :::
 
-Studio is SwarmLoom's browser workbench and an installable PWA. Planned address:
+Studio is SwarmLoom's browser workbench and an installable PWA. Address:
 
 [https://boulea7.github.io/swarmloom/studio/](https://boulea7.github.io/swarmloom/studio/)
 
@@ -58,7 +58,7 @@ Phones use a bottom settings sheet. Watch mode omits full settings and keeps onl
 
 ## Offline use
 
-After PWA installation, the Service Worker caches the app shell and, at install, fetches every format's adapter chunks together with what they import. Local files, cached examples and existing scenes can then run offline. The worker's version is a hash of the content of every cached file, so a change to only the page, the manifest or an icon still reaches installed copies.
+After PWA installation, the Service Worker caches the app shell and, at install, fetches every format's adapter chunks and the in-browser video exporter, together with what they import. Local files, cached examples and existing scenes can then run offline. The worker's version is a hash of the content of every cached file, so a change to only the page, the manifest or an icon still reaches installed copies.
 
 Offline mode does not make remote URLs readable. First-use formats, uncached remote resources, external fonts and model dependencies still need a network. Clearing site data removes the cache.
 
@@ -83,14 +83,14 @@ Studio fetches URLs directly in the browser, so same-origin policy, CORS, mixed 
 
 The remote site may log requests. Opening only a local file does not upload its content.
 
-The Studio page carries a Content-Security-Policy that backs up every format's sanitizer: only Studio's own scripts run, and from the web only https images, fonts and the file you open load. Turning off **Load web images and fonts** adds a stricter policy that blocks web images and fonts too; turning it back on needs a page reload, which Studio offers.
+The Studio page carries a Content-Security-Policy that backs up every format's sanitizer: only Studio's own scripts run, and from the web only https images, fonts and the file you open load. Turning off **Load web images and fonts** adds a stricter policy that blocks web images and fonts too, and exporting in the browser does not request them either; turning it back on needs a page reload, which Studio offers.
 
 ## Foldables and small screens
 
 Studio always has an ordinary responsive layout. Supported Chromium environments can add dual-screen enhancements through Viewport Segments:
 
-- Horizontal dual screen: the full stage on one segment and settings on the other.
-- Vertical dual screen: stage above, controls below.
+- Horizontal dual screen: the full stage on one segment, settings and dialogs on the other.
+- Vertical dual screen: stage above, controls and dialogs below.
 - Fold or rotate: recompute presentation without resetting the seed or timeline.
 
 `?watch=1` or a watch-sized screen (up to 320 × 400) uses the tiny player; a narrow window on a bigger screen and `?import=1` links keep the normal Studio. It shows a static poster first, is muted by default, and has a large play button, progress and **Open on phone**. It does not depend on poorly supported round-display media queries.
@@ -100,17 +100,18 @@ Studio always has an ordinary responsive layout. Supported Chromium environments
 **Export** (shortcut `E`) opens one dialog for both ways to make a video. Pick the size (1280 × 720, 1920 × 1080, 1080 × 1920 or 1080 × 1080), 30 or 60 fps, and whether to include sound.
 
 - **Export in this browser** renders the video in the page, frame by frame. A hidden frame runs the same render page as `swarmloom render`, advances the same virtual clock by whole frames and keeps the same tail, so the frames match the CLI's for the same settings. Each frame is drawn from a snapshot of the page, encoded with WebCodecs (H.264 in MP4, or VP9 in WebM when H.264 is not available) and packed by [Mediabunny](https://github.com/Vanilagy/mediabunny). The sound is the run's sound log rendered offline, as AAC or Opus; when the browser cannot encode either, the video is silent and the dialog says so. A progress bar shows the frame count and the time left, **Cancel** stops at once, and **Download** saves the file. The page stays usable while it works; keep the tab open.
-- **Render with the command line** shows the `npx swarmloom render ...` command for the same file, with the chosen size, frame rate, theme, language, sound and web images setting. It also offers WebM, GIF and WebP.
+- **Render with the command line** shows the `npx swarmloom render ...` command for the same file, with the chosen size, frame rate, theme, language, sound and web images setting, and the same 10-minute length limit (`--max-duration 600`; the CLI's own default is 120 s). It also offers WebM, GIF and WebP. The browser knows an opened file's name but not its folder, so the command names the file alone and the dialog says to run it in the folder that holds the file; pasted or shared text has to be saved under the given name first.
 
-Browsers without WebCodecs (no `VideoEncoder`) show only the command. The exporter and Mediabunny load when the dialog first opens, so they add nothing to Studio's start-up.
+Browsers without WebCodecs (no `VideoEncoder`) show only the command. The exporter and Mediabunny are not part of Studio's start-up: on an ordinary visit they load when the dialog first opens. An installed copy downloads them earlier, at install, with the format adapters (see Offline use above).
 
 Limits of the in-page export:
 
-- It takes about 0.1 to 0.2 s per frame at 1280 × 720, so a 35 s video takes about 3 minutes. Input stays responsive between frames, with up to one frame's delay.
-- Frames are drawn from an SVG snapshot of the page, not a screenshot. Custom `::marker` and `::first-letter` styles, `position: sticky`, WebGL canvases and cross-origin images that do not allow CORS (left blank) can differ from the CLI.
+- It takes about 0.1 to 0.2 s per frame at 1280 × 720, so a 35 s video takes about 3 minutes; live pages with thousands of elements take longer. Input stays responsive while it works: each frame's snapshot pauses every few milliseconds, and drawing a frame holds the page for at most about a tenth of a second, longer when the web fonts the page's text uses add up to megabytes (about 40 ms per MB in Chromium).
+- Frames are drawn from an SVG snapshot of the page, not a screenshot. Custom `::marker` and `::first-letter` styles, `position: sticky`, WebGL canvases, native video controls (drawn as a likeness), and cross-origin images or videos that do not allow CORS (left blank; the dialog says how many) can differ from the CLI.
 - It uses the sound pack chosen in Studio; the CLI always uses the default pack.
 - Encoders differ: Chromium tags its H.264 as BT.601, the CLI writes BT.709, so decoded colours can differ by a few levels. Chromium on Linux has no AAC encoder, so MP4 files there carry Opus sound, whose track runs up to 20 ms past the video.
-- Two exports of the same input and seed draw the same pixels in every frame, but the browser's encoder does not write the same bytes each time. The difference is too small to see.
+- Like the CLI, the export ignores the system's reduced-motion, high-contrast (Windows forced colours) and increased-contrast settings and the screen's pixel density: pages and 3D models build with full motion and their own colours, at one device pixel per CSS pixel. Images a page picks with `srcset` still follow the screen, with high contrast on, system colour keywords such as `Canvas` still take the system's palette, and on a high-density screen the browser can anti-alias text edges a little differently, so frames can differ slightly from the CLI's and from exports made on other screens.
+- Two exports of the same input and seed on the same screen draw the same pixels in every frame, but the browser's encoder does not write the same bytes each time. The difference is too small to see.
 
 **Share** can put small text into `#d=`. Export a video or share the original file for large content. Check for sensitive material before sharing.
 

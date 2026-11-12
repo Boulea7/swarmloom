@@ -196,12 +196,14 @@ function fenced(text) {
 
 /**
  * Renders a package's LICENSE.md: the package's own licence, then every bundled third-party package
- * with its licence text. Packages with identical texts share one copy of it.
+ * with its licence text. Packages with identical texts share one copy of it. Without entries the file
+ * holds the package's own licence only.
  * @param {string} packageName
  * @param {string} ownLicense the repository LICENSE text
  * @param {readonly NoticeEntry[]} entries
  */
 export function renderLicenseFile(packageName, ownLicense, entries) {
+  if (entries.length === 0) return [GENERATED_MARKER, "", ownLicense.trim(), ""].join("\n");
   /** @type {Map<string, NoticeEntry[]>} */
   const byText = new Map();
   for (const entry of [...entries].sort((a, b) => compareCodeUnits(a.name, b.name))) {

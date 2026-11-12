@@ -269,8 +269,8 @@ Chrome / Edge 打开 Studio 后，用地址栏或菜单里的“安装应用”�
 
 ## Roadmap
 
-- **现在**：在线 Studio，网页加 20 类文件格式，CLI 逐帧导出，Chrome / Edge / Firefox / Safari 扩展可从源码构建。
-- **下一步**：首个 GitHub Release 和 npm 包，扩展上架与签名，Studio 内直接导出视频，手机和 Safari 真机测试。
+- **现在**：在线 Studio，网页加 20 类文件格式，用 CLI 或直接在 Studio 里逐帧导出视频，Chrome / Edge / Firefox / Safari 扩展可从源码构建。
+- **下一步**：首个 GitHub Release 和 npm 包，扩展上架与签名，手机和 Safari 真机测试。
 - **以后**：更多格式和平台，不承诺日期。欢迎到 [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) 提建议。
 
 ## 贡献与支持

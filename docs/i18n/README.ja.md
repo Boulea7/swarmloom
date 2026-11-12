@@ -269,8 +269,8 @@ Chrome / Edge では Studio を開き、アドレスバーまたはメニュー�
 
 ## ロードマップ
 
-- **現在**：オンライン Studio、Web ページと 20 種類のファイルフォーマット、CLI によるフレーム単位の書き出し、ソースからビルドできる Chrome / Edge / Firefox / Safari 拡張機能。
-- **次に**：初の GitHub Release と npm パッケージ、ストアでの公開と署名付き拡張機能、Studio 内での動画書き出し、スマートフォンと Safari 搭載デバイスでのテスト。
+- **現在**：オンライン Studio、Web ページと 20 種類のファイルフォーマット、CLI または Studio 内でのフレーム単位の動画書き出し、ソースからビルドできる Chrome / Edge / Firefox / Safari 拡張機能。
+- **次に**：初の GitHub Release と npm パッケージ、ストアでの公開と署名付き拡張機能、スマートフォンと Safari 搭載デバイスでのテスト。
 - **今後**：対応フォーマットとプラットフォームの拡充。公開時期は未定です。[Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) でアイデアをお寄せください。
 
 ## 貢献とサポート

@@ -248,6 +248,8 @@ jobs:
           pnpm --filter swarmloom pack --out "$GITHUB_WORKSPACE/dist/release/swarmloom-cli-%v.tgz"
           # The install page with the bookmarklet baked in (the same build Pages publishes at /swarmloom/bm/).
           pnpm --filter @swarmloom/bookmarklet build
+          # LICENSE.md with SwarmLoom's licence (and any third-party ones), as on Pages.
+          node scripts/release/third-party-notices.mjs --app @swarmloom/bookmarklet apps/bookmarklet/dist
           node scripts/release/pack-folder.mjs apps/bookmarklet/dist "dist/release/swarmloom-bookmarklet-$VERSION.zip"
           node scripts/release/checksums.mjs dist/release
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

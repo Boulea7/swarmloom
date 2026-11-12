@@ -87,4 +87,68 @@ describe("export in Chromium", () => {
       host.remove();
     }
   });
+
+  it("shows an animated GIF on the live page as its first frame, as an <img> at the same size and as a background", async () => {
+    // 1x1 GIF, red then blue, looping.
+    const gif =
+      "data:image/gif;base64,R0lGODlhAQABAIABAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAQABAAACAkQBACH5BAAKAAAALAAAAAABAAEAAAICTAEAOw==";
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc = `<style>i{display:block;height:4px;background:url(${gif})}</style><body style="margin:0"><img src="${gif}"><i></i>`;
+    document.body.append(frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument as Document;
+      const stage = new LiveStage({
+        document,
+        host: document.body,
+        shadows: { roots: () => [], stop() {} },
+        page: { frame, document: doc },
+      });
+      await stage.holdImages();
+      const img = doc.querySelector("img") as HTMLImageElement;
+      expect([img.src.slice(0, 15), img.complete, img.width]).toEqual(["data:image/png;", true, 1]);
+      // A stylesheet background is overridden inline, as the stylesheet cannot be rewritten in place.
+      const bg = (doc.querySelector("i") as HTMLElement).style;
+      expect([bg.backgroundImage.slice(0, 20), bg.getPropertyPriority("background-image")]).toEqual([
+        'url("data:image/png;',
+        "important",
+      ]);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  it("lines the live page up with a scrolled stage at once, despite a page-level smooth scroll", async () => {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc = '<style>html{scroll-behavior:smooth}</style><body style="margin:0"><div style="height:400px"></div>';
+    // The stage view shows the world scrolled down by 100 px.
+    const host = document.createElement("div");
+    host.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;overflow:hidden";
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.cssText = "position:relative;top:-100px;height:400px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: frame.contentDocument as Document },
+      });
+      stage.goLive(0);
+      expect([frame.contentWindow?.scrollY, frame.style.top]).toEqual([100, "0px"]);
+    } finally {
+      frame.remove();
+      host.remove();
+    }
+  });
 });

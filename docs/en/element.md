@@ -5,8 +5,8 @@ description: Embed cursor rebuilding anywhere with the <swarm-loom> element.
 
 # Web Component
 
-::: warning Current status
-`define()` can register the element, but loading, playback and most attributes are still stubs. This page describes the planned complete component interface.
+::: info Current status
+The element loads, plays and reflects the attributes below. `@swarmloom/element` is not on npm yet; build it from source for now.
 :::
 
 `<swarm-loom>` wraps format loading and playback in a custom element for documentation sites, product pages and framework-independent embeds.

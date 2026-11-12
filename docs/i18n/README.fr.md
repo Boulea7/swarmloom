@@ -269,8 +269,8 @@ Aucune installation supplémentaire n’est nécessaire sur les écrans pliables
 
 ## Feuille de route
 
-- **Aujourd’hui** : Studio en ligne, pages web et 20 formats de fichiers, export image par image via la CLI, et extensions Chrome / Edge / Firefox / Safari compilables depuis les sources.
-- **Ensuite** : première version sur GitHub Releases et paquets npm, fiches en boutique et extensions signées, export vidéo dans Studio, ainsi que tests sur téléphones et appareils Safari.
+- **Aujourd’hui** : Studio en ligne, pages web et 20 formats de fichiers, export vidéo image par image via la CLI ou directement dans Studio, et extensions Chrome / Edge / Firefox / Safari compilables depuis les sources.
+- **Ensuite** : première version sur GitHub Releases et paquets npm, fiches en boutique et extensions signées, ainsi que tests sur téléphones et appareils Safari.
 - **Plus tard** : d’autres formats et plateformes, sans date promise. Partagez vos idées dans [Idées](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 
 ## Contribuer et obtenir de l’aide

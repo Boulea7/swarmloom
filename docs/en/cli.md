@@ -84,7 +84,7 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--labels <mode>` | `names` | `names`, `agents`, `roles` or `none` |
 | `--finale <finale>` | `flock` | `flock`, `halo` or `none` |
 | `--follow <mode>` | `tour` | `tour` scrolls the page along with the build; `none` does not scroll |
-| `--tail <ms>` | `2500` | Hold time after the build finishes, 0–60000 ms: the finale, then the page goes live, the cursors leave and the page's own animations (CSS, SVG SMIL, Lottie) play on video time; an HTML document swaps in the real page |
+| `--tail <ms>` | `2500` | Hold time after the build finishes, 0–60000 ms: the finale, then the page goes live, the cursors leave and the page's own animations (CSS, SVG SMIL, Lottie) play on video time; an HTML document swaps in the real page, its animated images held on their first frame |
 | `--no-live` | Go live | Keep the finale through the whole tail instead of going live |
 | `--locale <tag>` | `en-US` | Language of the toolbar strings and the page, a BCP 47 tag such as `zh-CN` |
 | `--bpm <n>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid), 40–240 |
@@ -100,7 +100,7 @@ For takes that can be checked and repeated. These files and `--output` must all 
 | --- | --- | --- |
 | `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
 | `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
-| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256, player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: output paths are relative to the manifest, programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted`. Other arguments are kept as typed, so prefer relative paths |
+| `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256, player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: file paths, in the arguments and the outputs, are relative to the manifest (a file neither in its folder nor in a folder above it appears by name only), programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted` |
 
 ### Programs and logging
 

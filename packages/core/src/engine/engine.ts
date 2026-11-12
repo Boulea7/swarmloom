@@ -363,9 +363,9 @@ export class Engine implements Player {
     try {
       if (!forward) this.replay();
       else if (paused) this.resume();
+      // No read phase per seek frame: nothing renders between them, so the layout is never clean
+      // and each read would force one. Stage.caretAt() reads on a miss, every pending text at once.
       while (this.#pt + 1e-6 < target && !this.#ended()) {
-        // Every seek frame starts with the read phase of a tick, before its tasks write.
-        this.#measure();
         this.#frame(Math.min(SEEK_FRAME_MS, target - this.#pt), false);
         // Undrawn, but the stage still ages task touches and virtualizes as in a drawn frame.
         this.#guard(() => this.#stage.skipFrame?.());

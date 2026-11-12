@@ -1,3 +1,4 @@
+import { topModal } from "./dialog";
 import { h } from "./dom";
 import { type IconName, icon } from "./icons";
 
@@ -9,17 +10,6 @@ export interface Toaster {
 }
 
 const DEFAULT_MS = 3600;
-
-/** The topmost open modal dialog, or null. Everything outside it is inert and covered. */
-function topModal(doc: Document): HTMLDialogElement | null {
-  try {
-    const open = doc.querySelectorAll<HTMLDialogElement>("dialog:modal");
-    return open[open.length - 1] ?? null;
-  } catch {
-    // `:modal` is unknown to the selector engine: there is nothing to route around.
-    return null;
-  }
-}
 
 /**
  * Creates the toast region; append `root` once per document. While a modal dialog is open (the

@@ -3,6 +3,7 @@ import { type ShadowWatch, watchShadowRoots } from "../render/live";
 import type { RenderApi, RenderInfo, RenderInit, RenderInput } from "../render/protocol";
 import { CHANNELS, type CodecProbe, type EncodingPlan, planEncoding, SAMPLE_RATE, VideoFileWriter } from "./encode";
 import { FRAME_ATTRIBUTE } from "./marker";
+import { type ColorScheme, type MediaPin, pinMediaFeatures } from "./media";
 import { type FontWatch, watchFontFaces } from "./raster/fonts";
 import { FrameRasterizer } from "./raster/rasterize";
 import { type FrameProgress, runFrameSchedule } from "./schedule";
@@ -19,7 +20,10 @@ export interface BrowserExportOptions {
   height: number;
   fps: number;
   settings?: ExportSettings;
-  /** What document adapters may fetch: https images and fonts (default) or nothing. */
+  /**
+   * What document adapters may fetch, and what the frame rasterizer may fetch to embed: https
+   * images and fonts (default) or nothing from the web.
+   */
   network?: "https" | "none";
   /** Stop after this much video even if the build is not done, ms. Default 600000 (10 min). */
   maxDurationMs?: number;
@@ -31,6 +35,11 @@ export interface BrowserExportOptions {
   container?: HTMLElement;
   /** Codec checks (tests). Default WebCodecs through Mediabunny. */
   probe?: CodecProbe;
+  /**
+   * Hash every frame's RGBA pixels into {@link BrowserExportResult.frameSha256} (tests, evidence),
+   * as the CLI does for `--manifest-out`. Off by default: it reads each frame back from the canvas.
+   */
+  hashFrames?: boolean;
 }
 
 /** Progress of an export. */
@@ -50,7 +59,10 @@ export interface BrowserExportResult {
   finished: boolean;
   /** Sound was asked for but this browser cannot encode it: the video is silent. */
   soundUnsupported: boolean;
-  /** SHA-256 (hex) of every frame's RGBA pixels before encoding, in order; empty without Web Crypto. */
+  /**
+   * SHA-256 (hex) of every frame's RGBA pixels before encoding, in order; empty unless
+   * `hashFrames` was set, or without Web Crypto.
+   */
   frameSha256: string[];
   info: RenderInfo;
   warnings: string[];
@@ -65,11 +77,15 @@ function escapeHtmlAttr(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
-/** The render page document: the CLI's render/index.html, with the frame module as its script. */
-function frameDocument(moduleUrl: string): string {
+/**
+ * The render page document: the CLI's render/index.html, with the frame module as its script. That
+ * page takes both schemes and gets the one its browser emulates; this one takes only `scheme`, so the
+ * browser's own colours do not follow the host.
+ */
+function frameDocument(moduleUrl: string, scheme: ColorScheme): string {
   return (
     '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
-    '<meta name="color-scheme" content="light dark">' +
+    `<meta name="color-scheme" content="${scheme}">` +
     "<style>html,body{margin:0;padding:0;overflow:hidden;background:#fff}</style>" +
     `<script type="module" src="${escapeHtmlAttr(moduleUrl)}"></script></head><body></body></html>`
   );
@@ -81,33 +97,46 @@ interface OpenFrame {
   api: RenderApi;
 }
 
-/** Adds the hidden frame and waits until its render page has installed `window.__swarmloom`. */
-async function openFrame(o: BrowserExportOptions, container: HTMLElement): Promise<OpenFrame> {
+function abortError(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("The export was cancelled.", "AbortError");
+}
+
+/**
+ * Settles as `work` does, or rejects with the signal's reason as soon as it aborts. For work in the
+ * export frame, which takes no signal: the export then removes the frame, and that stops the work.
+ */
+function unlessAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError(signal));
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+/**
+ * Adds the hidden frame and waits until its render page has installed `window.__swarmloom`. When
+ * the signal aborts meanwhile, the frame is removed at once, which stops its loading.
+ */
+async function openFrame(o: BrowserExportOptions, container: HTMLElement, scheme: ColorScheme): Promise<OpenFrame> {
   const { FRAME_MODULE_URL } = await import("./frame");
+  if (o.signal?.aborted) throw abortError(o.signal);
   const frame = container.ownerDocument.createElement("iframe");
   frame.setAttribute(FRAME_ATTRIBUTE, o.network ?? "https");
   frame.setAttribute("aria-hidden", "true");
   frame.tabIndex = -1;
   frame.title = "SwarmLoom export";
-  const theme = o.settings?.theme;
-  // The frame's prefers-color-scheme follows its element's color-scheme, as the CLI sets it per theme.
-  const scheme = theme === "dark" || theme === "light" ? `color-scheme:${theme};` : "";
-  frame.style.cssText = `${FRAME_STYLE}width:${o.width}px;height:${o.height}px;${scheme}`;
-  frame.srcdoc = frameDocument(FRAME_MODULE_URL);
+  frame.style.cssText = `${FRAME_STYLE}width:${o.width}px;height:${o.height}px;`;
+  frame.srcdoc = frameDocument(FRAME_MODULE_URL, scheme);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const loaded = new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("The export frame did not start")), FRAME_START_TIMEOUT);
-    frame.addEventListener(
-      "load",
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
+    timer = setTimeout(() => reject(new Error("The export frame did not start")), FRAME_START_TIMEOUT);
+    frame.addEventListener("load", () => resolve(), { once: true });
   });
   container.append(frame);
   try {
-    await loaded;
+    await unlessAborted(loaded, o.signal);
     const win = frame.contentWindow as (Window & typeof globalThis) | null;
     const api = win?.__swarmloom;
     if (!win || !api) throw new Error("The export frame did not start");
@@ -115,6 +144,8 @@ async function openFrame(o: BrowserExportOptions, container: HTMLElement): Promi
   } catch (error) {
     frame.remove();
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -132,18 +163,17 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
   return hex;
 }
 
-function abortError(signal: AbortSignal): unknown {
-  return signal.reason ?? new DOMException("The export was cancelled.", "AbortError");
-}
-
 /**
  * Exports a video in the page, frame for frame the same as `swarmloom render`: a hidden frame runs
  * the CLI's render page (same formats, player options and virtual clock steps), each frame is drawn
- * without a screenshot ({@link FrameRasterizer}), hashed, and encoded with WebCodecs into MP4 (H.264)
+ * without a screenshot ({@link FrameRasterizer}) and encoded with WebCodecs into MP4 (H.264)
  * or WebM (VP9) through Mediabunny. The soundtrack is the run's sound log rendered offline, as AAC or
  * Opus when the browser can encode it, else the video is silent.
  *
- * The page stays responsive: the loop yields to the event loop between frames.
+ * The page stays responsive: the loop yields to the event loop between frames, and the snapshot of a
+ * frame pauses every few milliseconds (cancelling takes effect at the next pause). Drawing a frame
+ * decodes its image in one task, which grows with the web fonts it embeds (in Chromium about 40 ms
+ * per MB of the faces the frame's text uses).
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).
@@ -171,31 +201,48 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
   if (signal?.aborted) throw abortError(signal);
   report("starting");
   const plan = await planEncoding(width, height, fps, sound, o.probe);
+  if (signal?.aborted) throw abortError(signal);
   const soundUnsupported = sound && plan.audio === null;
   if (soundUnsupported) warn("This browser cannot encode sound, so the video is silent");
 
   const container = o.container ?? document.body;
+  // The CLI's browser emulates dark for theme "dark" and light otherwise ("auto" included), whatever
+  // the host's system setting.
+  const scheme: ColorScheme = settings.theme === "dark" ? "dark" : "light";
   let opened: OpenFrame | null = null;
   let shadows: ShadowWatch | null = null;
   let fonts: FontWatch | null = null;
+  let media: MediaPin | null = null;
   let writer: VideoFileWriter | null = null;
   let finished = false;
   try {
-    opened = await openFrame(o, container);
+    opened = await openFrame(o, container, scheme);
     const { win, api } = opened;
     // Watch before init(): the stage attaches its closed shadow roots and adapters register fonts there.
     shadows = watchShadowRoots(win);
     fonts = watchFontFaces(win);
     pinPixelRatio(win);
+    const pinned = pinMediaFeatures(win, shadows, scheme);
+    media = pinned;
     const tail = settings.tail ?? 2500;
-    const info = await api.init({ ...settings, input: o.input, width, height, fps, tail });
-    if (signal?.aborted) throw abortError(signal);
+    // Loading the input can take long; cancelling removes the frame (below) rather than waiting.
+    const info = await unlessAborted(api.init({ ...settings, input: o.input, width, height, fps, tail }), signal);
 
-    const rasterizer = new FrameRasterizer({ document: win.document, width, height, shadows, fonts, onWarning: warn });
+    const rasterizer = new FrameRasterizer({
+      document: win.document,
+      width,
+      height,
+      shadows,
+      fonts,
+      network: o.network ?? "https",
+      onWarning: warn,
+    });
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
-    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    const hash = o.hashFrames === true;
+    // Read back only for hashing; otherwise the encoder takes the canvas itself.
+    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: hash });
     if (!ctx) throw new Error("A 2D canvas is not available");
     writer = new VideoFileWriter(plan, width, height, fps);
     await writer.start();
@@ -207,10 +254,15 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
       {
         step: (ms) => api.step(ms),
         capture: async (index) => {
-          await rasterizer.draw(ctx);
+          pinned.sweep();
+          await rasterizer.draw(ctx, signal);
+          if (!hash) {
+            await out.addFrame(index, canvas);
+            return;
+          }
           const pixels = ctx.getImageData(0, 0, width, height).data;
-          const hash = await sha256(pixels);
-          if (hash) frameSha256.push(hash);
+          const digest = await sha256(pixels);
+          if (digest) frameSha256.push(digest);
           await out.addFrame(index, pixels);
         },
       },
@@ -258,6 +310,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     } finally {
       shadows?.stop();
       fonts?.stop();
+      media?.stop();
       opened?.frame.remove();
     }
   }

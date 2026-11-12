@@ -1,10 +1,12 @@
 import type { MediaLayer } from "../../types";
 import { applyLayerStyle, isSafeUrl } from "../sanitize";
 import { contentDiv, type LayerView, type MountEnv, Shell, Transient } from "./common";
+import { showStill } from "./still-image";
 
 /**
  * Video, iframe, canvas or embed that cannot be rebuilt: a snapshot image when provided, else a
- * neutral placeholder with a play glyph and the label. Reveal is a fade.
+ * neutral placeholder with a play glyph and the label. Reveal is a fade. An animated snapshot (a
+ * video poster GIF, say) shows a still copy, as image layers do (see still-image.ts).
  */
 export function mountMedia(env: MountEnv, layer: MediaLayer, z: number): LayerView {
   const doc = env.doc;
@@ -14,6 +16,7 @@ export function mountMedia(env: MountEnv, layer: MediaLayer, z: number): LayerVi
   applyLayerStyle(content, layer.style);
   const label = typeof layer.label === "string" ? layer.label.slice(0, 200) : "";
   let img: HTMLImageElement | null = null;
+  let still: Promise<void> | null = null;
   if (typeof layer.src === "string" && layer.src && isSafeUrl(layer.src)) {
     img = doc.createElement("img");
     img.decoding = "async";
@@ -25,7 +28,7 @@ export function mountMedia(env: MountEnv, layer: MediaLayer, z: number): LayerVi
     s.height = "100%";
     s.maxWidth = "none";
     s.objectFit = "cover";
-    img.src = layer.src;
+    still = showStill(img, layer.src, doc, () => img === null);
     content.append(img);
   } else {
     const ph = doc.createElement("div");
@@ -69,12 +72,14 @@ export function mountMedia(env: MountEnv, layer: MediaLayer, z: number): LayerVi
       transient.apply(content, css);
     },
     decode() {
-      return img
-        ? img.decode().then(
-            () => undefined,
-            () => undefined,
-          )
-        : Promise.resolve();
+      const decoded = (): Promise<void> =>
+        img
+          ? img.decode().then(
+              () => undefined,
+              () => undefined,
+            )
+          : Promise.resolve();
+      return still ? still.then(decoded) : decoded();
     },
     destroy() {
       img = null;

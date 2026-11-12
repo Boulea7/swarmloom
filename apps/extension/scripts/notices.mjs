@@ -40,20 +40,29 @@ const RULE = "=".repeat(80);
  * @property {string} file file of the host holding `record`
  * @property {"utf8" | "utf-16be"} [encoding] how `file` stores `record` (default utf8; a font's name table is UTF-16BE)
  * @property {RegExp} record must match in `file`; its `version` and `copyright` groups, when it has them,
- *   give the embedded code's version (else the host's) and copyright line (else `copyright`)
+ *   give the embedded code's version (else "as shipped in <host> <version>") and copyright line (else `copyright`)
  * @property {string} [copyright] the copyright notice when `record` captures none
  * @property {string} marker string every bundled copy carries, minified or not (audit.mjs looks for it)
- * @property {"MIT" | "OFL-1.1"} license
+ * @property {keyof typeof LICENSE_TERMS} license
  * @property {string} source
  */
 
-/** Full SIL Open Font License 1.1 text, shared with the npm notices (amo-source.mjs ships it). */
 // Resolved as a path: under Vitest's DOM environment the global URL resolves relative to the page.
-const OFL_1_1 = resolve(dirname(fileURLToPath(import.meta.url)), "../../../scripts/release/licenses/OFL-1.1.txt");
+const LICENSES_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../../scripts/release/licenses");
 
 /**
- * Code and assets that a dependency ships pre-bundled inside its own files under another licence than
- * its own, so they have no package or licence file to read. Listed whenever their host is bundled. Keep
+ * Licence terms of embedded packages: the standard MIT text, or a full text in LICENSES_DIR shared with
+ * the npm notices (amo-source.mjs ships those files).
+ */
+const LICENSE_TERMS = {
+  MIT: { label: "standard MIT text", file: "" },
+  "Apache-2.0": { label: "Apache License 2.0", file: "Apache-2.0.txt" },
+  "OFL-1.1": { label: "SIL Open Font License 1.1", file: "OFL-1.1.txt" },
+};
+
+/**
+ * Code and assets that a dependency ships pre-bundled inside its own files under their own licence or
+ * copyright, so they have no package or licence file to read. Listed whenever their host is bundled. Keep
  * in step with EMBEDDED_PACKAGES in scripts/release/third-party-notices.mjs (the npm package notices).
  * @type {readonly EmbeddedPackage[]}
  */
@@ -67,6 +76,28 @@ export const EMBEDDED_PACKAGES = [
     marker: "__core-js_shared__",
     license: "MIT",
     source: "https://github.com/zloirock/core-js",
+  },
+  {
+    name: "draco3d",
+    host: "three",
+    // DRACOLoader's decoders (draco/ and draco/gltf/: WASM, its wrapper and an asm.js build), which Vite
+    // emits as they are. They record neither version nor copyright; the line is that of the Draco sources.
+    file: "examples/jsm/libs/draco/draco_wasm_wrapper.js",
+    record: /\bDracoDecoderModule\b/,
+    copyright: "Copyright 2016 The Draco Authors",
+    marker: "DracoDecoderModule",
+    license: "Apache-2.0",
+    source: "https://github.com/google/draco",
+  },
+  {
+    name: "meshoptimizer",
+    host: "three",
+    // GLTFLoader's EXT_meshopt_compression decoder; its header comment states the copyright and version.
+    file: "examples/jsm/libs/meshopt_decoder.module.js",
+    record: /\/\/ (?<copyright>Copyright \(C\) [^\n]+)[\s\S]*?\bBuilt from meshoptimizer (?<version>\d[\w.-]*)/,
+    marker: "decodeVertexBuffer", // a method of the decoder object, so minification keeps it
+    license: "MIT",
+    source: "https://github.com/zeux/meshoptimizer",
   },
   {
     name: "KaTeX fonts",
@@ -106,15 +137,16 @@ function embeddedNotices(dir, pkg) {
         `${pkg.name}@${pkg.version}: no ${embedded.name} record in ${embedded.file}; update EMBEDDED_PACKAGES`,
       );
     }
-    const ofl = embedded.license === "OFL-1.1";
-    const terms = ofl ? readFileSync(OFL_1_1, "utf8").trim() : MIT_TEXT;
-    const file = `(${ofl ? "SIL Open Font License 1.1" : "standard MIT text"}; pre-bundled inside ${pkg.name}, which ships no licence file for it)`;
+    const terms = LICENSE_TERMS[embedded.license];
+    // trimEnd: the Apache text centres its heading with leading spaces.
+    const text = terms.file ? readFileSync(join(LICENSES_DIR, terms.file), "utf8").trimEnd() : MIT_TEXT;
+    const file = `(${terms.label}; pre-bundled inside ${pkg.name}, which ships no licence file for it)`;
     return {
       name: embedded.name,
-      version: found.groups?.version ?? pkg.version,
+      version: found.groups?.version ?? `as shipped in ${pkg.name} ${pkg.version}`,
       license: embedded.license,
       source: embedded.source,
-      texts: [{ file, text: `${copyright}\n\n${terms}` }],
+      texts: [{ file, text: `${copyright}\n\n${text}` }],
     };
   });
 }

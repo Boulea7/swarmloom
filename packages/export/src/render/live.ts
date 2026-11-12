@@ -1,3 +1,4 @@
+import { holdAllCssImages, stillImageSource } from "@swarmloom/core";
 import { AnimationSeeker } from "./seek";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -88,6 +89,29 @@ function restMarquees(doc: Document): void {
 }
 
 /**
+ * Shows every animated `<img>` of the live page as a still copy, as the stage shows its image layers
+ * (core's stillImageSource: a GIF, APNG, WebP or AVIF animation at its first frame, an SVG without
+ * its animation). An `<img>` plays them on the browser's clock, which no seek reaches. The copy has
+ * the same pixel size, so nothing reflows (the adapter dropped `srcset`). Animated CSS images of its
+ * elements (backgrounds, masks, border images, list markers) are overridden inline with still copies
+ * the same way (core's holdAllCssImages); pseudo-elements keep theirs. Images the render page cannot
+ * read (cross-origin files) keep their own clock.
+ */
+async function stillImages(page: LivePage, doc: Document): Promise<void> {
+  await Promise.all([
+    ...Array.from(page.document.images, async (img) => {
+      const src = img.currentSrc || img.src;
+      if (!src) return;
+      const still = await stillImageSource(src, doc);
+      if (still === src) return;
+      img.src = still;
+      await img.decode().catch(() => undefined);
+    }),
+    holdAllCssImages(page.document.querySelectorAll<HTMLElement>("*"), doc, true),
+  ]);
+}
+
+/**
  * Shows the live page over the stage, scrolled so it covers exactly the part of the world the stage
  * shows (the frame keeps its size, so nothing reflows). Returns why it could not, or null.
  */
@@ -102,7 +126,11 @@ function showLivePage(page: LivePage, world: HTMLElement | null, host: HTMLEleme
   const rect = world.getBoundingClientRect();
   const view = host.getBoundingClientRect();
   const scale = world.offsetWidth > 0 ? rect.width / world.offsetWidth : 1;
-  win.scrollTo((view.left - rect.left) / scale, (view.top - rect.top) / scale);
+  // "instant" overrides a page-level `scroll-behavior: smooth`, which would scroll on wall time
+  // and leave scrollX/scrollY (read below) at their old values.
+  const left = (view.left - rect.left) / scale;
+  const top = (view.top - rect.top) / scale;
+  win.scrollTo({ left, top, behavior: "instant" as ScrollBehavior });
   const style = page.frame.style;
   style.left = `${rect.left + win.scrollX * scale}px`;
   style.top = `${rect.top + win.scrollY * scale}px`;
@@ -131,7 +159,8 @@ export interface LiveStageOptions {
  * the stage, and from then on every frame pauses all Web Animations (document, stage subtrees, live
  * page) and the live page's SVG documents and seeks them to the transport time, so frames never
  * depend on wall time. The live page's `<marquee>` elements, which no seek reaches, stay still at
- * their captured resting pose. Plugin players (SMIL replay, Lottie) follow player time on their own.
+ * their captured resting pose, and its animated images show still copies ({@link LiveStage.holdImages}).
+ * Plugin players (SMIL replay, Lottie) follow player time on their own.
  */
 export class LiveStage {
   readonly #seeker = new AnimationSeeker();
@@ -148,6 +177,14 @@ export class LiveStage {
   /** True once {@link goLive} ran. */
   get live(): boolean {
     return this.#live;
+  }
+
+  /**
+   * Swaps the live page's animated images for still copies (see stillImages). Await it before the
+   * first frame: the copies are decoded or fetched asynchronously, and go live only shows the page.
+   */
+  async holdImages(): Promise<void> {
+    if (this.#page) await stillImages(this.#page, this.#o.document);
   }
 
   /** The stage went live at transport time `t` (ms): swaps the live page in and seeks everything to `t`. */

@@ -44,6 +44,7 @@ const ROOT_FILES = [
   "tsconfig.base.json",
   "tsconfig.json",
   "LICENSE",
+  "scripts/release/licenses/Apache-2.0.txt", // notices.mjs: the licence of the Draco decoders
   "scripts/release/licenses/OFL-1.1.txt", // notices.mjs: the licence of the KaTeX fonts
 ];
 /** Workspace folders (pnpm-workspace.yaml: packages/*, apps/*). */

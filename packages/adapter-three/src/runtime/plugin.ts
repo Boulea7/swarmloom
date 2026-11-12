@@ -76,9 +76,9 @@ export function createThreePlugin(scene: ModelScene, reproject: Reprojector, isD
       [TASK.material]: materialRenderer(scene),
       [TASK.light]: lightRenderer(scene),
     },
-    setup(_stage, host) {
+    setup(stage, host) {
       if (isDisposed()) throw new Error("This 3D model was disposed; load it again to play it.");
-      return scene.mount(host);
+      return scene.mount(host, stage.reducedMotion === true);
     },
     frame(now) {
       scene.frame(now);

@@ -1,13 +1,33 @@
-import type { StudioI18n } from "./i18n";
+import type { StudioI18n, StudioKey } from "./i18n";
 
 /**
  * The font note of the document adapters (decisions-v1 F01) in each wording they use (OpenDocument,
  * Office, DOCX and DOC): "Fonts ...: Calibri -> Carlito, SimSun → Noto Serif SC and 2 more."
  */
-const FONT_NOTE = /^Fonts\b[^:]*:\s*(.+?)(?: and (\d+) more)?\.?$/;
-const FONT_PAIR = /^(.+?)\s*(?:->|→)\s*(.+)$/;
+const FONT_NOTE = /^Fonts\b/;
+const FONT_MORE = / and (\d+) more$/;
 /** DOCX names a font without an open substitute by its generic family: "a serif font" is shown as "serif". */
 const GENERIC_FONT = /^an? (\S+) font$/;
+
+/**
+ * The Lottie adapter's notes (adapter-lottie `dotlottie.ts` and `lottie/validate.ts`) by their
+ * English wording. The first group is the count, the second the animation name.
+ */
+const LOTTIE_NOTES: ReadonlyArray<readonly [RegExp, StudioKey]> = [
+  [/^The \.lottie archive has no manifest; its first animation is shown\.$/, "note.lottie.noManifest"],
+  [/^This \.lottie holds (\d+) animations; "(.*)" is shown\.$/, "note.lottie.animations"],
+  [/^(\d+) image\(s\) in an unsupported format were left out\.$/, "note.lottie.imageFormat"],
+  [/^(\d+) image\(s\) are not embedded in the file and were left out\.$/, "note.lottie.imageExternal"],
+  [/^(\d+) audio or data asset\(s\) were removed\.$/, "note.lottie.footage"],
+  [/^(\d+) asset\(s\) that repeat an earlier asset's id were removed\.$/, "note.lottie.duplicate"],
+  [/^(\d+) image slot\(s\) were removed; the file's own images are shown\.$/, "note.lottie.slots"],
+  [/^A malformed font list was removed\.$/, "note.lottie.fontList"],
+  [/^(\d+) web font\(s\) were replaced by locally installed fonts\.$/, "note.lottie.webFonts"],
+  [/^Text animators with a random letter order play in a fixed order\.$/, "note.lottie.textOrder"],
+  [/^Audio layers are not played\.$/, "note.lottie.audioLayers"],
+  [/^Data layers are not played\.$/, "note.lottie.dataLayers"],
+  [/^(\d+) expression\(s\) were ignored; their properties keep their keyframed values\.$/, "note.lottie.expressions"],
+];
 
 function listOf(locale: string, items: string[]): string {
   try {
@@ -18,21 +38,50 @@ function listOf(locale: string, items: string[]): string {
 }
 
 /**
- * An adapter quality note in the UI language. Adapters write their notes in English; Studio rewords
- * the font substitutions most Office and OpenDocument files report (the font names stay as they
- * are) and returns any other note unchanged.
+ * One "Calibri -> Carlito" item as [font, substitute], or null. The substitute comes from the
+ * adapters' own tables, while the font name is the document's and may hold anything (arrows, long
+ * runs of spaces), so the item is split at its last arrow by index rather than with a backtracking
+ * pattern, which took seconds to minutes on crafted names.
  */
-export function localizeNote(note: string, i18n: StudioI18n): string {
-  const match = FONT_NOTE.exec(note.trim());
-  if (!match) return note;
+function fontPair(item: string): readonly [string, string] | null {
+  const arrow = item.lastIndexOf("->");
+  const at = Math.max(arrow, item.lastIndexOf("→"));
+  if (at < 0) return null;
+  const from = item.slice(0, at).trim();
+  const to = item.slice(at + (at === arrow ? 2 : 1)).trim();
+  return from && to ? [from, to] : null;
+}
+
+/** A font substitution note in the UI language (font names stay as they are), or null. */
+function localizeFonts(note: string, i18n: StudioI18n): string | null {
+  const colon = note.indexOf(":");
+  if (colon < 0 || !FONT_NOTE.test(note)) return null;
+  let list = note.slice(colon + 1).trim();
+  if (list.endsWith(".")) list = list.slice(0, -1);
+  const more = FONT_MORE.exec(list);
+  if (more) list = list.slice(0, more.index);
   const pairs: string[] = [];
-  for (const item of (match[1] ?? "").split(/,\s*/)) {
-    const pair = FONT_PAIR.exec(item);
-    if (!pair) return note;
-    const [, from = "", to = ""] = pair;
+  for (const item of list.split(/,\s*/)) {
+    const pair = fontPair(item);
+    if (!pair) return null;
+    const [from, to] = pair;
     pairs.push(`${from} → ${GENERIC_FONT.exec(to)?.[1] ?? to}`);
   }
-  const more = Number(match[2] ?? 0);
-  if (more > 0) pairs.push(i18n.t("player.fonts.more", { count: more }));
+  const count = Number(more?.[1] ?? 0);
+  if (count > 0) pairs.push(i18n.t("player.fonts.more", { count }));
   return i18n.t("player.fonts", { fonts: listOf(i18n.locale, pairs) });
+}
+
+/**
+ * An adapter quality note in the UI language. Adapters write their notes in English; Studio rewords
+ * the font substitutions most Office and OpenDocument files report and every Lottie note, and
+ * returns any other note unchanged.
+ */
+export function localizeNote(note: string, i18n: StudioI18n): string {
+  const text = note.trim();
+  for (const [pattern, key] of LOTTIE_NOTES) {
+    const match = pattern.exec(text);
+    if (match) return i18n.t(key, { count: Number(match[1] ?? 0), name: match[2] ?? "" });
+  }
+  return localizeFonts(text, i18n) ?? note;
 }

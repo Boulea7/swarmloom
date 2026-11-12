@@ -14,6 +14,18 @@ function localChrome(): string | undefined {
 }
 
 const executablePath = localChrome();
+/** Local Firefox for the Firefox project: $SWARMLOOM_FIREFOX, else Playwright's bundled build. */
+const firefoxPath = process.env.SWARMLOOM_FIREFOX || undefined;
+
+/**
+ * Browser tests that also run in Firefox, whose SVG foreignObject rasterising and WebCodecs differ
+ * from Chromium's: the in-browser exporter and its rasteriser. Tests that use Chromium-only APIs
+ * (CDP, as in export-media) stay out.
+ */
+const firefoxTests = [
+  "packages/export/test/browser-export.browser.test.ts",
+  "packages/export/test/raster*.browser.test.ts",
+];
 
 export default defineConfig({
   resolve: {
@@ -44,6 +56,20 @@ export default defineConfig({
             headless: true,
             provider: playwright({ launchOptions: executablePath ? { executablePath } : {} }),
             instances: [{ browser: "chromium" }],
+          },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "firefox",
+          include: firefoxTests,
+          fileParallelism: false,
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright({ launchOptions: firefoxPath ? { executablePath: firefoxPath } : {} }),
+            instances: [{ browser: "firefox" }],
           },
         },
       },
