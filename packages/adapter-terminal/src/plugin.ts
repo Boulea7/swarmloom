@@ -46,15 +46,28 @@ function stepData(layer: CustomLayer): TerminalStepData | null {
   return d as TerminalStepData;
 }
 
-/** True when output events [from, to) only start a new line and print a short prompt on it (a continuation prompt). */
-function promptOnly(events: readonly ScreenEvent[], from: number, to: number): boolean {
-  let text = "";
+/**
+ * True when output events [from, to) only start a new line and print a short prompt on it (a
+ * continuation prompt). Runs in the frame that starts the step, so it stops at the first event that
+ * settles the answer instead of scanning a long output step (up to megabytes of text) to the end.
+ * Exported for tests only (not part of the package index).
+ */
+export function promptOnly(events: readonly ScreenEvent[], from: number, to: number): boolean {
+  let leading = true;
+  let chars = 0;
   for (let k = from; k < to; k++) {
     const ev = events[k] as ScreenEvent;
-    if (ev[1] === "o") text += plainText(ev[2]);
+    if (ev[1] !== "o") continue;
+    let text = plainText(ev[2]);
+    if (leading) {
+      text = text.replace(/^[\r\n]+/, "");
+      if (!text) continue;
+      leading = false;
+    }
+    chars += text.length;
+    if (chars > PROMPT_CHARS || /[\r\n]/.test(text)) return false;
   }
-  const line = text.replace(/^[\r\n]+/, "");
-  return !/[\r\n]/.test(line) && line.length <= PROMPT_CHARS;
+  return true;
 }
 
 function keySound(data: string): { name: SoundName; vel: number } {
