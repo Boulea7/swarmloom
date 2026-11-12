@@ -2,9 +2,9 @@
 /**
  * Studio service worker, hand-written and small:
  *  - precaches the app shell (HTML, entry chunks, CSS, icons, manifest) per release;
- *  - warms the lazy adapter and locale chunks with what they load (pdf.js's modern and legacy
- *    builds and workers included) at install (best effort), and caches every other hashed asset
- *    (three's Draco decoders) on first use, cache-first;
+ *  - warms the lazy adapter and locale chunks with what they load (pdf.js and its worker in the
+ *    one build this engine runs) at install (best effort), and caches every other hashed asset
+ *    (the other pdf.js build, three's Draco decoders) on first use, cache-first;
  *  - serves examples stale-while-revalidate;
  *  - answers navigations from the cached shell, so Studio opens offline;
  *  - receives the PWA share target (POST) into a short-lived inbox the page reads (`?inbox=`).
@@ -13,6 +13,7 @@
  * Remote files (other origins) are never cached.
  */
 
+import { type PdfBuild, pdfBuild } from "./pdf-build";
 import {
   INBOX_CACHE,
   INBOX_HEADER,
@@ -30,6 +31,8 @@ declare const __PRECACHE__: readonly string[];
 declare const __ASSETS__: readonly string[];
 /** Lazy chunks and the files they load, fetched ahead at install (adapters, locales), relative to the scope. */
 declare const __WARM__: readonly string[];
+/** pdf.js's files of each build, relative to the scope; only the build this engine runs is fetched ahead. */
+declare const __WARM_PDF__: Readonly<Record<PdfBuild, readonly string[]>>;
 /** Content hash of the release. */
 declare const __VERSION__: string;
 
@@ -52,11 +55,14 @@ const shareUrl = new URL(SHARE_TARGET_PATH, scope).href;
  */
 const LOOKUP: CacheQueryOptions = { ignoreVary: true };
 
-/** Fetches the adapter chunks ahead; a failure only means that chunk is fetched on first use. */
-async function warm(): Promise<void> {
+/** pdf.js's files in the build this engine runs, the only one the PDF reader loads here. */
+const WARM_PDF = __WARM_PDF__[pdfBuild()];
+
+/** Fetches `paths` ahead unless cached; a failure only means that file is fetched on first use. */
+async function warm(paths: readonly string[]): Promise<void> {
   const cache = await caches.open(ASSET_CACHE);
   await Promise.allSettled(
-    __WARM__.map(async (path) => {
+    paths.map(async (path) => {
       const url = new URL(path, scope).href;
       if (await cache.match(url, LOOKUP)) return;
       const response = await fetch(url);
@@ -70,7 +76,7 @@ self.addEventListener("install", (event) => {
     caches
       .open(SHELL_CACHE)
       .then((cache) => cache.addAll(__PRECACHE__.map((path) => new URL(path, scope).href)))
-      .then(warm),
+      .then(() => warm([...__WARM__, ...WARM_PDF])),
   );
 });
 
@@ -192,6 +198,9 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || !url.startsWith(scope)) return;
   if (request.mode === "navigate") {
     event.respondWith(navigation(request));
+    // A browser update can switch the PDF reader to the other pdf.js build between two releases of
+    // this worker; fetch that build ahead while online (only missing files are fetched).
+    event.waitUntil(warm(WARM_PDF));
     return;
   }
   if (url.startsWith(assetsUrl)) {

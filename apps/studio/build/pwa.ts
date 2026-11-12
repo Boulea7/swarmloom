@@ -3,6 +3,7 @@ import { existsSync, readFileSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
 import { build, type Plugin } from "vite";
 import { FORMAT_META, type FormatMeta } from "../src/formats-meta";
+import type { PdfBuild } from "../src/sw/pdf-build";
 import { markSvg } from "../src/ui/mark";
 import { markPng } from "./icons";
 
@@ -116,11 +117,15 @@ export function shellFiles(bundle: Record<string, ChunkLike>): string[] {
 /**
  * Sources whose output is never warmed, only cached on first use: three's bundled Draco decoders
  * (the 3D reader loads a decoder only from a configured `dracoDecoderPath`, which Studio does not
- * set). pdf.js's legacy build is warmed like the modern one: the PDF reader picks it in every
- * browser that lacks a built-in the modern build calls (Chrome/Edge 116-118 among them, see
- * adapter-pdf's runtime), so it is the build those browsers request offline.
+ * set). pdf.js's builds are warmed, one per browser (see splitPdfBuilds).
  */
 const COLD_SOURCES = ["/three/examples/jsm/libs/draco/"];
+
+/** Source paths of pdf.js's two builds; the PDF reader loads one of them per browser. */
+const PDF_BUILD_SOURCES: Record<PdfBuild, string> = {
+  modern: "/pdfjs-dist/build/",
+  legacy: "/pdfjs-dist/legacy/",
+};
 
 function cold(sources: readonly string[] = []): boolean {
   return sources.some((id) => COLD_SOURCES.some((part) => id.includes(part)));
@@ -131,9 +136,10 @@ function cold(sources: readonly string[] = []): boolean {
  * locale or in-browser video exporter entry together with everything it imports statically, their
  * CSS and the files they load by URL (pdf.js's worker script), since the reader fails offline if
  * any of them is missing. Size is no limit: pdf.js's worker and its main-thread fallback (a lazy
- * entry of its own) are both over 1 MiB, in the modern and the legacy build alike. An entry is
- * warmed whole or not at all: when a chunk it imports is cold, the entry is left to the runtime
- * cache too. A cold file loaded by URL is skipped alone.
+ * entry of its own) are both over 1 MiB, in the modern and the legacy build alike (the worker
+ * fetches one build, see splitPdfBuilds). An entry is warmed whole or not at all: when a chunk it
+ * imports is cold, the entry is left to the runtime cache too. A cold file loaded by URL is skipped
+ * alone.
  */
 export function warmFiles(bundle: Record<string, ChunkLike>, shell: readonly string[]): string[] {
   const skip = new Set(shell);
@@ -160,6 +166,31 @@ export function warmFiles(bundle: Record<string, ChunkLike>, shell: readonly str
     for (const name of closure(item.fileName) ?? []) warm.add(name);
   }
   return [...warm].sort();
+}
+
+/** Warm files split by pdf.js build: the worker fetches `common` and the one build its engine runs. */
+export interface WarmSplit {
+  common: string[];
+  pdf: Record<PdfBuild, string[]>;
+}
+
+/**
+ * Splits `files` (from warmFiles) by the pdf.js build they come from. The PDF reader loads either
+ * the modern or the legacy build (adapter-pdf's runtime picks one by the engine's built-ins), each
+ * with its own worker script and main-thread fallback, about 3 MB a build; warming both would
+ * download a build the browser never runs. A file from both builds or neither stays common.
+ */
+export function splitPdfBuilds(bundle: Record<string, ChunkLike>, files: readonly string[]): WarmSplit {
+  const split: WarmSplit = { common: [], pdf: { modern: [], legacy: [] } };
+  const builds = Object.keys(PDF_BUILD_SOURCES) as PdfBuild[];
+  for (const file of files) {
+    const item = bundle[file];
+    const sources = (item?.type === "chunk" ? item.moduleIds : item?.originalFileNames) ?? [];
+    const from = builds.filter((build) => sources.some((id) => id.includes(PDF_BUILD_SOURCES[build])));
+    const build = from.length === 1 ? from[0] : undefined;
+    (build ? split.pdf[build] : split.common).push(file);
+  }
+  return split;
 }
 
 /**
@@ -190,6 +221,7 @@ export function pwaPlugin(options: PwaOptions): Plugin {
   let root = process.cwd();
   let precache: string[] = [];
   let warmList: string[] = [];
+  let warmSplit: WarmSplit = { common: [], pdf: { modern: [], legacy: [] } };
   let assets: string[] = [];
 
   return {
@@ -234,6 +266,7 @@ export function pwaPlugin(options: PwaOptions): Plugin {
       const items = bundle as unknown as Record<string, ChunkLike>;
       precache = shellFiles(items);
       warmList = warmFiles(items, precache);
+      warmSplit = splitPdfBuilds(items, warmList);
       assets = Object.keys(items)
         .filter((name) => name.startsWith("assets/"))
         .sort();
@@ -252,7 +285,8 @@ export function pwaPlugin(options: PwaOptions): Plugin {
         publicDir: false,
         define: {
           __PRECACHE__: JSON.stringify(precache),
-          __WARM__: JSON.stringify(warmList),
+          __WARM__: JSON.stringify(warmSplit.common),
+          __WARM_PDF__: JSON.stringify(warmSplit.pdf),
           __ASSETS__: JSON.stringify(assets),
           __VERSION__: JSON.stringify(version),
         },
