@@ -95,17 +95,26 @@ it("paints nothing of a box written empty, wherever its transform put it", async
   expect((await drawn(rasterizer))(5, 5)).toEqual([255, 255, 255]);
 });
 
-it("writes far article blocks empty, with the margins their content shares with them", async () => {
-  // No border or padding anywhere: headings', paragraphs' and quotes' margins collapse through.
-  const cases: Record<string, (i: number) => string> = {
-    // The h2's margin passes the section's top; the quote's bottom ones stay within its own.
-    sections: (i) => `<section style="margin:16px 0"><h2>far ${i}</h2><p>text <em>x</em></p>
+// No border or padding anywhere: headings', paragraphs' and quotes' margins collapse through.
+it.for<[string, (i: number) => string]>([
+  // The h2's margin passes the section's top; the quote's bottom ones stay within its own.
+  [
+    "sections",
+    (i) => `<section style="margin:16px 0"><h2>far ${i}</h2><p>text <em>x</em></p>
       <ul><li>a</li><li>b</li></ul><blockquote><p>q</p></blockquote></section>`,
-    // Through an inline custom element and both edges (the bottom read through CSS Typed OM).
-    wrapped: (i) => `<div><x-card><h3>far ${i}</h3><p>text</p></x-card></div>`,
-  };
-  for (const [name, item] of Object.entries(cases)) {
-    if (name === "wrapped" && server.browser === "firefox") continue;
+  ],
+  // Through an inline custom element and both edges (the bottom read through CSS Typed OM).
+  ["wrapped", (i) => `<div><x-card><h3>far ${i}</h3><p>text</p></x-card></div>`],
+  // A set height holds the paragraph's margin in: passed on by any block, it would move the red box.
+  [
+    "wrapped in a set height",
+    (i) => `<div style="height:80px"><x-card><h3>far ${i}</h3><p style="margin-bottom:40px">text</p></x-card></div>`,
+  ],
+])(
+  "writes far article blocks empty, with the margins their content shares with them: %s",
+  async ([name, item], { skip }) => {
+    // Without CSS Typed OM no height reads as `auto`: the last written block keeps the margin in (a known limit).
+    skip(server.browser === "firefox" && name === "wrapped", "Firefox lacks CSS Typed OM");
     const items = Array.from({ length: 8 }, (_, i) => item(i)).join("");
     const { win, rasterizer } = await frameOf(
       `<!doctype html><body style="margin:0">${items}<p id=red style="height:98px;margin:0;background:rgb(255,0,0)"></p>`,
@@ -113,12 +122,11 @@ it("writes far article blocks empty, with the margins their content shares with 
     const red = win.document.getElementById("red") as HTMLElement;
     win.scrollTo(0, red.getBoundingClientRect().top - 20);
     const { svg, stats } = await rasterizer.snapshot();
-    const far = svg.includes("far 0");
-    expect({ name, far, culled: stats.culled >= 4 }).toEqual({ name, far: false, culled: true });
+    expect({ far: svg.includes("far 0"), culled: stats.culled >= 4 }).toEqual({ far: false, culled: true });
     const at = await drawn(rasterizer);
-    expect({ name, above: at(50, 18), top: at(50, 21) }).toEqual({ name, above: [255, 255, 255], top: [255, 0, 0] });
-  }
-});
+    expect({ above: at(50, 18), top: at(50, 21) }).toEqual({ above: [255, 255, 255], top: [255, 0, 0] });
+  },
+);
 
 it("writes far boxes empty around SVG ids, keeping the clip paths, gradients and symbols drawn elsewhere", async () => {
   // Cards as design tools export their icons: a clip path or gradient with an id inside each.
