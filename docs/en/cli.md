@@ -92,6 +92,7 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume`, `finish` (complete the build quickly) or `live` (go live then instead of when the finale settles, also with `--no-live`; an unfinished build completes at once). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
 | `--no-sound` | Sound on | Leave out the soundtrack; GIF and WebP never have one |
 | `--no-remote` | Loaded | Do not load `https:` images and fonts the input links to. Scripts, style sheets, data requests and `http:` files from other sites are never loaded |
+| `--terminal-font <mode>` | `fit` | Font size of terminal recordings (`.cast`). `fit` uses 14 px and shrinks it when the window does not fit; `fill` grows it until the window fills the frame's width or height (the window frame keeps its size). The stage already enlarges a small window up to 2x, so `fill` mostly helps short sessions with few columns and rows |
 
 ### Capture evidence
 

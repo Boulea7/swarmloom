@@ -50,6 +50,8 @@ export interface RenderInit {
   pack?: string;
   /** Player actions at fixed video times (pause, resume, finish, live). */
   cues?: RenderCue[];
+  /** Font of terminal recordings: "fit" (14 px, shrunk to fit the width) or "fill" (grown to fill the frame). */
+  terminalFont?: "fit" | "fill";
   /**
    * Optional CLI extension: a blueprint captured from a live page by the CLI (http/https URLs).
    * A render page that supports it plays this blueprint instead of loading `input`; one that does not

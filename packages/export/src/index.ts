@@ -30,6 +30,8 @@ export {
   type RenderInit,
   type RenderInput,
   type RenderStep,
+  TERMINAL_FONTS,
+  type TerminalFont,
 } from "./render/protocol";
 export {
   MAX_STEP_MS,

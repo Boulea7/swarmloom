@@ -31,6 +31,10 @@ export interface RenderCue {
   action: CueAction;
 }
 
+export const TERMINAL_FONTS = ["fit", "fill"] as const;
+/** How terminal recordings size their font (see {@link RenderInit.terminalFont}). */
+export type TerminalFont = (typeof TERMINAL_FONTS)[number];
+
 /** Options of `window.__swarmloom.init()`. Mirrors the CLI flags. */
 export interface RenderInit {
   input: RenderInput;
@@ -74,6 +78,11 @@ export interface RenderInit {
   pack?: string;
   /** Player actions at fixed video times, e.g. a hold and a quick finish timed to music. Default none. */
   cues?: RenderCue[];
+  /**
+   * Font of terminal recordings: "fit" (default) keeps 14 px and shrinks it to fit the width; "fill"
+   * grows it until the window fills the frame's width or height.
+   */
+  terminalFont?: TerminalFont;
   /**
    * A blueprint the driver already captured (the CLI snapshots live web pages). When set it is played
    * as is and `input` is not loaded; `input` still names the source.
@@ -266,6 +275,7 @@ export function parseInit(raw: unknown): ParsedInit {
     bpm: number(raw, "bpm", 20, 400),
     pack: optionalString(raw, "pack"),
     cues: cueList(raw.cues),
+    terminalFont: oneOf(raw, "terminalFont", TERMINAL_FONTS),
     ...(blueprint ? { blueprint } : {}),
   };
 }

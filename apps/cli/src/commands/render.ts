@@ -86,6 +86,10 @@ Swarm:
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
                           and plain-http files from other sites are never loaded
+      --terminal-font <mode>
+                          fit | fill. Font of terminal recordings (.cast): fit keeps 14 px and shrinks
+                          it to fit the width; fill grows it until the window fills the frame.
+                          Default: fit
 
 Capture evidence (for repeatable takes; see the README):
       --audio-out <file>  Also write the soundtrack as WAV (48 kHz stereo, same length as the video)
@@ -143,6 +147,7 @@ const OPTIONS = {
   "no-sound": { type: "boolean" },
   "no-remote": { type: "boolean" },
   "no-live": { type: "boolean" },
+  "terminal-font": { type: "string" },
   chrome: { type: "string" },
   ffmpeg: { type: "string" },
   quiet: { type: "boolean", short: "q" },
@@ -230,6 +235,10 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   };
   if (values.locale !== undefined) settings.locale = readLocale(values.locale);
   if (values.bpm !== undefined) settings.bpm = readNumber("bpm", values.bpm, 120, { min: 40, max: 240 });
+  // Only when given, so the manifests of takes without it stay as they were.
+  if (values["terminal-font"] !== undefined) {
+    settings.terminalFont = readEnum("terminal-font", values["terminal-font"], ["fit", "fill"], "fit");
+  }
 
   if (values.duration !== undefined && values["max-duration"] !== undefined) {
     throw new UsageError("Use either --duration (exact length) or --max-duration (upper limit), not both");
