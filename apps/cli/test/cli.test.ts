@@ -98,6 +98,11 @@ describe("render options", () => {
     expect(parseRenderOptions(["a.md", "-f", "gif", "--max-duration", "3600"], cwd)).toMatchObject({
       maxDurationMs: 3_600_000,
     });
+    // --max-duration is only a limit: with sound a longer one is lowered, not refused.
+    expect(parseRenderOptions(["a.md", "-o", "x.webm", "--max-duration", "3600"], cwd)).toMatchObject({
+      maxDurationMs: 600_000,
+      soundCapped: true,
+    });
   });
 
   it.each([
@@ -129,7 +134,6 @@ describe("render options", () => {
     [["a.md", "b.md"], 'Unexpected argument "b.md"'],
     [["a.md", "--duration", "5", "--max-duration", "9"], "either --duration (exact length) or --max-duration"],
     [["a.md", "--duration", "601"], '--duration must be at most 600 with sound (got "601")'],
-    [["a.md", "-o", "x.webm", "--max-duration", "3600"], "--max-duration must be at most 600 with sound"],
     [["a.md", "--duration", "4", "--cue", "8b:pause"], "counts beats, which needs --bpm"],
     [["a.md", "--duration", "4", "--bpm", "120", "--cue", "8b:pause"], "at or after the end of the video"],
     [["a.md", "--cue", "3:rewind"], "--cue must look like <time>:<action>"],

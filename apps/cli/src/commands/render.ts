@@ -55,7 +55,8 @@ Output:
       --height <px>       Viewport height in CSS px (16-7680). Default: 720
       --scale <n>         Pixels per CSS px; the video is width*scale x height*scale (0.25-4). Default: 1
       --fps <n>           Frames per second (1-120). Default: 30
-      --max-duration <s>  Stop after this many seconds of video (1-3600; 600 with sound). Default: 120
+      --max-duration <s>  Stop after this many seconds of video (1-3600; a video with sound stops by
+                          600). Default: 120
       --duration <s>      Exact video length in seconds (0.1-3600; 600 with sound): keeps capturing
                           after the build (the finale, then the finished page) and cuts an unfinished
                           build there. Replaces --max-duration
@@ -218,6 +219,8 @@ export interface RenderOptions {
   maxDurationMs: number;
   /** --duration: exactly maxDurationMs of video. */
   fixedLength: boolean;
+  /** Sound lowered a longer --max-duration to the 10 minutes a video with sound may last. */
+  soundCapped: boolean;
   cues: ResolvedCue[];
   /** Absolute evidence paths. */
   audioOut?: string;
@@ -288,17 +291,20 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     throw new UsageError("Use either --duration (exact length) or --max-duration (upper limit), not both");
   }
   const fixedLength = values.duration !== undefined;
-  const maxDurationMs = fixedLength
+  const requestedMs = fixedLength
     ? readNumber("duration", values.duration, 0, { min: 0.1, max: 3600 }) * 1000
     : readNumber("max-duration", values["max-duration"], 120, { min: 1, max: 3600 }) * 1000;
   // Checked here, not after minutes of capturing: the soundtrack is rendered after the last frame.
-  if (settings.sound && maxDurationMs > MAX_SOUND_MS) {
-    const flag = fixedLength ? "duration" : "max-duration";
+  // --duration asks for that length, so a longer one fails now; --max-duration is only an upper
+  // limit (the build may end long before it), so sound lowers it to the 10 minutes instead.
+  if (settings.sound && fixedLength && requestedMs > MAX_SOUND_MS) {
     throw new UsageError(
-      `--${flag} must be at most ${MAX_SOUND_MS / 1000} with sound (got "${values[flag]}")`,
+      `--duration must be at most ${MAX_SOUND_MS / 1000} with sound (got "${values.duration}")`,
       "Add --no-sound, or use --format gif or webp, for a longer video.",
     );
   }
+  const soundCapped = settings.sound === true && requestedMs > MAX_SOUND_MS;
+  const maxDurationMs = soundCapped ? MAX_SOUND_MS : requestedMs;
   const fps = readInt("fps", values.fps, 30, 1, 120);
   const cues = (values.cue ?? []).map((spec) => parseCue(spec, settings.bpm, fps));
   for (const cue of cues) {
@@ -331,6 +337,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     fps,
     maxDurationMs,
     fixedLength,
+    soundCapped,
     cues,
     ...evidence,
     settings,
@@ -674,6 +681,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       settings: opts.settings,
       maxDurationMs: opts.maxDurationMs,
       fixedLength: opts.fixedLength,
+      soundCapped: opts.soundCapped,
       cues: opts.cues.map(({ at, action, speed }) => (speed === undefined ? { at, action } : { at, action, speed })),
       evidence: wantsEvidence(opts)
         ? { audio: Boolean(opts.audioOut), events: Boolean(opts.eventsOut), manifest: Boolean(opts.manifestOut) }
@@ -706,8 +714,11 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   if (opts.quiet) return 0;
   if (!summary.finished) {
     const layers = summary.last.total > 0 ? ` (${summary.last.built} of ${summary.last.total} layers built)` : "";
-    const flag = opts.fixedLength ? "--duration" : "--max-duration";
-    warn(io, `stopped at ${flag} ${formatClock(opts.maxDurationMs / 1000)} before the build finished${layers}`);
+    const clock = formatClock(opts.maxDurationMs / 1000);
+    const limit = opts.soundCapped
+      ? `${clock}, the longest video with sound (add --no-sound for more),`
+      : `${opts.fixedLength ? "--duration" : "--max-duration"} ${clock}`;
+    warn(io, `stopped at ${limit} before the build finished${layers}`);
   }
   if (summary.blockedRequests > 0 && !opts.verbose) {
     warn(io, `blocked ${summary.blockedRequests} request(s) the input made to other sites (see --verbose)`);

@@ -49,6 +49,8 @@ export interface RenderJob {
   maxDurationMs: number;
   /** Capture exactly `maxDurationMs` of video even after the build is done (--duration). */
   fixedLength?: boolean;
+  /** `maxDurationMs` is the 10 minutes a video with sound may last, less than --max-duration. */
+  soundCapped?: boolean;
   /** Player actions at fixed video times. */
   cues?: RenderCue[];
   evidence?: EvidenceRequest;
@@ -176,7 +178,10 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     if (!job.fixedLength && estimate > job.maxDurationMs) {
       const need = formatClock(estimate / 1000);
       const max = formatClock(job.maxDurationMs / 1000);
-      warn(io, `the build needs about ${need} but --max-duration is ${max}; the video will stop early`);
+      const limit = job.soundCapped
+        ? `a video with sound stops at ${max} (add --no-sound for more)`
+        : `--max-duration is ${max}`;
+      warn(io, `the build needs about ${need} but ${limit}; the video will stop early`);
     }
 
     const writer = await createWriter(job, deps, tmp, imageType);
