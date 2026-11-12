@@ -132,10 +132,11 @@ export class FrameRasterizer {
   /**
    * Draws the current frame into `ctx` at its origin, scaled to `ctx.canvas`, over white. While
    * the document shows what the last snapshot read (no mutation, load, scroll, focus or animation
-   * change since; see {@link StillWatch}), the frame skips the snapshot and draws the last image
-   * again with the overlays, such as the cursors, over it: an opening that holds the page, or an
-   * intro whose cursors move over a still stage. A frame whose snapshot comes out the same as the
-   * last one's also reuses its decoded image.
+   * change since, in it or in the live page it shows, and the same pixels in each canvas drawn
+   * into the image; see {@link StillWatch}), the frame skips the snapshot and draws the last image
+   * again with the overlays, such as the cursors, over it: an opening that holds the page, an
+   * intro whose cursors move over a still stage, or the rest of a still page after going live. A
+   * frame whose snapshot comes out the same as the last one's also reuses its decoded image.
    *
    * @throws The signal's reason when it aborts while the snapshot walk pauses.
    */
@@ -170,7 +171,7 @@ export class FrameRasterizer {
     this.#baseline ??= readBaseline(document);
     const watch = new StillWatch({ document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() });
     try {
-      const { parts, stats, overlays, settled } = await this.snapshot(signal, scale);
+      const { parts, stats, overlays, settled, pixels } = await this.snapshot(signal, scale);
       let img = this.#last?.img;
       if (!img || !sameParts(parts, this.#last?.parts ?? [])) {
         img = new Image();
@@ -179,7 +180,7 @@ export class FrameRasterizer {
         img.src = this.#uri(parts);
         await decoded(img);
       }
-      if (settled) watch.settle(settled);
+      if (settled) watch.settle(settled, pixels);
       else watch.stop();
       this.#last = { parts, img, overlays, stats, scale, watch: settled ? watch : null };
       return this.#last;

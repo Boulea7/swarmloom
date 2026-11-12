@@ -179,9 +179,10 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * about 40 ms per MB of the faces the frame's text uses). Photos in `<img>` elements are embedded
  * only as large as their boxes need, so large ones add little; large CSS background images, video
  * frames and canvases add their full size. While the page holds still since the last frame (no
- * mutation, load, scroll, focus or Web Animation change, and no canvas or video pixels, frame or
- * SMIL in the image), as through an opening, a frame skips the snapshot and draws the last image
- * again under the cursors; a frame whose snapshot equals the last one's also reuses its image.
+ * mutation, load, scroll, focus or Web Animation change in it or in the live page it shows, the
+ * same pixels in each canvas drawn into the image, and no video, frame of another origin or SMIL
+ * in it), as through an opening or after going live, a frame skips the snapshot and draws the last
+ * image again under the cursors; a frame whose snapshot equals the last one's also reuses its image.
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).

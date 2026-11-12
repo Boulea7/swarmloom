@@ -222,6 +222,12 @@ export interface ScrollMark {
   top: number;
 }
 
+/** A canvas whose pixels went into the image, with the data URL read for it. */
+export interface CanvasMark {
+  canvas: HTMLCanvasElement;
+  url: string;
+}
+
 /** One serialised frame. */
 export interface FrameSnapshot {
   /** The image's markup (`parts` joined when read). */
@@ -238,11 +244,17 @@ export interface FrameSnapshot {
   overlays: CanvasOverlay[];
   /**
    * The scroll offsets the image depends on: each scroll container written and each document
-   * viewport, as the walk read them. Null when the image shows what can change without a DOM
-   * mutation or a scroll: pixels of a canvas or video, a frame's document, SMIL animations, an
-   * image still loading.
+   * viewport (same-origin frames included), as the walk read them. Null when the image shows what
+   * can change without a DOM mutation or a scroll: a video, a frame whose document cannot be read,
+   * a shadow root the source does not list, SMIL animations, an image still loading.
    */
   settled: readonly ScrollMark[] | null;
+  /**
+   * The canvases whose pixels are in the image rather than drawn over it (one painted under a live
+   * page, for one): they change without a mutation, so the image holds only while each gives the
+   * same data URL again.
+   */
+  pixels: readonly CanvasMark[];
 }
 
 export interface Box {
@@ -331,6 +343,8 @@ interface Walk {
   smil: SmilTargets;
   resources: ResourceCache;
   shadowRootOf: (host: Element) => ShadowRoot | null;
+  /** The shadow roots the source lists; a change in any other goes unseen (see {@link FrameSnapshot.settled}). */
+  listed: ReadonlySet<ShadowRoot>;
   out: string[];
   rules: string[];
   /** Fonts the walk saw asked for: computed `font-style|font-weight|font-stretch`, a newline, `font-family`. */
@@ -342,6 +356,8 @@ interface Walk {
   canvases: (string | null)[];
   /** Canvases painted last so far, in paint order. */
   overlays: OverlayCandidate[];
+  /** See {@link FrameSnapshot.pixels}. */
+  pixels: CanvasMark[];
   /** Ancestors of the element being written, in the frame document only. */
   path: PathEntry[];
   /** Elements whose background the canvas paints instead (see {@link emitDocument}). */
@@ -1199,7 +1215,7 @@ function paintsBox(cs: CSSStyleDeclaration, special: boolean): boolean {
 
 /** Writes the overlay candidates' pixels into the snapshot after all: something paints over them. */
 function dropOverlays(walk: Walk): void {
-  for (const overlay of walk.overlays) walk.canvases[overlay.index] = canvasDataUrl(overlay.canvas);
+  for (const { canvas, index } of walk.overlays) walk.canvases[index] = canvasPixels(walk, canvas);
   walk.overlays = [];
 }
 
@@ -1323,7 +1339,7 @@ function overlayOf(
 
 /** The `src` of a canvas clone: its pixels, or a token while it may be drawn over the snapshot instead. */
 function canvasSource(walk: Walk, canvas: HTMLCanvasElement, overlay: CanvasOverlay | null): string {
-  if (!overlay) return pixelsToken(walk, canvasDataUrl(canvas));
+  if (!overlay) return pixelsToken(walk, canvasPixels(walk, canvas));
   const index = walk.canvases.push(null) - 1;
   walk.overlays.push({ ...overlay, index });
   return token(walk, "k", index);
@@ -1346,7 +1362,15 @@ function shiftedTranslate(current: string, dx: number, dy: number): string {
   return `${x + dx}px ${y + dy}px${z}`;
 }
 
-function canvasDataUrl(canvas: HTMLCanvasElement): string {
+/** The data URL of a canvas written into the image, noted in {@link Walk.pixels}. */
+function canvasPixels(walk: Walk, canvas: HTMLCanvasElement): string {
+  const url = canvasDataUrl(canvas);
+  walk.pixels.push({ canvas, url });
+  return url;
+}
+
+/** A canvas's pixels as a PNG data URL; a blank image when it is empty or cannot be read. */
+export function canvasDataUrl(canvas: HTMLCanvasElement): string {
   try {
     return canvas.width > 0 && canvas.height > 0 ? canvas.toDataURL("image/png") : BLANK_IMAGE;
   } catch {
@@ -1656,7 +1680,10 @@ function attributes(walk: Walk, el: Element): string {
  */
 function flatChildren(walk: Walk, el: Element): readonly Node[] {
   const root = walk.shadowRootOf(el) ?? el.shadowRoot;
-  if (root) return Array.from(root.childNodes);
+  if (root) {
+    if (!walk.listed.has(root)) walk.unsettled = true;
+    return Array.from(root.childNodes);
+  }
   if (el.localName === "slot" && el.namespaceURI === XHTML_NS) {
     const assigned = (el as HTMLSlotElement).assignedNodes({ flatten: true });
     if (assigned.length > 0) return assigned;
@@ -1935,8 +1962,8 @@ function* emitElement(
     override["transform-box"] = "view-box";
   }
   const frame = local === "iframe" && !svg;
-  // A video's picture and controls, and a frame's document, change without a mutation in this one.
-  if (frame || (local === "video" && !svg)) walk.unsettled = true;
+  // A video's picture and controls change without a mutation (a frame's document: see emitFrame).
+  if (local === "video" && !svg) walk.unsettled = true;
   // A video shows its controls while paused (playing, they hide once the pointer is away).
   const player = local === "video" && !svg && (el as HTMLVideoElement).controls && (el as HTMLVideoElement).paused;
   if (frame || player) {
@@ -2163,7 +2190,11 @@ function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaratio
     doc = null;
   }
   const win = doc?.defaultView as (Window & typeof globalThis) | null | undefined;
-  if (!doc?.documentElement || !win) return;
+  if (!doc?.documentElement || !win) {
+    // Drawn empty, but it may show a document later without a mutation here.
+    walk.unsettled = true;
+    return;
+  }
   walk.watch?.observe(doc);
   const width = frame.clientWidth;
   const height = frame.clientHeight;
@@ -2569,6 +2600,7 @@ async function walkFrame(
     smil: { attributes: new Map(), moving: new Set() },
     resources,
     shadowRootOf: (host) => byHost.get(host) ?? source.shadowRootOf(host),
+    listed: new Set(roots),
     out: [],
     rules: [],
     fonts: new Set(),
@@ -2576,6 +2608,7 @@ async function walkFrame(
     urlIndex: new Map(),
     canvases: [],
     overlays: [],
+    pixels: [],
     path: [],
     onCanvas: new Set(),
     kept: [],
@@ -2661,10 +2694,8 @@ export async function snapshotFrame(
     }
   }
   const fonts = await fontCss(walk, source, docs, faces);
-  // Pixels in the image: every canvas entry but those of the overlays.
-  const pixels = walk.canvases.length > walk.overlays.length;
   const smil = walk.smil.attributes.size > 0 || walk.smil.moving.size > 0;
-  const settled = walk.unsettled || pixels || smil ? null : walk.scrolls;
+  const settled = walk.unsettled || smil ? null : walk.scrolls;
   for (const { index } of walk.overlays) walk.canvases[index] = BLANK_IMAGE;
   const data = await Promise.all(walk.urls.map(({ url, fallback }) => resources.resolve(url, fallback)));
   // What `<img>` clones show: large photos only as large as their boxes need.
@@ -2712,5 +2743,6 @@ export async function snapshotFrame(
     stats: walk.stats,
     overlays,
     settled,
+    pixels: walk.pixels,
   };
 }

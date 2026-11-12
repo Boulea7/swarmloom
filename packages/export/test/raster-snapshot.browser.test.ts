@@ -420,7 +420,7 @@ it("decodes the image again only once the snapshot changed, reusing the encoding
   }
 });
 
-it("walks the frame again only after a mutation, a scroll or an animation seek, or always over canvas pixels", async () => {
+it("walks the frame again only after a mutation, a scroll, an animation seek or a change of canvas pixels in the image", async () => {
   const { win, rasterizer } = await frameOf(
     '<body style="margin:0"><div id=s style="height:100px;overflow:hidden">' +
       '<div style="height:100px;background:rgb(255,0,0)"></div><div style="height:100px;background:rgb(0,0,255)"></div>' +
@@ -445,8 +445,53 @@ it("walks the frame again only after a mutation, a scroll or an animation seek, 
   fade.currentTime = 1000;
   expect(await frame()).toEqual([4, [255, 255, 255]]);
   fade.cancel();
-  // A canvas painted over is drawn into the image: its pixels change unseen, so every frame walks.
+  // A canvas painted over is drawn into the image: its pixels change without a mutation.
   box.innerHTML = '<canvas width=10 height=10></canvas><p style="margin:0;height:10px;background:#fff"></p>';
   expect((await frame())[0]).toBe(5);
+  expect((await frame())[0]).toBe(5);
+  const canvas = box.querySelector("canvas") as HTMLCanvasElement;
+  (canvas.getContext("2d") as CanvasRenderingContext2D).fillRect(0, 0, 1, 1);
   expect((await frame())[0]).toBe(6);
+});
+
+it("watches a same-origin frame's document rather than walking it every frame, unless it cannot read it", async () => {
+  const { win, rasterizer } = await frameOf(
+    `<body style="margin:0"><iframe style="border:0;width:${SIZE}px;height:${SIZE}px" srcdoc="<body style='margin:0'>` +
+      "<div id=s style='height:100px;overflow:hidden'><div style='height:100px;background:rgb(255,0,0)'></div>" +
+      "<div style='height:100px;background:rgb(0,0,255)'></div></div></body>\"></iframe></body>",
+  );
+  const inner = (win.document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document;
+  const box = inner.getElementById("s") as HTMLElement;
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  box.scrollTop = 100;
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  (box.lastElementChild as HTMLElement).style.background = "rgb(0, 255, 0)";
+  expect(await frame()).toEqual([3, [0, 255, 0]]);
+  const fade = box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1000, fill: "forwards" });
+  fade.pause();
+  expect((await frame())[0]).toBe(4);
+  fade.currentTime = 1000;
+  expect(await frame()).toEqual([5, [255, 255, 255]]);
+  fade.cancel();
+  // A frame of another origin is drawn empty and may show a document later: every frame walks.
+  box.innerHTML = '<iframe sandbox style="border:0;width:10px;height:10px"></iframe>';
+  expect((await frame())[0]).toBe(6);
+  expect((await frame())[0]).toBe(7);
+});
+
+it("walks every frame that reads a shadow root the source does not list", async () => {
+  const { win, rasterizer } = await frameOf('<body style="margin:0"><div id=h></div></body>');
+  (win.document.getElementById("h") as HTMLElement).attachShadow({ mode: "open" }).innerHTML = "<p>open</p>";
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  await rasterizer.draw(ctx);
+  await rasterizer.draw(ctx);
+  expect(walk).toHaveBeenCalledTimes(2);
 });
