@@ -4,7 +4,7 @@ Deterministic video and audio export for SwarmLoom: the CLI's render page, the s
 
 ## Render page (used by the CLI)
 
-`dist/render/index.html` is a headless page, also exported as `@swarmloom/export/render/*`. It sets `window.__swarmloom` and marks `<html data-swarmloom="ready">`. A driver such as the `swarmloom render` CLI over CDP calls:
+`dist/render/index.html` is a headless page, also exported as `@swarmloom/export/render/*`. Its build also writes `dist/render.sources.json`, the hashes of the workspace files and lockfile it was built from; the CLI build uses it to rebuild a stale page. It sets `window.__swarmloom` and marks `<html data-swarmloom="ready">`. A driver such as the `swarmloom render` CLI over CDP calls:
 
 1. `init({ input, width, height, fps, seed?, agents?, speed?, theme?, labels?, overlays?, sound?, tail?, live?, follow?, reducedMotion?, bpm?, pack?, cues?, blueprint? })`, which returns `{ estimatedMs, layers, blueprintSha256 }`.
    - `blueprintSha256` hashes the blueprint JSON after replacing what changes from run to run: the directory the input was served from becomes `input:/`, each `blob:` URL becomes `blob:sha256-` plus the hash of its bytes, and other addresses on the render page's own origin (such as footnote links resolved against the page) start with `page:/`. Remote URLs stay. The same input gives the same hash.

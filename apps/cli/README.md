@@ -49,6 +49,6 @@ Progress goes to stderr: a bar with the remaining time on a terminal, a line per
 
 While rendering, the render page only loads files from the CLI's own loopback server: the page itself, the input, and the images, fonts, style sheets, media and 3D model parts next to a local input file (published under a random path for that one render). An HTML file uses the images and fonts next to it; its `<link>` style sheets are left out, so keep its CSS in `<style>`. `https:` images and fonts the input links to are fetched without a `Referer`; `--no-remote` turns that off. Scripts, style sheets, data requests and plain-`http:` files from other sites are always blocked; `--verbose` lists each blocked request.
 
-Only `playwright-core` is installed with the CLI. The render page, the snapshot script and Studio are bundled into `dist/` at build time (`pnpm build` in a source checkout). For development, `SWARMLOOM_RENDER_DIR`, `SWARMLOOM_STUDIO_DIR` and `SWARMLOOM_SNAPSHOT_BUNDLE` point the CLI at other copies.
+Only `playwright-core` is installed with the CLI. The render page, the snapshot script and Studio are bundled into `dist/` at build time (`pnpm build` in a source checkout). `pnpm -F swarmloom build` alone rebuilds the render page first when the sources it was built from changed (it compares `packages/export/dist/render.sources.json`), so it never ships a page built from older code. For development, `SWARMLOOM_RENDER_DIR`, `SWARMLOOM_STUDIO_DIR` and `SWARMLOOM_SNAPSHOT_BUNDLE` point the CLI at other copies.
 
 License: MIT.
