@@ -551,6 +551,11 @@ export type PlayerEvent =
   | { type: "state"; state: PlayerState }
   | { type: "progress"; built: number; total: number }
   | { type: "sound"; event: SoundEvent }
+  /**
+   * Speed, sound or follow mode changed through setSpeed/setSound/setFollow (the built-in toolbar
+   * and its shortcuts call them too). Carries all three current values.
+   */
+  | { type: "settings"; speed: number; sound: boolean; follow: "scroll" | "tour" | "none" }
   | { type: "error"; error: Error };
 
 export interface Player {

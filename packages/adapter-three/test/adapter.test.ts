@@ -2,9 +2,10 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CustomLayer, Rect } from "@swarmloom/core";
-import { describe, expect, it } from "vitest";
+import type { CustomLayer, Plugin, Rect, StageApi } from "@swarmloom/core";
+import { describe, expect, it, vi } from "vitest";
 import { createThreeAdapter, THREE_TASKS, ThreeAdapterError, threeAdapter } from "../src/index";
+import { ModelScene } from "../src/runtime/scene";
 import { driveBuild } from "./helpers/drive";
 
 const ctx = { document, width: 800, theme: "light" as const };
@@ -102,6 +103,27 @@ describe("three adapter", () => {
     for (const [file, box] of Object.entries(footprints)) {
       for (const key of ["x", "y", "w", "h"] as const)
         expect(box[key], `${file} ${key}`).toBeCloseTo(reference[key], 0);
+    }
+  });
+
+  it("takes reduced motion from the player, not the host's media query", async () => {
+    // No GPU needed: happy-dom has no WebGL, so the mount shows its notice, but the setting is decided first.
+    const source = await createThreeAdapter({ height: 600 }).load({ name: "cube.stl", text: cubeStl() }, ctx);
+    const plugin = source.plugins?.[0] as Plugin;
+    const mount = vi.spyOn(ModelScene.prototype, "mount");
+    const media = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation((query) => ({ matches: query.includes("reduced-motion"), media: query }) as MediaQueryList);
+    try {
+      for (const reducedMotion of [false, true]) {
+        const cleanup = plugin.setup?.({ reducedMotion } as StageApi, document.createElement("div"));
+        expect((mount.mock.contexts.at(-1) as ModelScene).reducedMotion, `player ${reducedMotion}`).toBe(reducedMotion);
+        if (typeof cleanup === "function") cleanup();
+      }
+    } finally {
+      media.mockRestore();
+      mount.mockRestore();
+      source.dispose?.();
     }
   });
 

@@ -16,6 +16,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -49,8 +50,15 @@ const ROOT_FILES = [
 ];
 /** Workspace folders (pnpm-workspace.yaml: packages/*, apps/*). */
 const WORKSPACE_DIRS = ["packages", "apps"];
-/** Never part of a source package: installs, outputs, tests and local state. */
-const SKIP_DIR = /^(node_modules|dist|dist-.*|build|test|tests|coverage|\..*)$/;
+/** Never part of a source package: installs, outputs, tests and local state, at any depth. */
+const SKIP_DIR = /^(node_modules|dist|dist-.*|test|tests|coverage|\..*)$/;
+/**
+ * Output folders skipped by repository path: `build` is a source folder elsewhere (Studio's Vite
+ * config imports its plugins from apps/studio/build), so it cannot be skipped by name.
+ */
+const SKIP_PATH = new Set([
+  "apps/extension/build", // scripts/safari-package.sh: the Xcode project
+]);
 const SKIP_FILE = /\.(test|spec)\.[cm]?[jt]sx?$|\.zip$/;
 
 /**
@@ -100,41 +108,82 @@ function bundledPackages(all, roots, withAdapters) {
 /**
  * Adds every source file below `dir` (skipping outputs, tests and dot folders).
  * @param {string} dir
- * @param {Map<string, Buffer>} files keyed by repository-relative path
+ * @param {Map<string, Buffer>} files keyed by path relative to `base`
+ * @param {string} [base] the repository root
  */
-function addTree(dir, files) {
+export function addTree(dir, files, base = repo) {
   for (const name of readdirSync(dir).sort()) {
     const path = join(dir, name);
+    const rel = relative(base, path).split(sep).join("/");
     if (statSync(path).isDirectory()) {
-      if (!SKIP_DIR.test(name)) addTree(path, files);
+      if (!SKIP_DIR.test(name) && !SKIP_PATH.has(rel)) addTree(path, files, base);
     } else if (!SKIP_FILE.test(name)) {
-      files.set(relative(repo, path).split(sep).join("/"), readFileSync(path));
+      files.set(rel, readFileSync(path));
     }
   }
 }
 
+/**
+ * How to spawn a fixed command. On Windows, pnpm from Corepack or npm is `pnpm.cmd`, which only a
+ * shell resolves; the arguments are joined into the command line there (an args array with `shell`
+ * is not escaped and is deprecated, DEP0190), so only plain constant arguments are accepted.
+ * @param {string} cmd @param {string[]} args @param {NodeJS.Platform} [platform]
+ * @returns {{ file: string; args: string[]; shell: boolean }}
+ */
+export function spawnCommand(cmd, args, platform = process.platform) {
+  if (platform !== "win32") return { file: cmd, args, shell: false };
+  const unsafe = [cmd, ...args].find((a) => !/^[\w@:./=+-]+$/.test(a));
+  if (unsafe !== undefined) throw new Error(`cannot pass ${JSON.stringify(unsafe)} through the Windows shell`);
+  return { file: [cmd, ...args].join(" "), args: [], shell: true };
+}
+
 /** @param {string} cmd @param {string[]} args @param {string} cwd */
 function run(cmd, args, cwd) {
-  const result = spawnSync(cmd, args, { cwd, stdio: "inherit", env: { ...process.env, CI: "1" } });
-  if (result.status !== 0) throw new Error(`${cmd} ${args.join(" ")} failed in ${cwd}`);
+  const spawn = spawnCommand(cmd, args);
+  const result = spawnSync(spawn.file, spawn.args, {
+    cwd,
+    shell: spawn.shell,
+    stdio: "inherit",
+    env: { ...process.env, CI: "1" },
+  });
+  if (result.status !== 0)
+    throw new Error(`${cmd} ${args.join(" ")} failed in ${cwd}`, result.error ? { cause: result.error } : undefined);
 }
 
 /**
+ * Prints the sha256 of the rebuilt package with Node, which the build needs anyway: `sha256sum` is
+ * GNU-only (macOS ships `shasum`). The quoting holds in sh, PowerShell and cmd.exe alike: no `$`,
+ * backtick, `!`, `%` or space inside the double quotes.
+ */
+export const HASH_COMMAND = `node -e "console.log(require('crypto').createHash('sha256').update(require('fs').readFileSync('apps/extension/dist/firefox.zip')).digest('hex'))"`;
+
+/**
+ * AMO-SOURCE.md. Steps are numbered; a line starting with three spaces is a note on the step above.
  * @param {{ xpiHash: string; studio: boolean; packages: string[]; pnpm: string; epoch: string | undefined }} info
  */
-function instructions(info) {
+export function instructions(info) {
   const studioStep = info.studio
     ? [
         "pnpm -F @swarmloom/studio build:extension",
         "   (writes apps/studio/dist-extension, which the extension build bundles as studio/)",
       ]
     : [];
+  // A separate step, not a `VAR=value command` prefix, which only POSIX shells understand.
+  const epochStep = info.epoch
+    ? [
+        `export SOURCE_DATE_EPOCH=${info.epoch}`,
+        `   (PowerShell: $env:SOURCE_DATE_EPOCH = "${info.epoch}"; cmd.exe: set SOURCE_DATE_EPOCH=${info.epoch})`,
+      ]
+    : [];
   const steps = [
     "pnpm install --frozen-lockfile",
     ...studioStep,
-    `${info.epoch ? `SOURCE_DATE_EPOCH=${info.epoch} ` : ""}pnpm -F @swarmloom/extension exec node scripts/build.mjs --target firefox`,
-    "sha256sum apps/extension/dist/firefox.zip",
+    ...epochStep,
+    "pnpm -F @swarmloom/extension exec node scripts/build.mjs --target firefox",
+    HASH_COMMAND,
+    "   (or sha256sum, or shasum -a 256 on macOS)",
   ];
+  let n = 0;
   return `# SwarmLoom for Firefox: source package
 
 This archive rebuilds \`firefox.zip\`, the package uploaded to addons.mozilla.org (one package for
@@ -145,11 +194,12 @@ nor obfuscated. Third-party code comes from registry.npmjs.org as pinned by \`pn
 
 - Node.js ${process.version} (the same major version is required: zip compression comes from Node's zlib)
 - pnpm ${info.pnpm} (\`corepack enable\` picks it from package.json)
-- Any OS; the build does not depend on the working directory or the clock.
+- Any OS and shell (sh, PowerShell, cmd.exe); the build does not depend on the working directory or
+  the clock.
 
 ## Steps (from the folder this archive was unpacked into)
 
-${steps.map((s, i) => (s.startsWith("   ") ? s : `${i + 1}. ${s}`)).join("\n")}
+${steps.map((s) => (s.startsWith("   ") ? s : `${++n}. ${s}`)).join("\n")}
 
 Expected sha256 of \`apps/extension/dist/firefox.zip\`:
 
@@ -231,4 +281,5 @@ function main() {
   if (values.verify) verify(archive, xpiHash);
 }
 
-main();
+// realpath: Node resolves symlinks in import.meta.url but not in argv[1] (e.g. a symlinked home).
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) main();

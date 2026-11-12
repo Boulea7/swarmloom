@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { server } from "vitest/browser";
 import type { AgentView, Stage, StageOptions } from "../../src/internal";
 import { createRng } from "../../src/rng";
 import { createStage, stageStats } from "../../src/stage";
@@ -258,6 +259,24 @@ describe("stage: reveal semantics per kind", () => {
     expect(path.style.strokeDasharray).toBe("");
   });
 
+  it("path: the viewBox maps 1:1 onto the laid-out svg, whatever the box's fraction", () => {
+    // 431.17 px lays out as 431.15625 px; a 431.17 viewBox scaled by 0.99997, which Chromium
+    // computed one float ulp apart between paints (line ends differed between identical renders).
+    const { stage } = mount([
+      {
+        id: "p",
+        kind: "path",
+        box: { x: 535.83, y: 235.8, w: 431.17, h: 1 },
+        d: "M535.83 236.3H967",
+        stroke: "rgba(11, 11, 18, 0.1)",
+      },
+    ]);
+    const svg = stage.el("p") as SVGSVGElement;
+    expect(svg.viewBox.baseVal.width).toBe(431.171875);
+    // Firefox lays out in 1/60 px, so only 1/64 px layout units map a 1/64 px size exactly.
+    if (!navigator.userAgent.includes("Firefox")) expect(svg.getCTM()?.a).toBe(1);
+  });
+
   it("path: accepts local url(#id) references and refuses external ones", () => {
     const { stage } = mount([
       {
@@ -375,6 +394,22 @@ describe("stage: reveal semantics per kind", () => {
         return url;
       },
     },
+    {
+      // A recorded demo runs to many megabytes: only its first frame is read.
+      name: "17 MB blob:",
+      src: async () => {
+        const gif = new Uint8Array(await (await fetch(GIF_RED_BLUE)).arrayBuffer());
+        // A third frame of 255-byte data sub-blocks, then the trailer.
+        const big = new Uint8Array(gif.length + 11 + 17 * 1024 * 1024 + 2);
+        big.set(gif.subarray(0, -1));
+        big.set([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2], gif.length - 1);
+        let at = gif.length + 10;
+        for (; at + 256 < big.length - 2; at += 256) big[at] = 255;
+        const url = URL.createObjectURL(new Blob([big.subarray(0, at), Uint8Array.of(0, 0x3b)], { type: "image/gif" }));
+        cleanups.push(() => URL.revokeObjectURL(url));
+        return url;
+      },
+    },
   ])("image: an animated GIF ($name URL) shows its first frame as a still copy", async ({ src }) => {
     const { stage } = mount([{ id: "g", kind: "image", box: { x: 0, y: 0, w: 40, h: 40 }, src: await src() }]);
     stage.reveal("g", 1);
@@ -385,6 +420,94 @@ describe("stage: reveal semantics per kind", () => {
     const g = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
     g?.drawImage(img, 0, 0);
     expect(Array.from(g?.getImageData(0, 0, 1, 1).data ?? [])).toEqual([255, 0, 0, 255]);
+  });
+
+  it("image: a still same-origin file is read once, however many images a page has", async () => {
+    // More files than the still-copy cache holds; blob: URLs are same-origin and read like files.
+    const png = await (await fetch(PNG_1PX)).blob();
+    const layers: Layer[] = Array.from({ length: 40 }, (_, i) => {
+      const src = URL.createObjectURL(png);
+      cleanups.push(() => URL.revokeObjectURL(src));
+      return { id: `p${i}`, kind: "image", box: { x: 0, y: 0, w: 10, h: 10 }, src };
+    });
+    const fetches = vi.spyOn(window, "fetch");
+    cleanups.push(() => fetches.mockRestore());
+    await mount(layers).stage.ready();
+    expect(fetches).toHaveBeenCalled();
+    fetches.mockClear();
+    // A replay mounts the same layers again.
+    await mount(layers).stage.ready();
+    expect(fetches).not.toHaveBeenCalled();
+  });
+
+  it("overlay: the visited page's own image files are not requested again", async () => {
+    // The extension plays on the page itself: a fetch of its files would tell the site.
+    const src = new URL(`${SPIN_SVG}?page`, location.href).href;
+    const fetches = vi.spyOn(window, "fetch");
+    cleanups.push(() => fetches.mockRestore());
+    const bp = blueprint([{ id: "a", kind: "image", box: { x: 0, y: 0, w: 200, h: 100 }, src }], {
+      w: window.innerWidth,
+      h: 600,
+    });
+    const stage = createStage({
+      blueprint: bp,
+      mode: "overlay",
+      host: document.body,
+      theme: resolveTheme("auto", bp, false),
+      plugins: [],
+      reducedMotion: false,
+      rng: createRng(3),
+      initialScroll: 0,
+    });
+    cleanups.push(() => stage.destroy());
+    stage.reveal("a", 1);
+    await stage.ready();
+    expect(fetches).not.toHaveBeenCalled();
+    expect((stage.el("a") as HTMLElement).querySelector("img")?.getAttribute("src")).toBe(src);
+  });
+
+  it("overlay: the stage background's file on the visited page is not requested either", async () => {
+    // The background is painted (and held still) while the DOM is built, before any layer mounts.
+    const fetches = vi.spyOn(window, "fetch");
+    cleanups.push(() => fetches.mockRestore());
+    const bp = { ...blueprint([], { w: window.innerWidth, h: 600 }), background: `url(${SPIN_SVG}?page-bg)` };
+    const stage = createStage({
+      blueprint: bp,
+      mode: "overlay",
+      host: document.body,
+      theme: resolveTheme("auto", bp, false),
+      plugins: [],
+      reducedMotion: false,
+      rng: createRng(3),
+      initialScroll: 0,
+    });
+    cleanups.push(() => stage.destroy());
+    await stage.ready();
+    expect(fetches).not.toHaveBeenCalled();
+  });
+
+  it("image: a replay decodes no animated image again, however many; the copies go with the last stage", async () => {
+    // More than a count-bounded cache of 32 held: mounted in the same order, every one missed.
+    const layers: Layer[] = Array.from({ length: 40 }, (_, i) => ({
+      id: `g${i}`,
+      kind: "image",
+      box: { x: 0, y: 0, w: 10, h: 10 },
+      src: `${GIF_RED_BLUE}#replay-${i}`,
+    }));
+    const decodes = vi.spyOn(window, "createImageBitmap");
+    cleanups.push(() => decodes.mockRestore());
+    const { stage } = mount(layers);
+    await stage.ready();
+    expect(decodes).toHaveBeenCalledTimes(40);
+    decodes.mockClear();
+    stage.reset();
+    await stage.ready();
+    expect(decodes).not.toHaveBeenCalled();
+    stage.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The last image mounted, which any cache would hold, is decoded again by a stage made later.
+    await mount(layers.slice(-1)).stage.ready();
+    expect(decodes).toHaveBeenCalledTimes(1);
   });
 
   it.each<{ name: string; layer: Layer }>([
@@ -409,6 +532,36 @@ describe("stage: reveal semantics per kind", () => {
     await stage.ready();
     const img = (stage.el("g") as HTMLElement).querySelector("img") as HTMLImageElement;
     expect(animatedBitmapType(new Uint8Array(await (await fetch(img.src)).arrayBuffer()))).toBeNull();
+  });
+
+  const xhtmlDiv = (attrs: string): string =>
+    `<foreignObject width="40" height="40"><div xmlns="http://www.w3.org/1999/xhtml" ${attrs}/></foreignObject>`;
+  it.each([
+    { name: "<image href>", embed: `<image href="${GIF_RED_BLUE}" width="40" height="40"/>` },
+    {
+      name: "<feImage xlink:href>",
+      embed: `<filter id="f"><feImage xlink:href="${GIF_RED_BLUE}"/></filter><rect width="40" height="40" filter="url(#f)"/>`,
+    },
+    {
+      name: "a CSS background in a <foreignObject>",
+      embed: xhtmlDiv(`style="width:40px;height:40px;background:url(${GIF_RED_BLUE})"`),
+    },
+    {
+      name: "a <style> rule with an upper-case URL()",
+      embed: `<style>.g{background:URL("${GIF_RED_BLUE}")}</style>${xhtmlDiv(`class="g" style="width:40px;height:40px"`)}`,
+    },
+  ])("image: an SVG embedding an animated GIF ($name) shows its first frame", async ({ embed }) => {
+    const xlink = "http://www.w3.org/1999/xlink";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="${xlink}" width="40" height="40">${embed}</svg>`;
+    const src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    const { stage } = mount([{ id: "s", kind: "image", box: { x: 0, y: 0, w: 40, h: 40 }, src }]);
+    stage.reveal("s", 1);
+    await stage.ready();
+    const img = (stage.el("s") as HTMLElement).querySelector("img") as HTMLImageElement;
+    const shown = (await (await fetch(img.src)).text()).match(/data:image\/\w+;base64,[\w+/=]+/g) ?? [];
+    // One frame: nothing left for the wall clock to play.
+    expect(shown.map((href) => href.slice(0, 22))).toEqual(["data:image/png;base64,"]);
+    expect(animatedBitmapType(new Uint8Array(await (await fetch(shown[0] as string)).arrayBuffer()))).toBeNull();
   });
 
   it("media: labelled placeholder that fades in", () => {
@@ -690,7 +843,9 @@ describe("stage: virtualization", () => {
     // A write per undrawn frame landed after that frame's task writes and forced a layout.
     expect(writes).toBe(1);
     const world = stage.root.querySelector(".world") as HTMLElement;
-    expect(world.getBoundingClientRect().top).toBeCloseTo(stage.toClient({ x: 0, y: 0 }).y, 0);
+    // WebKit keeps whole-pixel scroll offsets, so the world lands within a pixel of the exact one.
+    const off = Math.abs(world.getBoundingClientRect().top - stage.toClient({ x: 0, y: 0 }).y);
+    expect(off).toBeLessThan(server.browser === "webkit" ? 1 : 0.5);
     h.engine.destroy();
   });
 });

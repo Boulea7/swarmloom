@@ -25,6 +25,11 @@ export interface RenderOfflineOptions {
    * silence of the requested length.
    */
   sound?: boolean | Partial<SoundOptions>;
+  /**
+   * Cancels the render: the promise rejects with the signal's reason at once, no further events are
+   * scheduled and the output is cut off, so the rest of the timeline renders as fast silence.
+   */
+  signal?: AbortSignal;
 }
 
 /** Longest render accepted, in ms (10 minutes keeps the float buffer within a few hundred MB). */
@@ -108,6 +113,24 @@ export function soundTimes(events: readonly SoundEvent[], opts: RenderOfflineOpt
   return times;
 }
 
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("The render was cancelled.", "AbortError");
+}
+
+/** Settles as `work` does, or rejects with the signal's reason as soon as it aborts (calling `onAbort`). */
+function unlessAborted<T>(work: Promise<T>, signal: AbortSignal | undefined, onAbort: () => void): Promise<T> {
+  if (!signal) return work;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      onAbort();
+      reject(abortReason(signal));
+    };
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
 function startRendering(ctx: OfflineAudioContext): Promise<AudioBuffer> {
   return new Promise((resolve, reject) => {
     // Old WebKit returns undefined from startRendering() and only fires `complete`.
@@ -143,9 +166,12 @@ export async function renderOffline(
   const { sampleRate, channels, length, enabled, settings } = plan(durationMs, opts);
   const Ctor = offlineContextCtor();
   if (!Ctor) throw new Error("renderOffline() needs OfflineAudioContext (run it in a browser)");
+  const { signal } = opts;
+  if (signal?.aborted) throw abortReason(signal);
 
   const ctx = new Ctor(channels, length, sampleRate);
-  const synth = new Synth(ctx, createMasterBus(ctx, { volume: settings.volume, muted: false }), settings);
+  const bus = createMasterBus(ctx, { volume: settings.volume, muted: false });
+  const synth = new Synth(ctx, bus, settings);
   const admitted = enabled ? admitAll(events, settings).filter((ev) => ev.at < durationMs) : [];
 
   // Events in time order; one the grid moved past the slice end waits in `later` without holding
@@ -154,6 +180,7 @@ export async function renderOffline(
   let next = 0;
   let later: AdmittedEvent[] = [];
   const scheduleUntil = (endSeconds: number): void => {
+    if (signal?.aborted) return;
     const endMs = endSeconds * 1000;
     const due = (ev: AdmittedEvent): boolean => {
       if (ev.at >= endMs) return false;
@@ -192,7 +219,9 @@ export async function renderOffline(
   } else {
     scheduleUntil(Number.POSITIVE_INFINITY);
   }
-  const buffer = await startRendering(ctx);
+  // A context cannot stop rendering; once cancelled, the slices resume without scheduling anything
+  // and the cut-off bus leaves only silence to render, which ends quickly and frees the context.
+  const buffer = await unlessAborted(startRendering(ctx), signal, () => bus.disconnect());
   // A failed slice means missing sounds; an incomplete soundtrack must not pass silently.
   if (sliceError !== null) throw new Error("renderOffline() could not schedule every event", { cause: sliceError });
   return buffer;

@@ -1,9 +1,13 @@
 import { expect, it } from "vitest";
 import { FrameRasterizer } from "../src/browser/raster/rasterize";
 
-/** Forms the html adapter's own policy misses; Chromium computes each into a plain `url()`. */
+/**
+ * Forms the html adapter's own policy misses; Chromium computes each into a plain `url()`. Another
+ * site's images are never fetched (the frame loads them without CORS); its fonts only under "https".
+ */
 const PAGE =
-  '<body background="https://remote.invalid/bg.png">' +
+  "<style>@font-face{font-family:R;src:url(https://remote.invalid/r.woff2)}</style>" +
+  '<body background="https://remote.invalid/bg.png"><p style="font-family:R">R</p>' +
   "<div style=\"width:9px;height:9px;background-image:image-set('https://remote.invalid/set.png' 1x)\"></div>" +
   '<div style="width:9px;height:9px;background-image:url(http://remote.invalid/plain.png)"></div>' +
   '<div style="width:9px;height:9px;background-image:url(/own.png)"></div></body>';
@@ -38,7 +42,7 @@ async function fetchedUrls(network: "https" | "none"): Promise<string[]> {
 
 it.each([
   ["none", [`${location.origin}/own.png`]],
-  ["https", [`${location.origin}/own.png`, "https://remote.invalid/bg.png", "https://remote.invalid/set.png"]],
+  ["https", [`${location.origin}/own.png`, "https://remote.invalid/r.woff2"]],
 ] as const)("fetches only what the %s policy lets the frame load", async (network, expected) => {
   expect(await fetchedUrls(network)).toEqual([...expected].sort());
 });

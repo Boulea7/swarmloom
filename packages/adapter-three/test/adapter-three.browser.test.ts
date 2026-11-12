@@ -84,7 +84,8 @@ describe("three adapter with the loom-bot sample", () => {
     { timeout: 180_000 },
     () => {
       // The host asks for reduced motion, the player does not: the player's setting decides (exports
-      // pin it, so the finale orbit must not depend on the machine).
+      // pin it, so the finale orbit must not depend on the machine). adapter.test.ts checks the same
+      // rule without a GPU, so it still runs where WebGL is missing and this case skips.
       const real = window.matchMedia.bind(window);
       const media = vi
         .spyOn(window, "matchMedia")

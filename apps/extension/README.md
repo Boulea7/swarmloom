@@ -46,7 +46,9 @@ toolbar). The user agent is never sniffed.
 The content script (`swarm.js`) is snapshot-dom plus core, injected on demand. Format adapters are
 not bundled: documents open in Studio. When a Studio build made with `STUDIO_TARGET=extension`
 exists (`apps/studio/dist-extension`, `--studio <dir>` or `SWARMLOOM_STUDIO_DIR`), it is copied in
-as `studio/`; otherwise Studio links go to the hosted Studio. Brand icons come from
+as `studio/`; otherwise Studio links go to the hosted Studio. `@swarmloom/studio` is a devDependency,
+so `pnpm build` at the root builds the Studio first, and the build stops when the Studio's page links
+a file that is missing (a Studio build running at the same time). Brand icons come from
 `assets/brand/icon-<size>.png`, with generated placeholders until they exist.
 
 Every package carries `LICENSE.txt` (SwarmLoom, MIT) and `THIRD_PARTY_NOTICES.txt`, written by
@@ -59,8 +61,11 @@ licence and copyright (core-js inside pdf.js, the Apache-2.0 Draco decoders and 
 decoder inside three, the OFL-1.1 KaTeX fonts inside katex) are listed from `EMBEDDED_PACKAGES`,
 checked against the host's files (core-js and meshoptimizer record their version and copyright line
 there; the others are labelled `as shipped in <host> <version>`);
-`check:package` fails when a shipped script carries such code and the notices do not list it. The build log prints the entry count per package (one
-`License:` line per name@version in the file).
+`check:package` fails when a shipped script carries such code and the notices do not list it.
+MPL-2.0 packages whose licence file names no copyright holder (Mediabunny, DOMPurify) state it in
+the header of each source file, which the minified build drops: `HEADER_COPYRIGHTS` names the file
+whose header the notice copies the copyright line from, and the build fails on an unlisted one.
+The build log prints the entry count per package (one `License:` line per name@version in the file).
 
 ## Commands
 

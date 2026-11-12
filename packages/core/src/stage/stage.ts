@@ -8,6 +8,7 @@ import { GuideLines } from "./guides";
 import { buildDom, type StageDom } from "./host";
 import { countTypingUnits, type GraphemeSegmenter, type MountEnv } from "./layers";
 import { clamp01, reapplyStyleAttributes } from "./layers/common";
+import { retainStills } from "./layers/still-image";
 import { Mounter, type MountStats } from "./mounter";
 import { PageGuard } from "./page";
 import { LayerRegistry, type Slot } from "./registry";
@@ -136,6 +137,8 @@ export class SwarmStage implements Stage {
   readonly #fade: Fade;
   readonly #guard: PageGuard;
   readonly #segmenter: GraphemeSegmenter | null;
+  /** Lets the still copies of animated images go once no stage is left (see retainStills). */
+  readonly #releaseStills: () => void;
   readonly #resizeListeners = new Set<(vp: Rect) => void>();
   readonly #offs: (() => void)[] = [];
   readonly #cleanups: (() => void)[] = [];
@@ -182,17 +185,27 @@ export class SwarmStage implements Stage {
     // S01: an overlay lives under <html>, outside <body>, so the page can be made inert without it.
     const parent =
       o.mode === "overlay" && (host === doc.body || host === doc.documentElement) ? doc.documentElement : host;
-    this.#dom = buildDom({
-      mode: o.mode,
-      parent,
-      base: tokens.base,
-      background: typeof bp.background === "string" ? bp.background : "",
-      backgroundOnBackdrop: plugins.some((p) => typeof p.setup === "function"),
-      css: typeof bp.css === "string" ? bp.css : undefined,
-      textColor: o.theme.scheme === "dark" ? BRAND.paper : BRAND.ink,
-      focusColor: o.theme.select,
-    });
-    const dom = this.#dom;
+    // An overlay covers the visited page itself, whose files the stage must not request again: not
+    // even for the stage's own background, which buildDom paints (and holds still) right away.
+    const releaseStills = retainStills(o.mode === "overlay" ? doc : undefined);
+    this.#releaseStills = releaseStills;
+    let dom: StageDom;
+    try {
+      dom = buildDom({
+        mode: o.mode,
+        parent,
+        base: tokens.base,
+        background: typeof bp.background === "string" ? bp.background : "",
+        backgroundOnBackdrop: plugins.some((p) => typeof p.setup === "function"),
+        css: typeof bp.css === "string" ? bp.css : undefined,
+        textColor: o.theme.scheme === "dark" ? BRAND.paper : BRAND.ink,
+        focusColor: o.theme.select,
+      });
+    } catch (error) {
+      releaseStills();
+      throw error;
+    }
+    this.#dom = dom;
     this.root = dom.root;
     this.uiLayer = dom.ui;
     dom.world.style.width = `${size.w}px`;
@@ -242,6 +255,7 @@ export class SwarmStage implements Stage {
         }
       }
       dom.dispose();
+      this.#releaseStills();
       throw error;
     }
   }
@@ -656,6 +670,7 @@ export class SwarmStage implements Stage {
     this.#resizeListeners.clear();
     this.#textUnits.clear();
     this.#reads.clear();
+    this.#releaseStills();
   }
 
   /* ----------------------------------------------------------- internals */

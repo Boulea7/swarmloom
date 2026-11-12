@@ -2,7 +2,7 @@ import type { CSSMap, Point, TextLayer } from "../../types";
 import { applyLayerStyle } from "../sanitize";
 import { clamp01, contentDiv, type LayerView, type MountEnv, Shell, Transient } from "./common";
 import { holdAllCssImages } from "./still-css";
-import { showStill } from "./still-image";
+import { holdSvgImages, showStill } from "./still-image";
 import { TextIndex, type TextRun } from "./typing";
 
 const BLOCK = 64;
@@ -161,7 +161,8 @@ function holdInlineImages(root: HTMLElement, doc: Document, gone: () => boolean)
  * Text block. Reveal kinds: "type" (default; characters appear in place without reflow), "fade",
  * "stamp" (quick scale-in), "none" (appears at once). A typed text measures its carets in the
  * stage's read phase ({@link LayerView.measure}): the block at the typed position, and the next
- * one near its end. Animated CSS images (backgrounds, list markers) show still copies (see still-css.ts).
+ * one near its end. Animated CSS images (backgrounds, list markers) and the images of inline SVG
+ * drawings show still copies (see still-css.ts and still-image.ts).
  */
 export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView {
   const shell = new Shell(env, layer, z);
@@ -173,7 +174,10 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
   const decode = holdInlineImages(content, env.doc, () => gone);
   // Inline elements carry their own backgrounds (style attributes) only when the markup names a url().
   const styled = layer.html.includes("url(") ? content.querySelectorAll<HTMLElement>("[style]") : [];
-  const held = holdAllCssImages([content, ...styled], env.doc);
+  const cssHeld = holdAllCssImages([content, ...styled], env.doc);
+  // Inline SVG drawings show their embedded images still too.
+  const svgHeld = holdSvgImages(content, env.doc);
+  const held = cssHeld && svgHeld ? Promise.all([cssHeld, svgHeld]).then(() => undefined) : (cssHeld ?? svgHeld);
   shell.shell.append(content);
   const mode = layer.reveal === "fade" || layer.reveal === "stamp" || layer.reveal === "none" ? layer.reveal : "type";
   const transient = new Transient();

@@ -1,4 +1,4 @@
-import type { Player, PlayerEvent, PlayerState } from "@swarmloom/core";
+import type { Clock, Player, PlayerEvent, PlayerOptions, PlayerState } from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StudioServices } from "../src/services";
 import { Session, type SessionPhase } from "../src/session";
@@ -110,8 +110,43 @@ function slowPlayer(): Player & { time: number } {
   };
 }
 
-function sessionWith(player: Player, onPhase: (phase: SessionPhase) => void = () => undefined): Session {
-  const services = { createPlayer: () => player } as unknown as StudioServices;
+/** A player that runs on the clock Studio hands it, like the engine: one tick per frame while playing. */
+function clockedPlayer(options: PlayerOptions, ticks: { count: number }): Player {
+  const clock = options.clock as Clock;
+  clock.onTick(() => ticks.count++);
+  let state: PlayerState = "idle";
+  const noop = () => undefined;
+  return {
+    get state() {
+      return state;
+    },
+    progress: { built: 0, total: 1 },
+    soundLog: [],
+    play() {
+      state = "building";
+      if (!clock.running) clock.start();
+      return new Promise<void>(noop);
+    },
+    pause: () => (state = "paused"),
+    resume: () => (state = "building"),
+    setSpeed: noop,
+    setSound: noop,
+    setFollow: noop,
+    replay: noop,
+    goLive: noop,
+    destroy: noop,
+    on: () => noop,
+    eta: () => 0,
+    ready: async () => undefined,
+  };
+}
+
+function sessionWith(
+  player: Player | ((options: PlayerOptions) => Player),
+  onPhase: (phase: SessionPhase) => void = () => undefined,
+): Session {
+  const create = typeof player === "function" ? player : () => player;
+  const services = { createPlayer: create } as unknown as StudioServices;
   const session = new Session({
     services,
     host: document.createElement("div"),
@@ -128,7 +163,10 @@ function sessionWith(player: Player, onPhase: (phase: SessionPhase) => void = ()
   return session;
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("Session", () => {
   it("keeps playing through non-fatal player errors and reaches done", async () => {
@@ -174,5 +212,33 @@ describe("Session", () => {
     session.seek(1);
     expect(session.position).toBe(1);
     session.destroy();
+  });
+
+  it("stills the preview while an export holds it, then plays on", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let handles = 0;
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.set(++handles, cb) && handles);
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => frames.delete(handle));
+    const flush = () => {
+      const due = [...frames.values()];
+      frames.clear();
+      for (const cb of due) cb(performance.now());
+    };
+    const ticks = { count: 0 };
+    const session = sessionWith((options) => clockedPlayer(options, ticks));
+    session.rebuild(true);
+    flush();
+    flush();
+    expect(ticks.count).toBe(2);
+
+    session.hold(true);
+    flush();
+    expect([session.player?.state, ticks.count, frames.size]).toEqual(["paused", 2, 0]);
+
+    session.hold(false);
+    flush();
+    expect([session.player?.state, ticks.count]).toEqual(["building", 3]);
+    session.destroy(); // the player stops only clocks it made: Studio stops its own
+    expect(frames.size).toBe(0);
   });
 });

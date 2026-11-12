@@ -1,4 +1,5 @@
-import { stillImageSource } from "./still-image";
+import { cssUrl, URL_TOKEN, urlOf } from "./css-url";
+import { preload, stillImageSource } from "./still-image";
 
 /*
  * Still copies of animated images painted by CSS. A url() in `background-image`, `mask-image`,
@@ -9,32 +10,6 @@ import { stillImageSource } from "./still-image";
 
 /** Longhands that paint url() images; a shorthand (`background`, `mask`, `list-style`) sets one of them. */
 const IMAGE_PROPS = ["background-image", "mask-image", "-webkit-mask-image", "border-image-source", "list-style-image"];
-const URL_TOKEN = /url\(\s*(?:"((?:[^"\\]|\\[\s\S])*)"|'((?:[^'\\]|\\[\s\S])*)'|([^)\s"']*))\s*\)/gi;
-
-function unescapeCss(s: string): string {
-  return s.replace(/\\(?:([0-9a-f]{1,6})\s?|([\s\S]))/gi, (_all, hex: string | undefined, ch: string | undefined) => {
-    if (hex === undefined) return ch ?? "";
-    const code = Number.parseInt(hex, 16);
-    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "\ufffd";
-  });
-}
-
-const urlOf = (dq: string | undefined, sq: string | undefined, bare: string | undefined): string =>
-  unescapeCss(dq ?? sq ?? bare ?? "");
-
-function cssUrl(url: string): string {
-  return `url("${url.replace(/[\\"]/g, "\\$&").replace(/\n/g, "\\a ")}")`;
-}
-
-/** Loads and decodes `src` in `doc`, so a CSS image switched to it paints in the next frame. */
-function preload(src: string, doc: Document): Promise<void> {
-  const img = doc.createElement("img");
-  img.src = src;
-  return img.decode().then(
-    () => undefined,
-    () => undefined,
-  );
-}
 
 /** Writes `copies` over the url()s `read` holds, into `el`'s inline style. */
 function rewrite(
@@ -46,7 +21,7 @@ function rewrite(
   const style = el.style;
   for (const name of IMAGE_PROPS) {
     const value = read.getPropertyValue(name);
-    if (!value.includes("url(")) continue;
+    if (!/url\(/i.test(value)) continue;
     const next = value.replace(URL_TOKEN, (all, dq?: string, sq?: string, bare?: string) => {
       const copy = copies.get(urlOf(dq, sq, bare));
       return copy === undefined ? all : cssUrl(copy);
@@ -69,7 +44,7 @@ export function holdCssImages(el: HTMLElement | SVGElement, doc: Document, compu
   const urls = new Set<string>();
   for (const name of IMAGE_PROPS) {
     const value = read.getPropertyValue(name);
-    if (value.includes("url(")) for (const m of value.matchAll(URL_TOKEN)) urls.add(urlOf(m[1], m[2], m[3]));
+    if (/url\(/i.test(value)) for (const m of value.matchAll(URL_TOKEN)) urls.add(urlOf(m[1], m[2], m[3]));
   }
   if (urls.size === 0) return null;
   const now = new Map<string, string>();

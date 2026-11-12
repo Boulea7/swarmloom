@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanExamples } from "../build/examples";
 import { isSupportingAsset, pageDirsOf } from "../src/examples/manifest";
@@ -17,6 +18,32 @@ describe("examples manifest", () => {
     // The copyright and licence of copied samples ship next to them, unlisted.
     expect(files).toContain("doc/SOURCES.md");
     expect(paths).not.toContain("doc/SOURCES.md");
+  });
+
+  it("ships the licence of every library template a sample generator builds on", () => {
+    // python-docx, python-pptx and openpyxl copy parts of their default templates into the output.
+    const templates = [
+      [/^from (docx|pptx) import/m, "Copyright (c) 2013 Steve Canny"],
+      [/^from openpyxl import/m, "Copyright (c) 2010 openpyxl"],
+    ] as const;
+    const root = resolve(import.meta.dirname, "../../../examples");
+    const { files } = scanExamples(root);
+    const checked: string[] = [];
+    for (const dir of readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+      for (const script of readdirSync(join(root, dir.name)).filter((name) => name.endsWith(".py"))) {
+        const code = readFileSync(join(root, dir.name, script), "utf8");
+        for (const [usesTemplate, copyright] of templates) {
+          if (!usesTemplate.test(code)) continue;
+          const notice = `${dir.name}/SOURCES.md`;
+          expect(files, `${dir.name}/${script} needs ${notice}`).toContain(notice);
+          const text = readFileSync(join(root, notice), "utf8");
+          expect(text).toContain(copyright);
+          expect(text).toContain("Permission is hereby granted");
+          checked.push(dir.name);
+        }
+      }
+    }
+    expect(checked).toEqual(expect.arrayContaining(["docx", "sheet", "slides"]));
   });
 
   it("lists the second-wave formats and draws snippets from text only", () => {

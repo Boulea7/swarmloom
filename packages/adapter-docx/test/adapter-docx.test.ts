@@ -434,6 +434,7 @@ describe("style clean-up", () => {
     ["escaped backslash before an escape", ".c{background:\\\\75 rl(https://t.test/3.png)}"],
     ["url( left open at the end", '.d{background:url("https://t.test/4.png"'],
     ["escaped @import", "@\\69mport 'https://t.test/5.css';"],
+    ["@import joined around a removed one", "@imp@import 'a';ort 'https://t.test/7.css';"],
   ])("leaves no network fetch in style sheets: %s", (_name, css) => {
     expect(sanitizeCss(css)).not.toMatch(fetching);
   });

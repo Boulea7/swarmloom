@@ -290,6 +290,28 @@ describe("Studio in a browser", () => {
     expect(document.activeElement).toBe(copy);
   });
 
+  it("pauses the preview while an export runs in the open dialog", async () => {
+    let finish: ((result: BrowserExportResult) => void) | null = null;
+    const { root, log } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      exportVideo: () => new Promise((resolve) => (finish = resolve)),
+    });
+    (await until(() => root.querySelector<HTMLButtonElement>(".play-big"))).click();
+    const { dialog, start, download } = await openExport(root);
+    const holds = () => log.calls.filter((call) => call === "pause" || call === "resume");
+    start.click();
+    expect(holds()).toEqual(["pause"]);
+    // Closed, the dialog lets the preview play on while the export goes on; reopened, it holds again.
+    dialog.close();
+    await until(() => holds().length === 2);
+    root.querySelector<HTMLButtonElement>('.appbar [aria-keyshortcuts="E"]')?.click();
+    expect(holds()).toEqual(["pause", "resume", "pause"]);
+    const result: Partial<BrowserExportResult> = { blob: new Blob(["V"]), finished: true, warnings: [] };
+    (await until(() => finish))(result as BrowserExportResult);
+    await until(() => !download.hidden);
+    expect(holds()).toEqual(["pause", "resume", "pause", "resume"]);
+  });
+
   it("cancels at once while the exporter is still loading", async () => {
     const unused = () => Promise.reject(new Error("not loaded yet"));
     const { root, services } = await mount("?example=svg-chart", false, {
@@ -509,6 +531,56 @@ describe("Studio in a browser", () => {
         const r = action.getBoundingClientRect();
         expect(r.top).toBeGreaterThanOrEqual(frame.top);
         expect(r.bottom).toBeLessThanOrEqual(frame.bottom);
+      }
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
+  it("wraps a long file name inside an action toast and the export CLI hint on a 320px phone", async () => {
+    await page.viewport(320, 568);
+    try {
+      const { root } = await mount();
+      const { i18n, navigate } = app?.context ?? {};
+      const name = `${"b".repeat(180)}.md`;
+      app?.toast.show(i18n?.t("launch.ready", { name }) ?? "", {
+        icon: "open",
+        action: { label: i18n?.t("home.open") ?? "", run: () => undefined },
+      });
+      const width = document.documentElement.clientWidth;
+      for (const el of root.querySelectorAll<HTMLElement>(".toast, .toast-action")) {
+        const r = el.getBoundingClientRect();
+        expect([r.left >= 0, r.right <= width], el.className).toEqual([true, true]);
+      }
+
+      navigate?.({ source: { kind: "file", name } }, { local: { name, text: "# A" } });
+      (await until(() => root.querySelector<HTMLButtonElement>('.appbar [aria-keyshortcuts="E"]:enabled'))).click();
+      const dialog = await until(() => root.querySelector<HTMLDialogElement>("dialog.panel-export[open]"));
+      const hint = dialog.querySelector<HTMLElement>(".cli-save");
+      const body = dialog.querySelector<HTMLElement>(".panel-body");
+      expect([hint?.hidden, hint?.textContent?.includes(name)]).toEqual([false, true]);
+      expect(body && body.scrollWidth <= body.clientWidth).toBe(true);
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
+  it("keeps a long-named action toast and its button on a 240px-tall player screen", async () => {
+    await page.viewport(240, 240);
+    try {
+      const { root } = await mount("?import=1");
+      const { i18n, navigate } = app?.context ?? {};
+      // `import` keeps the player, not the watch face, on this watch-sized screen.
+      navigate?.({ source: { kind: "file", name: "a.md" }, import: true }, { local: { name: "a.md", text: "# A" } });
+      await until(() => document.documentElement.dataset.view === "player");
+      // The toast sits above the player controls here, its least room on any screen.
+      app?.toast.show(i18n?.t("launch.ready", { name: `${"W".repeat(240)}.md` }) ?? "", {
+        icon: "open",
+        action: { label: i18n?.t("home.open") ?? "", run: () => undefined },
+      });
+      for (const el of root.querySelectorAll<HTMLElement>(".toast, .toast-action")) {
+        const r = el.getBoundingClientRect();
+        expect([r.top >= 0, r.bottom <= innerHeight], el.className).toEqual([true, true]);
       }
     } finally {
       await page.viewport(414, 896);

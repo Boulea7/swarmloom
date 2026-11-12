@@ -25,7 +25,10 @@ export interface AppContext {
   readonly viewport: Viewport;
   /** Current route (parsed from the URL). */
   readonly route: Route;
-  /** Persisted settings merged with this visit's URL overrides. */
+  /**
+   * Persisted settings merged with this visit's URL overrides and the settings the current view's
+   * source carries (see {@link sourceSettings}): what the view plays and the settings panel shows.
+   */
   readonly settings: StudioSettings;
   /** Colour scheme in effect for the UI and for adapters. */
   readonly scheme: "light" | "dark";
@@ -33,8 +36,17 @@ export interface AppContext {
   readonly local: LocalInput | null;
   /** Absolute URL of the app page without query or hash (base for share links). */
   readonly appUrl: string;
-  /** Changes and persists settings; views are notified through {@link View.settingsChanged}. */
+  /**
+   * Changes and persists settings; views are notified through {@link View.settingsChanged} and an
+   * open settings panel shows the new values.
+   */
   updateSettings(patch: Partial<StudioSettings>): void;
+  /**
+   * Settings the current view's source carries (a share link's) and already plays with. They join
+   * {@link settings} without being saved or reported back, until the user changes one of them
+   * (or restores the defaults) or the view goes.
+   */
+  sourceSettings(patch: Partial<StudioSettings>): void;
   /** Goes to another route, keeping the URL in sync. */
   navigate(route: Partial<Route>, opts?: NavigateOptions): void;
   /** Opens the settings drawer (bottom sheet on phones), or closes it when open. */

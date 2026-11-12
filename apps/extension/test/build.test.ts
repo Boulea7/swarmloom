@@ -1,8 +1,10 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { auditPackage } from "../scripts/audit.mjs";
+import { addTree, HASH_COMMAND, instructions, spawnCommand } from "../scripts/amo-source.mjs";
+import { auditPackage, sha256 } from "../scripts/audit.mjs";
 import { placeholderIcon } from "../scripts/icons.mjs";
 import { cspProblems, GECKO_ID, manifestFor, messageKeys, validateManifest } from "../scripts/manifest.mjs";
 import {
@@ -13,6 +15,7 @@ import {
   NOTICES_FILE,
   renderNotices,
 } from "../scripts/notices.mjs";
+import { copyStudio } from "../scripts/studio.mjs";
 import { parseTargets, TARGET_IDS } from "../scripts/targets.mjs";
 import { directoryEntries, sourceDateEpoch, unzipEntries, zipEntries } from "../scripts/zip.mjs";
 import { BUILD_CAPABILITIES } from "../src/shared/capabilities";
@@ -146,6 +149,94 @@ describe("packaging helpers", () => {
     ).arrayBuffer();
     expect(raw.byteLength).toBe(32 * (1 + 32 * 4));
   });
+
+  it("keeps Studio's build/ Vite plugins in the AMO source package, not outputs or tests", () => {
+    const repo = mkdtempSync(join(tmpdir(), "swarmloom-amo-tree-"));
+    try {
+      for (const file of [
+        "apps/extension/src/background.ts",
+        "apps/extension/build/safari/SwarmLoom.xcodeproj/project.pbxproj",
+        "apps/studio/vite.config.ts",
+        "apps/studio/build/pwa.ts",
+        "apps/studio/dist-extension/studio.html",
+        "apps/studio/test/pwa.test.ts",
+      ]) {
+        mkdirSync(dirname(join(repo, file)), { recursive: true });
+        writeFileSync(join(repo, file), "");
+      }
+      const files = new Map<string, Buffer>();
+      addTree(join(repo, "apps"), files, repo);
+      expect([...files.keys()].sort()).toEqual([
+        "apps/extension/src/background.ts",
+        "apps/studio/build/pwa.ts",
+        "apps/studio/vite.config.ts",
+      ]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("starts pnpm through the shell on Windows for --verify (Corepack installs pnpm.cmd)", () => {
+    const args = ["-F", "@swarmloom/extension", "exec", "node", "scripts/build.mjs", "--target", "firefox"];
+    expect(spawnCommand("pnpm", args, "linux")).toEqual({ file: "pnpm", args, shell: false });
+    expect(spawnCommand("pnpm", args, "win32")).toEqual({
+      file: "pnpm -F @swarmloom/extension exec node scripts/build.mjs --target firefox",
+      args: [],
+      shell: true,
+    });
+    expect(() => spawnCommand("pnpm", ["C:\\Temp Dir\\x & y"], "win32")).toThrow(/Windows shell/);
+  });
+
+  it("writes AMO steps every OS and shell can run, numbered in order", () => {
+    const md = instructions({ xpiHash: "0", studio: true, packages: [], pnpm: "10.0.0", epoch: "1700000000" });
+    const steps = md.split("\n").filter((line) => /^\d+\. /.test(line));
+    expect(steps.map((line) => line.split(".")[0])).toEqual(["1", "2", "3", "4", "5"]);
+    // No GNU-only sha256sum step and no POSIX-only `VAR=value command` prefix.
+    expect(steps.filter((line) => /^\d+\. (sha256sum|\w+=)/.test(line))).toEqual([]);
+    expect(md).toContain('$env:SOURCE_DATE_EPOCH = "1700000000"');
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-amo-hash-"));
+    try {
+      const zip = Buffer.from("firefox.zip");
+      mkdirSync(join(dir, "apps", "extension", "dist"), { recursive: true });
+      writeFileSync(join(dir, "apps", "extension", "dist", "firefox.zip"), zip);
+      expect(execSync(HASH_COMMAND, { cwd: dir, encoding: "utf8" }).trim()).toBe(sha256(zip));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("bundled Studio", () => {
+  it("is built before the extension and refuses a copy taken while the Studio is being rebuilt", () => {
+    // pnpm -r orders builds by workspace dependencies; without this one the root build runs both at once.
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8"));
+    expect(pkg.devDependencies["@swarmloom/studio"]).toBe("workspace:*");
+
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-studio-test-"));
+    try {
+      const studio = { dir: join(dir, "src"), entry: "studio.html" };
+      mkdirSync(join(studio.dir, "assets"), { recursive: true });
+      writeFileSync(
+        join(studio.dir, "studio.html"),
+        '<!-- src="./gone.js" --><script type="module" src="./assets/index.js"></script>' +
+          '<link rel="stylesheet" href="./assets/index.css?v=1"><link rel="icon" href="https://example.com/x.svg">',
+      );
+      writeFileSync(join(studio.dir, "assets", "index.js"), "");
+      writeFileSync(join(studio.dir, "assets", "index.css"), "");
+      copyStudio(studio, join(dir, "whole"));
+      expect(existsSync(join(dir, "whole", "assets", "index.css"))).toBe(true);
+
+      // Vite empties the folder first: the page may still be there while its chunks are not, or the reverse.
+      rmSync(join(studio.dir, "assets", "index.css"));
+      expect(() => copyStudio(studio, join(dir, "half"))).toThrow(
+        /incomplete \(studio\.html links missing assets\/index\.css\)/,
+      );
+      rmSync(join(studio.dir, "studio.html"));
+      expect(() => copyStudio(studio, join(dir, "empty"))).toThrow(/incomplete \(no studio\.html\)/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 /** Writes `node_modules/<name>` under `dir` with a package.json and optional extra files. */
@@ -234,6 +325,22 @@ describe("licence notices", () => {
     expect(text).toContain("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION");
     expect(text).toMatch(/^meshoptimizer \d\S*\nLicense: MIT$/m);
     expect(text).toMatch(/Copyright \(C\) 2016-\d+, by Arseny Kapoulkine.*\n\nPermission is hereby granted/);
+  });
+
+  it("keeps Mediabunny's copyright line, which only its source headers carry and bundling drops", () => {
+    const mediabunny = realpathSync(join(import.meta.dirname, "../../../packages/export/node_modules/mediabunny"));
+    const text = renderNotices(collectNotices([mediabunny]));
+    expect(text).toMatch(
+      /\nCopyright \(c\) \d{4}-present, Vanilagy and contributors\n\n--- LICENSE ---\n\nMozilla Public/,
+    );
+    // Another MPL-2.0 package whose licence names no holder must be added to HEADER_COPYRIGHTS.
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-notices-"));
+    try {
+      const mpl = fakePackage(dir, { name: "mpl", version: "1.0.0", license: "MPL-2.0" }, { LICENSE: "Mozilla" });
+      expect(() => collectNotices([mpl])).toThrow(/mpl@1\.0\.0: MPL-2\.0 without a copyright line/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("refuses a package without licence text it cannot reproduce, and a missing dependency", () => {

@@ -31,7 +31,7 @@ export async function findOptional<T>(
 
 /**
  * Returns why the tests skip, or throws it where the programs are required: under CI, unless the job sets
- * SWARMLOOM_TEST_DEPS=optional because it does not provide them (CI's e2e job does and runs these tests).
+ * SWARMLOOM_TEST_DEPS=optional because it does not provide them (CI's e2e and cli-render jobs do and run these tests).
  */
 export function skipReason(missing: string | undefined, env: Env = process.env): string | undefined {
   if (missing && inCi(env) && env.SWARMLOOM_TEST_DEPS !== "optional") {

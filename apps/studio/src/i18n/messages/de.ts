@@ -92,6 +92,40 @@ export const de: StudioCatalog = {
     one: "{count} Expression wurde ignoriert; ihre Eigenschaft behält die Keyframe-Werte.",
     other: "{count} Expressions wurden ignoriert; ihre Eigenschaften behalten die Keyframe-Werte.",
   },
+  "note.images.missing": {
+    one: "{count} Bild konnte nicht angezeigt werden (fehlt, ist extern verlinkt oder hat einen nicht unterstützten Typ).",
+    other:
+      "{count} Bilder konnten nicht angezeigt werden (fehlen, sind extern verlinkt oder haben einen nicht unterstützten Typ).",
+  },
+  "note.epub.outline": "Inhalt: {entries}.",
+  "note.epub.outlineMore": "Inhalt: {entries} (+{count} weitere).",
+  "note.epub.obfuscatedFonts": "Verschleierte eingebettete Schriften wurden durch Ersatzschriften ersetzt.",
+  "note.epub.scripts": "Skripte im Buch wurden nicht ausgeführt.",
+  "note.epub.chapters": {
+    one: "{count} Kapitel konnte nicht gelesen werden und wurde übersprungen.",
+    other: "{count} Kapitel konnten nicht gelesen werden und wurden übersprungen.",
+  },
+  "note.odf.formulas": "Zellen zeigen ihre gespeicherten Werte; Formeln werden nicht neu berechnet.",
+  "note.odf.objects": {
+    one: "{count} eingebettetes Objekt (Diagramm, Formel oder OLE) wird als Platzhalter gezeigt.",
+    other: "{count} eingebettete Objekte (Diagramme, Formeln, OLE) werden als Platzhalter gezeigt.",
+  },
+  "note.odf.tableCuts": {
+    one: "{count} Tabelle wurde auf die Größenlimits gekürzt.",
+    other: "{count} Tabellen wurden auf die Größenlimits gekürzt.",
+  },
+  "note.odf.shapes": {
+    one: "{count} Formfüllung oder Kontur wurde vereinfacht.",
+    other: "{count} Formfüllungen oder Konturen wurden vereinfacht.",
+  },
+  "note.docx.pagination":
+    "Seiten beginnen an den im Dokument gespeicherten Abschnitts- und Seitenumbrüchen; der automatische Seitenumbruch von Word wird nicht neu berechnet, daher sind manche Seiten länger als in Word.",
+  "note.docx.fallback":
+    "Der vollständige Renderer konnte dieses Dokument nicht setzen ({reason}), daher wird eine vereinfachte Ansicht gezeigt.",
+  "note.docx.leftOut": "Die vereinfachte Ansicht lässt {items} weg.",
+  "note.docx.pictures": { one: "{count} Bild", other: "{count} Bilder" },
+  "note.docx.headersFooters": "Kopf- und Fußzeilen",
+  "note.docx.footnotes": "Fußnoten",
   "player.dismiss": "Schließen",
   "player.retry": "Erneut versuchen",
   "player.home": "Zurück zu Studio",
@@ -213,7 +247,7 @@ export const de: StudioCatalog = {
     "Dieser Browser kann Video in dieser Größe nicht kodieren. Wähle eine kleinere Größe oder die Kommandozeile.",
   "export.cli.title": "Mit der Kommandozeile rendern",
   "export.cli.body":
-    "Rendert Bild für Bild mit demselben Seed, das Video entspricht also dieser Vorschau. Benötigt Node.js und Chrome.",
+    "Rendert Bild für Bild mit demselben Seed, das Video entspricht also dieser Vorschau. Benötigt Node.js, Chrome und eine installierte swarmloom-CLI.",
   "export.cli.format": "Format",
   "export.cli.copy": "Befehl kopieren",
   "export.cli.copied": "Kopiert",

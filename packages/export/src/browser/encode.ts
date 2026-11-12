@@ -107,6 +107,10 @@ function containerFormat(plan: EncodingPlan, file: boolean): Container {
   return new Mp4OutputFormat({ fastStart: file ? "reserve" : false });
 }
 
+function cancelledError(): DOMException {
+  return new DOMException("The video file was cancelled.", "AbortError");
+}
+
 async function cancelOutput(output: Output | null): Promise<void> {
   if (!output || output.state === "canceled" || output.state === "finalized") return;
   await output.cancel();
@@ -134,6 +138,7 @@ export class VideoFileWriter {
   readonly #width: number;
   readonly #height: number;
   #started = false;
+  #cancelled = false;
 
   constructor(plan: EncodingPlan, width: number, height: number, fps: number) {
     this.plan = plan;
@@ -183,6 +188,7 @@ export class VideoFileWriter {
   /** Encodes the soundtrack; only when the plan has an audio codec. The buffer can go afterwards. */
   async addAudio(buffer: AudioBuffer): Promise<void> {
     if (!this.plan.audio) return;
+    this.#throwIfCancelled();
     const sound = new PacketSpool<EncodedAudioChunkMetadata>();
     const output = new Output({ format: containerFormat(this.plan, false), target: new NullTarget() });
     this.#soundOutput = output;
@@ -195,12 +201,15 @@ export class VideoFileWriter {
     await output.start();
     await source.add(buffer);
     await output.finalize();
+    this.#throwIfCancelled();
     this.#sound = sound;
   }
 
   async finish(): Promise<Blob> {
     this.#video.close();
     await this.#encoder.finalize();
+    // An encoder that was finalizing does not cancel; cancelling must still stop the muxing.
+    this.#throwIfCancelled();
     const sink = new BlobSink();
     await this.#mux(new StreamTarget(sink.writable, { chunked: true, chunkSize: PART_BYTES }));
     if (sink.size === 0) throw new Error("The video file is empty");
@@ -231,6 +240,7 @@ export class VideoFileWriter {
     };
     let firstFrame = true;
     for await (const packet of this.#frames.packets()) {
+      this.#throwIfCancelled();
       await addSoundUntil(packet.timestamp);
       await video.add(packet, firstFrame ? this.#frames.meta : undefined);
       firstFrame = false;
@@ -241,8 +251,16 @@ export class VideoFileWriter {
     await output.finalize();
   }
 
-  /** Stops encoding and drops what was written. */
+  #throwIfCancelled(): void {
+    if (this.#cancelled) throw cancelledError();
+  }
+
+  /**
+   * Stops encoding and drops what was written; a pending {@link addAudio} or {@link finish} then
+   * rejects with an AbortError instead of going on in the background.
+   */
   async cancel(): Promise<void> {
+    this.#cancelled = true;
     await cancelOutput(this.#encoder);
     await cancelOutput(this.#soundOutput);
     await cancelOutput(this.#muxer);

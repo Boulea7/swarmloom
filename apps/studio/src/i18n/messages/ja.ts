@@ -70,6 +70,27 @@ export const ja: StudioCatalog = {
   "note.lottie.expressions": {
     other: "エクスプレッション {count} 件を無視しました。該当するプロパティはキーフレームの値のままです。",
   },
+  "note.images.missing": {
+    other: "画像 {count} 件を表示できませんでした（見つからない、外部へのリンク、または対応していない形式）。",
+  },
+  "note.epub.outline": "目次：{entries}。",
+  "note.epub.outlineMore": "目次：{entries}（ほか {count} 件）。",
+  "note.epub.obfuscatedFonts": "難読化された埋め込みフォントは代替フォントに置き換えました。",
+  "note.epub.scripts": "本の中のスクリプトは実行していません。",
+  "note.epub.chapters": { other: "読み込めなかった章 {count} 件をスキップしました。" },
+  "note.odf.formulas": "セルには保存時の値を表示しています。数式は再計算しません。",
+  "note.odf.objects": {
+    other: "埋め込みオブジェクト {count} 件（グラフ、数式、OLE）をプレースホルダーで表示しています。",
+  },
+  "note.odf.tableCuts": { other: "表 {count} 件をサイズの上限に合わせて切り詰めました。" },
+  "note.odf.shapes": { other: "図形の塗りつぶしまたは枠線 {count} 件を簡略化しました。" },
+  "note.docx.pagination":
+    "文書に保存されたセクション区切りと改ページでページを分けています。Word の自動改ページは再計算しないため、Word より長くなるページがあります。",
+  "note.docx.fallback": "完全なレンダラーでこの文書をレイアウトできなかったため（{reason}）、簡易表示にしています。",
+  "note.docx.leftOut": "簡易表示では次を省いています：{items}。",
+  "note.docx.pictures": { other: "画像 {count} 件" },
+  "note.docx.headersFooters": "ヘッダーとフッター",
+  "note.docx.footnotes": "脚注",
   "player.dismiss": "閉じる",
   "player.retry": "再試行",
   "player.home": "Studio に戻る",
@@ -188,7 +209,7 @@ export const ja: StudioCatalog = {
     "このブラウザはこのサイズの動画をエンコードできません。小さいサイズかコマンドラインを使ってください。",
   "export.cli.title": "コマンドラインでレンダリング",
   "export.cli.body":
-    "同じシードで1フレームずつレンダリングするので、このプレビューと同じ動画になります。Node.js と Chrome が必要です。",
+    "同じシードで1フレームずつレンダリングするので、このプレビューと同じ動画になります。Node.js、Chrome、インストール済みの swarmloom CLI が必要です。",
   "export.cli.format": "形式",
   "export.cli.copy": "コマンドをコピー",
   "export.cli.copied": "コピーしました",

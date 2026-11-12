@@ -23,12 +23,13 @@ pnpm install
 | `pnpm test`         | 运行单元测试           |
 | `pnpm test:browser` | 运行浏览器测试         |
 | `pnpm test:firefox` | 在 Firefox 运行导出测试  |
+| `pnpm test:webkit`  | 在 WebKit 运行导出测试   |
 | `pnpm test:e2e`     | 运行扩展端到端测试     |
 | `pnpm lint`         | 运行代码检查           |
 
-浏览器测试需要可用的 Chromium；按仓库测试配置中的提示安装或指定浏览器。`pnpm test:firefox` 在 Firefox 中运行浏览器内导出器和帧光栅化的测试，需要 Playwright 的 Firefox（`pnpm exec playwright install firefox`），或用 `SWARMLOOM_FIREFOX` 指定。提交前至少运行与改动直接相关的测试，以及 `pnpm lint`。
+浏览器测试需要可用的 Chromium；按仓库测试配置中的提示安装或指定浏览器。`pnpm test:firefox` 在 Firefox 中运行浏览器内导出器、帧光栅化、舞台帧确定性和导出时实时页面的测试，需要 Playwright 的 Firefox（`pnpm exec playwright install firefox`），或用 `SWARMLOOM_FIREFOX` 指定。`pnpm test:webkit` 在 Playwright 的 WebKit（Safari 的引擎）中运行同一组测试，需要 `pnpm exec playwright install --with-deps webkit`；Playwright 的 WebKit 只支持它列出的 Linux 发行版。提交前至少运行与改动直接相关的测试，以及 `pnpm lint`。
 
-CLI 的真实渲染测试（`apps/cli/test/render.test.ts`、`snapshot.test.ts`）还需要 Chrome、ffmpeg 和 `pnpm build` 产出的渲染页。本机缺少时跳过并说明原因；在 CI 下改为失败（不提供它们的作业设置 `SWARMLOOM_TEST_DEPS=optional`）。`SWARMLOOM_CHROME` 或 `SWARMLOOM_FFMPEG` 指向无效路径时始终失败。
+CLI 的真实渲染测试（`apps/cli/test/render.test.ts`、`snapshot.test.ts`）还需要 Chrome、ffmpeg 和 `pnpm build` 产出的渲染页，`launch.test.ts` 的沙箱回退测试需要 Chrome。本机缺少时跳过并说明原因；在 CI 下改为失败（不提供它们的作业设置 `SWARMLOOM_TEST_DEPS=optional`）。`SWARMLOOM_CHROME` 或 `SWARMLOOM_FFMPEG` 指向无效路径时始终失败。
 
 ## 仓库结构
 

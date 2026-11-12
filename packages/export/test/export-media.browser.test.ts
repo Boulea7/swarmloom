@@ -1,18 +1,33 @@
 /// <reference types="@vitest/browser-playwright" />
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { cdp } from "vitest/browser";
+import { cdp, commands, server } from "vitest/browser";
 import { exportVideo } from "../src/browser/index";
 
+/** Media preferences Playwright emulates in every engine (the `emulateMedia` command of vitest.config.ts). */
+interface EmulatedMedia {
+  colorScheme?: "light" | "dark";
+  reducedMotion?: "no-preference" | "reduce";
+  forcedColors?: "none" | "active";
+}
+
+declare module "vitest/browser" {
+  interface BrowserCommands {
+    emulateMedia(media: EmulatedMedia): Promise<void>;
+  }
+}
+
 /**
- * A blue and a grey box; black in a dark color scheme, red with reduced motion, green on a
- * high-density screen, recoloured in forced colors (the CLI emulates a light scheme for
- * `theme: "auto"`, no motion preference, no forced colors and one device pixel per CSS px).
+ * A blue and a grey box; black in a dark color scheme, red with reduced motion, on a wide-gamut or
+ * touch screen or on a screen wider than the export, green on a high-density screen, recoloured in
+ * forced colors (the CLI emulates a light scheme for `theme: "auto"`, no motion preference, no forced
+ * colors, one device pixel per CSS px, an sRGB screen the size of the viewport and a mouse).
  */
 const PAGE =
   "<!doctype html><html><head><style>body{margin:0;background:#fff}" +
   ".box{width:100px;height:40px;background:rgb(0,0,255)}.dense{background:rgb(128,128,128)}" +
   "@media (prefers-color-scheme: dark){.box{background:rgb(0,0,0)}}" +
-  "@media (prefers-reduced-motion: reduce){.box{background:rgb(255,0,0)}}" +
+  "@media (prefers-reduced-motion: reduce), (color-gamut: p3), (pointer: coarse), (hover: none), " +
+  "(min-device-width: 161px){.box{background:rgb(255,0,0)}}" +
   "@media (min-resolution: 2dppx){.dense{background:rgb(0,160,0)}}" +
   '</style></head><body><div class="box"></div><div class="box dense"></div></body></html>';
 
@@ -33,29 +48,57 @@ function metrics(deviceScaleFactor: number): Promise<unknown> {
   });
 }
 
-/** Host settings the export must not follow, each set and reset through the DevTools protocol. */
-const HOSTS = [
+/** A host setting: `query` holds once it is set; the export's pixels must stay the same if `samePixels`. */
+interface Host {
+  name: string;
+  query: string;
+  set(): Promise<unknown>;
+  reset(): Promise<unknown>;
+  samePixels: boolean;
+}
+
+/** Playwright's defaults, which the test page has outside these cases. */
+const DEFAULT_MEDIA: EmulatedMedia = { colorScheme: "light", reducedMotion: "no-preference", forcedColors: "none" };
+const resetMedia = () => commands.emulateMedia(DEFAULT_MEDIA);
+
+/** Host preferences the export must not follow, set and reset in every engine. */
+const PREFERENCES: Host[] = [
   {
     name: "a dark color scheme",
     query: "(prefers-color-scheme: dark)",
-    set: () =>
-      cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] }),
-    reset: () => cdp().send("Emulation.setEmulatedMedia", { features: [] }),
+    set: () => commands.emulateMedia({ colorScheme: "dark" }),
+    reset: resetMedia,
     samePixels: true,
   },
   {
     name: "reduced motion",
     query: "(prefers-reduced-motion: reduce)",
-    set: () =>
-      cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }),
-    reset: () => cdp().send("Emulation.setEmulatedMedia", { features: [] }),
+    set: () => commands.emulateMedia({ reducedMotion: "reduce" }),
+    reset: resetMedia,
     samePixels: true,
   },
   {
     name: "forced colors",
     query: "(forced-colors: active)",
-    set: () => cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] }),
-    reset: () => cdp().send("Emulation.setEmulatedMedia", { features: [] }),
+    set: () => commands.emulateMedia({ forcedColors: "active" }),
+    reset: resetMedia,
+    samePixels: true,
+  },
+];
+
+/** Host screens the export must not follow, set and reset through Chromium's DevTools protocol. */
+const SCREENS: Host[] = [
+  {
+    name: "a wide-gamut touch screen",
+    query: "(color-gamut: p3) and (pointer: coarse)",
+    set: async () => {
+      await cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "color-gamut", value: "p3" }] });
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    },
+    reset: async () => {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+    },
     samePixels: true,
   },
   {
@@ -91,7 +134,8 @@ async function exportPage(): Promise<{ hashes: string[]; seen: string | null }> 
       if (seen !== null || !win || !page?.defaultView || !box || !dense) return;
       const color = (el: Element) => page.defaultView?.getComputedStyle(el).backgroundColor;
       const pinned =
-        "(prefers-color-scheme: dark), (prefers-reduced-motion: reduce), (forced-colors: active), (min-resolution: 2dppx)";
+        "(prefers-color-scheme: dark), (prefers-reduced-motion: reduce), (forced-colors: active), (min-resolution: 2dppx), " +
+        "(color-gamut: p3), (pointer: coarse), (hover: none), (min-device-width: 161px)";
       const text = win.getComputedStyle(win.document.body).color;
       seen = `${win.matchMedia(pinned).matches} ${text} ${color(box)} ${color(dense)}`;
     },
@@ -123,7 +167,8 @@ afterAll(() => {
   container.remove();
 });
 
-it.each(HOSTS)("exports as the CLI does on a host with $name", { timeout: 120_000 }, async (host) => {
+/** Exports on a host with `host`'s setting, which must change nothing the export shows. */
+async function exportsAsTheCli(host: Host): Promise<void> {
   await host.set();
   try {
     expect(matchMedia(host.query).matches).toBe(true);
@@ -133,4 +178,12 @@ it.each(HOSTS)("exports as the CLI does on a host with $name", { timeout: 120_00
   } finally {
     await host.reset();
   }
-});
+}
+
+it.each(PREFERENCES)("exports as the CLI does on a host with $name", { timeout: 120_000 }, exportsAsTheCli);
+
+it.runIf(server.browser === "chromium").each(SCREENS)(
+  "exports as the CLI does on a host with $name",
+  { timeout: 120_000 },
+  exportsAsTheCli,
+);

@@ -19,8 +19,8 @@ Keyframe timeline: when the load context carries an `anim:timeline` plugin (`ctx
 Safe defaults:
 
 - Scripts never run. Script tags, event handlers and `javascript:` URLs are removed, and a page that had scripts gets a warning that it is shown as written.
-- Network: `network: "https"` (default) allows only `https:` images and fonts, sent without a referrer. `network: "none"` loads nothing remote. A host can also pass `network: "none"` in the load context (`HtmlLoadContext`) to turn remote loading off for one load; the stricter policy wins. External style sheets, `@import`, media, frames, objects, forms and `connect` are always blocked. The CSP is `default-src 'none'; img-src https: blob: data:; font-src https: blob: data:; ...`.
-- Relative URLs resolve against `baseUrl` (default: the input URL).
+- Network: `network: "https"` (default) allows `https:` images and fonts, sent without a referrer. `network: "none"` allows only `data:` and `blob:` ones. A host can also pass `network: "none"` in the load context (`HtmlLoadContext`) to turn remote loading off for one load; the stricter policy wins. Under either policy, images and fonts from the origin of a plain-`http:` `baseUrl` on a loopback host (`localhost`, `127.0.0.0/8`, `[::1]`: the local server the document came from, such as the CLI's) load too; other plain-`http:` URLs, a remote `http:` `baseUrl` included, never do. External style sheets, `@import`, media, frames, objects, forms and `connect` are always blocked. The CSP is `default-src 'none'; img-src data: blob: https:; font-src data: blob: https:; ...` (without `https:` under `"none"`, plus that local origin).
+- Relative URLs resolve against `baseUrl` (default: the input URL), moved by the document's own `<base href>` if it has one. That `<base>` never makes another plain-`http:` host local.
 - Limits: 8 MiB of input (`maxBytes`), 60 000 elements (`maxElements`), 10 s for the page and its resources (`loadTimeoutMs`). Errors name the limit that was hit.
 
 Skipped resources and timeouts are reported in `warnings`.

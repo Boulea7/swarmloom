@@ -13,9 +13,30 @@ The element loads, plays and reflects the attributes below. `@swarmloom/element`
 
 ## Install and register
 
+`@swarmloom/element` is not on npm yet. Build it from source (Node.js 22.12 or later):
+
 ```bash
-npm install @swarmloom/element
+git clone https://github.com/Boulea7/swarmloom.git
+cd swarmloom
+corepack enable
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install
+pnpm --filter "@swarmloom/element..." build
 ```
+
+The last command builds the element and the workspace packages it depends on, and writes `packages/element/dist/`. Then use it in one of two ways:
+
+- **Without a bundler**: copy the whole `packages/element/dist/` folder to your site and load the [script build](#script-build), which registers the element itself.
+- **With a bundler**: install the built folder into your project, then register the element as shown below.
+
+  ```bash
+  npm install /path/to/swarmloom/packages/element
+  # or with pnpm:
+  pnpm add link:/path/to/swarmloom/packages/element
+  ```
+
+  Both link the folder instead of copying it, so keep the checkout in place and rebuild it after pulling changes.
+
+Once the package is published, `npm install @swarmloom/element` replaces this step.
 
 Register once on the client:
 
@@ -76,7 +97,7 @@ A boolean attribute is on when present, including an empty value such as `<swarm
 
 ## Use Light DOM content
 
-Without `src`, the component is planned to snapshot its Light DOM children:
+Without `src`, the component builds its own Light DOM children:
 
 ```html
 <swarm-loom controls reduced-motion="auto">
@@ -87,7 +108,9 @@ Without `src`, the component is planned to snapshot its Light DOM children:
 </swarm-loom>
 ```
 
-This is a subtree snapshot. It does not execute child scripts or clone application state. Do not rely on Light DOM simultaneously as fallback content for a remote source.
+The component snapshots the children once they are parsed and their web fonts and images have loaded. The children stay in the layout, so they set the element's height unless the page gives it one. The stage covers them during the build and is `aria-hidden`, so assistive technology still reads the real children; when the player goes live, the real, interactive children come back.
+
+This is a subtree snapshot. It does not execute child scripts or clone application state. When `src` is set, the children are not shown and do not act as fallback content if the source fails.
 
 ## Methods
 
@@ -141,9 +164,20 @@ el.addEventListener("swarm-done", () => {
 
 Use the component's published type declarations for event payloads. Listener callbacks should not block the playback loop.
 
-## CDN build <Badge type="warning" text="Planned" />
+## Script build <Badge type="info" text="Build from source" />
 
-The package is planned to ship `dist/swarm-loom.global.js` as an IIFE build for pages without a bundler. The release will provide a version-pinned URL and global name; do not use an unpinned `latest` URL in production.
+The build above also writes `dist/swarm-loom.global.js`, an IIFE build for pages without a bundler. When it loads, it registers `<swarm-loom>` and exposes `window.SwarmLoom` with `define`, `configure`, `SwarmLoomElement` and `TAG_NAME`.
+
+```html
+<script src="/vendor/swarmloom/swarm-loom.global.js"></script>
+<swarm-loom src="/examples/intro.md" inview controls></swarm-loom>
+```
+
+The script contains the engine but no adapter code. The first source that needs an adapter loads `swarm-loom.adapters.js` and that adapter's chunk from `chunks/`, relative to the script URL; worker files such as the PDF parser load from `assets/`. Host the whole `dist/` folder together, and load the script as a classic `<script>` (without `type="module"`) so it can find its own URL.
+
+`SwarmLoom.configure({ createPlayer, formats, maxBytes })` replaces the runtime shared by every element, for example to restrict formats or lower the download limit (50 MB by default). It applies to sources loaded after the call.
+
+Once the package is on npm, unpkg and jsDelivr will serve the same file, for example `https://cdn.jsdelivr.net/npm/@swarmloom/element@<version>/dist/swarm-loom.global.js`. Pin the version in production; do not use an unpinned `latest` URL.
 
 ## Accessibility and performance
 

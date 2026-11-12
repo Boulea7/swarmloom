@@ -114,7 +114,8 @@ For takes that can be checked and repeated. These files and `--output` must all 
 | --- | --- | --- |
 | `--chrome <path>` | Auto-detect | Chrome/Chromium/Edge/Brave executable; see [`doctor`](#doctor) for the search order |
 | `--ffmpeg <path>` | Auto-detect | ffmpeg 4+ executable |
-| `-q, --quiet` | Off | Errors only: no progress, warnings or summary |
+| `--require-sandbox` | Off | Fail when the browser's sandbox does not start (as root, or with user namespaces turned off, as in many containers) instead of running the browser without it |
+| `-q, --quiet` | Off | Errors only: no progress, warnings or summary. The warning that the browser runs without its sandbox still shows |
 | `--verbose` | Off | Echo the render page's console and every blocked request to stderr |
 
 ### Examples
@@ -181,7 +182,7 @@ Local HTML files are treated as untrusted:
 
 Web page URLs run their scripts as usual.
 
-Before the capture, the page's CSS animations and transitions are stopped in a fixed pose: finite ones at their end, endless ones half a cycle in, so two captures of the same page match. `render` of a URL captures the same way. Animations that start later, for example on scroll, and animation done by scripts are captured as they are.
+Before the capture, the page's CSS animations and transitions are stopped in a fixed pose: finite ones at their end, endless ones half a cycle in, so two captures of the same page match. Videos that play or are set to autoplay pause the same way: looping ones halfway through, others at their end (on their first frame when the server does not accept range requests). `render` of a URL captures the same way. Animations that start later, for example on scroll, and animation done by scripts are captured as they are.
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -190,7 +191,8 @@ Before the capture, the page's CSS animations and transitions are stopped in a f
 | `--width <px>` | `1280` | Viewport width in CSS px, 16–7680 |
 | `--height <px>` | `720` | Viewport height in CSS px, 16–7680 |
 | `--chrome <path>` | Auto-detect | Browser executable |
-| `-q, --quiet` | Off | Errors only |
+| `--require-sandbox` | Off | Fail when the browser's sandbox does not start instead of running the browser without it |
+| `-q, --quiet` | Off | Errors only. The warning that the browser runs without its sandbox still shows |
 | `--verbose` | Off | Echo the page's console and every blocked request to stderr |
 
 ```bash
@@ -275,7 +277,7 @@ swarmloom doctor
 
 ## Output and exit codes
 
-Progress goes to stderr and never mixes with file data: a progress bar with the time left on terminals (fields that do not fit a narrow terminal are left out whole, and the opening `Rendering ...` and closing `Wrote ...` lines break between fields), one line per quarter otherwise. The first Ctrl+C stops the render, closes the browser, stops ffmpeg and removes temporary files; a second one exits at once. The CLI only ends processes it started. With `SWARMLOOM_DEBUG=1`, unexpected errors include a stack trace.
+Progress goes to stderr and never mixes with file data: a progress bar with the time left on terminals (a narrow terminal keeps the percent and time left first, shortens the bar and leaves out whole fields such as the frame count, so the line never wraps; the opening `Rendering ...` and closing `Wrote ...` lines break between fields), one line per quarter otherwise. The first Ctrl+C stops the render, closes the browser, stops ffmpeg and removes temporary files; a second one exits at once. The CLI only ends processes it started. With `SWARMLOOM_DEBUG=1`, unexpected errors include a stack trace.
 
 | Code | Meaning |
 | --- | --- |
@@ -287,6 +289,6 @@ Progress goes to stderr and never mixes with file data: a progress bar with the 
 
 ## Determinism
 
-The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms (the player moves in 120 steps a second within it, whatever the frame rate) and is captured once it is ready and three animation frames have passed, so the browser has painted, rastered and shown it; the browser runs without a frame rate limit, so this wait stays short. BeginFrame control is not used. (A screenshot taken before the browser had rastered the frame could draw rounded corners and other anti-aliased edges a shade differently between runs, at scales such as 0.5, 2.5 or 3.) Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
+The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms (the player moves in 120 steps a second within it, whatever the frame rate) and is captured once it is ready and the page has painted it in its next animation frame; at a `--scale` other than 1, 2 or 4 the page also waits for the animation frame after that, by which time the browser has rastered the step (about 17 ms more per frame). BeginFrame control is not used. (A screenshot taken before the browser had rastered the frame could draw rounded corners and other anti-aliased edges a shade differently between runs, at scales such as 0.5, 2.5 or 3.) Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
 
 Deterministic validation compares raw frames and PCM, not MP4/WebM bytes; the per-frame PNG hashes and the sound log hash that `--manifest-out` records can be compared across two runs directly. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.

@@ -62,8 +62,8 @@ const BARE = /^[\p{L}\p{M}\p{N}_./:@+=-]+$/u;
 
 /**
  * Inside double quotes these characters stay literal in all three shells. The set has to hold even
- * after PowerShell drops the quotes and hands the bare text to `npx.cmd`, which cmd.exe parses again,
- * so cmd.exe operators (`&`, `|`, `<`, `>`, `^`) are never allowed. `"`, `$`, `` ` ``, `\` and `!` keep
+ * after PowerShell drops the quotes and hands the bare text to npm's `swarmloom.cmd` shim, which cmd.exe
+ * parses again, so cmd.exe operators (`&`, `|`, `<`, `>`, `^`) are never allowed. `"`, `$`, `` ` ``, `\` and `!` keep
  * a meaning inside double quotes in at least one shell.
  */
 const QUOTABLE = /^[\p{L}\p{M}\p{N}_./:@+=,;'#?*~()[\]{} -]+$/u;
@@ -81,22 +81,57 @@ export function shellArg(arg: string): string | null {
 }
 
 /**
- * Names Windows opens as a device even with an extension: "NUL.mp4" and "nul.final.mp4" are the null
- * device, not files. The superscript digits are reserved too.
+ * Names Windows opens as a device even with an extension or spaces before it: "NUL.mp4",
+ * "nul.final.mp4" and "NUL .md" are the null device, not files. The superscript digits are reserved too.
  */
-const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?=\.|$)/i;
+const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?= *(?:\.|$))/i;
+
+/**
+ * Characters Windows refuses in a file name (`:` names an NTFS stream of another file, not a file),
+ * and a trailing dot or space, which Win32 drops on save while the CLI looks for the name as written.
+ * Control characters never pass {@link shellArg}.
+ */
+const WINDOWS_UNSAFE = /[<>:"/\\|?*]|[. ]$/;
+
+/** Whether a file of this name cannot be saved under exactly that name on Windows. */
+function windowsCannotHold(name: string): boolean {
+  return WINDOWS_DEVICE.test(name) || WINDOWS_UNSAFE.test(name);
+}
 
 /** "report.final.pdf" -> "report.final"; "NUL.md" -> "NUL_" so the output is a file on Windows too. */
 export function stem(name: string): string {
   const ext = extensionOf(name);
   const base = (ext ? name.slice(0, -(ext.length + 1)) : name).replace(/[^\p{L}\p{M}\p{N}._-]+/gu, "-");
-  return (base.replace(/^-+|-+$/g, "") || "swarmloom").replace(WINDOWS_DEVICE, "$&_");
+  return (base.replace(/^-+|[-.]+$/g, "") || "swarmloom").replace(WINDOWS_DEVICE, "$&_");
 }
 
 /** A file name made of {@link BARE} characters, keeping the extension: "R&D notes.md" -> "R-D-notes.md". */
 function safeFileName(name: string): string {
   const ext = extensionOf(name).replace(/[^\p{L}\p{M}\p{N}]+/gu, "");
   return ext ? `${stem(name)}.${ext}` : stem(name);
+}
+
+/**
+ * The CLI's key for "same file" (`sameFileKey` in apps/cli): NTFS and APFS ignore case, and Win32 drops
+ * trailing dots and spaces, so "Logo.GIF" and "logo.gif" name one file there.
+ */
+function fileKey(name: string): string {
+  return name
+    .normalize("NFD")
+    .toLowerCase()
+    .toUpperCase()
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/[. ]+$/, "");
+}
+
+/**
+ * "<name>.<format>", or "<name>.swarmloom.<format>" when that names the input file `source`: the CLI
+ * refuses to write the video over its input ("logo.gif" exported as GIF).
+ */
+function outputName(name: string, format: VideoFormat, source: string | undefined): string {
+  const output = `${stem(name)}.${format}`;
+  return source !== undefined && fileKey(source) === fileKey(output) ? `${stem(name)}.swarmloom.${format}` : output;
 }
 
 /**
@@ -123,9 +158,14 @@ function unescapeLetters(url: string): string {
 }
 
 /**
- * Builds the `npx swarmloom render` command that reproduces the current preview frame by frame.
+ * Builds the `swarmloom render` command that reproduces the current preview frame by frame.
  * Only flags that differ from the CLI defaults are listed, except `--seed`, which is always
  * written so the command stays reproducible even if defaults change.
+ *
+ * The command runs the `swarmloom` CLI on the PATH (`npm install -g swarmloom` or any other global
+ * install) and never downloads one. `npx swarmloom` fetches and runs whatever package holds that name
+ * on the registry, without a prompt when stdin is not a terminal; `npx --no swarmloom` finds only
+ * project and npm global installs, and otherwise asks the registry and fails (offline it hangs).
  *
  * The target comes from file names and links anyone can craft, so it is never written in a way a
  * shell could run. A target that cannot be written safely is replaced by a plain file name the user
@@ -136,12 +176,16 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
   const d = DEFAULT_SETTINGS;
   // A file name is literal: "%C3%A4.md" is that file, not "ä.md".
   let target = shellArg(o.targetIsFile ? o.target : unescapeLetters(o.target));
+  // Windows cannot hold a file named "NUL.md", "notes?.md" or "a:b.md" (shared text can carry such a
+  // name), so it is saved under a safe name like any other name a shell cannot hold.
+  if (o.targetIsFile && windowsCannotHold(o.target)) target = null;
   let saveAs = o.targetIsFile && target !== null ? o.target : undefined;
   if (target === null) {
     saveAs = safeFileName(o.targetIsFile ? o.target : o.name);
     target = saveAs;
   }
-  const args: string[] = ["npx", "swarmloom", "render", target, "-o", `${stem(o.name)}.${o.format}`];
+  // `saveAs` is the input file whenever the CLI reads one (not a link).
+  const args: string[] = ["swarmloom", "render", target, "-o", outputName(o.name, o.format, saveAs)];
   if (o.format !== "mp4") args.push("--format", o.format);
   if (o.width !== 1280) args.push("--width", String(o.width));
   if (o.height !== 720) args.push("--height", String(o.height));

@@ -70,6 +70,7 @@ const dispose = () => {
 | `sound` | `boolean` / `SoundOptions` | 开关、音量、音效包、BPM 和按拍构建 |
 | `theme` | `auto` / `light` / `dark` / `ThemeSpec` | 主题或自定义调色板 |
 | `labels` | `LabelMode` / `string[]` | `names`、`agents`、`roles`、`none` 或自定义标签；`none` 同时隐藏状态泡 |
+| `overlays` | `full` / `minimal` / `none`，默认 `full` | 构建时的编辑标记：`minimal` 不画尺寸角标、间距标注、参考线和标尺；`none` 再去掉选框、占位框、钢笔线和锚点、插入符和状态气泡，只留光标、名牌和内容。开场图标和 halo 结尾始终绘制 |
 | `follow` | `scroll` / `tour` / `none` | 跟随用户、自动巡航或固定视口 |
 | `reducedMotion` | `auto` / `boolean` | 默认尊重系统减少动态偏好 |
 | `intro` | `boolean \| "outline"` | 开场：`true`（默认）为图标环绕与扇出；`"outline"` 不显示图标，三个光标先画视野内最大的形状（路径和方框，每个光标两个），全部被领取后其余光标加入；`false` 不要开场 |
@@ -77,6 +78,7 @@ const dispose = () => {
 | `opening` | `number`，默认 0 | 先显示原内容的毫秒数（inline 显示完成后的内容，overlay 显示页面），再淡出到空白画布并开始开场 |
 | `liveTop` | `boolean`，默认 false | go live 时一边让光标离开，一边滑回顶部 |
 | `controls` | `boolean` | 是否显示内置工具栏 |
+| `scrubber` | `boolean`，默认 false | 在工具栏加进度条（拖动或方向键跳转）；仅在开启 `controls` 时显示。跳回较早的时间会从头重放构建 |
 | `locale` | BCP 47 字符串 | 工具栏语言；默认 `navigator.language` |
 | `plugins` | `Plugin[]` | 自定义编排、渲染器或舞台插件 |
 | `onLive` | `() => void` | 上线或关闭后恢复内容的回调 |
@@ -124,8 +126,11 @@ type PlayerEvent =
   | { type: "state"; state: PlayerState }
   | { type: "progress"; built: number; total: number }
   | { type: "sound"; event: SoundEvent }
+  | { type: "settings"; speed: number; sound: boolean; follow: "scroll" | "tour" | "none" }
   | { type: "error"; error: Error };
 ```
+
+`settings` 在 `setSpeed`、`setSound` 或 `setFollow` 改变了值时触发（内置工具栏和快捷键也调用它们），带三项的当前值。
 
 销毁前取消业务层订阅，并处理 `play()` 的拒绝；不要把资源加载错误静默吞掉。
 

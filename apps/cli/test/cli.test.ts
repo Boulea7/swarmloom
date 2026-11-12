@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import pkg from "../package.json" with { type: "json" };
-import { parseRenderOptions } from "../src/commands/render";
+import { parseRenderOptions, sameFileKey } from "../src/commands/render";
 import { run } from "../src/run";
 
 const cwd = path.resolve("/work");
@@ -147,6 +147,16 @@ describe("render options", () => {
     expect(opts.cues[0]?.at).toBeCloseTo(17_333.333, 3);
     expect(opts.eventsOut).toBe(path.join(cwd, "ev/e.json"));
     expect(opts.manifestOut).toBe(path.join(cwd, "m.json"));
+  });
+});
+
+describe("render output names", () => {
+  it.each([
+    ["\\\\?\\C:\\work\\take.mp4", "C:\\work\\take.mp4"],
+    [path.win32.resolve("C:\\work", "//./c:/work/take.mp4"), "C:\\work\\TAKE.mp4"],
+    ["\\\\?\\unc\\srv\\share\\take.mp4", "\\\\srv\\share\\take.mp4"],
+  ])("gives the Windows aliases %s and %s one key", (alias, file) => {
+    expect(sameFileKey(alias, path.win32)).toBe(sameFileKey(file, path.win32));
   });
 });
 

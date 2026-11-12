@@ -9,7 +9,19 @@
 //             background and grants <all_urls> so Playwright can drive it. Never shipped.
 //   --studio  Studio build made with STUDIO_TARGET=extension (default: $SWARMLOOM_STUDIO_DIR, then
 //             ../studio/dist-extension). Copied to studio/ when present; the build works without it.
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+//             @swarmloom/studio is a devDependency so that `pnpm build` at the root builds it first.
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -24,6 +36,7 @@ import {
   NOTICES_FILE,
   renderNotices,
 } from "./notices.mjs";
+import { copyStudio, STUDIO_ENTRIES } from "./studio.mjs";
 import { parseTargets, STUBBED_PACKAGES, TARGETS } from "./targets.mjs";
 import { directoryEntries, sourceDateEpoch, zipEntries } from "./zip.mjs";
 
@@ -99,7 +112,7 @@ function findStudio() {
   const candidates = [values.studio, process.env.SWARMLOOM_STUDIO_DIR, join(repo, "apps", "studio", "dist-extension")];
   for (const dir of candidates) {
     if (!dir || !existsSync(dir) || !statSync(dir).isDirectory()) continue;
-    for (const entry of ["studio.html", "index.html"]) {
+    for (const entry of STUDIO_ENTRIES) {
       if (existsSync(join(dir, entry))) return { dir, entry };
     }
   }
@@ -159,7 +172,7 @@ async function bundle(target, out, studioEntry) {
     charset: "utf8",
     logLevel: "warning",
     plugins: [noFormatAdapters],
-    // Whitespace and syntax minification keeps the content script inside its 150 KB gzip budget,
+    // Whitespace and syntax minification keeps the content script inside its gzip budget (audit.mjs),
     // while identifiers stay unmangled so store reviewers (AMO in particular) can still read the
     // shipped code; the AMO source package rebuilds it byte for byte.
     minifySyntax: true,
@@ -258,32 +271,39 @@ if (!studio) {
 const studioPackages = studio ? dependencyClosure(join(repo, "apps", "studio")) : [];
 
 mkdirSync(outRoot, { recursive: true });
-for (const target of targets) {
-  const out = join(outRoot, target);
-  rmSync(out, { recursive: true, force: true });
-  mkdirSync(out, { recursive: true });
-  cpSync(join(root, "public"), out, { recursive: true });
+// One checked copy of the Studio serves every target, so they all bundle the same files.
+const studioCopy = studio ? mkdtempSync(join(tmpdir(), "swarmloom-studio-")) : "";
+try {
+  if (studio) copyStudio(studio, studioCopy);
+  for (const target of targets) {
+    const out = join(outRoot, target);
+    rmSync(out, { recursive: true, force: true });
+    mkdirSync(out, { recursive: true });
+    cpSync(join(root, "public"), out, { recursive: true });
 
-  const studioEntry = studio ? `studio/${studio.entry}` : "";
-  if (studio) cpSync(studio.dir, join(out, "studio"), { recursive: true });
+    const studioEntry = studio ? `studio/${studio.entry}` : "";
+    if (studio) cpSync(studioCopy, join(out, "studio"), { recursive: true });
 
-  const manifest = manifestFor(target, version, e2e ? { hostPermissions: ["<all_urls>"] } : {});
-  writeLocales(out, catalogs, messageKeys(manifest));
-  const generatedIcons = writeIcons(out);
-  const metafiles = await bundle(target, out, studioEntry);
-  const noticeCount = writeNotices(out, metafiles, studioPackages);
-  writeFileSync(join(out, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  validate(out, manifest, target, catalogs);
+    const manifest = manifestFor(target, version, e2e ? { hostPermissions: ["<all_urls>"] } : {});
+    writeLocales(out, catalogs, messageKeys(manifest));
+    const generatedIcons = writeIcons(out);
+    const metafiles = await bundle(target, out, studioEntry);
+    const noticeCount = writeNotices(out, metafiles, studioPackages);
+    writeFileSync(join(out, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    validate(out, manifest, target, catalogs);
 
-  let line = `built ${relative(root, out)} (${(dirSize(out) / 1024).toFixed(0)} KiB`;
-  if (generatedIcons > 0) line += ", placeholder icons";
-  if (studio) line += ", bundled Studio";
-  line += `, ${noticeCount} third-party notices)`;
-  if (!e2e && values["no-zip"] !== true) {
-    const zipPath = join(outRoot, `${target}.zip`);
-    const zip = zipEntries(directoryEntries(out), { mtime: sourceDateEpoch(process.env.SOURCE_DATE_EPOCH) });
-    writeFileSync(zipPath, zip);
-    line += ` -> ${relative(root, zipPath)} (${(zip.length / 1024).toFixed(0)} KiB)`;
+    let line = `built ${relative(root, out)} (${(dirSize(out) / 1024).toFixed(0)} KiB`;
+    if (generatedIcons > 0) line += ", placeholder icons";
+    if (studio) line += ", bundled Studio";
+    line += `, ${noticeCount} third-party notices)`;
+    if (!e2e && values["no-zip"] !== true) {
+      const zipPath = join(outRoot, `${target}.zip`);
+      const zip = zipEntries(directoryEntries(out), { mtime: sourceDateEpoch(process.env.SOURCE_DATE_EPOCH) });
+      writeFileSync(zipPath, zip);
+      line += ` -> ${relative(root, zipPath)} (${(zip.length / 1024).toFixed(0)} KiB)`;
+    }
+    console.log(line);
   }
-  console.log(line);
+} finally {
+  if (studioCopy) rmSync(studioCopy, { recursive: true, force: true });
 }

@@ -8,6 +8,7 @@ import type {
 } from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { base64ToBytes, bytesToBase64, createRenderApi, type RenderDeps, type RenderInit } from "../src/index";
+import { LiveStage } from "../src/render/live";
 import { ClockPlayer } from "./fake-player";
 
 const blueprint = {
@@ -295,31 +296,61 @@ describe("render page protocol", () => {
     expect(goLive).toHaveBeenCalledOnce();
   });
 
-  it("resolves init and each step only after three animation frames when it awaits paint", async () => {
-    const { api } = setup(undefined, { awaitPaint: true });
-    const frames: FrameRequestCallback[] = [];
-    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
-    const runFrames = async (from: number, to: number) => {
-      for (let i = from; i < to; i++) {
-        await vi.waitFor(() => expect(frames).toHaveLength(i + 1));
-        frames[i]?.(i * 16);
-      }
-    };
-    const init = api.init(base);
-    await runFrames(0, 3);
-    await init;
-    let stepped = false;
-    const step = api.step(40).then(() => {
-      stepped = true;
-    });
-    await runFrames(3, 5);
-    await Promise.resolve();
-    expect(stepped).toBe(false);
-    await runFrames(5, 6);
-    await step;
-    expect(stepped).toBe(true);
-    raf.mockRestore();
+  it.each([
+    [{}, true],
+    [{ live: false }, false],
+    [{ reducedMotion: true }, false],
+    [{ live: false, cues: [{ at: 400, action: "live" as const }] }, true],
+    [{ reducedMotion: true, cues: [{ at: 400, action: "live" as const }] }, true],
+  ])("holds the live page's animated images whenever it can go live (%j)", async (options, held) => {
+    const hold = vi.spyOn(LiveStage.prototype, "holdImages");
+    const { api } = setup();
+    await api.init({ ...base, ...options });
+    expect(hold).toHaveBeenCalledTimes(held ? 1 : 0);
+    hold.mockRestore();
   });
+
+  it.each([
+    [1, 1],
+    [0.5, 2],
+    [2.5, 2],
+  ])(
+    "at device scale %s resolves init and each step after %i animation frame(s) when it awaits paint",
+    async (scale, count) => {
+      const view = document.defaultView as Window;
+      const ratio = Object.getOwnPropertyDescriptor(view, "devicePixelRatio");
+      Object.defineProperty(view, "devicePixelRatio", { configurable: true, value: scale });
+      const frames: FrameRequestCallback[] = [];
+      const raf = vi.spyOn(view, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
+      // Runs the page's animation frames one at a time until `call` settles; returns how many ran.
+      const framesUntil = async (call: Promise<unknown>): Promise<number> => {
+        let settled = false;
+        const done = call.then(() => {
+          settled = true;
+        });
+        let ran = 0;
+        for (;;) {
+          await vi.waitFor(() => expect(settled || frames.length > 0).toBe(true));
+          if (settled) break;
+          frames.shift()?.(ran * 16);
+          ran++;
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        await done;
+        return ran;
+      };
+      try {
+        const { api } = setup(undefined, { awaitPaint: true });
+        expect(await framesUntil(api.init(base))).toBe(count);
+        expect(await framesUntil(api.step(40))).toBe(count);
+        api.dispose();
+      } finally {
+        raf.mockRestore();
+        if (ratio) Object.defineProperty(view, "devicePixelRatio", ratio);
+        else Reflect.deleteProperty(view, "devicePixelRatio");
+      }
+    },
+  );
 
   it("keeps the player's realtime sound off and renders the soundtrack from its log", async () => {
     const { api, players, audio } = setup();

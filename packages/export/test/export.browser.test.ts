@@ -1,10 +1,26 @@
 import { createPlayer } from "@swarmloom/core";
 import { describe, expect, it } from "vitest";
+import { server } from "vitest/browser";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
 import { LiveStage, watchShadowRoots } from "../src/render/live";
 
-describe("export in Chromium", () => {
-  it("detects live recording support", async () => {
+// These cases also run in Firefox; Region Capture and classic scrollbars are Chromium's.
+const chromium = server.browser === "chromium";
+
+/** The top-left pixel (RGBA) the image at `url` paints, or a rejection when it does not decode. */
+async function firstPixel(url: string | null | undefined): Promise<number[]> {
+  const img = new Image();
+  img.src = url ?? "";
+  await img.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D;
+  ctx.drawImage(img, 0, 0);
+  return Array.from(ctx.getImageData(0, 0, 1, 1).data);
+}
+
+describe("export in the browser", () => {
+  it.runIf(chromium)("detects live recording support", async () => {
     // Chromium ships getDisplayMedia, Region/Element Capture and MediaRecorder with WebM.
     expect(canRecordElement()).toBe(true);
     await expect(recordElement(document.createElement("div"))).rejects.toThrow("in the document");
@@ -38,7 +54,8 @@ describe("export in Chromium", () => {
         .find((el) => el !== null);
       if (!scroller) throw new Error("No stage scroller in the render host");
       // The real inline scroller reserves its gutter, and the host is widened by exactly that much.
-      expect(scroller.offsetWidth).toBeGreaterThan(scroller.clientWidth);
+      // Headless Firefox draws overlay scrollbars, which take no gutter.
+      if (chromium) expect(scroller.offsetWidth).toBeGreaterThan(scroller.clientWidth);
       expect(scroller.clientWidth).toBe(320);
     } finally {
       api.dispose();
@@ -88,7 +105,7 @@ describe("export in Chromium", () => {
     }
   });
 
-  it("shows an animated GIF on the live page as its first frame, as an <img> at the same size and as a background", async () => {
+  it("shows an animated GIF on the live page as its first frame: an <img> at the same size, a background, an SVG <image>, a video poster, an image button", async () => {
     // 1x1 GIF, red then blue, looping.
     const gif =
       "data:image/gif;base64,R0lGODlhAQABAIABAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAQABAAACAkQBACH5BAAKAAAALAAAAAABAAEAAAICTAEAOw==";
@@ -96,7 +113,7 @@ describe("export in Chromium", () => {
     frame.setAttribute("sandbox", "allow-same-origin");
     frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
     const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
-    frame.srcdoc = `<style>i{display:block;height:4px;background:url(${gif})}</style><body style="margin:0"><img src="${gif}"><i></i>`;
+    frame.srcdoc = `<style>i{display:block;height:4px;background:url(${gif})}</style><body style="margin:0"><img src="${gif}"><i></i><svg width="4" height="4"><image href="${gif}" width="4" height="4"/></svg><video poster="${gif}"></video><input type="image" src="${gif}">`;
     document.body.append(frame);
     try {
       await loaded;
@@ -116,6 +133,16 @@ describe("export in Chromium", () => {
         'url("data:image/png;',
         "important",
       ]);
+      expect(doc.querySelector("svg image")?.getAttribute("href")?.slice(0, 15)).toBe("data:image/png;");
+      // Neither is in document.images.
+      const poster = doc.querySelector("video")?.getAttribute("poster");
+      const button = doc.querySelector("input")?.getAttribute("src");
+      expect([poster?.slice(0, 15), button?.slice(0, 15)]).toEqual(["data:image/png;", "data:image/png;"]);
+      // Every still copy shows the first (red) frame, not a blank or the second (blue) frame.
+      const bgUrl = /^url\("(.*)"\)$/.exec(bg.backgroundImage)?.[1];
+      const svgHref = doc.querySelector("svg image")?.getAttribute("href");
+      const stills = [img.src, bgUrl, svgHref, poster, button];
+      expect(await Promise.all(stills.map(firstPixel))).toEqual(stills.map(() => [255, 0, 0, 255]));
     } finally {
       frame.remove();
     }

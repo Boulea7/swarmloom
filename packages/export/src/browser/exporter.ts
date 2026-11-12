@@ -149,7 +149,10 @@ async function openFrame(o: BrowserExportOptions, container: HTMLElement, scheme
   }
 }
 
-/** Renders at one device pixel per CSS px, as the CLI does at `--scale 1`. */
+/**
+ * Scripts read one device pixel per CSS px, as in the CLI at `--scale 1`. The browser itself keeps
+ * the host's ratio: the frame rasterizer draws the `image-set()` option the CLI shows instead.
+ */
 function pinPixelRatio(win: Window): void {
   Object.defineProperty(win, "devicePixelRatio", { configurable: true, get: () => 1 });
 }
@@ -172,8 +175,11 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  *
  * The page stays responsive: the loop yields to the event loop between frames, and the snapshot of a
  * frame pauses every few milliseconds (cancelling takes effect at the next pause). Drawing a frame
- * decodes its image in one task, which grows with the web fonts it embeds (in Chromium about 40 ms
- * per MB of the faces the frame's text uses).
+ * decodes its image in one task, which grows with the web fonts and images it embeds (in Chromium
+ * about 40 ms per MB of the faces the frame's text uses). Photos in `<img>` elements are embedded
+ * only as large as their boxes need, so large ones add little; large CSS background images, video
+ * frames and canvases add their full size. A frame whose snapshot equals the last one reuses its
+ * image.
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).
@@ -222,7 +228,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     shadows = watchShadowRoots(win);
     fonts = watchFontFaces(win);
     pinPixelRatio(win);
-    const pinned = pinMediaFeatures(win, shadows, scheme);
+    const pinned = pinMediaFeatures(win, shadows, { scheme, width, height });
     media = pinned;
     const tail = settings.tail ?? 2500;
     // Loading the input can take long; cancelling removes the frame (below) rather than waiting.
@@ -245,7 +251,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: hash });
     if (!ctx) throw new Error("A 2D canvas is not available");
     writer = new VideoFileWriter(plan, width, height, fps);
-    await writer.start();
+    await unlessAborted(writer.start(), signal);
     const out = writer;
 
     const frameSha256: string[] = [];
@@ -257,13 +263,13 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
           pinned.sweep();
           await rasterizer.draw(ctx, signal);
           if (!hash) {
-            await out.addFrame(index, canvas);
+            await unlessAborted(out.addFrame(index, canvas), signal);
             return;
           }
           const pixels = ctx.getImageData(0, 0, width, height).data;
           const digest = await sha256(pixels);
           if (digest) frameSha256.push(digest);
-          await out.addFrame(index, pixels);
+          await unlessAborted(out.addFrame(index, pixels), signal);
         },
       },
       {
@@ -276,9 +282,11 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
       },
     );
 
+    // Cancelling answers at once here too: the cleanup below then cancels the writer, which stops
+    // its encoding and muxing, and removes the frame.
     if (plan.audio) {
       report("sound");
-      const events = await api.soundLog();
+      const events = await unlessAborted(api.soundLog(), signal);
       const soundOptions = {
         enabled: true,
         pack: settings.pack,
@@ -289,12 +297,13 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
         sampleRate: SAMPLE_RATE,
         channels: CHANNELS,
         sound: soundOptions,
+        signal,
       });
-      if (signal?.aborted) throw abortError(signal);
-      await out.addAudio(buffer);
+      await unlessAborted(out.addAudio(buffer), signal);
     }
+    if (signal?.aborted) throw abortError(signal);
     report("finishing");
-    const blob = await out.finish();
+    const blob = await unlessAborted(out.finish(), signal);
     finished = true;
     return {
       blob,
@@ -309,7 +318,8 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
       warnings,
     };
   } finally {
-    if (!finished) await writer?.cancel().catch(() => undefined);
+    // Cancelling the writer can wait for an encoder call in progress; the frame goes meanwhile.
+    const cancelling = finished ? undefined : writer?.cancel().catch(() => undefined);
     try {
       opened?.api.dispose();
     } finally {
@@ -318,5 +328,6 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
       media?.stop();
       opened?.frame.remove();
     }
+    await cancelling;
   }
 }

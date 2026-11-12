@@ -93,8 +93,9 @@ function decodeCssEscapes(css: string): string {
  * names into (docx-preview copies font names into style sheets unescaped).
  */
 export function sanitizeCss(css: string): string {
+  // A space, not "": deleting the inner rule of `@imp@import "a";ort "https://…"` would join a new @import.
   return decodeCssEscapes(css)
-    .replace(/@import\b[^;]*;?/gi, "")
+    .replace(/@import\b[^;]*;?/gi, " ")
     .replace(/url\s*\((?!\s*['"]?\s*(?:data:|blob:))/gi, "invalid(")
     .replace(/(?:-webkit-)?image-set\s*\(|\bsrc\s*\(|expression\s*\(/gi, "invalid(");
 }

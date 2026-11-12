@@ -163,7 +163,7 @@ Open [Studio online](https://boulea7.github.io/swarmloom/studio/) and pick an ex
 
 ### Build from source
 
-GitHub Releases, npm packages and store listings are planned. For now, build from source. You need Node.js 22.12+; the pnpm version is pinned in `packageManager`.
+Extension and CLI downloads, npm packages and store listings are planned (the `promo-v1` release holds only the promo videos and captions). For now, build from source. You need Node.js 22.12+; the pnpm version is pinned in `packageManager`.
 
 ```bash
 git clone https://github.com/Boulea7/swarmloom.git
@@ -272,7 +272,7 @@ Foldables need nothing extra: where the browser supports Viewport Segments, Stud
 ## Roadmap
 
 - **Now**: Studio online, web pages plus 20 file formats, frame-by-frame video export with the CLI or right in Studio, and Chrome / Edge / Firefox / Safari extensions built from source.
-- **Next**: the first GitHub Release and npm packages, store listings and signed extensions, and testing on phones and Safari devices.
+- **Next**: the first software release (extension and CLI downloads on GitHub, plus npm packages), store listings and signed extensions, and testing on phones and Safari devices.
 - **Later**: more formats and platforms, with no dates promised. Share ideas in [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 
 ## Contributing and support

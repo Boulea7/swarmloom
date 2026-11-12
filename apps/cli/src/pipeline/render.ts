@@ -54,6 +54,8 @@ export interface RenderJob {
   evidence?: EvidenceRequest;
   /** Let the render page load https: images and fonts the input references (decision C03). */
   remoteAssets: boolean;
+  /** Fail when the browser's sandbox does not start instead of running without it. */
+  requireSandbox?: boolean;
   quiet: boolean;
   verbose: boolean;
 }
@@ -70,6 +72,11 @@ export interface RenderDeps {
   snapshotBundle?: string;
   /** Parent of the temporary work directory. Default: the output's directory (same file system). */
   tmpRoot?: string;
+  /**
+   * Shows the warning that the browser runs without its sandbox; the command passes one that prints
+   * under --quiet too. Default: a warning on `io`.
+   */
+  onUnsandboxed?: (warning: string) => void;
 }
 
 export interface RenderSummary {
@@ -123,7 +130,11 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     const server = await startStaticServer({ root: deps.renderDir, ...servedInput(job.source, base) });
     cleanup.defer(() => server.close());
     const origin = new URL(server.url).origin;
-    const browser = await launchBrowser(deps.browserPath);
+    const browser = await launchBrowser(deps.browserPath, {
+      webPages: job.source.kind === "page",
+      requireSandbox: job.requireSandbox ?? false,
+      onUnsandboxed: deps.onUnsandboxed ?? ((message) => warn(io, message)),
+    });
     cleanup.defer(() => browser.close());
     const evidence = job.evidence;
     const imageType = frameImageType(job.format, evidence?.manifest ?? false);

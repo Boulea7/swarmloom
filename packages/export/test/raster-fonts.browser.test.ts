@@ -60,3 +60,33 @@ it("reads and encodes the font faces once for all frames", async () => {
   encode.mockRestore();
   expect({ reads, encodedTheFont: encoded > FONT.length }).toEqual({ reads: 1, encodedTheFont: false });
 });
+
+it.each<[string, (sheet: CSSStyleSheet) => void]>([
+  ["into a grouping rule", (sheet) => (sheet.cssRules[1] as CSSMediaRule).insertRule(RULE, 0)],
+  [
+    "in place of a rule",
+    (sheet) => {
+      sheet.deleteRule(0);
+      sheet.insertRule(`@media all{${RULE}}`, 0);
+    },
+  ],
+])("walks the style sheets again only once a face is added %s", async (_name, change) => {
+  const { win, rasterizer } = await frameOf(`<style>.a{color:red}@media all{.b{color:blue}}</style>${TEXT}`);
+  const proto = (win as Window & typeof globalThis).CSSRule.prototype;
+  const type = Object.getOwnPropertyDescriptor(proto, "type")?.get as () => number;
+  let reads = 0;
+  Object.defineProperty(proto, "type", {
+    configurable: true,
+    get(this: CSSRule) {
+      reads++;
+      return type.call(this);
+    },
+  });
+  await rasterizer.snapshot();
+  reads = 0;
+  await rasterizer.snapshot();
+  const unchanged = reads;
+  change(win.document.styleSheets[0] as CSSStyleSheet);
+  const { svg } = await rasterizer.snapshot();
+  expect({ unchanged, embedded: svg.includes("@font-face") }).toEqual({ unchanged: 0, embedded: true });
+});

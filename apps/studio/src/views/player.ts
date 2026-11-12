@@ -47,6 +47,8 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   let lastError: unknown;
   /** Autoplay links start the first time the player is ready, never again after a rebuild. */
   let autoplayPending = ctx.route.autoplay;
+  /** The settings the source carries have been handed to Studio (once per view). */
+  let sourceSettingsShown = false;
 
   // Title block
   const name = provisionalName(ctx, ref);
@@ -212,8 +214,9 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     const messages: string[] = [];
     const truncated = session.loaded?.blueprint.truncated;
     if (truncated && truncated.dropped > 0) messages.push(i18n.t("player.truncated", { count: truncated.dropped }));
-    // Adapters write the notes in English; the ones Studio knows (font substitutions) are reworded
-    // in the UI language, and the lead-in says in that language that they describe changes.
+    // Adapters write the notes in English; the ones Studio knows (font substitutions, Lottie, EPUB,
+    // OpenDocument and DOCX notes) are reworded in the UI language, and the lead-in says in that
+    // language that they describe changes.
     const notes = session.notes.map((note) => localizeNote(note, i18n));
     if (notes.length > 0) messages.push(i18n.t("player.notes", { notes: notes.join(" ") }));
     if (messages.length === 0) {
@@ -245,6 +248,13 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     onPhase: (next, error) => {
       phase = next;
       lastError = error;
+      // A share link's settings play from the first player on: Studio shows them, and a change of
+      // any other setting keeps them.
+      const carried = session.opened?.settings;
+      if (carried && !sourceSettingsShown) {
+        sourceSettingsShown = true;
+        ctx.sourceSettings(carried);
+      }
       root.dataset.phase = next;
       if (next === "ready" || next === "error") showOpened();
       scrubber.setPhase(next);
@@ -265,11 +275,18 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       root.dataset.state = state;
       scrubber.setState(state);
     },
+    // A choice made on the player's toolbar is the user's setting, like one made in the panel.
+    onSettings: (patch) => ctx.updateSettings(patch),
     onClose: () => ctx.navigate({ source: null }),
   });
 
   // After the session: the dialog reads the settings its preview plays with as it builds.
-  const exporter = createExporter({ ctx, opened: () => session.opened, settings: () => session.playSettings });
+  const exporter = createExporter({
+    ctx,
+    opened: () => session.opened,
+    settings: () => session.playSettings,
+    holdPreview: (hold) => session.hold(hold),
+  });
   root.append(exporter.panel.root);
 
   renderOverlay();
@@ -279,7 +296,8 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     const { i18n } = ctx;
     const opened = session.opened;
     if (!opened) return;
-    const link = await buildShareLink(opened, ctx.settings, ctx.appUrl);
+    // What the preview plays, so the recipient sees the same performance.
+    const link = await buildShareLink(opened, session.playSettings, ctx.appUrl);
     if (!link.ok) {
       ctx.toast.show(
         i18n.t(

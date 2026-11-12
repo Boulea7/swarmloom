@@ -1,4 +1,11 @@
-import type { LoadedSource, Player, PlayerOptions, PlayerState } from "@swarmloom/core";
+import {
+  type Clock,
+  type LoadedSource,
+  type Player,
+  type PlayerOptions,
+  type PlayerState,
+  RealtimeClock,
+} from "@swarmloom/core";
 import { isCancellation, StudioError } from "./errors";
 import type { SourceRef } from "./route";
 import type { StudioServices } from "./services";
@@ -35,6 +42,11 @@ export interface SessionOptions {
   onPhase(phase: SessionPhase, error?: unknown): void;
   onProgress?(built: number, total: number): void;
   onState?(state: PlayerState): void;
+  /**
+   * The player's toolbar or its shortcuts changed speed, sound or follow mode. The patch already
+   * plays and is in {@link Session.playSettings}; the caller makes it Studio's setting too.
+   */
+  onSettings?(patch: Partial<StudioSettings>): void;
   /** The core toolbar's close button or Esc. */
   onClose?(): void;
 }
@@ -62,6 +74,45 @@ function messageOf(error: unknown): string {
 }
 
 /**
+ * The preview player's clock: real time that {@link Session.hold} can stop while an in-page export
+ * needs the main thread. The player still decides with start() and stop() whether it runs; a held
+ * clock delivers no frames until it is let go, then goes on without a jump.
+ */
+class PreviewClock implements Clock {
+  private readonly time = new RealtimeClock();
+  private wanted = false;
+  private held = false;
+
+  get running(): boolean {
+    return this.wanted;
+  }
+
+  now(): number {
+    return this.time.now();
+  }
+
+  onTick(fn: (dt: number, now: number) => void): () => void {
+    return this.time.onTick(fn);
+  }
+
+  start(): void {
+    this.wanted = true;
+    if (!this.held) this.time.start();
+  }
+
+  stop(): void {
+    this.wanted = false;
+    this.time.stop();
+  }
+
+  hold(on: boolean): void {
+    this.held = on;
+    if (on) this.time.stop();
+    else if (this.wanted) this.time.start();
+  }
+}
+
+/**
  * One opened source and its player: resolve -> adapter load -> createPlayer, plus settings
  * changes (live player calls, a fresh player, or a fresh load) and teardown. Only one load runs at
  * a time; a newer request aborts the older one.
@@ -81,10 +132,12 @@ export class Session {
   private planExact = false;
 
   private settings: StudioSettings;
-  /** The user's own settings, without what a share link carries. */
-  private base: StudioSettings;
-  /** Settings a share link carries for this visit; a key the user changes meanwhile is theirs again. */
-  private shared: Partial<StudioSettings> = {};
+  /** The current player's clock: Studio's own, so {@link hold} can stop it. */
+  private clock: PreviewClock | null = null;
+  /** {@link hold} is on; a new player starts held too. */
+  private held = false;
+  /** {@link hold} paused the player, so letting go resumes it. */
+  private heldPause = false;
   private controller: AbortController | null = null;
   private unsubscribe: Array<() => void> = [];
   private destroyed = false;
@@ -92,7 +145,6 @@ export class Session {
 
   constructor(private readonly o: SessionOptions) {
     this.settings = o.settings;
-    this.base = o.settings;
   }
 
   get currentPhase(): SessionPhase {
@@ -100,8 +152,9 @@ export class Session {
   }
 
   /**
-   * Settings the preview plays with: the user's, plus those a share link carries for this visit.
-   * An export must use these, not the saved settings, to make the same performance.
+   * Settings the preview plays with: Studio's, plus those a share link carries for this visit and
+   * the toolbar's speed, sound and follow mode. An export or a new share link must use these, not
+   * the saved settings, to make the same performance.
    */
   get playSettings(): StudioSettings {
     return this.settings;
@@ -117,11 +170,9 @@ export class Session {
       this.setPhase("opening");
       if (!this.opened) {
         this.opened = await resolveSource(this.o.ref, { services: this.o.services, local: this.o.local, signal });
-        // Settings carried by a share link apply to this visit only; they are never persisted.
-        if (this.opened.settings) {
-          this.shared = { ...this.opened.settings };
-          this.settings = { ...this.base, ...this.shared };
-        }
+        // Settings carried by a share link apply to this visit only; they are never persisted. The
+        // view hands them to Studio (AppContext.sourceSettings), so later apply() calls carry them.
+        if (this.opened.settings) this.settings = { ...this.settings, ...this.opened.settings };
       }
       if (signal.aborted) return;
       this.setPhase("loading");
@@ -168,20 +219,14 @@ export class Session {
   }
 
   /**
-   * Applies the user's new saved settings over which a share link's settings stay, except the ones
-   * the user changed. Live ones go straight to the player; the returned impact tells the caller
-   * whether a {@link rebuild} (new player) or {@link reload} (new adapter run) is still needed.
+   * Applies new settings: Studio's, which include a share link's until the user changes them. Live
+   * ones go straight to the player; the returned impact tells the caller whether a {@link rebuild}
+   * (new player) or {@link reload} (new adapter run) is still needed.
    * The language setting is not one of them: the resolved locale arrives through {@link setLocale}
    * once Studio's strings for it have loaded.
    */
-  apply(saved: StudioSettings): SettingsImpact {
+  apply(next: StudioSettings): SettingsImpact {
     const prev = this.settings;
-    // A share link's setting stays for the visit until the user changes that setting themselves.
-    for (const key of Object.keys(this.shared) as (keyof StudioSettings)[]) {
-      if (saved[key] !== this.base[key]) delete this.shared[key];
-    }
-    this.base = saved;
-    const next = { ...saved, ...this.shared };
     const impact = impactOf({ ...prev, locale: next.locale }, next);
     this.settings = next;
     const player = this.player;
@@ -193,6 +238,22 @@ export class Session {
       if (prev.speed !== next.speed || prev.follow !== next.follow) this.resetPlan(this.plannedMs);
     }
     return impact;
+  }
+
+  /**
+   * Takes the player's live settings after its toolbar changed them: they play from now on, so
+   * playSettings, the next player and the caller ({@link SessionOptions.onSettings}) get them.
+   * Changes made by {@link apply} arrive here already equal and are ignored.
+   */
+  private adopt(live: Pick<StudioSettings, "speed" | "sound" | "follow">): void {
+    const patch: Partial<StudioSettings> = {};
+    if (live.speed !== this.settings.speed) patch.speed = live.speed;
+    if (live.sound !== this.settings.sound) patch.sound = live.sound;
+    if (live.follow !== this.settings.follow) patch.follow = live.follow;
+    if (Object.keys(patch).length === 0) return;
+    this.settings = { ...this.settings, ...patch };
+    if (patch.speed !== undefined || patch.follow !== undefined) this.resetPlan(this.plannedMs);
+    this.o.onSettings?.(patch);
   }
 
   /**
@@ -222,6 +283,26 @@ export class Session {
     this.destroyPlayer();
     await this.open();
     if (play && this.phase === "ready") this.start();
+  }
+
+  /**
+   * Stills the preview while an in-page export runs, so it does not take the main thread from the
+   * export: a building player pauses (its toolbar and the scrubber show it), and the clock stops
+   * in every state, so nothing moves or redraws. `false` plays on and resumes what the hold paused.
+   */
+  hold(on: boolean): void {
+    if (on === this.held) return;
+    this.held = on;
+    const player = this.player;
+    if (on && (player?.state === "intro" || player?.state === "building")) {
+      player.pause();
+      this.heldPause = true;
+    }
+    this.clock?.hold(on);
+    if (!on && this.heldPause) {
+      this.heldPause = false;
+      player?.resume();
+    }
   }
 
   /**
@@ -284,6 +365,8 @@ export class Session {
     const loaded = this.loaded;
     if (!loaded) return;
     this.destroyPlayer();
+    const clock = new PreviewClock();
+    clock.hold(this.held);
     const options: PlayerOptions = {
       blueprint: loaded.blueprint,
       mode: "inline",
@@ -292,6 +375,9 @@ export class Session {
       controls: true,
       intro: true,
       ...playerOptionsFrom(this.settings, this.o.locale),
+      clock,
+      // The player stops only a clock it made itself: this one stops here once live, and in destroyPlayer().
+      onLive: () => clock.stop(),
       onClose: () => this.o.onClose?.(),
       ...this.o.overrides,
     };
@@ -303,12 +389,14 @@ export class Session {
       return;
     }
     this.player = player;
+    this.clock = clock;
     this.resetPlan(0);
     this.unsubscribe.push(
       player.on("progress", (e) => {
         this.replan(player);
         this.o.onProgress?.(e.built, e.total);
       }),
+      player.on("settings", (e) => this.adopt(e)),
       player.on("state", (e) => {
         this.replan(player);
         this.o.onState?.(e.state);
@@ -379,13 +467,16 @@ export class Session {
   private destroyPlayer(): void {
     for (const off of this.unsubscribe.splice(0)) off();
     const player = this.player;
+    const clock = this.clock;
     this.player = null;
-    if (!player) return;
+    this.clock = null;
+    this.heldPause = false;
     try {
-      player.destroy();
+      player?.destroy();
     } catch (error) {
       console.warn("[studio] player.destroy() failed", error);
     }
+    clock?.stop();
   }
 
   private disposeLoaded(): void {

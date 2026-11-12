@@ -1,17 +1,21 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXPORT_MAX_SECONDS, exportSettingsOf } from "../src/export/browser";
-import { buildCliCommand, type CliCommandOptions, cliHint, shellArg } from "../src/export/cli";
+import { buildCliCommand, type CliCommandOptions, cliHint, shellArg, type VideoFormat } from "../src/export/cli";
 import type { StudioServices } from "../src/services";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { type LocalInput, resolveSource } from "../src/source";
 
-function command(target: string, targetIsFile: boolean, name = target) {
+function command(target: string, targetIsFile: boolean, name = target, format: VideoFormat = "mp4") {
   const options: CliCommandOptions = {
     target,
     targetIsFile,
     name,
     settings: DEFAULT_SETTINGS,
-    format: "mp4",
+    format,
     width: 1280,
     height: 720,
   };
@@ -29,7 +33,7 @@ describe("CLI command", () => {
     expect(shellArg(arg)).toBe(written);
   });
 
-  // No spelling is safe in POSIX shells, PowerShell (which hands bare text to npx.cmd) and cmd.exe.
+  // No spelling is safe in POSIX shells, PowerShell (which hands bare text to swarmloom.cmd) and cmd.exe.
   it.each([
     "https://evil.example/a&calc&b.md",
     "https://evil.example/?q=1|calc",
@@ -46,39 +50,80 @@ describe("CLI command", () => {
     expect(shellArg(arg)).toBeNull();
   });
 
+  // `npx swarmloom` downloads whatever package holds that name, and `npx --no swarmloom` still asks the
+  // registry for a CLI outside npm's global folder (pnpm, Bun, Volta). The command needs only the CLI.
+  it.skipIf(process.platform === "win32")("runs the swarmloom CLI on the PATH and nothing else", () => {
+    const bin = mkdtempSync(join(tmpdir(), "swarmloom-cli-"));
+    try {
+      writeFileSync(join(bin, "swarmloom"), `#!/bin/sh\nprintf '%s\\n' "$@"\n`, { mode: 0o755 });
+      const run = spawnSync("/bin/sh", ["-c", command("My Notes (1).md", true).text], {
+        env: { PATH: bin },
+        encoding: "utf8",
+      });
+      expect(run.stdout.split("\n")).toEqual(["render", "My Notes (1).md", "-o", "My-Notes-1.mp4", "--seed", "1", ""]);
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
+
   it("asks for a saved file instead of writing an unsafe target", () => {
     expect(command("https://evil.example/a&calc&b.md", false, "a&calc&b.md")).toEqual({
-      text: "npx swarmloom render a-calc-b.md -o a-calc-b.mp4 --seed 1",
+      text: "swarmloom render a-calc-b.md -o a-calc-b.mp4 --seed 1",
       saveAs: "a-calc-b.md",
     });
     expect(command("R&D | notes.md", true).saveAs).toBe("R-D-notes.md");
     expect(command("My Notes.md", true)).toEqual({
-      text: 'npx swarmloom render "My Notes.md" -o My-Notes.mp4 --seed 1',
+      text: 'swarmloom render "My Notes.md" -o My-Notes.mp4 --seed 1',
       saveAs: "My Notes.md",
     });
     expect(command("https://example.com/a.md", false, "a.md")).toEqual({
-      text: "npx swarmloom render https://example.com/a.md -o a.mp4 --seed 1",
+      text: "swarmloom render https://example.com/a.md -o a.mp4 --seed 1",
     });
     // Escaped letters of a link are written as letters (the CLI escapes them again), other escapes are
     // not: `%DATABASE_URL%` would send a secret to the link's server.
     expect(command("https://example.com/%E4%B8%AD.md", false, "中.md").text).toBe(
-      "npx swarmloom render https://example.com/中.md -o 中.mp4 --seed 1",
+      "swarmloom render https://example.com/中.md -o 中.mp4 --seed 1",
     );
     expect(command("https://evil.example/x%DATABASE_URL%2F/deck.md", false, "deck.md")).toEqual({
-      text: "npx swarmloom render deck.md -o deck.mp4 --seed 1",
+      text: "swarmloom render deck.md -o deck.mp4 --seed 1",
       saveAs: "deck.md",
     });
   });
 
-  // Windows opens these as devices even with an extension, so the video would be thrown away.
+  // The CLI refuses an output that names its input, ignoring case as NTFS and APFS do.
   it.each([
-    ["NUL.md", "NUL_.mp4"],
-    ["con.final.md", "con_.final.mp4"],
-    ["COM1.md", "COM1_.mp4"],
-    ["console.md", "console.mp4"],
-    ["COM10.md", "COM10.mp4"],
-  ])("writes the output of %j as %s", (name, output) => {
-    expect(command(name, true).text).toBe(`npx swarmloom render ${name} -o ${output} --seed 1`);
+    ["logo.gif", "gif", "-o logo.swarmloom.gif"],
+    ["Logo.GIF", "gif", "-o Logo.swarmloom.gif"],
+    ["photo.webp", "gif", "-o photo.gif"],
+  ] as const)("keeps the input %j when exporting %s", (name, format, output) => {
+    expect(command(name, true, name, format).text).toContain(`swarmloom render ${name} ${output} --format ${format}`);
+  });
+
+  it("keeps the saved stand-in of an unsafe link", () => {
+    expect(command("https://evil.example/a&b.webp", false, "a&b.webp", "webp")).toEqual({
+      text: "swarmloom render a-b.webp -o a-b.swarmloom.webp --format webp --seed 1",
+      saveAs: "a-b.webp",
+    });
+  });
+
+  // Windows opens the first names as devices even with an extension, refuses `?`, `*` and `:` (an NTFS
+  // stream) and drops a trailing dot: the source could not be saved under its name.
+  it.each([
+    ["NUL.md", "NUL_.md", "NUL_.mp4"],
+    ["con.final.md", "con_.final.md", "con_.final.mp4"],
+    ["COM1.md", "COM1_.md", "COM1_.mp4"],
+    ["NUL .md", "NUL_.md", "NUL_.mp4"],
+    ["console.md", "console.md", "console.mp4"],
+    ["COM10.md", "COM10.md", "COM10.mp4"],
+    ["notes?.md", "notes.md", "notes.mp4"],
+    ["a*b.md", "a-b.md", "a-b.mp4"],
+    ["notes:stream.md", "notes-stream.md", "notes-stream.mp4"],
+    ["notes.md.", "notes.md", "notes.md.mp4"],
+  ])("reads %j as %s and writes %s", (name, input, output) => {
+    expect(command(name, true)).toEqual({
+      text: `swarmloom render ${input} -o ${output} --seed 1`,
+      saveAs: input,
+    });
   });
 
   it("writes the export dialog's choices, and the in-page export uses the same settings", () => {
@@ -95,7 +140,7 @@ describe("CLI command", () => {
     // The dialog's length limit is not the CLI default, so long builds stop at the same frame.
     const dialog = { width: 1080, height: 1920, fps: 60, maxDuration: EXPORT_MAX_SECONDS, ...choices };
     expect(buildCliCommand({ ...base, ...dialog }).text).toBe(
-      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --intro outline --opening 1.5 --live-top --locale zh-CN --no-sound --no-remote",
+      "swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --intro outline --opening 1.5 --live-top --locale zh-CN --no-sound --no-remote",
     );
     expect(exportSettingsOf(settings, choices)).toMatchObject({
       theme: "dark",
@@ -112,7 +157,7 @@ describe("CLI command", () => {
     expect(exportSettingsOf(beat.settings, { ...choices, sound: true })).toMatchObject({ beatSync: "all" });
     // English, the light scheme and 30 fps are the CLI defaults.
     const plain = { ...base, settings: DEFAULT_SETTINGS, width: 1280, height: 720, fps: 30, scheme: "light" as const };
-    expect(buildCliCommand({ ...plain, locale: "en-GB" }).text).toBe("npx swarmloom render a.md -o a.mp4 --seed 1");
+    expect(buildCliCommand({ ...plain, locale: "en-GB" }).text).toBe("swarmloom render a.md -o a.mp4 --seed 1");
   });
 
   it("sends the user to an opened file's folder and has pasted text saved first", async () => {

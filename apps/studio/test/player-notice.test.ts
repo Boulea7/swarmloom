@@ -40,11 +40,11 @@ async function noticeFor(lang: string, notes: string[]): Promise<string | null |
 }
 
 it.each([
-  // Notes Studio does not know (EPUB here) pass through; known ones read with proper plurals.
+  // Notes Studio does not know (RTF here) pass through; known ones read with proper plurals.
   [
     "en",
-    ["Scripts in the book were not run.", "1 audio or data asset(s) were removed."],
-    "Shown with some changes: Scripts in the book were not run. 1 audio or data asset was removed.",
+    ["Headers and footers are not shown.", "1 audio or data asset(s) were removed."],
+    "Shown with some changes: Headers and footers are not shown. 1 audio or data asset was removed.",
   ],
   // The Lottie adapter's own wordings are reworded in the UI language.
   [

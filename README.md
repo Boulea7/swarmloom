@@ -163,7 +163,7 @@ OpenDocument（ODT / ODS / ODP）、EPUB、RTF、OFD、Jupyter Notebook、asciin
 
 ### 从源码构建
 
-GitHub Release、npm 包和商店版都还在计划中，目前请从源码构建。需要 Node.js 22.12+，pnpm 版本由 `packageManager` 固定。
+扩展和 CLI 的下载包、npm 包和商店版都还在计划中（`promo-v1` Release 里只有宣传视频和字幕），目前请从源码构建。需要 Node.js 22.12+，pnpm 版本由 `packageManager` 固定。
 
 ```bash
 git clone https://github.com/Boulea7/swarmloom.git
@@ -272,7 +272,7 @@ Chrome / Edge 打开 Studio 后，用地址栏或菜单里的“安装应用”�
 ## Roadmap
 
 - **现在**：在线 Studio，网页加 20 类文件格式，用 CLI 或直接在 Studio 里逐帧导出视频，Chrome / Edge / Firefox / Safari 扩展可从源码构建。
-- **下一步**：首个 GitHub Release 和 npm 包，扩展上架与签名，手机和 Safari 真机测试。
+- **下一步**：首个软件版本（GitHub 上的扩展和 CLI 下载包，以及 npm 包），扩展上架与签名，手机和 Safari 真机测试。
 - **以后**：更多格式和平台，不承诺日期。欢迎到 [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) 提建议。
 
 ## 贡献与支持

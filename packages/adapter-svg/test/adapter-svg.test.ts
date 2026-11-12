@@ -121,6 +121,10 @@ describe("sanitizing helpers", () => {
     expect(decodeCssEscapes(css)).not.toMatch(/url\(|@import|image-set\(/i);
   });
 
+  it("does not join a new @import out of the text around a removed one", () => {
+    expect(sanitizeCss('@imp@import "a";ort "https://evil.test/x.css";svg{fill:red}')).not.toMatch(/@import/i);
+  });
+
   it("drops href animations whatever prefix binds the xlink namespace", () => {
     const svg = new DOMParser().parseFromString(
       `<svg xmlns="http://www.w3.org/2000/svg" xmlns:l="http://www.w3.org/1999/xlink">

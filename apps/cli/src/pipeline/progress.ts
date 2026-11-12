@@ -3,6 +3,9 @@ import type { CliIo } from "../io";
 
 const REDRAW_MS = 100;
 const BAR_WIDTH = 24;
+/** A bar narrower than this says nothing the percent does not, so it is left out. */
+const MIN_BAR = 4;
+const LABEL = "rendering";
 
 /** Formats seconds as m:ss (or h:mm:ss). */
 export function formatClock(seconds: number): string {
@@ -26,6 +29,23 @@ export function fitFields(fields: readonly string[], width: number): string {
     line = next;
   }
   return line;
+}
+
+/**
+ * Lays out the redrawn progress line in `width` columns. The percent comes first, then the time left;
+ * the bar takes the room that remains (up to {@link BAR_WIDTH} cells) and the `extras` (frame, layers)
+ * follow while they fit whole. Below the label's width only the percent is kept.
+ */
+function progressLine(ratio: number, eta: string, extras: readonly string[], width: number): string {
+  const percent = `${String(Math.round(ratio * 100)).padStart(3)}%`;
+  const labelled = `${LABEL} ${percent}`;
+  if (labelled.length > width) return fitFields([percent.trimStart(), eta], width);
+  const numbers = fitFields([labelled, eta], width);
+  const cells = Math.min(BAR_WIDTH, width - numbers.length - 1);
+  if (cells < MIN_BAR) return numbers;
+  const filled = Math.round(ratio * cells);
+  const bar = `${"█".repeat(filled)}${"░".repeat(cells - filled)}`;
+  return fitFields([`${LABEL} ${bar} ${numbers.slice(LABEL.length + 1)}`, ...extras], width);
 }
 
 /**
@@ -93,7 +113,7 @@ export class Progress {
       const now = performance.now();
       if (!u.done && now - this.lastDraw < REDRAW_MS) return;
       this.lastDraw = now;
-      this.draw(fitFields(this.fields(ratio, frames, u, now), this.columns()));
+      this.draw(this.line(ratio, frames, u, now));
     } else {
       const quarter = Math.floor(ratio * 4);
       if (quarter > this.lastQuarter && quarter < 4) {
@@ -118,7 +138,7 @@ export class Progress {
 
   /** Columns a redrawn line may use: one less than the terminal's, so it never wraps. */
   private columns(): number {
-    return lineWidth(this.io);
+    return Math.max(0, (this.io.tty?.columns ?? 80) - 1);
   }
 
   private draw(text: string): void {
@@ -128,15 +148,13 @@ export class Progress {
     this.drawn = true;
   }
 
-  private fields(ratio: number, frames: number, u: ProgressUpdate, now: number): string[] {
-    const filled = Math.round(ratio * BAR_WIDTH);
-    const bar = `${"█".repeat(filled)}${"░".repeat(BAR_WIDTH - filled)}`;
+  private line(ratio: number, frames: number, u: ProgressUpdate, now: number): string {
     const elapsed = (now - this.started) / 1000;
     const perFrame = elapsed / frames;
     const remaining = Math.max(0, this.estimatedFrames - frames);
     const eta = u.done ? "done" : frames >= 5 ? `${formatClock(perFrame * remaining)} left` : "estimating";
-    const fields = [`rendering ${bar} ${String(Math.round(ratio * 100)).padStart(3)}%`, `frame ${frames}`, eta];
-    if (u.total > 0) fields.push(`layers ${u.built}/${u.total}`);
-    return fields;
+    const extras = [`frame ${frames}`];
+    if (u.total > 0) extras.push(`layers ${u.built}/${u.total}`);
+    return progressLine(ratio, eta, extras, this.columns());
   }
 }

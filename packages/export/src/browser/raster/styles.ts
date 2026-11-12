@@ -1,9 +1,10 @@
 /**
  * Computed-style diffing for the frame snapshot. The snapshot resets every element with
  * `all: unset` and writes back only what differs: inherited properties when they differ from the
- * parent's value, the others when they differ from what a reset clone computes for them. Native
- * form controls start from the UA's styles instead ({@link nativeControl}). Properties not listed
- * in {@link INHERITED} are treated as not inherited, which is always safe (only more verbose).
+ * parent's value, the others when they differ from what a reset clone computes for them (origins
+ * whenever something uses them, {@link ORIGINS}). Native form controls start from the UA's styles
+ * instead ({@link nativeControl}). Properties not listed in {@link INHERITED} are treated as not
+ * inherited, which is always safe (only more verbose).
  */
 
 /** Properties known to inherit. Only list a property when sure: a wrong entry loses styles. */
@@ -172,13 +173,19 @@ const SKIP = new Set([
 /**
  * What gives a box without content its size and place among its siblings, and what it counts
  * (content that shows may show the counters). An empty box away from the viewport needs nothing
- * else: nothing of it shows.
+ * else: nothing of it shows. Its place in a line or table row takes `vertical-align` (in Firefox a
+ * shorthand of the three after it), and a collapsed table row takes no room (`visibility`).
  */
 const LAYOUT = new Set([
   "display",
   "position",
   "float",
   "clear",
+  "vertical-align",
+  "alignment-baseline",
+  "baseline-shift",
+  "baseline-source",
+  "visibility",
   "box-sizing",
   "width",
   "height",
@@ -219,6 +226,32 @@ const LAYOUT = new Set([
 ]);
 
 /**
+ * Of {@link LAYOUT}, what does not apply to table rows and cells: margins, floats, breaks and
+ * placement as a flex or grid item.
+ */
+const NOT_IN_TABLES = new Set([
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "float",
+  "clear",
+  "flex-grow",
+  "flex-shrink",
+  "flex-basis",
+  "order",
+  "align-self",
+  "justify-self",
+  "grid-row-start",
+  "grid-row-end",
+  "grid-column-start",
+  "grid-column-end",
+  "column-span",
+  "break-before",
+  "break-after",
+]);
+
+/**
  * Inherited properties whose initial value is `currentcolor`. The keyword itself is inherited, so
  * text the snapshot never writes (a placeholder in the UA's grey) follows its own colour; a resolved
  * value written on a clone would pin every such descendant to it.
@@ -229,6 +262,18 @@ const CURRENT_COLOR_INHERITED = new Set([
   "text-emphasis-color",
 ]);
 const CURRENT_COLOR = "currentcolor";
+
+/**
+ * Origins, by the properties they act on. Each resolves against the element's own box, so the empty
+ * inline probe reads `0px 0px` for it while a reset clone starts at the centre: compared with the
+ * probe, an origin at the top left corner (OFD and EPUB layers, the stage's world, any SVG child)
+ * would be left out and the clone would turn and scale about its centre. An origin is written
+ * whenever one of its properties applies, and never otherwise (it then changes nothing).
+ */
+const ORIGINS: ReadonlyMap<string, readonly string[]> = new Map([
+  ["transform-origin", ["transform", "rotate", "scale", "offset-path"]],
+  ["perspective-origin", ["perspective"]],
+]);
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 /** Input types drawn as native controls; a type not listed reads as "text" or draws nothing. */
@@ -291,6 +336,8 @@ export interface StyleBaseline {
   readonly props: readonly string[];
   /** Of those, the ones an empty box away from the viewport needs ({@link LAYOUT}). */
   readonly layout: readonly string[];
+  /** Of those, the ones that apply to table rows and cells. */
+  readonly tableLayout: readonly string[];
   /** Initial value (as computed on a reset probe) per property. */
   readonly initial: ReadonlyMap<string, string>;
   /** Non-inherited properties whose initial value is `currentcolor` (border, outline, rule colours). */
@@ -334,7 +381,8 @@ export function readBaseline(doc: Document): StyleBaseline {
       if (style && initial.has(style)) widthStyle.set(name, style);
     }
     const layout = props.filter((name) => LAYOUT.has(name));
-    return { props, layout, initial, currentColor, widthStyle, controls: readControls(doc, win, props) };
+    const tableLayout = layout.filter((name) => !NOT_IN_TABLES.has(name));
+    return { props, layout, tableLayout, initial, currentColor, widthStyle, controls: readControls(doc, win, props) };
   } finally {
     probe.remove();
   }
@@ -444,7 +492,7 @@ export type InheritedValues = ReadonlyMap<string, string>;
 /**
  * Whether a reset clone already shows `value` of `name` without a declaration: it inherits it from
  * the parent's clone, or computes it from the clone's own colour or reset style (or from the UA's
- * styles, `ua`, for a native control).
+ * styles, `ua`, for a native control). An origin counts as shown when nothing uses it ({@link ORIGINS}).
  */
 function unchanged(
   baseline: StyleBaseline,
@@ -456,6 +504,9 @@ function unchanged(
 ): boolean {
   // A root clone inherits from the snapshot's wrapper, not from the document it was read from.
   if (INHERITED.has(name)) return parent !== null && parent.get(name) === value;
+  const users = ORIGINS.get(name);
+  // An engine without one of them reads "" for it.
+  if (users) return users.every((user) => ["", "none"].includes(cs.getPropertyValue(user)));
   if (ua) return sameAsUa(baseline, cs, ua, name, value);
   if (baseline.currentColor.has(name)) return value === cs.getPropertyValue("color");
   const style = baseline.widthStyle.get(name);

@@ -13,6 +13,8 @@ export interface FakeLog {
   loads: SourceInput[];
   contexts: StudioLoadContext[];
   players: PlayerOptions[];
+  /** The players handed out, in order (a test drives the newest as its toolbar would). */
+  created: Player[];
   calls: string[];
 }
 
@@ -75,6 +77,14 @@ export function fakePlayer(
     state = next;
     emit({ type: "state", state: next });
   };
+  // Like the engine, a changed speed, sound or follow mode is reported (the toolbar changes them).
+  const live = { speed: options.speed ?? 1, sound: options.sound !== false, follow: options.follow ?? "scroll" };
+  const change = (patch: Partial<typeof live>) => {
+    const next = { ...live, ...patch };
+    if (next.speed === live.speed && next.sound === live.sound && next.follow === live.follow) return;
+    Object.assign(live, next);
+    emit({ type: "settings", ...live });
+  };
 
   const host = options.host;
   if (host) {
@@ -114,9 +124,18 @@ export function fakePlayer(
       call("resume");
       setState("building");
     },
-    setSpeed: (speed) => call(`speed:${speed}`),
-    setSound: (on) => call(`sound:${on}`),
-    setFollow: (mode) => call(`follow:${mode}`),
+    setSpeed: (speed) => {
+      call(`speed:${speed}`);
+      change({ speed });
+    },
+    setSound: (on) => {
+      call(`sound:${on}`);
+      change({ sound: on });
+    },
+    setFollow: (mode) => {
+      call(`follow:${mode}`);
+      change({ follow: mode });
+    },
     replay: () => call("replay"),
     goLive: () => call("goLive"),
     destroy() {
@@ -149,7 +168,7 @@ export interface FakeServicesOptions {
 
 /** Studio services with a fake loader and player; everything they receive is logged. */
 export function fakeServices(options: FakeServicesOptions): { services: StudioServices; log: FakeLog } {
-  const log: FakeLog = { loads: [], contexts: [], players: [], calls: [] };
+  const log: FakeLog = { loads: [], contexts: [], players: [], created: [], calls: [] };
   let lastInput: SourceInput | undefined;
   const services: StudioServices = {
     target: options.target ?? "web",
@@ -173,7 +192,9 @@ export function fakeServices(options: FakeServicesOptions): { services: StudioSe
     },
     createPlayer(playerOptions) {
       log.players.push(playerOptions);
-      return fakePlayer(playerOptions, log, lastInput, options.seekable);
+      const player = fakePlayer(playerOptions, log, lastInput, options.seekable);
+      log.created.push(player);
+      return player;
     },
   };
   return { services, log };

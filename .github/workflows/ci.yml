@@ -48,7 +48,7 @@ jobs:
       - run: pnpm test
         env:
           # The hosted runners have Chrome but no ffmpeg, so the CLI's real render tests skip here;
-          # the e2e job provides both and runs them, where a missing one fails.
+          # the e2e (Linux) and cli-render (Windows, macOS) jobs install ffmpeg and run them, where a missing one fails.
           SWARMLOOM_TEST_DEPS: optional
       # After the build, so the check also reads the bundlers' module paths in each dist/.
       - if: matrix.os == 'ubuntu-latest'
@@ -77,13 +77,75 @@ jobs:
           echo "::warning::apt mirrors unreachable, installing the browsers without their system packages"
           pnpm exec playwright install chromium firefox
       - run: pnpm test:browser
-      # The in-browser exporter in Firefox too: its foreignObject rasterising and WebCodecs differ from Chromium's.
+      # The in-browser exporter, the stage and the live page in Firefox too: its foreignObject rasterising, native
+      # controls, media queries, WebCodecs and scrolling differ from Chromium's. The webkit job runs them in WebKit.
       - run: pnpm test:firefox
       # Builds the --e2e Chromium package and drives it in Playwright's Chromium (apps/extension/test/e2e).
       - run: pnpm test:e2e
-      # The CLI tests on a real browser and ffmpeg (apps/cli/test/render.test.ts, snapshot.test.ts):
-      # they drive the built render page, and under CI a missing browser, ffmpeg or page fails them.
+      # The CLI tests on a real browser and ffmpeg (apps/cli/test/render.test.ts, snapshot.test.ts, and
+      # launch.test.ts's sandbox fallback): they drive the built render page, and under CI a missing browser,
+      # ffmpeg or page fails them.
       - run: pnpm build
       - name: Install ffmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
-      - run: pnpm exec vitest run --project unit apps/cli/test/render.test.ts apps/cli/test/snapshot.test.ts
+      - run: pnpm exec vitest run --project unit apps/cli/test/render.test.ts apps/cli/test/snapshot.test.ts apps/cli/test/launch.test.ts
+
+  # The Firefox tests again in Playwright's WebKit (Safari's engine): its foreignObject rasterising, native
+  # controls, media queries, WebCodecs and scrolling differ from Chromium's and Firefox's.
+  # The runner image lacks WebKit's shared libraries (GStreamer, libmanette, ...), so they come from apt here.
+  # Every step must pass: a failed apt or browser download fails the job, it never turns into skipped tests.
+  webkit:
+    name: browser (webkit, ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - name: Install WebKit's system packages
+        timeout-minutes: 10
+        run: pnpm exec playwright install-deps webkit
+      - name: Install WebKit
+        timeout-minutes: 10
+        run: pnpm exec playwright install webkit
+      - run: pnpm test:webkit
+
+  # The same CLI tests on Windows and macOS, whose paths, file names and output checks differ from Linux's.
+  # The runner images carry Google Chrome, which the CLI finds in its default install location; ffmpeg is installed here.
+  cli-render:
+    name: cli render (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: pnpm build
+      # Chocolatey's bin folder holds a shim that relays stdin to the real ffmpeg.exe; the real folder goes first
+      # on PATH so the CLI finds and pipes its frames to ffmpeg itself.
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install ffmpeg --no-progress -y
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem "$env:ChocolateyInstall\lib\ffmpeg" -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (!$exe) { throw "no ffmpeg.exe in the Chocolatey package" }
+          $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - run: pnpm exec vitest run --project unit apps/cli/test/render.test.ts apps/cli/test/snapshot.test.ts apps/cli/test/launch.test.ts

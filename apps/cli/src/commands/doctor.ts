@@ -50,10 +50,27 @@ async function checkBrowser(io: CliIo, host: HostEnv, flag: string | undefined):
     return false;
   }
   try {
-    const browser = await guard(launchBrowser(found.path), "Starting the browser", 70_000);
+    let unsandboxed = false;
+    const launched = launchBrowser(found.path, {
+      webPages: false,
+      requireSandbox: false,
+      onUnsandboxed: () => {
+        unsandboxed = true;
+      },
+    });
+    const browser = await guard(launched, "Starting the browser", 70_000);
     const version = browser.version();
     await browser.close();
     report(io, "ok", "Browser", `${version} at ${found.path} (from ${found.source})`);
+    if (unsandboxed) {
+      report(
+        io,
+        "warn",
+        "  sandbox",
+        "Does not start here, so the browser runs without it and web pages get no WebGL; only open pages you trust",
+        "Run as a normal user (not root) with user namespaces turned on",
+      );
+    }
     const install = headlessShellInstallCommand(playwright.version);
     const pinned = playwright.revisions["chromium-headless-shell"];
     const revision = cachedRevision(found.path);

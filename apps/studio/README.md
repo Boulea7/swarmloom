@@ -5,9 +5,9 @@ SwarmLoom Studio is the installable web app (PWA). Open or drop a file, paste te
 ## What it does
 
 - **Home:** a drop zone, a file picker, paste (with a format choice; notebooks, asciicasts, patches, FreeMind maps, RTF and Lottie JSON are recognised by content), a URL field, and a gallery of every sample in the repository's `examples/` folder, copied in at build time with static thumbnails. Licence notes next to the samples (such as `examples/doc/SOURCES.md`) are copied too, without a tile.
-- **Player:** a full-bleed inline stage, a scrubber (a seek slider on the player's time line when the player has `seek(t)`, a progress bar otherwise), a settings drawer (a bottom sheet on phones), export (a frame-exact video made in the page with WebCodecs, or the `npx` command for the same file), and share links that carry small text files inside the URL hash.
+- **Player:** a full-bleed inline stage, a scrubber (a seek slider on the player's time line when the player has `seek(t)`, a progress bar otherwise), a settings drawer (a bottom sheet on phones), export (a frame-exact video made in the page with WebCodecs, or the `swarmloom render` command for the same file), and share links that carry small text files inside the URL hash.
 - **Layouts:** desktop, tablet, phone, foldables (two panes via Viewport Segments, refined by Device Posture when available) and a watch face.
-- **PWA:** installable, a share target for files and text, an OS file handler, and a hand-written service worker. At install it caches the shell and every format reader with the chunks it imports (for PDF, only the pdf.js build this browser runs), so local files open offline. The worker's version hashes the content of every cached file, so a change to the page, the manifest or an icon alone still reaches installed copies.
+- **PWA:** installable, a share target for files and text, an OS file handler, and a hand-written service worker. The worker installs on the first visit, not only when the app is installed: it caches the shell and, in the background, every format reader and the in-browser video exporter with the chunks they import (for PDF, only the pdf.js build this browser runs), so local files open and export offline in a tab as well. The worker's version hashes the content of every cached file, so a change to the page, the manifest or an icon alone still reaches installed copies.
 - **Languages:** zh-CN, zh-TW, en, ja, ko, es, fr and de. Studio picks the browser language, and the settings can change it.
 
 Files are read in the browser and never uploaded. Remote https images and fonts in documents load without a referrer; the "Load web images and fonts" setting turns them off. A Content-Security-Policy in `index.html` backs up the format readers: only Studio's own scripts run, and from the web only https images and fonts load, plus the file you open. With the setting off, `src/csp.ts` adds a stricter policy that also blocks web images and fonts; turning it back on asks for a page reload. Back and Forward reopen each entry's own local file while the tab keeps it (the last 8); older entries ask you to open the file again. Changing the language keeps a running build and anything typed on the home page.
@@ -31,7 +31,7 @@ Files are read in the browser and never uploaded. Remote https images and fonts 
 
 ## Keyboard
 
-Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `S` settings, `E` export, `Esc` back. Playback keys (`Space`, `1` to `3`, `M`, `T`, `R`, `L`) belong to the core player toolbar. On the scrubber, arrows move 2%, `Page Up`/`Page Down` 10%, and `Home`/`End` jump to the ends.
+Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `S` settings, `E` export, `Esc` back. Playback keys (`Space`, `1` to `3`, `M`, `T`, `R`, `L`) belong to the core player toolbar; a speed, sound or tour change made there becomes Studio's setting, so share links and exports use it. On the scrubber, arrows move 2%, `Page Up`/`Page Down` 10%, and `Home`/`End` jump to the ends.
 
 ## Build targets
 

@@ -96,3 +96,31 @@ test("CI typechecks the release scripts through the root typecheck", () => {
   const steps = parse(read(".github/workflows/ci.yml")).jobs.check.steps;
   assert.ok(steps.some((/** @type {{ run?: string }} */ step) => step.run === "pnpm typecheck"));
 });
+
+test("CI runs the real CLI render tests, with ffmpeg required, on every OS it checks", () => {
+  // The check job may skip them (SWARMLOOM_TEST_DEPS=optional) only because another job runs them on that OS.
+  /** @type {Record<string, { "runs-on": string, strategy?: { matrix: { os: string[] } }, env?: Record<string, string>, steps: { run?: string, env?: Record<string, string> }[] }>} */
+  const jobs = parse(read(".github/workflows/ci.yml")).jobs;
+  const covered = Object.values(jobs).flatMap((job) => {
+    const optional = (/** @type {Record<string, string> | undefined} */ env) => env?.SWARMLOOM_TEST_DEPS === "optional";
+    const files = ["render.test.ts", "snapshot.test.ts", "launch.test.ts"].map((file) => `apps/cli/test/${file}`);
+    const runs = job.steps.some((step) => files.every((file) => step.run?.includes(file)) && !optional(step.env));
+    return runs && !optional(job.env) ? (job.strategy?.matrix.os ?? [job["runs-on"]]) : [];
+  });
+  for (const os of jobs.check.strategy?.matrix.os ?? []) assert.ok(covered.includes(os), os);
+});
+
+test("CI runs the WebKit tests unconditionally, so a failed WebKit install fails CI", () => {
+  // Safari's engine has no other regression entry: an apt or download failure must not become a skipped suite.
+  /** @type {Record<string, { if?: string, "continue-on-error"?: unknown, steps: { run?: string, if?: string, "continue-on-error"?: unknown }[] }>} */
+  const jobs = parse(read(".github/workflows/ci.yml")).jobs;
+  const job = Object.values(jobs).find((candidate) => candidate.steps.some((step) => step.run === "pnpm test:webkit"));
+  assert.ok(job, "no CI job runs pnpm test:webkit");
+  const webkitSteps = job.steps.filter((step) => /\bwebkit\b/.test(step.run ?? ""));
+  assert.ok(webkitSteps.some((step) => /playwright install(?:-deps| --with-deps)\b.*\bwebkit\b/.test(step.run ?? "")));
+  for (const unit of [job, ...webkitSteps]) {
+    assert.equal(unit.if, undefined, `conditional: ${JSON.stringify(unit)}`);
+    assert.equal(unit["continue-on-error"], undefined, `continue-on-error: ${JSON.stringify(unit)}`);
+  }
+  for (const step of webkitSteps) assert.doesNotMatch(step.run ?? "", /\|\||&&\s*exit 0/, "install falls back");
+});

@@ -138,7 +138,8 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
         SWARMLOOM_RENDER_DIR: EXPORT_RENDER_DIR,
       });
       const { code, stderr } = await run.done;
-      expect(stderr).toBe("");
+      // --quiet still warns when the browser runs without its sandbox (on hosts where it cannot start).
+      expect(stderr.replace(/^.*runs without one.*\n/m, "")).toBe("");
       expect(code).toBe(0);
       const file = path.join(work, "welcome.mp4");
       const info = await probe(file);

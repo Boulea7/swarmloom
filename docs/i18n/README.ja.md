@@ -163,7 +163,7 @@ SwarmLoom は Web ページやファイルをレイヤーに分割し、読む�
 
 ### ソースからビルド
 
-GitHub Releases、npm パッケージ、ストアでの公開は今後予定しています。現時点ではソースからビルドしてください。Node.js 22.12 以降が必要で、pnpm のバージョンは `packageManager` に固定されています。
+拡張機能と CLI のダウンロード、npm パッケージ、ストアでの公開は今後予定しています（`promo-v1` リリースに含まれるのは紹介動画と字幕だけです）。現時点ではソースからビルドしてください。Node.js 22.12 以降が必要で、pnpm のバージョンは `packageManager` に固定されています。
 
 ```bash
 git clone https://github.com/Boulea7/swarmloom.git
@@ -272,7 +272,7 @@ Chrome / Edge では Studio を開き、アドレスバーまたはメニュー�
 ## ロードマップ
 
 - **現在**：オンライン Studio、Web ページと 20 種類のファイルフォーマット、CLI または Studio 内でのフレーム単位の動画書き出し、ソースからビルドできる Chrome / Edge / Firefox / Safari 拡張機能。
-- **次に**：初の GitHub Release と npm パッケージ、ストアでの公開と署名付き拡張機能、スマートフォンと Safari 搭載デバイスでのテスト。
+- **次に**：初のソフトウェアリリース（GitHub での拡張機能と CLI のダウンロード、npm パッケージ）、ストアでの公開と署名付き拡張機能、スマートフォンと Safari 搭載デバイスでのテスト。
 - **今後**：対応フォーマットとプラットフォームの拡充。公開時期は未定です。[Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas) でアイデアをお寄せください。
 
 ## 貢献とサポート

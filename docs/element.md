@@ -13,9 +13,30 @@ description: 使用 <swarm-loom> 在任意网页中嵌入光标重建。
 
 ## 安装与注册
 
+`@swarmloom/element` 还没有发布到 npm，目前从源码构建（需要 Node.js 22.12 或更高版本）：
+
 ```bash
-npm install @swarmloom/element
+git clone https://github.com/Boulea7/swarmloom.git
+cd swarmloom
+corepack enable
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install
+pnpm --filter "@swarmloom/element..." build
 ```
+
+最后一条命令构建元素及其依赖的工作区包，产物写入 `packages/element/dist/`。之后任选一种方式使用：
+
+- **不用打包器**：把整个 `packages/element/dist/` 目录复制到站点，引入[脚本构建](#脚本构建)，它会自行注册元素。
+- **使用打包器**：把构建好的目录安装到项目中，再按下面的方式注册元素。
+
+  ```bash
+  npm install /path/to/swarmloom/packages/element
+  # 或使用 pnpm：
+  pnpm add link:/path/to/swarmloom/packages/element
+  ```
+
+  两者都以链接方式引用该目录而不是复制，所以要保留这份源码，拉取更新后重新构建。
+
+发布到 npm 后，这一步改为 `npm install @swarmloom/element`。
 
 在客户端注册一次：
 
@@ -76,7 +97,7 @@ swarm-loom {
 
 ## 使用 Light DOM 内容
 
-没有 `src` 时，组件规划把 Light DOM 子节点作为构建内容：
+没有 `src` 时，组件把自己的 Light DOM 子节点作为构建内容：
 
 ```html
 <swarm-loom controls reduced-motion="auto">
@@ -87,7 +108,9 @@ swarm-loom {
 </swarm-loom>
 ```
 
-这是子树快照，不会执行其中的脚本或复制应用状态。需要加载远程来源时不要同时依赖 Light DOM 回退内容。
+组件会等子节点解析完成、其中的 Web 字体和图片加载后再生成快照。子节点留在页面布局中，页面没有指定高度时由它们决定元素高度。构建期间舞台覆盖在子节点上方，并带有 `aria-hidden`，辅助技术仍读取真实的子节点；播放器“上线”后，真实、可交互的子节点重新显示。
+
+这是子树快照，不会执行其中的脚本或复制应用状态。设置了 `src` 时子节点不会显示，来源加载失败时也不会作为回退内容。
 
 ## 方法
 
@@ -141,9 +164,20 @@ el.addEventListener("swarm-done", () => {
 
 事件负载以组件发布的类型声明为准；监听回调不应阻塞播放循环。
 
-## CDN 构建 <Badge type="warning" text="规划中" />
+## 脚本构建 <Badge type="info" text="从源码构建" />
 
-包计划附带 `dist/swarm-loom.global.js` IIFE 构建，用于无打包器页面。正式示例会随发布版给出固定版本 URL 和全局名称；不要在生产环境引用未固定版本的 `latest`。
+上面的构建同时生成 `dist/swarm-loom.global.js`，这是供无打包器页面使用的 IIFE 构建。脚本加载后会自行注册 `<swarm-loom>`，并通过 `window.SwarmLoom` 提供 `define`、`configure`、`SwarmLoomElement` 和 `TAG_NAME`。
+
+```html
+<script src="/vendor/swarmloom/swarm-loom.global.js"></script>
+<swarm-loom src="/examples/intro.md" inview controls></swarm-loom>
+```
+
+脚本包含播放引擎，但不包含适配器代码。来源第一次需要某个适配器时，会相对脚本 URL 加载 `swarm-loom.adapters.js` 和 `chunks/` 中对应的分块；PDF 解析器等 Worker 文件从 `assets/` 加载。因此要把整个 `dist/` 目录一起部署，并用普通 `<script>` 引入（不加 `type="module"`），脚本才能找到自己的 URL。
+
+`SwarmLoom.configure({ createPlayer, formats, maxBytes })` 替换所有元素共用的运行时，例如限制可用格式或降低下载上限（默认 50 MB），对调用之后加载的来源生效。
+
+发布到 npm 后，unpkg 和 jsDelivr 会提供同一文件，例如 `https://cdn.jsdelivr.net/npm/@swarmloom/element@<version>/dist/swarm-loom.global.js`。生产环境请固定版本，不要引用未固定版本的 `latest`。
 
 ## 可访问性与性能
 

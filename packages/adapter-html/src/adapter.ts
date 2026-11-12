@@ -9,7 +9,7 @@ import {
 import type { AdapterContext, Blueprint, BlueprintSource, Plugin, SourceInput } from "@swarmloom/core";
 import { decodeHtml, isFullDocument } from "./detect";
 import { renderInFrame } from "./frame";
-import { applyNetworkPolicy, type NetworkPolicy } from "./policy";
+import { applyNetworkPolicy, localOrigin, type NetworkPolicy } from "./policy";
 import { prepareDocument } from "./prepare";
 import { sanitizeFragment } from "./sanitize";
 import { findTimelinePlugin, type KeyframeTimeline, timelineLayers } from "./timeline";
@@ -178,7 +178,7 @@ export function createHtmlAdapter(options: HtmlAdapterOptions = {}): TextAdapter
         const colors = FRAGMENT_PAGE[ctx.theme];
         const tpl = ctx.document.createElement("template");
         tpl.innerHTML = sanitizeFragment(src.text, win);
-        const refused = applyNetworkPolicy(tpl.content, network, baseUrl);
+        const refused = applyNetworkPolicy(tpl.content, network, baseUrl, localOrigin(baseUrl));
         if (refused > 0) warnings.push(refusedNote(refused, network));
         const html = `<div class="swarmloom-fragment">${tpl.innerHTML}</div>`;
         const css =

@@ -1,9 +1,13 @@
-import { applyNetworkPolicy, type NetworkPolicy, sourceList } from "./policy";
+import { applyNetworkPolicy, localOrigin, type NetworkPolicy, sourceList } from "./policy";
 import { sanitizeDocument } from "./sanitize";
 
 /** Options of {@link prepareDocument}. */
 export interface PrepareOptions {
-  /** Absolute base URL for relative links and assets (http, https or file). */
+  /**
+   * Absolute base URL for relative links and assets (http, https or file). When it is plain http,
+   * images and fonts from its origin load under either network policy (see `localOrigin`); a
+   * `<base href>` in the document moves where references resolve, never that origin.
+   */
   baseUrl?: string;
   /** Remote subresources the frame may load. Default "https" (images and fonts only). */
   network?: NetworkPolicy;
@@ -34,9 +38,9 @@ const NAMED_ELEMENTS = "img[name],img[id],form[name],form[id],embed[name],embed[
 
 /**
  * Content Security Policy of the capture frame. Scripts, connections, forms, frames, workers and
- * plugins are always off. Images and fonts may come from data:, blob:, the local origin of a plain
- * http `baseUrl` (see `localOrigin`) and, with the default "https" policy, any https: URL; style
- * sheets and media only from data: and blob:.
+ * plugins are always off. Images and fonts may come from data:, blob:, the local origin of the
+ * caller's plain http `baseUrl` (see `localOrigin`; never a base the document sets) and, with the
+ * default "https" policy, any https: URL; style sheets and media only from data: and blob:.
  */
 export function contentSecurityPolicy(opts: Pick<PrepareOptions, "network" | "baseUrl"> = {}): string {
   const remote = sourceList(opts.network ?? "https", opts.baseUrl);
@@ -142,8 +146,9 @@ export function prepareDocument(html: string, win: Window, opts: PrepareOptions 
   for (const el of Array.from(doc.querySelectorAll(DROP_ALWAYS.join(",")))) el.remove();
   removeClobbering(doc);
   // The CSP below enforces the same rules; rewriting first avoids blocked requests and srcset
-  // choices that depend on the device pixel ratio.
-  const refused = applyNetworkPolicy(doc, opts.network ?? "https", base);
+  // choices that depend on the device pixel ratio. Only the caller's base names the local origin:
+  // the document's own <base> must not choose a plain-http host for the reader's browser to contact.
+  const refused = applyNetworkPolicy(doc, opts.network ?? "https", base, localOrigin(opts.baseUrl));
 
   const head = doc.head ?? doc.documentElement.insertBefore(doc.createElement("head"), doc.body);
   for (const old of Array.from(head.querySelectorAll("meta[charset]"))) old.remove();
@@ -151,7 +156,7 @@ export function prepareDocument(html: string, win: Window, opts: PrepareOptions 
     meta(doc, { charset: "utf-8" }),
     meta(doc, {
       "http-equiv": "Content-Security-Policy",
-      content: contentSecurityPolicy({ network: opts.network, baseUrl: base }),
+      content: contentSecurityPolicy({ network: opts.network, baseUrl: opts.baseUrl }),
     }),
     meta(doc, { name: "referrer", content: "no-referrer" }),
   ];

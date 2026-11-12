@@ -22,6 +22,7 @@
     "@swarmloom/snapshot-dom": "workspace:*"
   },
   "devDependencies": {
+    "@swarmloom/studio": "workspace:*",
     "esbuild": "^0.28.2",
     "web-ext": "10.8.0"
   }

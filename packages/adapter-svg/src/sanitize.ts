@@ -177,7 +177,8 @@ export function decodeCssEscapes(css: string): string {
  */
 export function sanitizeCss(css: string): string {
   let out = decodeCssEscapes(css).replace(/\\/g, "");
-  out = out.replace(/@import\b[^;]*;?/gi, "");
+  // A space, not "": deleting the inner rule of `@imp@import "a";ort "https://…"` would join a new @import.
+  out = out.replace(/@import\b[^;]*;?/gi, " ");
   out = out.replace(CSS_URL, (whole, _q: string, target: string) => (isSafeCssUrl(target) ? whole : "none"));
   // An unbalanced url( could still hide a request, and image-set()/src() accept bare strings.
   out = out.replace(/url\s*\((?![^)]*\))/gi, "none(");

@@ -348,18 +348,25 @@ export class Engine implements Player {
 
   /** @throws RangeError when speed is not a finite number > 0. */
   setSpeed(speed: number): void {
-    this.#speed = checkSpeed(speed);
+    const next = checkSpeed(speed);
+    if (next === this.#speed) return;
+    this.#speed = next;
+    this.#emitSettings();
   }
 
   setSound(enabled: boolean): void {
+    const was = this.#sound.enabled;
     this.#sound.setEnabled(Boolean(enabled));
+    if (this.#sound.enabled !== was) this.#emitSettings();
   }
 
   /** @throws RangeError for an unknown mode. */
   setFollow(mode: FollowMode): void {
     if (!isFollowMode(mode)) throw new RangeError(`follow must be "scroll", "tour" or "none", got ${String(mode)}`);
+    const changed = mode !== this.#follow;
     this.#follow = mode;
     if (mode === "none") this.#build.schedule.setBoundary(Number.POSITIVE_INFINITY);
+    if (changed) this.#emitSettings();
   }
 
   /**
@@ -1247,6 +1254,10 @@ export class Engine implements Player {
     if (this.#state === state) return;
     this.#state = state;
     this.#emitter.emit({ type: "state", state });
+  }
+
+  #emitSettings(): void {
+    if (this.#emitter.has("settings")) this.#emitter.emit({ type: "settings", ...this.settings() });
   }
 
   #emitProgress(): void {

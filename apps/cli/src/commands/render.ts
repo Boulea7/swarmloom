@@ -117,8 +117,11 @@ Programs:
       --chrome <path>     Chrome/Chromium/Edge/Brave executable. Default: SWARMLOOM_CHROME, then
                           Playwright's chromium-headless-shell, then an installed browser
       --ffmpeg <path>     ffmpeg 4+ executable. Default: SWARMLOOM_FFMPEG, then PATH
+      --require-sandbox   Fail when the browser's sandbox does not start (as root, or with user
+                          namespaces turned off) instead of running the browser without it
 
-  -q, --quiet             Errors only: no progress, warnings or summary
+  -q, --quiet             Errors only: no progress, warnings or summary. The warning that the
+                          browser runs without its sandbox still shows
       --verbose           Echo the render page's console and blocked requests to stderr
   -h, --help              Show this help
 
@@ -168,6 +171,7 @@ const OPTIONS = {
   "live-top": { type: "boolean" },
   chrome: { type: "string" },
   ffmpeg: { type: "string" },
+  "require-sandbox": { type: "boolean" },
   quiet: { type: "boolean", short: "q" },
   verbose: { type: "boolean" },
   help: { type: "boolean", short: "h" },
@@ -212,6 +216,7 @@ export interface RenderOptions {
   remoteAssets: boolean;
   chrome?: string;
   ffmpeg?: string;
+  requireSandbox: boolean;
   quiet: boolean;
   verbose: boolean;
 }
@@ -310,6 +315,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     settings,
     chrome: values.chrome,
     ffmpeg: values.ffmpeg,
+    requireSandbox: values["require-sandbox"] ?? false,
     quiet: values.quiet ?? false,
     verbose: values.verbose ?? false,
   };
@@ -318,18 +324,32 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
 /** True when two of the given output paths name one file (see {@link sameFileKey}). */
 function hasSharedPath(files: (string | undefined)[]): boolean {
   const present = files.filter((file): file is string => file !== undefined);
-  return new Set(present.map(sameFileKey)).size !== present.length;
+  return new Set(present.map((file) => sameFileKey(file))).size !== present.length;
 }
 
 /**
- * Comparison key for "is this the same file?": NTFS and default APFS volumes ignore case (APFS also
- * Unicode normalization), so `take.mp4` and `TAKE.MP4` name one file there, and Win32 drops trailing
- * dots and spaces from path segments, so `take.mp4.` and `take.mp4 ` open `take.mp4` (path.resolve
- * keeps them). Folding on every platform rejects such twins where they are distinct files too, which
- * is harmless next to overwriting the video.
+ * Comparison key for "is this the same file?" of a resolved path: NTFS and default APFS volumes ignore
+ * case (APFS also Unicode normalization), so `take.mp4` and `TAKE.MP4` name one file there, and Win32
+ * drops trailing dots and spaces from path segments, so `take.mp4.` and `take.mp4 ` open `take.mp4`
+ * (path.resolve keeps them). Windows keys also drop the namespace prefix (see
+ * {@link stripWin32Namespace}). Folding on every platform rejects such twins where they are distinct
+ * files too, which is harmless next to overwriting the video.
+ * @param paths The platform's path module; tests pass `path.win32` to check Windows keys anywhere.
  */
-function sameFileKey(file: string): string {
-  return caseFold(file).split(path.sep).map(trimTrailingDotsAndSpaces).join(path.sep);
+export function sameFileKey(file: string, paths: path.PlatformPath = path): string {
+  const named = paths.sep === "\\" ? stripWin32Namespace(file) : file;
+  return caseFold(named).split(paths.sep).map(trimTrailingDotsAndSpaces).join(paths.sep);
+}
+
+/**
+ * `\\?\C:\work\take.mp4` and `\\.\C:\work\take.mp4` open `C:\work\take.mp4`, and `\\?\UNC\srv\share\x`
+ * opens `\\srv\share\x`; path.win32.resolve keeps these prefixes (and turns `//?/` into `\\?\`).
+ */
+function stripWin32Namespace(file: string): string {
+  const prefix = /^\\\\[?.]\\(UNC\\)?/i.exec(file);
+  if (!prefix) return file;
+  const rest = file.slice(prefix[0].length);
+  return prefix[1] ? `\\\\${rest}` : rest;
 }
 
 /**
@@ -583,6 +603,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
         ? { audio: Boolean(opts.audioOut), events: Boolean(opts.eventsOut), manifest: Boolean(opts.manifestOut) }
         : undefined,
       remoteAssets: opts.remoteAssets,
+      requireSandbox: opts.requireSandbox,
       quiet: opts.quiet,
       verbose: opts.verbose,
     },
@@ -594,6 +615,8 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       renderDir,
       snapshotBundle: assets.snapshotBundle,
       tmpRoot: ctx.tmpRoot,
+      // A security downgrade, so it shows under --quiet too.
+      onUnsandboxed: (message) => warn(io, message),
     },
   );
   await writeEvidence(opts, summary, {

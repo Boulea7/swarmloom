@@ -55,7 +55,7 @@ export interface PageRenderOptions {
    * requests itself.
    */
   network?: "https" | "none";
-  /** Wait for the page's next few animation frames after init() and each step(); see `RenderDeps.awaitPaint`. */
+  /** Wait for the page's next animation frame or two after init() and each step(); see `RenderDeps.awaitPaint`. */
   awaitPaint?: boolean;
 }
 
