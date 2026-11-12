@@ -112,7 +112,9 @@ def woven_picture() -> bytes:
                 draw.rectangle([x, y, x + step, y + 26], fill=colour)
             else:
                 draw.rectangle([x, y, x + 30, y + 26], fill=colour)
-    # No pointers in the picture: drawn arrows read as stray system cursors next to the swarm's own.
+    # A few cursor-like triangles on top.
+    for cx, cy, colour in [(210, 160, INK), (520, 300, INK), (760, 120, INK)]:
+        draw.polygon([(cx, cy), (cx, cy + 46), (cx + 13, cy + 34), (cx + 32, cy + 34)], fill="#" + colour)
     buf = io.BytesIO()
     img.quantize(colors=16).save(buf, format="PNG", optimize=True)
     return buf.getvalue()
@@ -176,8 +178,8 @@ def bullets_slide(prs: Presentation) -> None:
     body = slide.placeholders[1].text_frame
     items = [
         (0, "Rebuilds pages, documents, slides, sheets, code and 3D models live"),
-        (0, "Repeatable CLI renders: same seed and setup, same raw frames and PCM"),
-        (1, "Seeded randomness and a virtual clock, one frame at a time"),
+        (0, "Deterministic: same seed and environment, same raw frames and PCM"),
+        (1, "Seeded randomness and a virtual clock for exports"),
         (0, "Exports MP4/WebM with synced audio, plus silent GIF/WebP"),
         (0, "Studio PWA, browser extensions and a CLI"),
     ]
@@ -207,7 +209,7 @@ def image_slide(prs: Presentation) -> None:
         1600200,
         4267200,
         3600450,
-        "Every format becomes layers: boxes, text, paths, images and more.",
+        "Every format becomes boxes, text, paths and images.",
         24,
         INK,
         True,
@@ -215,20 +217,17 @@ def image_slide(prs: Presentation) -> None:
     frame = caption.text_frame
     frame.vertical_anchor = MSO_ANCHOR.MIDDLE
     para = frame.add_paragraph()
-    para.text = "The swarm then draws, types and paints them, mostly in reading order."
+    para.text = "The swarm then draws, types and paints each layer in reading order."
     style_runs(para, 18, MUTED)
 
 
 def chart_slide(prs: Presentation) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "Formats by kind"
+    slide.shapes.title.text = "Formats per release"
     style_runs(slide.shapes.title.text_frame.paragraphs[0], 40, INK, True)
 
-    base_y, left, bar_w, gap, unit = 5600000, 1500000, 1100000, 500000, 450000
-    # The 21 entries `swarmloom formats` lists: web (HTML, URL), documents (Markdown, DOCX, DOC, PDF,
-    # OpenDocument, EPUB, RTF, OFD), office (slides, sheets), dev (code, notebook, terminal, patch),
-    # visual (SVG, image, 3D, Lottie, mind map).
-    data = [("Web", 2, INDIGO), ("Docs", 8, TEAL), ("Office", 2, AMBER), ("Dev", 4, CORAL), ("Visual", 5, ORCHID)]
+    base_y, left, bar_w, gap, unit = 5600000, 1500000, 1100000, 500000, 260000
+    data = [("v0.1", 4, INDIGO), ("v0.2", 7, TEAL), ("v0.3", 10, AMBER), ("v0.4", 13, CORAL), ("v1.0", 16, ORCHID)]
     axis = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Emu(left - 300000), Emu(base_y), Emu(10300000), Emu(base_y))
     axis.line.color.rgb = rgb(MUTED)
     axis.line.width = Pt(1.5)
@@ -260,7 +259,7 @@ def closing_slide(prs: Presentation) -> None:
     add_text(slide, 609600, 700000, 10972800, 1000000, "Thank you", 54, INK, True, PP_ALIGN.CENTER)
     add_text(slide, 609600, 1650000, 10972800, 500000, "github.com/Boulea7/swarmloom · MIT licence", 20, MUTED, False, PP_ALIGN.CENTER)
 
-    rows = [("Platform", "Start with"), ("Browser extension", "Alt+Shift+W on a web page"), ("Studio (PWA)", "Drop a file"), ("CLI", "swarmloom render deck.pptx")]
+    rows = [("Platform", "Start with"), ("Browser extension", "Alt+Shift+W on any page"), ("Studio (PWA)", "Drop a file"), ("CLI", "swarmloom render (in development)")]
     table = slide.shapes.add_table(len(rows), 2, Emu(2438400), Emu(2700000), Emu(7315200), Emu(1900000)).table
     table.columns[0].width = Emu(2900000)
     table.columns[1].width = Emu(4415200)
