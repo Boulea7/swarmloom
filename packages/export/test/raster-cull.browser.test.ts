@@ -55,6 +55,37 @@ it("leaves out what is far from the viewport, keeping layout and what reaches in
   expect({ red: at(75, 50), green: at(25, 40) }).toEqual({ red: [255, 0, 0], green: [0, 255, 0] });
 });
 
+it("writes far boxes empty inside wrappers, lines and tables, keeping where the rest lands", async () => {
+  // Four boxes, the first three far above the view, then a red marker laid out by the same parent.
+  const items = (item: (i: number) => string, red: string) => `${[0, 1, 2, 3].map(item).join("")}${red}`;
+  const red = "background:rgb(255,0,0)";
+  const sections = items(
+    (i) => `<section style="height:300px;padding:1px"><p>far ${i}</p></section>`,
+    `<p id=red style="height:98px;margin:0;${red}"></p>`,
+  );
+  const cases = {
+    contents: `<div style="display:contents">${sections}</div>`,
+    "custom element": `<app-root>${sections}</app-root>`,
+    "inline blocks": `<div>${items(
+      (i) => `<span style="display:inline-block;vertical-align:top;width:90px;height:300px">far ${i}</span>`,
+      `<span id=red style="display:inline-block;vertical-align:top;width:90px;height:98px;${red}"></span>`,
+    )}</div>`,
+    table: `<table style="border-collapse:collapse">${items(
+      (i) => `<tr><td style="height:300px;border:1px solid">far ${i}</td></tr>`,
+      `<tr><td id=red style="height:98px;width:90px;padding:0;${red}"></td></tr>`,
+    )}</table>`,
+  };
+  for (const [name, html] of Object.entries(cases)) {
+    const { win, rasterizer } = await frameOf(`<!doctype html><body style="margin:0">${html}`);
+    const marker = win.document.getElementById("red") as HTMLElement;
+    win.scrollTo(0, marker.getBoundingClientRect().top - 20);
+    const { svg, stats } = await rasterizer.snapshot();
+    expect({ name, far: svg.includes("far 0"), culled: stats.culled > 0 }).toEqual({ name, far: false, culled: true });
+    const at = await drawn(rasterizer);
+    expect({ name, above: at(50, 17), top: at(50, 22) }).toEqual({ name, above: [255, 255, 255], top: [255, 0, 0] });
+  }
+});
+
 it("keeps what escapes a clipping or transparent box away from view: fixed boxes and SVG resources", async () => {
   const { win, rasterizer } = await frameOf(`<body style="margin:0">
     <div style="position:absolute;width:0;height:0;overflow:hidden"><svg>

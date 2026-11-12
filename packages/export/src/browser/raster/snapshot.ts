@@ -82,6 +82,7 @@ const NON_ASCII = /[\u0080-\u{10ffff}]/u;
 const NON_ASCII_ALL = /[\u0080-\u{10ffff}]/gu;
 /** HTML elements without content, so without `::before`/`::after` boxes worth reading. */
 const VOID = new Set(["img", "input", "br", "hr", "wbr", "area", "col", "select", "textarea"]);
+const PSEUDOS = ["::before", "::after"] as const;
 /**
  * Ink that may reach past the boxes a visibility check measures (shadows, outlines, blur, glyph
  * overhang), CSS px. Subtrees nearer to the viewport than this are always written.
@@ -91,6 +92,20 @@ const INK_MARGIN = 256;
 const HOLLOW_DISPLAYS = new Set(["block", "flow-root", "flex", "grid", "list-item"]);
 /** Of those, the ones that hold their content's margins and floats in (block formatting contexts). */
 const CONTAINED_DISPLAYS = new Set(["flow-root", "flex", "grid"]);
+/** Inline-level boxes laid out as a whole (atomic inlines), by the layout of their content. */
+const ATOMIC_INLINES: ReadonlyMap<string, string> = new Map([
+  ["inline-block", "flow-root"],
+  ["inline-flex", "flex"],
+  ["inline-grid", "grid"],
+]);
+/** `vertical-align` values that place an inline-level box by its edges, whatever its baseline. */
+const EDGE_ALIGNED = new Set(["top", "middle", "bottom", "text-top", "text-bottom"]);
+/** Those a table cell takes; any other aligns it by its baseline. */
+const CELL_ALIGNED = new Set(["top", "middle", "bottom"]);
+/** Table parts that hold rows or cells: rows and groups of rows. */
+const TABLE_ROWS = new Set(["table-row-group", "table-header-group", "table-footer-group", "table-row"]);
+/** Text a table row lays out nothing for: CSS white space (a no-break space is not). */
+const CSS_SPACE = /^[ \t\n\r\f]*$/;
 /** HTML lists: the list items inside one number that list only. */
 const LISTS = new Set(["ol", "ul", "menu"]);
 const SIDES = ["top", "right", "bottom", "left"] as const;
@@ -437,7 +452,9 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView, listed
     const cs = view.win.getComputedStyle(el);
     if (cs.getPropertyValue("display") === "none") continue;
     if (stepsCounter(cs, inList)) return true;
-    for (const pseudo of ["::before", "::after"] as const) {
+    // SVG elements have no such boxes, and the snapshot writes none for void elements either.
+    const pseudos = el.namespaceURI === SVG_NS || VOID.has(el.localName) ? [] : PSEUDOS;
+    for (const pseudo of pseudos) {
       const ps = view.win.getComputedStyle(el, pseudo);
       const content = ps.getPropertyValue("content");
       if (content && content !== "none" && content !== "normal" && stepsCounter(ps, inList)) return true;
@@ -462,43 +479,124 @@ function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView)
 }
 
 /**
- * Whether `el` may be written as an empty box: an in-flow block whose children are all away from
- * the viewport, in a layout where its content moves nothing else. Its used size is written anyway
- * (computed width and height), so what follows keeps its place, provided the box does not share
- * margins or floats with its content (it is a block formatting context, or has border or padding
- * on both edges and no floats inside), no baseline is read from it and its content steps no
- * counter. Off-screen sections of a long live page then cost one element each.
- *
- * @param context The parent lays its children out in block flow, or in a flex or grid container
- *   that aligns nothing by baseline, and its own baseline positions nothing.
+ * Where an element sits, as far as writing it as an empty box goes (see {@link hollowable}):
+ * - LOOSE: a baseline may be read from it, or its parent lays it out in some other way;
+ * - FLOW: in block flow, or in a flex or grid container that aligns nothing by baseline, and no
+ *   baseline is read from it;
+ * - TABLE: in a table's grid (a row group or row of a table, or a cell of such a row), and no
+ *   baseline is read from the table;
+ * - FAR_ROW: as TABLE, a cell of a row with nothing in it that can show ({@link faintRow}).
  */
-function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView, context: boolean): boolean {
-  const local = el.localName;
-  if (!context || VOID.has(local) || local === "canvas" || local === "video" || local === "iframe") return false;
-  const display = cs.getPropertyValue("display");
-  const position = cs.getPropertyValue("position");
-  if (!HOLLOW_DISPLAYS.has(display) || (position !== "static" && position !== "relative")) return false;
-  if (cs.getPropertyValue("float") !== "none" || cs.getPropertyValue("align-self").includes("baseline")) return false;
-  if (!cs.getPropertyValue("width").endsWith("px") || !cs.getPropertyValue("height").endsWith("px")) return false;
+const LOOSE = 0;
+const FLOW = 1;
+const TABLE = 2;
+const FAR_ROW = 3;
+type Context = typeof LOOSE | typeof FLOW | typeof TABLE | typeof FAR_ROW;
+
+/**
+ * Whether an inline-level box or a table cell is placed by its edges rather than by the baseline
+ * of its content: aligned by its top, middle or bottom, or an inline block that clips its content
+ * (its baseline is then its bottom margin edge).
+ */
+function edgeAligned(cs: CSSStyleDeclaration, display: string): boolean {
+  const align = cs.getPropertyValue("vertical-align");
+  if (display === "table-cell") return CELL_ALIGNED.has(align);
+  if (EDGE_ALIGNED.has(align)) return true;
+  if (display !== "inline-block") return false;
   const overflow = cs.getPropertyValue("overflow-x");
-  const contained =
-    CONTAINED_DISPLAYS.has(display) ||
-    (overflow !== "visible" && overflow !== "clip") ||
-    /\b(?:layout|paint|strict|content)\b/.test(cs.getPropertyValue("contain"));
+  const source = cs.getPropertyValue("baseline-source");
+  return overflow !== "visible" && overflow !== "clip" && (source === "" || source === "auto");
+}
+
+/**
+ * Whether `el` may be written as an empty box: its children are all away from the viewport, and
+ * its place does not depend on them. Its used size is written anyway (computed width and height),
+ * so what follows keeps its place, provided no baseline is read from it, its content steps no
+ * counter, and it is:
+ * - an in-flow block in a {@link FLOW} context that does not share margins or floats with its
+ *   content (a block formatting context, or border or padding on both edges and no floats inside);
+ * - an inline block, flex or grid container placed in its line by its edges ({@link edgeAligned});
+ * - a cell of one row and column in a {@link TABLE} context, placed by its edges: the grid keeps
+ *   the widths written on every cell and the height written on this one.
+ * Off-screen sections of a long live page then cost one element each, table rows one per cell.
+ */
+function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView, context: Context): boolean {
+  const local = el.localName;
+  if (VOID.has(local) || local === "canvas" || local === "video" || local === "iframe") return false;
+  const display = cs.getPropertyValue("display");
+  let contained = true;
+  if (HOLLOW_DISPLAYS.has(display)) {
+    if (context !== FLOW || cs.getPropertyValue("float") !== "none") return false;
+    if (cs.getPropertyValue("align-self").includes("baseline")) return false;
+    const overflow = cs.getPropertyValue("overflow-x");
+    contained =
+      CONTAINED_DISPLAYS.has(display) ||
+      (overflow !== "visible" && overflow !== "clip") ||
+      /\b(?:layout|paint|strict|content)\b/.test(cs.getPropertyValue("contain"));
+  } else if (display === "table-cell") {
+    const cell = el as Partial<HTMLTableCellElement>;
+    if (context !== TABLE && context !== FAR_ROW) return false;
+    if ((cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1) return false;
+    if (!edgeAligned(cs, display)) return false;
+  } else if (!ATOMIC_INLINES.has(display) || local === "button" || !edgeAligned(cs, display)) {
+    // A button takes its baseline from its content whatever its overflow.
+    return false;
+  }
+  const position = cs.getPropertyValue("position");
+  if (position !== "static" && position !== "relative") return false;
+  if (!cs.getPropertyValue("width").endsWith("px") || !cs.getPropertyValue("height").endsWith("px")) return false;
   if (!contained) {
     const edge = (side: "top" | "bottom") => px(cs, `border-${side}-width`) > 0 || px(cs, `padding-${side}`) > 0;
     if (!edge("top") || !edge("bottom")) return false;
   }
   if (el.getBoundingClientRect().height <= 0) return false;
+  // The row of a FAR_ROW cell was found away from the viewport, all of it.
+  if (context !== FAR_ROW && !offscreen(walk, el, view, !contained)) return false;
   // The box keeps its own counters and pseudo-elements, its content's would go.
-  return offscreen(walk, el, view, !contained) && !stepsCounters(walk, flatChildren(walk, el), view, isList(el));
+  return !stepsCounters(walk, flatChildren(walk, el), view, isList(el));
 }
 
-/** Whether the children of a box with this style sit in a layout {@link hollowable} accepts. */
-function hollowContext(cs: CSSStyleDeclaration): boolean {
+/** The context a box with this display gives its children by its own layout, its baseline aside. */
+function layoutContext(display: string, cs: CSSStyleDeclaration): Context {
+  if (display === "block" || display === "flow-root" || display === "list-item") return FLOW;
+  if (display !== "flex" && display !== "grid") return LOOSE;
+  return cs.getPropertyValue("align-items").includes("baseline") ? LOOSE : FLOW;
+}
+
+/**
+ * The context of the children of `el`, `context` its own (see {@link Context}). An HTML element
+ * without a box (`display: contents`) or with an inline box hands its own on: its block children
+ * are laid out in the box around it (framework wrappers, custom elements). No baseline is read from
+ * a box out of flow, or from an inline box or table cell placed by its edges ({@link edgeAligned}).
+ */
+function childContext(el: Element, cs: CSSStyleDeclaration, context: Context): Context {
   const display = cs.getPropertyValue("display");
-  if (display === "block" || display === "flow-root" || display === "list-item") return true;
-  return (display === "flex" || display === "grid") && !cs.getPropertyValue("align-items").includes("baseline");
+  if (display === "contents" || display === "inline") return el.namespaceURI === XHTML_NS ? context : LOOSE;
+  if (TABLE_ROWS.has(display)) return context === TABLE ? TABLE : LOOSE;
+  const inner = display === "table-cell" ? "flow-root" : ATOMIC_INLINES.get(display);
+  if (inner !== undefined) return edgeAligned(cs, display) ? layoutContext(inner, cs) : LOOSE;
+  const position = cs.getPropertyValue("position");
+  const outOfFlow = position === "absolute" || position === "fixed" || cs.getPropertyValue("float") !== "none";
+  if ((context !== FLOW && !outOfFlow) || cs.getPropertyValue("align-self").includes("baseline")) return LOOSE;
+  return display === "table" ? TABLE : layoutContext(display, cs);
+}
+
+/**
+ * Whether the table row `el` has nothing in it that can show. It is written with what places it
+ * only, and keeps its cells: they hold the table's column widths, row heights and collapsed borders
+ * (and go empty on their own, see {@link hollowable}). Other children would be wrapped in a cell
+ * that takes the row's fonts, so the row has only cells and white space.
+ */
+function faintRow(walk: Walk, el: Element, view: DocView): boolean {
+  for (const child of flatChildren(walk, el)) {
+    if (child.nodeType === 1) {
+      const display = view.win.getComputedStyle(child as Element).getPropertyValue("display");
+      if (display !== "table-cell" && display !== "none") return false;
+    } else if ((child.nodeType === 3 || child.nodeType === 4) && !CSS_SPACE.test(child.nodeValue ?? "")) {
+      return false;
+    }
+  }
+  return offscreen(walk, el, view, false);
 }
 
 /**
@@ -1046,23 +1144,25 @@ function flatChildren(walk: Walk, el: Element): readonly Node[] {
 /**
  * `::before` / `::after` of `el` as a rule on a class of the clone, or null when it has none. Those
  * of an empty box away from the viewport (`hollow`) keep only what sets their size and place, and
- * their counters.
+ * their counters. `inherited` gives what the clone of `el` passes on (read once, if needed).
  */
 function pseudoRules(
   walk: Walk,
   el: Element,
   view: DocView,
-  inherited: InheritedValues,
+  inherited: () => InheritedValues,
   hollow: boolean,
 ): string | null {
   const props = hollow ? walk.baseline.layout : walk.baseline.props;
   let cls: string | null = null;
+  let from: InheritedValues | undefined;
   for (const pseudo of ["::before", "::after"] as const) {
     const ps = view.win.getComputedStyle(el, pseudo);
     const content = ps.getPropertyValue("content");
     if (!content || content === "none" || content === "normal") continue;
     cls ??= `sl${walk.nextClass++}`;
-    const { text } = styleText(walk.baseline, ps, inherited, undefined, props);
+    from ??= inherited();
+    const { text } = styleText(walk.baseline, ps, from, undefined, props);
     if (!hollow) useFonts(walk, ps);
     walk.rules.push(`.${cls}${pseudo}{${embedCssUrls(walk, text, "s")};content:${embedCssUrls(walk, content, "s")}}`);
   }
@@ -1098,7 +1198,7 @@ function raise(walk: Walk, z: number): void {
 /**
  * Emits one element and its flattened subtree, pausing (`yield`) whenever the slice is used up.
  *
- * @param context Whether its parent lets it be written hollow (see {@link hollowable}).
+ * @param context Where its parent lays it out (see {@link Context}).
  */
 function* emitElement(
   walk: Walk,
@@ -1107,7 +1207,7 @@ function* emitElement(
   parent: InheritedValues | null,
   parentNs: string,
   shift: { x: number; y: number } | null,
-  context: boolean,
+  context: Context,
 ): Steps {
   if (performance.now() >= walk.deadline) yield;
   const ns = el.namespaceURI ?? XHTML_NS;
@@ -1118,14 +1218,18 @@ function* emitElement(
   // Before any of its elements is written: an animation may target the svg itself (its viewBox).
   if (svg && parentNs !== SVG_NS) collectSmil(walk.smil, el);
   const cs = view.win.getComputedStyle(el);
+  const display = cs.getPropertyValue("display");
   // SVG resources (gradients, symbols) count even inside display:none, so only HTML subtrees go.
-  if (!svg && cs.getPropertyValue("display") === "none") return;
+  if (!svg && display === "none") return;
   if (!svg && culled(walk, el, cs, view)) {
     walk.stats.culled++;
     return;
   }
   const hollow = !svg && hollowable(walk, el, cs, view, context);
   if (hollow) walk.stats.culled++;
+  // A table row away from the viewport keeps its cells; both are written with what places them only.
+  const faint = !svg && !hollow && display === "table-row" && faintRow(walk, el, view);
+  const bare = hollow || faint;
   walk.stats.elements++;
   const z = zIndex(cs) ?? 0;
   if (view.top && z > 0) raise(walk, z);
@@ -1165,11 +1269,14 @@ function* emitElement(
     if (cs.getPropertyValue("position") === "static") override.position = "relative";
   }
   // An empty box away from the viewport shows nothing: only what sets its size and place counts.
-  const props = hollow ? walk.baseline.layout : walk.baseline.props;
-  const control = svg || hollow ? null : nativeControl(walk.baseline, el, cs);
+  const tablePart = faint || (hollow && display === "table-cell");
+  const props = tablePart ? walk.baseline.tableLayout : bare ? walk.baseline.layout : walk.baseline.props;
+  const control = svg || bare ? null : nativeControl(walk.baseline, el, cs);
   if (control?.scheme) override["color-scheme"] = control.scheme;
-  const { text: styleBody, inherited } = styleText(walk.baseline, cs, parent, override, props, control?.ua);
-  if (!hollow) useFonts(walk, cs);
+  const { text: styleBody, inherited: own } = styleText(walk.baseline, cs, parent, override, props, control?.ua);
+  // A clone written with what places it only inherits everything else from its parent's clone.
+  const handed = (): InheritedValues => (bare && parent ? new Map([...parent, ...own]) : own);
+  if (!bare) useFonts(walk, cs);
 
   let tag = svg || ns !== XHTML_NS ? local : local === "html" || local === "body" ? "div" : local;
   if (!XML_NAME.test(tag)) tag = "span";
@@ -1180,11 +1287,12 @@ function* emitElement(
   // Anything else drawn after the overlay candidates may cover them: they go into the image. A
   // canvas drawn over the image too keeps them, as it is drawn after them; an empty box away from
   // the viewport covers nothing.
-  const covers = !hollow && !overlay && walk.overlays.length > 0;
+  const covers = !bare && !overlay && walk.overlays.length > 0;
   if (covers && paintsBox(cs, svg || replaced || VOID.has(local))) dropOverlays(walk);
   const xmlns = ns !== parentNs ? ` xmlns="${ns}"` : "";
-  const pseudo = svg || replaced || VOID.has(local) ? null : pseudoRules(walk, el, view, inherited, hollow);
-  if (pseudo && !hollow) dropOverlays(walk);
+  // The text of a table row's or cell's pseudo-elements sizes the grid: it keeps its fonts.
+  const pseudo = svg || replaced || VOID.has(local) ? null : pseudoRules(walk, el, view, handed, bare && !tablePart);
+  if (pseudo && !bare) dropOverlays(walk);
   const cls = pseudo ? ` class="${pseudo}"` : "";
   const style = styleBody ? ` style="${escapeAttr(embedCssUrls(walk, styleBody, "c"))}"` : "";
   let attrs = attributes(walk, el);
@@ -1225,12 +1333,8 @@ function* emitElement(
     const childShift = scrolled ? { x: -el.scrollLeft, y: -el.scrollTop } : null;
     const children = flatChildren(walk, el);
     const cover = coveringFrame(children, view);
-    // Its own baseline positions nothing, and its children are laid out where one may go hollow.
-    const inert =
-      context &&
-      HOLLOW_DISPLAYS.has(cs.getPropertyValue("display")) &&
-      !cs.getPropertyValue("align-self").includes("baseline");
-    const childContext = inert && hollowContext(cs);
+    const inner = faint && context === TABLE ? FAR_ROW : childContext(el, cs, context);
+    const inherited = handed();
     if (view.top) {
       const root = walk.path.length === 0;
       walk.path.push({ el, cs, context: root || stackingContext(cs), stacks: root || mayStack(cs), raised: 0 });
@@ -1242,7 +1346,7 @@ function* emitElement(
           walk.stats.culled++;
           continue;
         }
-        yield* emitElement(walk, child as Element, view, inherited, ns, childShift, childContext);
+        yield* emitElement(walk, child as Element, view, inherited, ns, childShift, inner);
       } else if (child.nodeType === 3 || child.nodeType === 4) {
         emitText(walk, child, childShift);
       }
@@ -1417,7 +1521,7 @@ function* emitDocument(
     `<div style="display:block;position:absolute;left:${-view.win.scrollX}px;top:${-view.win.scrollY}px;` +
       `width:${width}px;height:${height}px">`,
   );
-  yield* emitElement(walk, doc.documentElement, view, null, XHTML_NS, null, true);
+  yield* emitElement(walk, doc.documentElement, view, null, XHTML_NS, null, FLOW);
   walk.out.push("</div></div>");
 }
 

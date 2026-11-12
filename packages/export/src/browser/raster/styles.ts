@@ -172,13 +172,19 @@ const SKIP = new Set([
 /**
  * What gives a box without content its size and place among its siblings, and what it counts
  * (content that shows may show the counters). An empty box away from the viewport needs nothing
- * else: nothing of it shows.
+ * else: nothing of it shows. Its place in a line or table row takes `vertical-align` (in Firefox a
+ * shorthand of the three after it), and a collapsed table row takes no room (`visibility`).
  */
 const LAYOUT = new Set([
   "display",
   "position",
   "float",
   "clear",
+  "vertical-align",
+  "alignment-baseline",
+  "baseline-shift",
+  "baseline-source",
+  "visibility",
   "box-sizing",
   "width",
   "height",
@@ -216,6 +222,32 @@ const LAYOUT = new Set([
   "counter-increment",
   "counter-reset",
   "counter-set",
+]);
+
+/**
+ * Of {@link LAYOUT}, what does not apply to table rows and cells: margins, floats, breaks and
+ * placement as a flex or grid item.
+ */
+const NOT_IN_TABLES = new Set([
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "float",
+  "clear",
+  "flex-grow",
+  "flex-shrink",
+  "flex-basis",
+  "order",
+  "align-self",
+  "justify-self",
+  "grid-row-start",
+  "grid-row-end",
+  "grid-column-start",
+  "grid-column-end",
+  "column-span",
+  "break-before",
+  "break-after",
 ]);
 
 /**
@@ -291,6 +323,8 @@ export interface StyleBaseline {
   readonly props: readonly string[];
   /** Of those, the ones an empty box away from the viewport needs ({@link LAYOUT}). */
   readonly layout: readonly string[];
+  /** Of those, the ones that apply to table rows and cells. */
+  readonly tableLayout: readonly string[];
   /** Initial value (as computed on a reset probe) per property. */
   readonly initial: ReadonlyMap<string, string>;
   /** Non-inherited properties whose initial value is `currentcolor` (border, outline, rule colours). */
@@ -334,7 +368,8 @@ export function readBaseline(doc: Document): StyleBaseline {
       if (style && initial.has(style)) widthStyle.set(name, style);
     }
     const layout = props.filter((name) => LAYOUT.has(name));
-    return { props, layout, initial, currentColor, widthStyle, controls: readControls(doc, win, props) };
+    const tableLayout = layout.filter((name) => !NOT_IN_TABLES.has(name));
+    return { props, layout, tableLayout, initial, currentColor, widthStyle, controls: readControls(doc, win, props) };
   } finally {
     probe.remove();
   }
