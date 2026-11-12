@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { EXPORT_MAX_SECONDS, exportSettingsOf } from "../src/export/browser";
-import { buildCliCommand, type CliCommandOptions, shellArg } from "../src/export/cli";
+import { buildCliCommand, type CliCommandOptions, cliHint, shellArg } from "../src/export/cli";
+import type { StudioServices } from "../src/services";
 import { DEFAULT_SETTINGS } from "../src/settings";
+import { type LocalInput, resolveSource } from "../src/source";
 
 function command(target: string, targetIsFile: boolean, name = target) {
   const options: CliCommandOptions = {
@@ -88,5 +90,28 @@ describe("CLI command", () => {
     // English, the light scheme and 30 fps are the CLI defaults.
     const plain = { ...base, settings: DEFAULT_SETTINGS, width: 1280, height: 720, fps: 30, scheme: "light" as const };
     expect(buildCliCommand({ ...plain, locale: "en-GB" }).text).toBe("npx swarmloom render a.md -o a.mp4 --seed 1");
+  });
+
+  it("sends the user to an opened file's folder and has pasted text saved first", async () => {
+    const hintOf = async (local: LocalInput) => {
+      const ref = { kind: "file" as const, name: local.name };
+      const opened = await resolveSource(ref, { services: {} as StudioServices, local });
+      const cli = command(opened.cliTarget, opened.cliTargetKind !== "url", opened.name);
+      return cliHint(opened.cliTargetKind, opened.cliTarget, cli.saveAs);
+    };
+    const bytes = new TextEncoder().encode("# Notes");
+    // The browser knows a picked file's name, not its folder, and the command reads it from there.
+    expect(await hintOf({ name: "welcome.en.md", bytes })).toEqual({
+      key: "export.cli.folder",
+      vars: { name: "welcome.en.md" },
+    });
+    expect(await hintOf({ name: "R&D notes.md", bytes })).toEqual({
+      key: "export.cli.rename",
+      vars: { name: "R-D-notes.md", file: "R&D notes.md" },
+    });
+    expect(await hintOf({ name: "pasted.md", text: "# Notes" })).toEqual({
+      key: "export.cli.save",
+      vars: { name: "pasted.md" },
+    });
   });
 });

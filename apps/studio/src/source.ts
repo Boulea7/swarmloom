@@ -2,6 +2,7 @@ import type { SourceInput } from "@swarmloom/core";
 import { inspect } from "@swarmloom/formats";
 import { checkFormatLimit, MAX_INPUT_BYTES, StudioError } from "./errors";
 import type { ExampleEntry } from "./examples/manifest";
+import type { CliTargetKind } from "./export/cli";
 import { formatById, formatOfName } from "./formats-meta";
 import { normalizeSourceUrl, type SourceRef } from "./route";
 import type { StudioServices } from "./services";
@@ -21,8 +22,8 @@ export interface OpenedSource {
   text?: string;
   /** What to pass to `swarmloom render` to reproduce this build. */
   cliTarget: string;
-  /** CLI target is a local file the user must have (pasted content, opened files). */
-  cliNeedsFile: boolean;
+  /** Where `cliTarget` comes from, which decides what the user does before running the command. */
+  cliTargetKind: CliTargetKind;
   /** Example metadata, when the source is a bundled example. */
   example?: ExampleEntry;
   /** Settings carried by a share link. */
@@ -138,7 +139,8 @@ function fromLocal(ref: SourceRef, local: LocalInput): OpenedSource {
     format: formatOf(input),
     text,
     cliTarget: local.name,
-    cliNeedsFile: true,
+    // Bytes were read from a file on the user's disk; text alone was pasted or handed over.
+    cliTargetKind: local.bytes ? "file" : "text",
   };
 }
 
@@ -162,7 +164,7 @@ async function fromExample(ref: { kind: "example"; id: string }, ctx: ResolveCon
     format: entry.format,
     text,
     cliTarget: url,
-    cliNeedsFile: false,
+    cliTargetKind: "url",
     example: entry,
   };
 }
@@ -186,7 +188,7 @@ async function fromUrl(ref: { kind: "url"; url: string }, ctx: ResolveContext): 
     format: formatOf(input),
     text,
     cliTarget: ref.url,
-    cliNeedsFile: false,
+    cliTargetKind: "url",
   };
 }
 
@@ -206,7 +208,7 @@ async function fromShared(ref: { kind: "shared"; payload: string }): Promise<Ope
     format: formatOf(input),
     text: decoded.text,
     cliTarget: decoded.name,
-    cliNeedsFile: true,
+    cliTargetKind: "text",
     settings: decoded.settings,
   };
 }
@@ -320,7 +322,7 @@ async function fromHandoff(ref: { kind: "handoff" }, ctx: ResolveContext): Promi
     title: page.title || urlBaseName(page.url),
     format: "html",
     cliTarget: page.url,
-    cliNeedsFile: false,
+    cliTargetKind: "url",
     layoutWidth: page.width,
   };
 }

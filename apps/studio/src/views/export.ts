@@ -10,7 +10,7 @@ import {
   exportSettingsOf,
   renderInputOf,
 } from "../export/browser";
-import { buildCliCommand, FRAME_PRESETS, VIDEO_FORMATS, type VideoFormat } from "../export/cli";
+import { buildCliCommand, cliHint, FRAME_PRESETS, VIDEO_FORMATS, type VideoFormat } from "../export/cli";
 import type { BrowserExporter } from "../services";
 import type { StudioSettings } from "../settings";
 import type { OpenedSource } from "../source";
@@ -250,7 +250,7 @@ export function createExporter(deps: ExportDeps): Exporter {
       if (!opened) return;
       const cli = buildCliCommand({
         target: opened.cliTarget,
-        targetIsFile: opened.cliNeedsFile,
+        targetIsFile: opened.cliTargetKind !== "url",
         name: opened.name,
         settings: settings(),
         format,
@@ -263,10 +263,9 @@ export function createExporter(deps: ExportDeps): Exporter {
         locale: ctx.i18n.locale,
       });
       command.textContent = cli.text;
-      saveHint.hidden = cli.saveAs === undefined;
-      saveHint.textContent = cli.saveAs
-        ? i18n.t(opened.cliNeedsFile ? "export.cli.save" : "export.cli.download", { name: cli.saveAs })
-        : "";
+      const hint = cliHint(opened.cliTargetKind, opened.cliTarget, cli.saveAs);
+      saveHint.hidden = hint === null;
+      saveHint.textContent = hint ? i18n.t(hint.key, hint.vars) : "";
     };
     copyButton.addEventListener("click", async () => {
       try {

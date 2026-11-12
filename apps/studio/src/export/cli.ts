@@ -136,3 +136,30 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
   if (!s.remoteAssets) args.push("--no-remote");
   return saveAs === undefined ? { text: args.join(" ") } : { text: args.join(" "), saveAs };
 }
+
+/**
+ * Where a command's target comes from: a link, a file on the user's disk (picked, dropped or
+ * launched), or text that only this page holds (pasted, dropped as text or shared in a link).
+ */
+export type CliTargetKind = "url" | "file" | "text";
+
+/** The step before running a command, as a Studio message key and its variables. */
+export interface CliHint {
+  key: "export.cli.download" | "export.cli.folder" | "export.cli.rename" | "export.cli.save";
+  vars: Record<string, string>;
+}
+
+/**
+ * Says what to do before running a command whose target is the file `saveAs`. The browser knows a
+ * local file's name but not its folder, so the command reads the file from the working directory:
+ * the user runs it beside the file itself, beside a copy under a name a shell can hold, beside the
+ * saved text, or beside the downloaded link.
+ */
+export function cliHint(kind: CliTargetKind, target: string, saveAs: string | undefined): CliHint | null {
+  if (saveAs === undefined) return null;
+  if (kind === "url") return { key: "export.cli.download", vars: { name: saveAs } };
+  if (kind === "text") return { key: "export.cli.save", vars: { name: saveAs } };
+  return saveAs === target
+    ? { key: "export.cli.folder", vars: { name: saveAs } }
+    : { key: "export.cli.rename", vars: { name: saveAs, file: target } };
+}
