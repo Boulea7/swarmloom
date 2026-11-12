@@ -71,6 +71,9 @@ describe("render options", () => {
       },
     });
     expect(parseRenderOptions(["a.md", "--no-live"], cwd)).toMatchObject({ settings: { live: false } });
+    expect(parseRenderOptions(["a.cast", "--terminal-font", "fill"], cwd)).toMatchObject({
+      settings: { terminalFont: "fill" },
+    });
     const opening = parseRenderOptions(["a.md", "--bpm", "120", "--opening", "3b", "--live-top"], cwd);
     expect(opening).toMatchObject({ settings: { opening: 1500, liveTop: true } });
   });
@@ -95,6 +98,7 @@ describe("render options", () => {
     [["a.md", "-o", "x.mp4", "--format", "gif"], "--output ends in .mp4 but --format is gif"],
     [["a.md", "--format", "avi"], "--format must be one of"],
     [["a.md", "--overlays", "some"], "--overlays must be one of"],
+    [["a.cast", "--terminal-font", "big"], "--terminal-font must be one of"],
     [["a.md", "--speed", "0"], "--speed must be a number at least 0.05"],
     [["a.md", "--speed", "1e3"], "--speed must be a number"],
     [["a.md", "--width", "7680", "--scale", "2"], "larger than 8192 px"],

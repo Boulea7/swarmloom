@@ -222,6 +222,26 @@ describe("buildTerminalBlueprint", () => {
     expect(bp.size.w).toBeLessThanOrEqual(500);
   });
 
+  it("grows the font to fill the stage only with fill, up to the width or the height", () => {
+    const rec = parseCast('{"version":2,"width":200,"height":50}\n[0.1,"o","short\\r\\nlines"]');
+    const layout = (o: { fill?: boolean; height?: number }) => {
+      const bp = buildTerminalBlueprint(rec, buildTimeline(rec), { document, width: 1280, scheme: "dark", ...o });
+      const screen = bp.layers.find((l) => l.id === "term-screen");
+      return { size: bp.size, font: (screen?.kind === "custom" ? screen.data : null) as TerminalScreenData };
+    };
+    expect(layout({}).font.fontSize).toBe(14);
+    // 40 columns fill the width (1280 less the frame) when the height leaves room.
+    const wide = layout({ fill: true, height: 720 });
+    expect(wide.font.fontSize).toBeGreaterThan(40);
+    expect(wide.size.w).toBeLessThanOrEqual(1280);
+    expect(wide.size.w).toBeGreaterThan(1260);
+    // A short stage stops the growth at its height instead.
+    const low = layout({ fill: true, height: 200 });
+    expect(low.font.fontSize).toBeGreaterThan(14);
+    expect(low.size.h).toBeLessThanOrEqual(200);
+    expect(low.size.w).toBeLessThan(wide.size.w);
+  });
+
   it("notes the alternate screen and validates screen data", () => {
     const rec = parseCast('{"version":2,"width":20,"height":4}\n[0.1,"o","\\u001b[?1049hvim\\u001b[?1049l"]');
     const bp = buildTerminalBlueprint(rec, buildTimeline(rec), { document, width: 600, scheme: "light" });

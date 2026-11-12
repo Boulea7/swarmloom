@@ -14,7 +14,7 @@ export interface RenderInput {
   url?: string;
 }
 
-/** A player action at a fixed video time, ms (applied on the first frame at or after it). */
+/** A player action at a fixed video time, ms (applied at the first 1/120 s engine tick at or after it). */
 export interface RenderCue {
   at: number;
   action: "pause" | "resume" | "finish" | "live" | "speed";
@@ -60,6 +60,8 @@ export interface RenderInit {
   pack?: string;
   /** Player actions at fixed video times (pause, resume, finish, live, speed). */
   cues?: RenderCue[];
+  /** Font of terminal recordings: "fit" (14 px, shrunk to fit the width) or "fill" (grown to fill the frame). */
+  terminalFont?: "fit" | "fill";
   /**
    * Optional CLI extension: a blueprint captured from a live page by the CLI (http/https URLs).
    * A render page that supports it plays this blueprint instead of loading `input`; one that does not

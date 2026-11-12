@@ -24,7 +24,10 @@ export const SPEED_RANGE = { min: 0.05, max: 16 } as const;
 
 /** A player action applied at a fixed video time. */
 export interface RenderCue {
-  /** Video time in ms (frame `n` shows `n * 1000 / fps`); applied on the first frame at or after it. */
+  /**
+   * Video time in ms (frame `n` shows `n * 1000 / fps`); applied at the first engine tick (1/120 s) at
+   * or after it, at any frame rate, so the first frame at or after it shows it.
+   */
   at: number;
   /**
    * "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly,
@@ -36,6 +39,10 @@ export interface RenderCue {
   /** New build speed of a "speed" cue, 0.05..16; required by it and not allowed on the others. */
   speed?: number;
 }
+
+export const TERMINAL_FONTS = ["fit", "fill"] as const;
+/** How terminal recordings size their font (see {@link RenderInit.terminalFont}). */
+export type TerminalFont = (typeof TERMINAL_FONTS)[number];
 
 /** Options of `window.__swarmloom.init()`. Mirrors the CLI flags. */
 export interface RenderInit {
@@ -97,6 +104,11 @@ export interface RenderInit {
   pack?: string;
   /** Player actions at fixed video times, e.g. a hold and a quick finish timed to music. Default none. */
   cues?: RenderCue[];
+  /**
+   * Font of terminal recordings: "fit" (default) keeps 14 px and shrinks it to fit the width; "fill"
+   * grows it until the window fills the frame's width or height.
+   */
+  terminalFont?: TerminalFont;
   /**
    * A blueprint the driver already captured (the CLI snapshots live web pages). When set it is played
    * as is and `input` is not loaded; `input` still names the source.
@@ -327,6 +339,7 @@ export function parseInit(raw: unknown): ParsedInit {
     beatSync: beatSync ?? true,
     pack: optionalString(raw, "pack"),
     cues: cueList(raw.cues),
+    terminalFont: oneOf(raw, "terminalFont", TERMINAL_FONTS),
     ...(blueprint ? { blueprint } : {}),
   };
 }

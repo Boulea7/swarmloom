@@ -28,6 +28,13 @@ export interface TerminalLayoutOptions {
   theme?: TerminalTheme;
   /** Shrink the window to the rows and columns the session uses. Default true. */
   fit?: boolean;
+  /**
+   * Let the font grow past `fontSize` until the window fills `width`, or `height` when that comes
+   * first; the window frame keeps its size. Default false: the font only shrinks to fit `width`.
+   */
+  fill?: boolean;
+  /** Stage height, px, that `fill` keeps the window within. Default: none, only `width` limits it. */
+  height?: number;
   /** Window title. Default: recording title, last OSC title, command, shell, file name. */
   title?: string;
   /** File name, used for the source and as a title fallback. */
@@ -43,6 +50,9 @@ const DOT_GAP = 8;
 const MIN_ROWS = 4;
 const MIN_COLS = 40;
 const MIN_FONT = 9;
+const DEFAULT_FONT = 14;
+/** Terminal line height, in ems. */
+const LINE_HEIGHT = 1.45;
 /** Window dot colours (SwarmLoom palette: coral, amber, teal). */
 const DOT_COLORS = ["#FF6B5B", "#F5A524", "#14B8A6"] as const;
 
@@ -170,15 +180,8 @@ export function buildTerminalBlueprint(rec: CastRecording, timeline: Timeline, o
   }
 
   const theme = opts.theme ?? rec.theme ?? LOOM_INK;
-  let fontSize = opts.fontSize && opts.fontSize > 0 ? opts.fontSize : 14;
-  let cellW = measureCell(opts.document, fontSize);
-  const needed = cols * cellW + 2 * PAD_X + 2 * MARGIN;
-  if (needed > opts.width) {
-    const scale = Math.max(MIN_FONT / fontSize, (opts.width - 2 * PAD_X - 2 * MARGIN) / (cols * cellW));
-    fontSize = Math.max(MIN_FONT, Math.floor(fontSize * scale * 10) / 10);
-    cellW = measureCell(opts.document, fontSize);
-  }
-  const cellH = Math.round(fontSize * 1.45);
+  const { fontSize, cellW } = cellFont(cols, rows, opts);
+  const cellH = lineHeight(fontSize);
 
   const screenW = Math.ceil(cols * cellW);
   const screenH = rows * cellH;
@@ -323,6 +326,34 @@ export function buildTerminalBlueprint(rec: CastRecording, timeline: Timeline, o
       dropped: rec.skipped,
     };
   return blueprint;
+}
+
+function lineHeight(fontSize: number): number {
+  return Math.round(fontSize * LINE_HEIGHT);
+}
+
+/**
+ * Font size and measured cell width for a `cols` x `rows` screen: `fontSize` (14) shrunk to fit the
+ * width, or with `fill` grown until the window fills the width or the height.
+ */
+function cellFont(cols: number, rows: number, opts: TerminalLayoutOptions): { fontSize: number; cellW: number } {
+  const preferred = opts.fontSize && opts.fontSize > 0 ? opts.fontSize : DEFAULT_FONT;
+  const roomW = opts.width - 2 * PAD_X - 2 * MARGIN;
+  const cellW = measureCell(opts.document, preferred);
+  if (cols * cellW > roomW) {
+    const scale = Math.max(MIN_FONT / preferred, roomW / (cols * cellW));
+    const fontSize = Math.max(MIN_FONT, Math.floor(preferred * scale * 10) / 10);
+    return { fontSize, cellW: measureCell(opts.document, fontSize) };
+  }
+  if (!opts.fill) return { fontSize: preferred, cellW };
+  const roomH = opts.height && opts.height > 0 ? opts.height - 2 * MARGIN - 2 * PAD_Y - BAR_H : Infinity;
+  const grow = Math.min(roomW / (cols * cellW), roomH / (rows * preferred * LINE_HEIGHT));
+  // Measured widths and rounded line heights are not quite proportional: step back until it fits.
+  for (let size = Math.floor(preferred * grow * 10) / 10; size > preferred; size = Math.round(size * 10 - 1) / 10) {
+    const w = measureCell(opts.document, size);
+    if (Math.ceil(cols * w) <= roomW && rows * lineHeight(size) <= roomH) return { fontSize: size, cellW: w };
+  }
+  return { fontSize: preferred, cellW };
 }
 
 function escapeText(text: string): string {

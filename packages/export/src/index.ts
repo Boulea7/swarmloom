@@ -31,6 +31,8 @@ export {
   type RenderInput,
   type RenderScroll,
   type RenderStep,
+  TERMINAL_FONTS,
+  type TerminalFont,
 } from "./render/protocol";
 export {
   MAX_STEP_MS,

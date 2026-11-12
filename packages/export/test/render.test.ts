@@ -81,7 +81,9 @@ describe("render page protocol", () => {
     expect(steps.findIndex((s) => s.state === "finale")).toBe(24);
     expect(steps).toHaveLength(30);
     expect(steps.at(-1)).toEqual({ state: "finale", built: 4, total: 4, done: true });
-    expect(player.readyCalls).toBe(31);
+    // start() waits once, then every engine tick: 120 a second, plus a short tick to each 40 ms frame
+    // that ends between two ticks (4 in 5): 1 + 144 + 24.
+    expect(player.readyCalls).toBe(169);
 
     expect(base64ToBytes(await api.audioWav())).toEqual(Uint8Array.from([4, 120]));
     expect(audio.mock.calls[0]?.[2]).toMatchObject({ sampleRate: 48000, channels: 2 });
@@ -113,13 +115,13 @@ describe("render page protocol", () => {
     // Step i reaches (i + 1) * 50 ms: paused from the step that reached 300 ms to the one that reached 500.
     expect(states.slice(4, 10)).toEqual(["building", "paused", "paused", "paused", "paused", "building"]);
     // finish() at 600 ms fans out at once (player time 400) and completes the remaining layers on the
-    // next tick (650 ms, player time 450).
+    // next engine tick (608.3 ms, player time 408.3).
     expect(states.slice(11, 13)).toEqual(["building", "finale"]);
-    expect(player.soundLog.map((e) => e.t)).toEqual([250, 400, 450, 450, 450]);
+    expect(player.soundLog.map((e) => Math.round(e.t))).toEqual([250, 400, 408, 408, 408]);
     // The key at 250 sounded before the hold; the later ones move 200 ms later, onto the frame that shows them.
-    expect((await api.soundLog()).map((e) => e.t)).toEqual([250, 600, 650, 650, 650]);
+    expect((await api.soundLog()).map((e) => Math.round(e.t))).toEqual([250, 600, 608, 608, 608]);
     await api.audioWav();
-    expect(audio.mock.calls[0]?.[0].map((e) => e.t)).toEqual([250, 600, 650, 650, 650]);
+    expect(audio.mock.calls[0]?.[0].map((e) => Math.round(e.t))).toEqual([250, 600, 608, 608, 608]);
 
     api.dispose();
     const bad: [unknown, string][] = [
@@ -170,7 +172,7 @@ describe("render page protocol", () => {
     );
   });
 
-  it("changes the build speed at speed cues, on the frame that reaches them", async () => {
+  it("changes the build speed at speed cues, on the engine tick that reaches them", async () => {
     const { api, players } = setup();
     await api.init({
       ...base,
@@ -180,9 +182,10 @@ describe("render page protocol", () => {
       ],
     });
     for (let i = 0; i < 4; i++) await api.step(50);
+    // 120 ms falls between the 1/120 s ticks at 116.7 and 125 ms; the frame at 150 ms shows it.
     expect((players[0] as ClockPlayer).speeds).toEqual([
       [0, 0.6],
-      [150, 0.45],
+      [125, 0.45],
     ]);
     api.dispose();
   });
@@ -198,12 +201,12 @@ describe("render page protocol", () => {
       ],
     });
     for (let i = 0; i < 12; i++) await api.step(50);
-    expect((await api.soundLog()).map((e) => [e.name, e.t])).toEqual([
+    expect((await api.soundLog()).map((e) => [e.name, Math.round(e.t)])).toEqual([
       ["key", 250],
       ["fanout", 500],
-      ["key", 550],
-      ["key", 550],
-      ["key", 550],
+      ["key", 508],
+      ["key", 508],
+      ["key", 508],
     ]);
     api.dispose();
   });
@@ -354,6 +357,7 @@ describe("render page protocol", () => {
       [{ ...base, fps: Number.NaN }, "fps must be a number"],
       [{ ...base, theme: "neon" }, "theme must be one of auto, light, dark"],
       [{ ...base, overlays: "some" }, "overlays must be one of full, minimal, none"],
+      [{ ...base, terminalFont: "big" }, "terminalFont must be one of fit, fill"],
       [{ ...base, live: "yes" }, "live must be a boolean"],
       [{ ...base, input: { name: "a", base64: "%%%" } }, "not valid base64"],
       [{ ...base, blueprint: { version: 2, size: { w: 1, h: 1 }, layers: [] } }, "blueprint must be a version 1"],

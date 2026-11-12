@@ -37,7 +37,7 @@ import {
   writeAtomic,
 } from "../pipeline/evidence";
 import { inputFilePath, isWebUrl, outputStem, type RenderSource, resolveSource } from "../pipeline/input";
-import { formatClock } from "../pipeline/progress";
+import { formatClock, lineWidth, wrapFields } from "../pipeline/progress";
 import { type PlayerSettings, type RenderSummary, renderVideo } from "../pipeline/render";
 import { isMissingOrEmptyDir } from "../util/fs";
 import type { Command, CommandContext } from "./types";
@@ -91,11 +91,15 @@ Swarm:
                           pause (every cursor holds), resume, finish (complete the build quickly),
                           live (go live then, not when the finale settles; also with --no-live) or
                           speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=0.6 then
-                          17b:speed=0.45 hurries only the start). Applied on the first frame at or
-                          after <at>; same-time cues in order given
+                          17b:speed=0.45 hurries only the start). Applied at the first 1/120 s
+                          step at or after <at>, at any fps; same-time cues in order given
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
                           and plain-http files from other sites are never loaded
+      --terminal-font <mode>
+                          fit | fill. Font of terminal recordings (.cast): fit keeps 14 px and shrinks
+                          it to fit the width; fill grows it until the window fills the frame.
+                          Default: fit
 
 Capture evidence (for repeatable takes; see the README):
       --audio-out <file>  Also write the soundtrack as WAV (48 kHz stereo, same length as the video)
@@ -159,6 +163,7 @@ const OPTIONS = {
   "no-sound": { type: "boolean" },
   "no-remote": { type: "boolean" },
   "no-live": { type: "boolean" },
+  "terminal-font": { type: "string" },
   opening: { type: "string" },
   "live-top": { type: "boolean" },
   chrome: { type: "string" },
@@ -250,6 +255,10 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   if (intro !== "warp") settings.intro = intro === "outline" ? "outline" : false;
   if (values.locale !== undefined) settings.locale = readLocale(values.locale);
   if (values.bpm !== undefined) settings.bpm = readNumber("bpm", values.bpm, 120, { min: 40, max: 240 });
+  // Only when given, so the manifests of takes without it stay as they were.
+  if (values["terminal-font"] !== undefined) {
+    settings.terminalFont = readEnum("terminal-font", values["terminal-font"], ["fit", "fill"], "fit");
+  }
   if (values.opening !== undefined) {
     const opening = parseOpening(values.opening, settings.bpm);
     if (opening > 0) settings.opening = opening;
@@ -552,7 +561,8 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   const pixels = `${Math.round(opts.width * opts.scale)}x${Math.round(opts.height * opts.scale)}`;
   if (!opts.quiet) {
     const kind = source.kind === "page" ? "web page" : source.format;
-    io.err(`Rendering ${source.name} (${kind}) at ${pixels}, ${opts.fps} fps -> ${target}`);
+    const banner = [`Rendering ${source.name} (${kind})`, `at ${pixels}, ${opts.fps} fps`, `-> ${target}`];
+    for (const line of wrapFields(banner, lineWidth(io))) io.err(line);
   }
   const started = performance.now();
   const quietIo = opts.quiet ? { ...io, err: () => {}, tty: undefined } : io;
@@ -605,9 +615,16 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   }
   const sound = summary.audio ? "with sound" : "no sound";
   const took = formatClock((performance.now() - started) / 1000);
-  io.err(
-    `Wrote ${target}: ${(summary.durationMs / 1000).toFixed(1)} s, ${summary.frames} frames, ${pixels}, ${sound} (took ${took})`,
-  );
+  const seconds = (summary.durationMs / 1000).toFixed(1);
+  const wrote = [
+    `Wrote ${target}:`,
+    `${seconds} s,`,
+    `${summary.frames} frames,`,
+    `${pixels},`,
+    sound,
+    `(took ${took})`,
+  ];
+  for (const line of wrapFields(wrote, lineWidth(io))) io.err(line);
   return 0;
 }
 
