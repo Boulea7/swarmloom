@@ -7,12 +7,13 @@ import {
   type InputAudioTrack,
   type InputVideoTrack,
 } from "mediabunny";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { server } from "vitest/browser";
 import emblem from "../../../examples/svg/emblem.svg?raw";
-import { VideoFileWriter, webCodecsProbe } from "../src/browser/encode";
+import { planEncoding, VideoFileWriter, webCodecsProbe } from "../src/browser/encode";
 import { type BrowserExportOptions, type BrowserExportResult, exportVideo } from "../src/browser/index";
 import { frameMicros } from "../src/browser/schedule";
+import { BlobSink, PART_BYTES, PacketSpool } from "../src/browser/spool";
 import type { RenderApi } from "../src/render/protocol";
 
 const FPS = 30;
@@ -53,6 +54,10 @@ beforeAll(() => {
   });
   observer.observe(container, { childList: true });
   container.addEventListener("load", onFrameLoad, true);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 afterAll(() => {
@@ -147,8 +152,16 @@ function meanDiff(a: Uint8ClampedArray, b: Uint8ClampedArray, keep: (i: number) 
 }
 
 it("exports a 2 s clip that parses, with identical frames on a second run", { timeout: 180_000 }, async () => {
+  const spooled = vi.spyOn(PacketSpool.prototype, "add");
+  const written = vi.spyOn(BlobSink.prototype, "blob");
   const first = await exportClip();
   expect(first).toMatchObject({ frames: 60, durationMs: 2000, finished: false, extension: first.plan.container });
+  // The encoded frames waited in a spool rather than in the muxer, and the file is the Blob-backed sink's.
+  const perSpool = new Map<unknown, number>();
+  for (const spool of spooled.mock.contexts) perSpool.set(spool, (perSpool.get(spool) ?? 0) + 1);
+  expect([...perSpool.values()]).toContain(60);
+  expect(written.mock.results).toHaveLength(1);
+  expect(written.mock.results[0]?.value).toBe(first.blob);
   expect(first.frameSha256).toHaveLength(60);
   // The build moves: a still clip would make the hash comparison meaningless.
   expect(new Set(first.frameSha256).size).toBeGreaterThan(10);
@@ -209,6 +222,60 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
   expect((await plainInput.getPrimaryAudioTrack())?.codec).toBe(plain.plan.audio);
   const [plainStart] = await decodeFrames(plainVideo, [0]);
   expect(meanDiff(plainStart as Uint8ClampedArray, start)).toBeLessThan(LOSS);
+});
+
+it("streams a video larger than a Blob part through the spool into the file", { timeout: 180_000 }, async () => {
+  // One frame a second gives a rate-controlled encoder a large budget per frame, and fresh noise does
+  // not compress, so a few frames fill more than a part whatever the engine's encoder.
+  const [width, height, fps] = [1280, 720, 1];
+  const add = PacketSpool.prototype.add;
+  let spooledBytes = 0;
+  let heldBytes = 0;
+  const spooled = vi.spyOn(PacketSpool.prototype, "add").mockImplementation(function (
+    this: PacketSpool<{ decoderConfig?: unknown }>,
+    packet,
+    meta,
+  ) {
+    add.call(this, packet, meta);
+    spooledBytes += packet.byteLength;
+    heldBytes = Math.max(heldBytes, this.heldBytes);
+  });
+  const written = vi.spyOn(BlobSink.prototype, "blob");
+  const writer = new VideoFileWriter(await planEncoding(width, height, fps, false), width, height, fps);
+  await writer.start();
+  const noise = new Uint8ClampedArray(width * height * 4);
+  const words = new Uint32Array(noise.buffer);
+  let seed = 0x9e3779b9;
+  let frames = 0;
+  // Packets come back behind the frames, so this overshoots a little; the cap bounds a slow encoder.
+  while (spooledBytes < 2 * PART_BYTES && frames < 90) {
+    for (let i = 0; i < words.length; i++) {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      words[i] = seed | 0xff000000;
+    }
+    await writer.addFrame(frames++, noise);
+  }
+  const blob = await writer.finish();
+
+  // More than a part went through the spool, which never held more than a part in script memory.
+  expect(spooled).toHaveBeenCalledTimes(frames);
+  expect(spooledBytes).toBeGreaterThan(PART_BYTES);
+  expect(heldBytes).toBeLessThanOrEqual(PART_BYTES);
+  // The file came out of the Blob-backed sink, larger than a part, and holds every frame.
+  expect(written.mock.results).toHaveLength(1);
+  expect(written.mock.results[0]?.value).toBe(blob);
+  expect(blob.size).toBeGreaterThan(PART_BYTES);
+  if (writer.plan.container === "mp4") {
+    const boxes = await topLevelBoxes(blob);
+    expect(boxes.indexOf("moov")).toBeGreaterThan(-1);
+    expect(boxes.indexOf("moov")).toBeLessThan(boxes.indexOf("mdat"));
+  }
+  const video = await new Input({ source: new BlobSource(blob), formats: ALL_FORMATS }).getPrimaryVideoTrack();
+  if (!video) throw new Error("No video track");
+  expect((await video.computePacketStats()).packetCount).toBe(frames);
+  expect(await video.computeDuration()).toBeCloseTo(frames / fps, 3);
 });
 
 it("cancelling removes the export frame at once, while it loads or starts", { timeout: 60_000 }, async () => {
