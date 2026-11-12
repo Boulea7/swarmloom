@@ -26,7 +26,8 @@ export const SPEED_RANGE = { min: 0.05, max: 16 } as const;
 export interface RenderCue {
   /**
    * Video time in ms (frame `n` shows `n * 1000 / fps`); applied at the first engine tick (1/120 s) at
-   * or after it, at any frame rate, so the first frame at or after it shows it.
+   * or after it, or at a frame time that comes first (only at a frame rate that does not divide 120,
+   * which also steps to each frame time), so the first frame at or after it shows it.
    */
   at: number;
   /**

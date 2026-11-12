@@ -14,7 +14,10 @@ export interface RenderInput {
   url?: string;
 }
 
-/** A player action at a fixed video time, ms (applied at the first 1/120 s engine tick at or after it). */
+/**
+ * A player action at a fixed video time, ms (applied at the first 1/120 s engine tick at or after it,
+ * or at a frame time that comes first at a frame rate that does not divide 120).
+ */
 export interface RenderCue {
   at: number;
   action: "pause" | "resume" | "finish" | "live" | "speed";

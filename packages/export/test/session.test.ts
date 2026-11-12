@@ -25,3 +25,29 @@ it("draws only the engine tick each step ends on: the frame is captured after it
   session.dispose();
   expect(draws).toEqual([false, false, false, false, false, false, false, true, false, false, true]);
 });
+
+it("applies a cue at a frame time between two ticks when that comes before the next tick", async () => {
+  const player: { current?: ClockPlayer } = {};
+  const session = new RenderSession({
+    player: { blueprint },
+    tickRate: 120,
+    // 25 fps: the frame at 40 ms falls between the ticks at 33.3 and 41.7 ms.
+    cues: [
+      { at: 39, action: "speed", speed: 2 },
+      { at: 41, action: "speed", speed: 3 },
+    ],
+    createPlayer: (options) => {
+      player.current = new ClockPlayer(options);
+      return player.current;
+    },
+  });
+  await session.start();
+  await session.step(40);
+  await session.step(40);
+  session.dispose();
+  // Each shows from the first frame at or after it: 39 ms on the short tick to 40, 41 ms on the tick at 41.7.
+  const speeds = player.current?.speeds ?? [];
+  expect(speeds.map(([, speed]) => speed)).toEqual([2, 3]);
+  expect(speeds[0]?.[0]).toBeCloseTo(40, 6);
+  expect(speeds[1]?.[0]).toBeCloseTo(5000 / 120, 6);
+});

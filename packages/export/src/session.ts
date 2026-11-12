@@ -15,7 +15,10 @@ export interface SessionStatus {
 
 /** A player action at a fixed session time (see {@link RenderSessionOptions.cues}). */
 export interface SessionCue {
-  /** Session time in ms; the cue applies at the end of the first step (tick, with `tickRate`) reaching it. */
+  /**
+   * Session time in ms; the cue applies at the end of the first step reaching it (with `tickRate`, the
+   * first tick, whole or short: see {@link RenderSessionOptions.tickRate}).
+   */
   at: number;
   /**
    * "pause", "resume", "finish" (complete the build quickly), "live": go live now, as the
@@ -77,7 +80,9 @@ export interface RenderSessionOptions {
    * is not one of them, and every tick waits for `player.ready()`. The engine calls cursors in,
    * hands out tasks and moves the camera once per tick, so with a fixed rate every frame rate that
    * divides it samples the same build; cues and go live then apply at the end of a tick, not of a
-   * step. Only a step's last tick repaints the cursor canvas (the others pass `draw: false` to
+   * step. At a frame rate that does not divide it the short ticks are ticks too: a cue due by a frame
+   * time applies there, and the sounds logged in a short tick carry its end, so that build differs.
+   * Only a step's last tick repaints the cursor canvas (the others pass `draw: false` to
    * `VirtualClock.advance`): the frame is captured after it. Default: none, one tick per step.
    */
   tickRate?: number;
