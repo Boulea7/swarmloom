@@ -318,7 +318,8 @@ export interface SoundOptions {
    * true (default): placement notes, the fan-out and the final chord sound on the next eighth note.
    * "all": also keys, clicks, snaps, pen anchors and heading ticks, each on the nearest sixteenth
    * note at most 30 ms earlier or 60 ms later, one per sound and sixteenth; a hit with no line that
-   * close stays silent. false: every sound plays when it happens.
+   * close stays silent. false: every sound keeps its event time. In every mode the sound policy still
+   * drops unvoiced events, extra notes per eighth, repeated one-shots and rate-capped hits.
    */
   beatSync?: boolean | "all";
 }

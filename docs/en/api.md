@@ -92,7 +92,9 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `volume` | Master volume from 0 to 1 |
 | `pack` | `studio`, `soft`, `8bit`, `silent-keys` or a custom pack ID |
 | `bpm` | Musical-grid tempo |
-| `beatSync` | Snap sounds to the `bpm` grid: `true` (default) puts placement notes, the fan-out and the final chord on the next eighth note; `"all"` also puts keys, clicks, snaps, pen anchors and heading ticks on the nearest sixteenth note (at most 30 ms early or 60 ms late, one per sound and sixteenth; hits farther off stay silent); `false` plays every sound when it happens |
+| `beatSync` | Snap sounds to the `bpm` grid: `true` (default) puts placement notes, the fan-out and the final chord on the next eighth note; `"all"` also puts keys, clicks, snaps, pen anchors and heading ticks on the nearest sixteenth note (at most 30 ms early or 60 ms late, one per sound and sixteenth; hits farther off stay silent); `false` keeps every sound at its event time |
+
+Some events stay silent whatever `beatSync` is: events the pack has no voice for, a second placement note in the same eighth note, the opening swell, fan-out, final chord or sweep repeated within 400 ms, and typing, pointer sounds and ticks beyond 6, 5 and 4 per 100 ms. `soundTimes()` returns `null` for them.
 
 `ThemeSpec` accepts `palette`, `accent`, `select` and `chrome`. Cursor colours cycle through `palette` in order.
 

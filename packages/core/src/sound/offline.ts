@@ -93,8 +93,9 @@ function admitAll(events: readonly SoundEvent[], settings: SoundSettings): Admit
 /**
  * When each event of a sound log is heard in {@link renderOffline}'s output for the same options:
  * engine ms (on the beat grid where beat sync moves it), or null for an event that stays silent (no
- * voice in the pack, over a rate limit, a note sharing its eighth, a hit off the beat with
- * `beatSync: "all"`). Pure and browser-free, so capture tools can log heard times next to the events.
+ * voice in the pack, over a rate limit, a note sharing its eighth, a one-shot repeated within 400 ms,
+ * a hit off the beat with `beatSync: "all"`). Pure and browser-free, so capture tools can log heard
+ * times next to the events.
  *
  * @param events Sound events, usually `Player.soundLog`; the result is in the same order.
  * @param opts The pack, tempo and sound settings `renderOffline` gets (sample rate and volume are ignored).
