@@ -121,6 +121,14 @@ describe("sanitizing helpers", () => {
     expect(decodeCssEscapes(css)).not.toMatch(/url\(|@import|image-set\(/i);
   });
 
+  it.each([
+    ["a comment closes url('#a'", "svg{background:url('#a'/**/),url(https://evil.test/a.png),url('data:image/png,')}"],
+    ["url( sits in a comment", "/*url('#*/svg{background:url(https://evil.test/b.png)}x{a:')*/"],
+    ["url( sits in a string", `x{a:"url('#"}svg{background:url(https://evil.test/c.png)}y{b:"')"}`],
+  ])("refuses an external url() the browser reads where %s", (_case, css) => {
+    expect(sanitizeCss(css)).not.toContain("evil.test");
+  });
+
   it("does not join a new @import out of the text around a removed one", () => {
     expect(sanitizeCss('@imp@import "a";ort "https://evil.test/x.css";svg{fill:red}')).not.toMatch(/@import/i);
   });
