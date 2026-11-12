@@ -185,17 +185,27 @@ export class SwarmStage implements Stage {
     // S01: an overlay lives under <html>, outside <body>, so the page can be made inert without it.
     const parent =
       o.mode === "overlay" && (host === doc.body || host === doc.documentElement) ? doc.documentElement : host;
-    this.#dom = buildDom({
-      mode: o.mode,
-      parent,
-      base: tokens.base,
-      background: typeof bp.background === "string" ? bp.background : "",
-      backgroundOnBackdrop: plugins.some((p) => typeof p.setup === "function"),
-      css: typeof bp.css === "string" ? bp.css : undefined,
-      textColor: o.theme.scheme === "dark" ? BRAND.paper : BRAND.ink,
-      focusColor: o.theme.select,
-    });
-    const dom = this.#dom;
+    // An overlay covers the visited page itself, whose files the stage must not request again: not
+    // even for the stage's own background, which buildDom paints (and holds still) right away.
+    const releaseStills = retainStills(o.mode === "overlay" ? doc : undefined);
+    this.#releaseStills = releaseStills;
+    let dom: StageDom;
+    try {
+      dom = buildDom({
+        mode: o.mode,
+        parent,
+        base: tokens.base,
+        background: typeof bp.background === "string" ? bp.background : "",
+        backgroundOnBackdrop: plugins.some((p) => typeof p.setup === "function"),
+        css: typeof bp.css === "string" ? bp.css : undefined,
+        textColor: o.theme.scheme === "dark" ? BRAND.paper : BRAND.ink,
+        focusColor: o.theme.select,
+      });
+    } catch (error) {
+      releaseStills();
+      throw error;
+    }
+    this.#dom = dom;
     this.root = dom.root;
     this.uiLayer = dom.ui;
     dom.world.style.width = `${size.w}px`;
@@ -208,8 +218,6 @@ export class SwarmStage implements Stage {
     }
     this.#fade = new Fade(this.#opacity);
     this.#guard = new PageGuard(doc);
-    // An overlay covers the visited page itself, whose files the stage must not request again.
-    this.#releaseStills = retainStills(o.mode === "overlay" ? doc : undefined);
     try {
       this.#overlay = new OverlayLayer(dom.canvas, o.theme, this.#reduced, o.overlays);
       this.#guides = new GuideLines(this.#registry, this.#overlay.guides, this.#reduced);

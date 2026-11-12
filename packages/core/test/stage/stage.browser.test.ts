@@ -466,6 +466,26 @@ describe("stage: reveal semantics per kind", () => {
     expect((stage.el("a") as HTMLElement).querySelector("img")?.getAttribute("src")).toBe(src);
   });
 
+  it("overlay: the stage background's file on the visited page is not requested either", async () => {
+    // The background is painted (and held still) while the DOM is built, before any layer mounts.
+    const fetches = vi.spyOn(window, "fetch");
+    cleanups.push(() => fetches.mockRestore());
+    const bp = { ...blueprint([], { w: window.innerWidth, h: 600 }), background: `url(${SPIN_SVG}?page-bg)` };
+    const stage = createStage({
+      blueprint: bp,
+      mode: "overlay",
+      host: document.body,
+      theme: resolveTheme("auto", bp, false),
+      plugins: [],
+      reducedMotion: false,
+      rng: createRng(3),
+      initialScroll: 0,
+    });
+    cleanups.push(() => stage.destroy());
+    await stage.ready();
+    expect(fetches).not.toHaveBeenCalled();
+  });
+
   it("image: a replay decodes no animated image again, however many; the copies go with the last stage", async () => {
     // More than a count-bounded cache of 32 held: mounted in the same order, every one missed.
     const layers: Layer[] = Array.from({ length: 40 }, (_, i) => ({
