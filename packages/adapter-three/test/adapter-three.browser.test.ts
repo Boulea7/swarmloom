@@ -148,4 +148,28 @@ describe("three adapter with the loom-bot sample", () => {
       if (typeof cleanup === "function") cleanup();
     }
   });
+
+  it.skipIf(!webgl)("does not render the finale orbit on its own between the frames somebody sees", async () => {
+    const clear = vi.spyOn(WebGL2RenderingContext.prototype, "clear");
+    const cleanup = plugin.setup?.({ reducedMotion: false } as never, host);
+    try {
+      const light = source.blueprint.layers.find((l) => (l as CustomLayer).task === THREE_TASKS.light) as CustomLayer;
+      const renderer = plugin.renderers?.[THREE_TASKS.light];
+      const t = 7_200_000;
+      plugin.frame?.(t, 8, false);
+      renderer?.mount(light, document.createElement("div"), {} as never);
+      renderer?.finish?.(light);
+      clear.mockClear();
+      // Mid-orbit the camera moves on every tick, also on those nobody sees: only a frame that draws renders.
+      plugin.frame?.(t + 3400, 100, false);
+      plugin.frame?.(t + 3500, 100, false);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      expect(clear).not.toHaveBeenCalled();
+      plugin.frame?.(t + 3600, 100, true);
+      expect(clear).toHaveBeenCalled();
+    } finally {
+      clear.mockRestore();
+      if (typeof cleanup === "function") cleanup();
+    }
+  });
 });

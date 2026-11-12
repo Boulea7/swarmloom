@@ -145,6 +145,8 @@ export class ModelScene {
   #userOrbit = false;
   #cameraMoved = false;
   #interactiveFrame = 0;
+  /** The scene itself is syncing the orbit controls (finale orbit, enabling): its frames render. */
+  #syncingControls = false;
   #failure: string | null = null;
 
   constructor(model: SceneModel, config: SceneConfig) {
@@ -561,7 +563,8 @@ export class ModelScene {
     });
     controls.addEventListener("change", () => {
       this.#cameraMoved = true;
-      this.#scheduleInteractiveRender();
+      // Only user input renders on its own; the finale orbit renders with the engine frames that draw.
+      if (!this.#syncingControls) this.#scheduleInteractiveRender();
     });
 
     return {
@@ -597,13 +600,23 @@ export class ModelScene {
     m.camera.near = 0.01;
     m.camera.updateProjectionMatrix();
     m.controls.enabled = true;
-    m.controls.update();
+    this.#syncControls(m);
     canvas.style.pointerEvents = "auto";
     canvas.style.touchAction = "none";
     canvas.style.cursor = "grab";
     canvas.tabIndex = 0;
     canvas.setAttribute("aria-label", `${this.#model.label}. Drag to rotate, scroll or pinch to zoom.`);
     m.controls.listenToKeyEvents(canvas);
+  }
+
+  /** Updates the orbit controls to a camera pose the scene set, without a render of their own. */
+  #syncControls(m: Mounted): void {
+    this.#syncingControls = true;
+    try {
+      m.controls.update();
+    } finally {
+      this.#syncingControls = false;
+    }
   }
 
   /** Renders on the next animation frame after user orbit input (the engine clock may be stopped). */
@@ -656,7 +669,7 @@ export class ModelScene {
       this.#applyPose(m.camera, azimuth);
       m.camera.near = 0.01;
       m.camera.updateProjectionMatrix();
-      m.controls.update();
+      this.#syncControls(m);
       this.#cameraMoved = true;
       changed = true;
       if (t >= 1) this.#finaleAt = -1;
