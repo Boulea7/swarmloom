@@ -67,3 +67,28 @@ it("leaves a link's settings behind with its view", async () => {
   studio.context.navigate({ source: null });
   expect(studio.context.settings).toMatchObject({ seed, speed, finale });
 });
+
+it("takes speed, sound and tour changed on the player's toolbar into the panel, a share link and the next player", async () => {
+  const { studio, log, byLabel } = await openLink();
+  studio.context.toggleSettings();
+  // What the toolbar and its shortcuts (3, M, T) call on the player.
+  const player = log.created.at(-1);
+  player?.setSpeed(3);
+  player?.setSound(false);
+  player?.setFollow("scroll");
+  expect(studio.context.settings).toMatchObject({ speed: 3, sound: false, follow: "scroll" });
+  // The open panel shows them.
+  const checked = [...document.querySelectorAll<HTMLInputElement>(".panel-settings input[type=radio]:checked")];
+  expect(checked.map((input) => input.value)).toEqual(expect.arrayContaining(["3", "scroll"]));
+
+  const copied: string[] = [];
+  vi.spyOn(navigator.clipboard, "writeText").mockImplementation(async (text) => void copied.push(text));
+  byLabel("Share")?.click();
+  const link = new URL(await until(() => copied[0]));
+  const carried = (await decodeShare(new URLSearchParams(link.hash.slice(1)).get("d") ?? "")).settings;
+  expect(carried).toMatchObject({ ...shared, speed: 3, follow: "scroll" });
+
+  // A setting that needs a new player keeps the toolbar's choices.
+  studio.context.updateSettings({ agents: 12 });
+  expect(log.players.at(-1)).toMatchObject({ agents: 12, speed: 3, sound: false, follow: "scroll" });
+});

@@ -274,6 +274,8 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
       root.dataset.state = state;
       scrubber.setState(state);
     },
+    // A choice made on the player's toolbar is the user's setting, like one made in the panel.
+    onSettings: (patch) => ctx.updateSettings(patch),
     onClose: () => ctx.navigate({ source: null }),
   });
 

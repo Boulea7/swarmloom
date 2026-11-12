@@ -36,7 +36,10 @@ export interface AppContext {
   readonly local: LocalInput | null;
   /** Absolute URL of the app page without query or hash (base for share links). */
   readonly appUrl: string;
-  /** Changes and persists settings; views are notified through {@link View.settingsChanged}. */
+  /**
+   * Changes and persists settings; views are notified through {@link View.settingsChanged} and an
+   * open settings panel shows the new values.
+   */
   updateSettings(patch: Partial<StudioSettings>): void;
   /**
    * Settings the current view's source carries (a share link's) and already plays with. They join

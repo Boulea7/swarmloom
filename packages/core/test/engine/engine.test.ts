@@ -143,6 +143,22 @@ describe("Engine", () => {
     expect(() => h.engine.setSpeed(0)).toThrow(RangeError);
   });
 
+  it("reports a speed, sound or follow change with the current values, and nothing when unchanged", () => {
+    const h = harness();
+    const seen: unknown[] = [];
+    h.engine.on("settings", ({ type: _, ...rest }) => seen.push(rest));
+    h.engine.setSpeed(2);
+    h.engine.setSpeed(2);
+    h.engine.setSound(false);
+    h.engine.setFollow("tour");
+    h.engine.setFollow("tour");
+    expect(seen).toEqual([
+      { speed: 2, sound: true, follow: "scroll" },
+      { speed: 2, sound: false, follow: "scroll" },
+      { speed: 2, sound: false, follow: "tour" },
+    ]);
+  });
+
   it("runs the finale, switches between flock, halo and none, then settles to done", () => {
     const h = harness(samplePage(), { intro: false, agents: 10 });
     const seen = states(h);

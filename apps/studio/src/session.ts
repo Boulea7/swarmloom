@@ -35,6 +35,11 @@ export interface SessionOptions {
   onPhase(phase: SessionPhase, error?: unknown): void;
   onProgress?(built: number, total: number): void;
   onState?(state: PlayerState): void;
+  /**
+   * The player's toolbar or its shortcuts changed speed, sound or follow mode. The patch already
+   * plays and is in {@link Session.playSettings}; the caller makes it Studio's setting too.
+   */
+  onSettings?(patch: Partial<StudioSettings>): void;
   /** The core toolbar's close button or Esc. */
   onClose?(): void;
 }
@@ -95,8 +100,9 @@ export class Session {
   }
 
   /**
-   * Settings the preview plays with: Studio's, plus those a share link carries for this visit. An
-   * export or a new share link must use these, not the saved settings, to make the same performance.
+   * Settings the preview plays with: Studio's, plus those a share link carries for this visit and
+   * the toolbar's speed, sound and follow mode. An export or a new share link must use these, not
+   * the saved settings, to make the same performance.
    */
   get playSettings(): StudioSettings {
     return this.settings;
@@ -180,6 +186,22 @@ export class Session {
       if (prev.speed !== next.speed || prev.follow !== next.follow) this.resetPlan(this.plannedMs);
     }
     return impact;
+  }
+
+  /**
+   * Takes the player's live settings after its toolbar changed them: they play from now on, so
+   * playSettings, the next player and the caller ({@link SessionOptions.onSettings}) get them.
+   * Changes made by {@link apply} arrive here already equal and are ignored.
+   */
+  private adopt(live: Pick<StudioSettings, "speed" | "sound" | "follow">): void {
+    const patch: Partial<StudioSettings> = {};
+    if (live.speed !== this.settings.speed) patch.speed = live.speed;
+    if (live.sound !== this.settings.sound) patch.sound = live.sound;
+    if (live.follow !== this.settings.follow) patch.follow = live.follow;
+    if (Object.keys(patch).length === 0) return;
+    this.settings = { ...this.settings, ...patch };
+    if (patch.speed !== undefined || patch.follow !== undefined) this.resetPlan(this.plannedMs);
+    this.o.onSettings?.(patch);
   }
 
   /**
@@ -296,6 +318,7 @@ export class Session {
         this.replan(player);
         this.o.onProgress?.(e.built, e.total);
       }),
+      player.on("settings", (e) => this.adopt(e)),
       player.on("state", (e) => {
         this.replan(player);
         this.o.onState?.(e.state);

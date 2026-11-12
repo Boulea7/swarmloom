@@ -376,7 +376,12 @@ export async function mountStudio(
       return local;
     },
     appUrl,
-    updateSettings,
+    // A view's change (the theme button, the player's toolbar) also shows in an open settings panel.
+    updateSettings: (patch) => {
+      const before = settings;
+      updateSettings(patch);
+      if (settings !== before && panels().settings.isOpen) renderSettingsForm();
+    },
     sourceSettings,
     // Every view navigation is the user's.
     navigate: (patch, opts) => {

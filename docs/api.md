@@ -121,8 +121,11 @@ type PlayerEvent =
   | { type: "state"; state: PlayerState }
   | { type: "progress"; built: number; total: number }
   | { type: "sound"; event: SoundEvent }
+  | { type: "settings"; speed: number; sound: boolean; follow: "scroll" | "tour" | "none" }
   | { type: "error"; error: Error };
 ```
+
+`settings` 在 `setSpeed`、`setSound` 或 `setFollow` 改变了值时触发（内置工具栏和快捷键也调用它们），带三项的当前值。
 
 销毁前取消业务层订阅，并处理 `play()` 的拒绝；不要把资源加载错误静默吞掉。
 

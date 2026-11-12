@@ -121,8 +121,11 @@ type PlayerEvent =
   | { type: "state"; state: PlayerState }
   | { type: "progress"; built: number; total: number }
   | { type: "sound"; event: SoundEvent }
+  | { type: "settings"; speed: number; sound: boolean; follow: "scroll" | "tour" | "none" }
   | { type: "error"; error: Error };
 ```
+
+`settings` fires when `setSpeed`, `setSound` or `setFollow` changed a value (the built-in toolbar and its shortcuts call them too) and carries all three current values.
 
 Unsubscribe application listeners during teardown and handle `play()` rejection rather than silently swallowing resource errors.
 
