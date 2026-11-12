@@ -87,7 +87,7 @@ Swarm:
                           nearest sixteenth note (up to 30 ms early or 60 ms late, one per sound
                           and sixteenth) and leaves out the ones too far off. Default: notes
       --cue <at>:<action> Player action at a fixed video time; repeatable. <at> is seconds (12.5),
-                          milliseconds (12500ms) or beats from the start at --bpm (26b). <action> is
+                          milliseconds (12500ms) or beats at an explicit --bpm (26b). <action> is
                           pause (every cursor holds), resume, finish (complete the build quickly),
                           live (go live then, not when the finale settles; also with --no-live) or
                           speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=0.6 then

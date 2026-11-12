@@ -183,7 +183,7 @@ node apps/cli/dist/cli.js render examples/svg/emblem.svg -o emblem.mp4
 
 Chrome ou Chromium est requis ; l’export en MP4, WebM, GIF et WebP nécessite aussi FFmpeg 4 ou une version ultérieure. Exécutez `node apps/cli/dist/cli.js doctor` pour vérifier votre environnement. Une fois le paquet npm publié, `npx swarmloom` fonctionnera directement (prévu).
 
-Options utiles pour enregistrer des vidéos : `--opening 1.5` affiche d’abord le contenu d’origine, `--intro outline` trace d’abord les grands contours, `--overlays minimal` masque les indications de taille et les repères, `--cue 12b:live` définit le moment de passage en direct et `--beat-sync all` aligne les sons de frappe sur le rythme. Toutes les options sont dans la [documentation CLI](https://boulea7.github.io/swarmloom/docs/en/cli.html).
+Options utiles pour enregistrer des vidéos : `--opening 1.5` affiche d’abord le contenu d’origine, `--intro outline` trace d’abord les grands contours, `--overlays minimal` masque les indications de taille et les repères, `--cue 8:live` définit le moment de passage en direct et `--beat-sync all` aligne les sons de frappe sur le rythme. Toutes les options sont dans la [documentation CLI](https://boulea7.github.io/swarmloom/docs/en/cli.html).
 
 ### Composant Web
 

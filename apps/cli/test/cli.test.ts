@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { link, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -213,5 +213,16 @@ describe("documented examples", () => {
       .filter((p) => p.includes("/") && !p.includes("://"));
     expect(inputs.length).toBeGreaterThan(0);
     expect(inputs.filter((p) => !existsSync(path.join(root, p)))).toEqual([]);
+  });
+
+  it("parse the render options every README suggests", () => {
+    const root = path.resolve(import.meta.dirname, "../../..");
+    const i18n = readdirSync(path.join(root, "docs/i18n")).map((f) => `docs/i18n/${f}`);
+    for (const file of ["README.md", "README.en.md", ...i18n.filter((f) => /README\.[\w-]+\.md$/.test(f))]) {
+      const spans = [...readFileSync(path.join(root, file), "utf8").matchAll(/`(--[a-z][^`]*)`/g)];
+      expect(spans.length, file).toBeGreaterThan(0);
+      const flags = spans.flatMap((m) => (m[1] ?? "").split(/\s+/));
+      expect(() => parseRenderOptions(["a.md", ...flags], cwd), file).not.toThrow();
+    }
   });
 });

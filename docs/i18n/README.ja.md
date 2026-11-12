@@ -183,7 +183,7 @@ node apps/cli/dist/cli.js render examples/svg/emblem.svg -o emblem.mp4
 
 Chrome または Chromium が必要です。MP4、WebM、GIF、WebP の書き出しには FFmpeg 4 以降も必要です。`node apps/cli/dist/cli.js doctor` を実行して環境を確認できます。npm パッケージ公開後は、`npx swarmloom` を直接実行できるようになる予定です。
 
-録画に便利なオプション：`--opening 1.5` は元の内容を先に表示し、`--intro outline` は大きな輪郭から描き、`--overlays minimal` はサイズバッジとガイド線を消し、`--cue 12b:live` はライブへの切り替え時刻を指定し、`--beat-sync all` は打鍵音を拍に合わせます。すべてのオプションは [CLI ドキュメント](https://boulea7.github.io/swarmloom/docs/en/cli.html)を参照してください。
+録画に便利なオプション：`--opening 1.5` は元の内容を先に表示し、`--intro outline` は大きな輪郭から描き、`--overlays minimal` はサイズバッジとガイド線を消し、`--cue 8:live` はライブへの切り替え時刻を指定し、`--beat-sync all` は打鍵音を拍に合わせます。すべてのオプションは [CLI ドキュメント](https://boulea7.github.io/swarmloom/docs/en/cli.html)を参照してください。
 
 ### Web Component
 
