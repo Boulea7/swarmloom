@@ -878,6 +878,23 @@ describe("stage: lifecycle", () => {
     expect(stage.root.querySelector(".root[data-live]")).toBeNull();
   });
 
+  it("inline: an opening shows the finished content and fades it above the background; reset blanks it", () => {
+    const { stage } = mount([
+      { id: "b", kind: "box", box: { x: 0, y: 0, w: 100, h: 100 }, style: { background: "red" } },
+    ]);
+    stage.original?.(1);
+    stage.render(16, []);
+    expect(css(stage.el("b") as HTMLElement).visibility).toBe("visible");
+    const world = stage.root.querySelector(".world") as HTMLElement;
+    stage.original?.(0.25);
+    expect(css(world).opacity).toBe("0.25");
+    expect(css(stage.root.querySelector(".scroller") as HTMLElement).backgroundColor).toBe("rgb(255, 255, 255)");
+    stage.reset();
+    stage.render(32, []);
+    expect(css(world).opacity).toBe("1");
+    expect(css(stage.el("b") as HTMLElement).visibility).toBe("hidden");
+  });
+
   it("inline: live content is read and its links take Tab focus; the build is neither", async () => {
     const { stage } = mount([
       {

@@ -29,6 +29,7 @@ export {
   type RenderInfo,
   type RenderInit,
   type RenderInput,
+  type RenderScroll,
   type RenderStep,
 } from "./render/protocol";
 export {
@@ -36,5 +37,6 @@ export {
   RenderSession,
   type RenderSessionOptions,
   type SessionCue,
+  type SessionScroll,
   type SessionStatus,
 } from "./session";

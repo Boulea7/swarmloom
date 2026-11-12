@@ -118,6 +118,8 @@ export const zhTW: StudioCatalog = {
   "settings.finale.flock": "群聚",
   "settings.finale.halo": "光環",
   "settings.finale.none": "無",
+  "settings.opening": "先顯示原內容",
+  "settings.liveTop": "結束時回到頂部",
   "settings.follow": "鏡頭",
   "settings.follow.tour": "巡航",
   "settings.follow.scroll": "跟隨捲動",

@@ -153,6 +153,13 @@ export interface Stage extends StageApi {
   prefetch?(id: string): void;
   /** Fade the blank canvas in over the live page (overlay) / show the empty stage (inline). */
   enter(): Promise<void>;
+  /**
+   * Optional, for PlayerOptions.opening: shows the original at opacity `alpha` (0..1) over the blank
+   * canvas, before enter(). Inline, the original is the finished content (the first call finishes
+   * every layer, as finishAll() does); overlay, it is the page under a still transparent stage.
+   * `null` ends the opening and leaves the layers as they are; reset() ends it too.
+   */
+  original?(alpha: number | null): void;
   /** Instantly reveal every layer to its final state (skip, reduced motion end). */
   finishAll(): void;
   /** Back to a blank canvas with nothing revealed (replay). */

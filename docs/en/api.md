@@ -74,6 +74,8 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `reducedMotion` | `auto` / `boolean` | Defaults to the system reduced-motion preference |
 | `intro` | `boolean` | Enable the icon orbit and fan-out introduction |
 | `finale` | `flock` / `halo` / `none` | Flock, audio-reactive halo, or no finale |
+| `opening` | `number`, default 0 | Ms to show the original first (inline: the finished content; overlay: the page), then fade into the blank canvas and start the intro |
+| `liveTop` | `boolean`, default false | Going live glides back to the top while the cursors leave |
 | `controls` | `boolean` | Show the built-in toolbar |
 | `locale` | BCP 47 string | Toolbar language; defaults to `navigator.language` |
 | `plugins` | `Plugin[]` | Custom choreographies, renderers or stage plugins |
@@ -99,7 +101,8 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `state` | `idle`, `intro`, `building`, `paused`, `finale`, `done`, `live` or `destroyed` |
 | `progress` | `{ built, total }` layer progress |
 | `soundLog` | Read-only sound events emitted so far |
-| `play()` | Start intro and build; resolves after the build, not after the finale |
+| `scrollY` | Optional: top edge of the view in stage px; exporters log its changes as scroll stretches |
+| `play()` | Start opening, intro and build; resolves after the build, not after the finale |
 | `pause()` / `resume()` | Pause or resume |
 | `setSpeed(speed)` | Change speed |
 | `setSound(enabled)` | Toggle sound |

@@ -507,8 +507,19 @@ export interface PlayerOptions {
   /** "auto" follows prefers-reduced-motion: quick cross-fade build, no flocking. */
   reducedMotion?: "auto" | boolean;
   intro?: boolean;
+  /**
+   * Optional. Opening before the intro, in ms of player time: the original shows first (an inline
+   * stage shows the finished content, an overlay leaves the page uncovered), then it fades into the
+   * blank canvas and the intro starts. 0 or unset (default) starts on the blank canvas.
+   */
+  opening?: number;
   /** End-of-build behaviour: flock to pointer, audio-reactive halo ring, or nothing. */
   finale?: "flock" | "halo" | "none";
+  /**
+   * Optional. Going live glides the view back to the top while the cursors leave, so the finished
+   * page shows from its first screen. Default false (it stays where the build ended).
+   */
+  liveTop?: boolean;
   /** Built-in toolbar (play/pause, speed, sound, tour, replay, go live, close). */
   controls?: boolean;
   /**
@@ -540,7 +551,12 @@ export interface Player {
    * Pairs with {@link eta} to estimate where the build ends.
    */
   readonly time?: number;
-  /** Starts intro + build. Resolves when the build (not the finale) completes. */
+  /**
+   * Optional. Top edge of the view in stage px (the coordinates of Layer.box): where the tour, a
+   * go-live glide or the user scrolled to. Exporters log its changes as scroll events.
+   */
+  readonly scrollY?: number;
+  /** Starts the opening (if any), intro and build. Resolves when the build (not the finale) completes. */
   play(): Promise<void>;
   pause(): void;
   resume(): void;

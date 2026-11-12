@@ -85,8 +85,10 @@ swarmloom render <file|url> [options]
 | `--overlays <level>` | `full` | 构建时画出的编辑标记。`minimal` 不画尺寸角标、间距标注、参考线和标尺；`none` 再去掉选框、占位框、钢笔线、插入符和状态气泡，只留光标、名牌和内容 |
 | `--finale <finale>` | `flock` | `flock`、`halo` 或 `none` |
 | `--follow <mode>` | `tour` | `tour` 随构建滚动页面；`none` 不滚动 |
+| `--opening <time>` | 关闭 | 先显示完成后的页面或文档 `<time>`（秒、毫秒或拍数，写法同 `--cue`；最长 60 秒），再淡出到空白画布并开始构建。淡出正好从 `<time>` 开始，历时 0.52 秒 |
 | `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面，页面里的动图停在第一帧 |
 | `--no-live` | go live | 整个停留时间都保持收尾动画，不 go live |
+| `--live-top` | 关闭 | go live 时一边让光标离开，一边滑回页面顶部，live 页面从首屏开始 |
 | `--locale <tag>` | `en-US` | 工具栏文字和页面的语言，BCP 47 标签，例如 `zh-CN` |
 | `--bpm <n>` | `112` | 放置音符、散开音与完成和弦对齐的速度（八分音符网格），范围 40–240 |
 | `--cue <at>:<action>` | 无 | 在固定视频时间执行播放器动作，可重复。`<at>` 为秒（`12.5`）、毫秒（`12500ms`）或按 `--bpm` 计的拍数（`26b`，需要显式给出 `--bpm`）；`<action>` 为 `pause`（全部光标停住）、`resume`、`finish`（快速完成构建）或 `live`（在这一刻进入 live，不再等终场稳定后自动进入；`--no-live` 时也生效；未完成的构建一次补全）。在不早于 `<at>` 的第一帧生效，同一时间的动作按给出顺序执行；`<at>` 必须早于视频结尾 |
@@ -100,7 +102,7 @@ swarmloom render <file|url> [options]
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `--audio-out <file>` | 关闭 | 另写一份音轨 WAV（48 kHz 立体声，与视频等长）；需要声音，不能与 `--no-sound`、GIF 或 WebP 同用 |
-| `--events-out <file>` | 关闭 | 另写一份声音事件日志 JSON：引擎毫秒、与帧同一时钟，并附每个事件的帧号 |
+| `--events-out <file>` | 关闭 | 另写一份声音事件日志 JSON：引擎毫秒、与帧同一时钟，并附每个事件的帧号。`scrolls` 在同一时钟上列出每段滚动（巡航、`--live-top` 的回滑）：`t` 和 `end` 及其帧号 `frame`、`endFrame`，以及视图上沿的 `from` 和 `to`（页面 CSS 像素） |
 | `--manifest-out <file>` | 关闭 | 写出录制清单 JSON：参数、输入与 blueprint 的 SHA-256（blueprint 里每次运行都会变的地址，如输入的服务路径、相对渲染页解析出的链接和 `blob:` URL，先换成固定写法再求哈希）、播放器设置、cue、浏览器/ffmpeg/Node 版本、使用的字体、每帧与声音日志的 SHA-256；此时帧按 PNG 截取，哈希对应精确像素。清单可直接分享：参数和输出里的文件路径都相对清单所在目录记录（既不在该目录内、也不在其上级目录中的文件只记文件名），程序只记文件名，不记工作目录，URL 的用户信息、查询串和片段写作 `redacted` |
 
 ### 程序与日志

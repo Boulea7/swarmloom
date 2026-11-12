@@ -19,6 +19,10 @@ export interface StudioSettings {
   theme: ThemeChoice;
   finale: FinaleChoice;
   follow: FollowChoice;
+  /** Show the finished original for {@link OPENING_MS} first, then fade into the build. */
+  opening: boolean;
+  /** Going live glides back to the top. */
+  liveTop: boolean;
   reducedMotion: MotionChoice;
   sound: boolean;
   soundPack: SoundPack;
@@ -40,6 +44,8 @@ export const FINALES: readonly FinaleChoice[] = ["flock", "halo", "none"];
 export const FOLLOWS: readonly FollowChoice[] = ["tour", "scroll", "none"];
 export const MOTIONS: readonly MotionChoice[] = ["auto", "reduce", "full"];
 export const SOUND_PACKS: readonly SoundPack[] = ["studio", "soft", "8bit", "silent-keys"];
+/** How long the opening shows the original before it fades, ms (`--opening 1.5`). */
+export const OPENING_MS = 1500;
 
 export const DEFAULT_SETTINGS: Readonly<StudioSettings> = Object.freeze({
   agents: "auto",
@@ -49,6 +55,8 @@ export const DEFAULT_SETTINGS: Readonly<StudioSettings> = Object.freeze({
   theme: "auto",
   finale: "flock",
   follow: "tour",
+  opening: false,
+  liveTop: false,
   reducedMotion: "auto",
   sound: true,
   soundPack: "studio",
@@ -109,6 +117,10 @@ export function sanitizeSettings(raw: unknown): Partial<StudioSettings> {
   if (finale) out.finale = finale;
   const follow = oneOf(FOLLOWS, r.follow);
   if (follow) out.follow = follow;
+  const opening = parseBool(r.opening);
+  if (opening !== undefined) out.opening = opening;
+  const liveTop = parseBool(r.liveTop);
+  if (liveTop !== undefined) out.liveTop = liveTop;
   const motion = oneOf(MOTIONS, r.reducedMotion);
   if (motion) out.reducedMotion = motion;
   const sound = parseBool(r.sound);
@@ -174,7 +186,18 @@ export function playerOptionsFrom(
   locale: string,
 ): Pick<
   PlayerOptions,
-  "agents" | "speed" | "seed" | "labels" | "theme" | "finale" | "follow" | "reducedMotion" | "sound" | "locale"
+  | "agents"
+  | "speed"
+  | "seed"
+  | "labels"
+  | "theme"
+  | "finale"
+  | "follow"
+  | "opening"
+  | "liveTop"
+  | "reducedMotion"
+  | "sound"
+  | "locale"
 > {
   return {
     agents: s.agents,
@@ -184,6 +207,8 @@ export function playerOptionsFrom(
     theme: s.theme,
     finale: s.finale,
     follow: s.follow,
+    opening: s.opening ? OPENING_MS : 0,
+    liveTop: s.liveTop,
     reducedMotion: s.reducedMotion === "auto" ? "auto" : s.reducedMotion === "reduce",
     sound: s.sound ? { enabled: true, pack: s.soundPack, volume: s.volume } : false,
     locale,

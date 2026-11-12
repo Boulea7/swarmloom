@@ -36,6 +36,7 @@ The player uses an inline stage with its own scrolling content. Its settings dra
 - Light and dark themes;
 - Sound toggle and sound pack;
 - `flock`, `halo` and `none` finales;
+- Show the original first (1.5 s of the finished content, then the build) and back to the top at the end;
 - Reduced motion;
 - Interface language.
 
