@@ -103,9 +103,11 @@ export class Agent implements AgentApi {
   run: TaskRun | null = null;
   /** Player time when the agent last became idle. */
   idleSince = 0;
-  /** Free-motion target: viewport fractions for wandering, stage px otherwise. */
+  /** Free-motion target: viewport fractions for wandering (stage px when `targetAbs`), stage px otherwise. */
   targetX = 0;
   targetY = 0;
+  /** The wander target is a plugin's rest spot in stage px, not viewport fractions. */
+  targetAbs = false;
   /** Physics time until which the current wander target is kept. */
   holdUntil = 0;
   /** Side edge used to enter or leave: -1 left, 1 right. */

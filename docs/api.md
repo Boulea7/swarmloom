@@ -293,6 +293,7 @@ const player = createPlayer({
 - 随机性使用 `agent.rng`，不要调用 `Math.random()` 或 `Date.now()`。
 - 在 `finally` 中移除 overlay、释放按压并调用 `stage.finish()`。
 - `setup()` 可返回清理函数；`frame(now, dt)` 使用引擎时间。
+- `restSpot(vp, rng)` 可选：返回空闲光标下一个停靠点（stage 坐标），让它们避开舞台看不到的文字（如终端画面）；返回 null 时在视口中部游走。随机数只用传入的 `rng`。
 - 有内部状态的插件提供 `perPlayer()`：每个播放器创建时调用一次并使用返回的新实例，同一个 `LoadedSource` 因而可以同时驱动多个播放器。
 - 播放器以减少动态效果方式构建时 `stage.reducedMotion` 为 true，此时保持静止画面，不要自行启动动画。
 - 不要在每帧创建大量 DOM 节点或反复读取布局。

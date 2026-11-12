@@ -1,4 +1,4 @@
-import type { Rect } from "../types";
+import type { Point, Rect, Rng } from "../types";
 import { type Agent, BENCHED, type EXITING, FADING, IDLE, type LEAVING, SWARM } from "./agent";
 import { ALPHA_RATE, NONE_FADE_MS } from "./constants";
 import { coast, steerTo } from "./steer";
@@ -27,12 +27,22 @@ const EXIT_ACCEL = 2200;
 /** Initial inward speed of a joiner, px/s. */
 const ENTRY_SPEED = 220;
 
+/** Where an idle agent rests next (stage px), or null for a spot in the middle of the viewport. */
+export type RestSpot = (vp: Rect, rng: Rng) => Point | null;
+
 /**
  * Brings a benched agent into view from a side edge.
  * @param side -1 enters from the left edge, 1 from the right edge.
  * @param mode IDLE (building) or SWARM (intro, finale).
  */
-export function joinAgent(agent: Agent, vp: Rect, side: -1 | 1, mode: typeof IDLE | typeof SWARM, sim: number): void {
+export function joinAgent(
+  agent: Agent,
+  vp: Rect,
+  side: -1 | 1,
+  mode: typeof IDLE | typeof SWARM,
+  sim: number,
+  restSpot: RestSpot | null = null,
+): void {
   agent.side = side;
   agent.x = side < 0 ? vp.x - ENTRY_MARGIN_PX : vp.x + vp.w + ENTRY_MARGIN_PX;
   agent.y = vp.y + vp.h * (0.2 + 0.6 * agent.freeRng());
@@ -44,7 +54,7 @@ export function joinAgent(agent: Agent, vp: Rect, side: -1 | 1, mode: typeof IDL
   agent.mode = mode;
   agent.showHeading = mode === SWARM;
   agent.idleSince = sim;
-  pickWanderTarget(agent);
+  pickWanderTarget(agent, vp, restSpot);
   agent.holdUntil = 0;
 }
 
@@ -65,23 +75,30 @@ export function restAfterTask(agent: Agent, sim: number): void {
   agent.holdUntil = sim + AFTER_TASK_REST_MIN_MS + agent.freeRng() * AFTER_TASK_REST_SPAN_MS;
 }
 
-function pickWanderTarget(agent: Agent): void {
+function pickWanderTarget(agent: Agent, vp: Rect, restSpot: RestSpot | null): void {
+  const spot = restSpot?.(vp, agent.freeRng);
+  agent.targetAbs = spot != null && Number.isFinite(spot.x) && Number.isFinite(spot.y);
+  if (spot && agent.targetAbs) {
+    agent.targetX = spot.x;
+    agent.targetY = spot.y;
+    return;
+  }
   agent.targetX = WANDER_X0 + WANDER_XS * agent.freeRng();
   agent.targetY = WANDER_Y0 + WANDER_YS * agent.freeRng();
 }
 
-/** Idle motion: drift to a spot in the middle of the viewport, rest, pick another. */
-export function wander(agent: Agent, vp: Rect, sim: number, h: number): void {
+/** Idle motion: drift to a rest spot (from `restSpot`, else in the middle of the viewport), rest, pick another. */
+export function wander(agent: Agent, vp: Rect, sim: number, h: number, restSpot: RestSpot | null = null): void {
   if (agent.holdUntil > 0) {
     coast(agent, REST_DAMPING_S, h);
     if (sim >= agent.holdUntil) {
-      pickWanderTarget(agent);
+      pickWanderTarget(agent, vp, restSpot);
       agent.holdUntil = 0;
     }
     return;
   }
-  const tx = vp.x + vp.w * agent.targetX;
-  const ty = vp.y + vp.h * agent.targetY;
+  const tx = agent.targetAbs ? agent.targetX : vp.x + vp.w * agent.targetX;
+  const ty = agent.targetAbs ? agent.targetY : vp.y + vp.h * agent.targetY;
   if (Math.hypot(tx - agent.x, ty - agent.y) < ARRIVE_PX) {
     agent.holdUntil = sim + REST_MIN_MS + agent.freeRng() * REST_SPAN_MS;
     return;

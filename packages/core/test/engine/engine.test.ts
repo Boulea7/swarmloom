@@ -435,6 +435,32 @@ describe("Engine", () => {
     expect(h.stage.calls.reset).toBe(2);
   });
 
+  it("rests idle cursors at the spot a plugin's restSpot picks", () => {
+    const spot = { x: 700, y: 60 };
+    const slow: Plugin = {
+      name: "slow",
+      tasks: {
+        box: function* (_agent, layer, stage): TaskGen {
+          yield 15_000;
+          stage.finish(layer.id);
+        },
+      },
+      restSpot: () => spot,
+    };
+    const h = harness(blueprintOf([box("a", 20, 600)]), { intro: false, agents: 3 }, { plugins: [testPlugin, slow] });
+    let at: { x: number; y: number }[] = [];
+    const render = h.stage.render.bind(h.stage);
+    h.stage.render = (now, agents) => {
+      at = agents.map((a) => ({ x: a.x, y: a.y }));
+      render(now, agents);
+    };
+    void h.engine.play();
+    h.run(480);
+    expect(h.engine.state).toBe("building");
+    // Two cursors wait while the third works.
+    expect(at.filter((p) => Math.hypot(p.x - spot.x, p.y - spot.y) < 12)).toHaveLength(2);
+  });
+
   it("sizes the crew automatically and labels agents per mode", () => {
     expect(autoAgentCount(0, 390 * 844)).toBe(8);
     expect(autoAgentCount(260, 1280 * 800)).toBeGreaterThan(30);

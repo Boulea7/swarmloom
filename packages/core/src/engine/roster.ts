@@ -2,7 +2,7 @@ import type { AgentView } from "../internal";
 import type { Point, Rect } from "../types";
 import { Agent, type AgentHost, BENCHED, EXITING, FADING, IDLE, LEAVING, type SWARM, WORKING } from "./agent";
 import { JOIN_COOLDOWN_MS, RETIRE_IDLE_MS } from "./constants";
-import { bench, joinAgent, leave, sendAway, updateAlpha, wander } from "./crew";
+import { bench, joinAgent, leave, type RestSpot, sendAway, updateAlpha, wander } from "./crew";
 import type { Labeler } from "./labels";
 import { coast } from "./steer";
 import { streamRng } from "./streams";
@@ -19,6 +19,8 @@ export interface RosterOptions {
   palette: readonly string[];
   labeler: Labeler;
   host: AgentHost;
+  /** Where idle agents rest (a plugin's `restSpot`); null wanders the middle of the viewport. */
+  restSpot?: RestSpot | null;
 }
 
 /**
@@ -30,6 +32,7 @@ export class Roster {
   readonly agents: readonly Agent[];
   readonly base: number;
   readonly #labeler: Labeler;
+  readonly #restSpot: RestSpot | null;
   readonly #views: AgentView[] = [];
   readonly #point: Point = { x: 0, y: 0 };
   #lastJoin = Number.NEGATIVE_INFINITY;
@@ -37,6 +40,7 @@ export class Roster {
   constructor(opts: RosterOptions) {
     const palette = opts.palette.length > 0 ? opts.palette : [FALLBACK_COLOR];
     this.#labeler = opts.labeler;
+    this.#restSpot = opts.restSpot ?? null;
     this.base = Math.min(opts.base, opts.count);
     this.agents = Array.from({ length: opts.count }, (_, i) => {
       const agent = new Agent(
@@ -69,7 +73,7 @@ export class Roster {
     if (sim - this.#lastJoin < cooldownMs) return null;
     for (const a of this.agents) {
       if (a.mode !== BENCHED) continue;
-      joinAgent(a, vp, a.freeRng() < 0.5 ? -1 : 1, mode, sim);
+      joinAgent(a, vp, a.freeRng() < 0.5 ? -1 : 1, mode, sim, this.#restSpot);
       this.#lastJoin = sim;
       return a;
     }
@@ -110,7 +114,7 @@ export class Roster {
         case BENCHED:
           continue;
         case IDLE:
-          wander(a, vp, sim, h);
+          wander(a, vp, sim, h, this.#restSpot);
           break;
         case LEAVING:
         case EXITING:

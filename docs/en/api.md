@@ -293,6 +293,7 @@ Choreography rules:
 - Use `agent.rng`, not `Math.random()` or `Date.now()`.
 - Remove overlays, release presses and call `stage.finish()` in `finally`.
 - `setup()` may return cleanup; `frame(now, dt)` uses engine time.
+- Optional `restSpot(vp, rng)` returns where an idle cursor rests next (stage px), so idle cursors stay off text the stage cannot see, such as a terminal screen; null keeps the default wandering in the middle of the viewport. Use only the given `rng` for randomness.
 - A plugin that keeps state provides `perPlayer()`: every player calls it once and uses the fresh instance, so one `LoadedSource` can drive several players at once.
 - `stage.reducedMotion` is true when the player builds without motion; keep still poses then instead of starting animations.
 - Avoid per-frame DOM allocation and repeated layout reads.

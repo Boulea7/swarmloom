@@ -35,7 +35,7 @@ import {
   TOUR_LEAD_SHARE,
   TOUR_STARVED_LEAD_SHARE,
 } from "./constants";
-import { restAfterTask, sendAway } from "./crew";
+import { type RestSpot, restAfterTask, sendAway } from "./crew";
 import { CrossFade, type CrossFadeTiming } from "./crossfade";
 import { clamp } from "./easing";
 import { Emitter } from "./events";
@@ -185,6 +185,7 @@ export class Engine implements Player {
   readonly #cleanups: (() => void)[] = [];
   readonly #project: ((p: Point) => Point) | null;
   readonly #framePlugins: readonly Plugin[];
+  readonly #restSpot: RestSpot | null;
   readonly #failedPlugins = new Set<Plugin>();
   readonly #levels: HaloLevels = { low: 0, mid: 0, high: 0 };
   readonly #vp: Rect = { ...FALLBACK_VIEWPORT };
@@ -246,6 +247,7 @@ export class Engine implements Player {
     this.#tasks = mergeTasks(deps.plugins);
     this.#project = [...deps.plugins].reverse().find((p) => typeof p.project === "function")?.project ?? null;
     this.#framePlugins = deps.plugins.filter((p) => typeof p.frame === "function");
+    this.#restSpot = this.#pluginRestSpot(deps.plugins);
     this.#labeler = createLabeler(settings.labels, deps.translate);
     const vp = this.#readViewport();
     this.#count = resolveAgentCount(settings.agents, this.#plan.taskCount, vp.w * vp.h);
@@ -568,7 +570,25 @@ export class Engine implements Player {
       palette: this.#deps.theme.palette,
       labeler: this.#labeler,
       host: { emitSound: (agent, name, opts) => this.#agentSound(agent, name, opts) },
+      restSpot: this.#restSpot,
     });
+  }
+
+  /** The last plugin's `restSpot`, guarded: one that throws is reported once and then no longer asked. */
+  #pluginRestSpot(plugins: readonly Plugin[]): RestSpot | null {
+    const plugin = [...plugins].reverse().find((p) => typeof p.restSpot === "function");
+    if (!plugin) return null;
+    let failed = false;
+    return (vp, rng) => {
+      if (failed) return null;
+      try {
+        return plugin.restSpot?.(vp, rng) ?? null;
+      } catch (error) {
+        failed = true;
+        this.#report(new Error(`plugin "${plugin.name}" restSpot(): ${errorMessage(error)}`, { cause: error }));
+        return null;
+      }
+    };
   }
 
   /** Fresh run state for replay: schedule, agents with their seeded streams, timelines. */
