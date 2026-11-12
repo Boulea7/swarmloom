@@ -110,6 +110,13 @@ describe("renderOffline", () => {
     expect(peak(mono, 0, 1000)).toBeGreaterThan(0.01);
   });
 
+  it("rejects with the signal's reason at once when cancelled", async () => {
+    const controller = new AbortController();
+    const rendering = renderOffline(SHOWCASE, 60_000, { sampleRate: RATE, signal: controller.signal });
+    controller.abort();
+    await expect(rendering).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("rejects invalid durations, formats and event lists", async () => {
     await expect(renderOffline([], 0)).rejects.toThrow(RangeError);
     await expect(renderOffline([], Number.NaN)).rejects.toThrow(RangeError);

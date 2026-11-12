@@ -282,9 +282,11 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
       },
     );
 
+    // Cancelling answers at once here too: the cleanup below then cancels the writer, which stops
+    // its encoding and muxing, and removes the frame.
     if (plan.audio) {
       report("sound");
-      const events = await api.soundLog();
+      const events = await unlessAborted(api.soundLog(), signal);
       const soundOptions = {
         enabled: true,
         pack: settings.pack,
@@ -295,12 +297,13 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
         sampleRate: SAMPLE_RATE,
         channels: CHANNELS,
         sound: soundOptions,
+        signal,
       });
-      if (signal?.aborted) throw abortError(signal);
-      await out.addAudio(buffer);
+      await unlessAborted(out.addAudio(buffer), signal);
     }
+    if (signal?.aborted) throw abortError(signal);
     report("finishing");
-    const blob = await out.finish();
+    const blob = await unlessAborted(out.finish(), signal);
     finished = true;
     return {
       blob,
@@ -315,7 +318,8 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
       warnings,
     };
   } finally {
-    if (!finished) await writer?.cancel().catch(() => undefined);
+    // Cancelling the writer can wait for an encoder call in progress; the frame goes meanwhile.
+    const cancelling = finished ? undefined : writer?.cancel().catch(() => undefined);
     try {
       opened?.api.dispose();
     } finally {
@@ -324,5 +328,6 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
       media?.stop();
       opened?.frame.remove();
     }
+    await cancelling;
   }
 }

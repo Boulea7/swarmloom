@@ -260,3 +260,37 @@ it("cancelling removes the export frame at once, while it loads or starts", { ti
     }
   }
 });
+
+it("cancelling while the sound or the file is made stops that work too", { timeout: 60_000 }, async () => {
+  type Call = (this: VideoFileWriter, ...args: unknown[]) => Promise<unknown>;
+  const writer = VideoFileWriter.prototype as unknown as Record<"addAudio" | "finish", Call>;
+  for (const method of ["addAudio", "finish"] as const) {
+    const original = writer[method];
+    const controller = new AbortController();
+    let frame: HTMLIFrameElement | null = null;
+    let call: Promise<unknown> | null = null;
+    onFrame = (added) => {
+      frame = added;
+    };
+    // Cancel as the exporter starts the call, as Cancel would during "sound" or "finishing".
+    writer[method] = function (...args) {
+      call = original.apply(this, args);
+      call.catch(() => undefined);
+      controller.abort();
+      return call;
+    };
+    try {
+      const error = await exportClip({ signal: controller.signal, maxDurationMs: 500, hashFrames: false }).catch(
+        (e: unknown) => e,
+      );
+      expect([method, error]).toMatchObject([method, { name: "AbortError" }]);
+      expect((frame as HTMLIFrameElement | null)?.isConnected).toBe(false);
+      // The writer gave up rather than encoding the sound or muxing the file in the background.
+      expect(call).not.toBeNull();
+      await expect(call).rejects.toBeDefined();
+    } finally {
+      writer[method] = original;
+      onFrame = null;
+    }
+  }
+});
