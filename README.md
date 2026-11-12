@@ -183,6 +183,8 @@ node apps/cli/dist/cli.js render examples/svg/emblem.svg -o emblem.mp4
 
 需要 Chrome 或 Chromium；导出 MP4、WebM、GIF、WebP 还需要 FFmpeg 4+。运行 `node apps/cli/dist/cli.js doctor` 检查环境。npm 发布后可以直接用 `npx swarmloom`（计划中）。
 
+录视频常用选项：`--opening 1.5` 先显示原内容，`--intro outline` 先描大轮廓，`--overlays minimal` 去掉尺寸角标和参考线，`--cue 12b:live` 指定上线时刻，`--beat-sync all` 让敲击声踩拍。全部选项见 [CLI 文档](https://boulea7.github.io/swarmloom/docs/cli.html)。
+
 ### Web Component
 
 npm 包 `@swarmloom/element` 还没发布（计划中）。组件本身已经可用，写法如下：
