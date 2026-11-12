@@ -499,12 +499,7 @@ export class SwarmStage implements Stage {
       this.#setOpacity(1);
       return Promise.resolve();
     }
-    if (!dom.attached) {
-      // Replay after going live: back over the page where the stage was.
-      dom.attach();
-      this.#measure();
-      this.#scroll.restore();
-    }
+    this.#reattach();
     this.#guard.engage(dom.host);
     dom.host.removeAttribute("data-passive");
     try {
@@ -526,7 +521,9 @@ export class SwarmStage implements Stage {
     }
     const a = clamp01(alpha);
     if (this.#mode === "overlay") {
-      // The page under the stage is the original: the blank canvas covers it as it fades.
+      // The page under the stage is the original: the blank canvas covers it as it fades. A replay
+      // after going live starts here, not in enter(): the canvas must be over the page to fade in.
+      this.#reattach();
       this.#fade.set(1 - a);
       this.#original = a;
       return;
@@ -537,6 +534,15 @@ export class SwarmStage implements Stage {
     const value = a >= 1 ? "" : String(Math.round(a * 1000) / 1000);
     this.#dom.world.style.opacity = value;
     this.#dom.backdrop.style.opacity = value;
+  }
+
+  /** Replay after going live: back over the page where the stage was (still click-through). */
+  #reattach(): void {
+    const dom = this.#dom;
+    if (dom.attached) return;
+    dom.attach();
+    this.#measure();
+    this.#scroll.restore();
   }
 
   #endOriginal(): void {
