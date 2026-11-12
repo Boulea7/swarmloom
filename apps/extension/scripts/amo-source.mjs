@@ -151,21 +151,39 @@ function run(cmd, args, cwd) {
 }
 
 /**
+ * Prints the sha256 of the rebuilt package with Node, which the build needs anyway: `sha256sum` is
+ * GNU-only (macOS ships `shasum`). The quoting holds in sh, PowerShell and cmd.exe alike: no `$`,
+ * backtick, `!`, `%` or space inside the double quotes.
+ */
+export const HASH_COMMAND = `node -e "console.log(require('crypto').createHash('sha256').update(require('fs').readFileSync('apps/extension/dist/firefox.zip')).digest('hex'))"`;
+
+/**
+ * AMO-SOURCE.md. Steps are numbered; a line starting with three spaces is a note on the step above.
  * @param {{ xpiHash: string; studio: boolean; packages: string[]; pnpm: string; epoch: string | undefined }} info
  */
-function instructions(info) {
+export function instructions(info) {
   const studioStep = info.studio
     ? [
         "pnpm -F @swarmloom/studio build:extension",
         "   (writes apps/studio/dist-extension, which the extension build bundles as studio/)",
       ]
     : [];
+  // A separate step, not a `VAR=value command` prefix, which only POSIX shells understand.
+  const epochStep = info.epoch
+    ? [
+        `export SOURCE_DATE_EPOCH=${info.epoch}`,
+        `   (PowerShell: $env:SOURCE_DATE_EPOCH = "${info.epoch}"; cmd.exe: set SOURCE_DATE_EPOCH=${info.epoch})`,
+      ]
+    : [];
   const steps = [
     "pnpm install --frozen-lockfile",
     ...studioStep,
-    `${info.epoch ? `SOURCE_DATE_EPOCH=${info.epoch} ` : ""}pnpm -F @swarmloom/extension exec node scripts/build.mjs --target firefox`,
-    "sha256sum apps/extension/dist/firefox.zip",
+    ...epochStep,
+    "pnpm -F @swarmloom/extension exec node scripts/build.mjs --target firefox",
+    HASH_COMMAND,
+    "   (or sha256sum, or shasum -a 256 on macOS)",
   ];
+  let n = 0;
   return `# SwarmLoom for Firefox: source package
 
 This archive rebuilds \`firefox.zip\`, the package uploaded to addons.mozilla.org (one package for
@@ -176,11 +194,12 @@ nor obfuscated. Third-party code comes from registry.npmjs.org as pinned by \`pn
 
 - Node.js ${process.version} (the same major version is required: zip compression comes from Node's zlib)
 - pnpm ${info.pnpm} (\`corepack enable\` picks it from package.json)
-- Any OS; the build does not depend on the working directory or the clock.
+- Any OS and shell (sh, PowerShell, cmd.exe); the build does not depend on the working directory or
+  the clock.
 
 ## Steps (from the folder this archive was unpacked into)
 
-${steps.map((s, i) => (s.startsWith("   ") ? s : `${i + 1}. ${s}`)).join("\n")}
+${steps.map((s) => (s.startsWith("   ") ? s : `${++n}. ${s}`)).join("\n")}
 
 Expected sha256 of \`apps/extension/dist/firefox.zip\`:
 

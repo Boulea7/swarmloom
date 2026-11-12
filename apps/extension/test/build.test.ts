@@ -1,9 +1,10 @@
+import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { addTree, spawnCommand } from "../scripts/amo-source.mjs";
-import { auditPackage } from "../scripts/audit.mjs";
+import { addTree, HASH_COMMAND, instructions, spawnCommand } from "../scripts/amo-source.mjs";
+import { auditPackage, sha256 } from "../scripts/audit.mjs";
 import { placeholderIcon } from "../scripts/icons.mjs";
 import { cspProblems, GECKO_ID, manifestFor, messageKeys, validateManifest } from "../scripts/manifest.mjs";
 import {
@@ -184,6 +185,24 @@ describe("packaging helpers", () => {
       shell: true,
     });
     expect(() => spawnCommand("pnpm", ["C:\\Temp Dir\\x & y"], "win32")).toThrow(/Windows shell/);
+  });
+
+  it("writes AMO steps every OS and shell can run, numbered in order", () => {
+    const md = instructions({ xpiHash: "0", studio: true, packages: [], pnpm: "10.0.0", epoch: "1700000000" });
+    const steps = md.split("\n").filter((line) => /^\d+\. /.test(line));
+    expect(steps.map((line) => line.split(".")[0])).toEqual(["1", "2", "3", "4", "5"]);
+    // No GNU-only sha256sum step and no POSIX-only `VAR=value command` prefix.
+    expect(steps.filter((line) => /^\d+\. (sha256sum|\w+=)/.test(line))).toEqual([]);
+    expect(md).toContain('$env:SOURCE_DATE_EPOCH = "1700000000"');
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-amo-hash-"));
+    try {
+      const zip = Buffer.from("firefox.zip");
+      mkdirSync(join(dir, "apps", "extension", "dist"), { recursive: true });
+      writeFileSync(join(dir, "apps", "extension", "dist", "firefox.zip"), zip);
+      expect(execSync(HASH_COMMAND, { cwd: dir, encoding: "utf8" }).trim()).toBe(sha256(zip));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
