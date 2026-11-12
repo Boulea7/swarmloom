@@ -1,3 +1,4 @@
+import { RuleIndex } from "../sheets";
 import { bytesToDataUrl } from "./resources";
 
 /** A font face created through the FontFace API in a watched window. */
@@ -81,23 +82,22 @@ export function fontFaceRule(face: WatchedFace, src: string): string {
   return `@font-face{${parts.join(";")}}`;
 }
 
-/** Every `@font-face` rule of a style sheet, including those nested in grouping rules. */
-export function fontFaceRules(sheet: CSSStyleSheet): CSSFontFaceRule[] {
-  const out: CSSFontFaceRule[] = [];
-  const visit = (rules: CSSRuleList | undefined): void => {
-    if (!rules) return;
-    for (const rule of Array.from(rules)) {
-      // CSSRule.FONT_FACE_RULE; constructor checks would fail across windows.
-      if (rule.type === 5) out.push(rule as CSSFontFaceRule);
-      else if ("cssRules" in rule) visit((rule as CSSGroupingRule).cssRules);
-    }
-  };
-  try {
-    visit(sheet.cssRules);
-  } catch {
-    // Cross-origin sheets keep their rules private.
-  }
-  return out;
+/**
+ * `@font-face` rules (CSSRule.FONT_FACE_RULE), at the top of a sheet or in grouping rules (`@media`,
+ * `@supports`, `@layer`, `@container`); never in style rules (nesting takes none), `@page` (6) or
+ * `@keyframes` (7).
+ */
+const FONT_FACE_RULES = new RuleIndex({
+  keep: (type) => type === 5,
+  enter: (type) => type !== 1 && type !== 6 && type !== 7,
+});
+
+/**
+ * Every `@font-face` rule of a style sheet, including those nested in grouping rules. Called for
+ * every frame, so the sheet is walked again only once its rules change ({@link RuleIndex}).
+ */
+export function fontFaceRules(sheet: CSSStyleSheet): readonly CSSFontFaceRule[] {
+  return FONT_FACE_RULES.rules(sheet) as readonly CSSFontFaceRule[];
 }
 
 /** An `@font-face` rule ready for the snapshot sheet, and what it declares (duplicates share it). */
