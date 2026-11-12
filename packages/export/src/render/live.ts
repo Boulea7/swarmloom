@@ -76,15 +76,19 @@ function animatedSvgs(doc: Document): SVGSVGElement[] {
  * Chromium scrolls a marquee with an animation inside its UA shadow tree, which neither
  * `getAnimations()` nor the seek reaches, so it would scroll on wall time and `stop()` alone would
  * keep a wall-time pose. A fresh copy is unscrolled until the start its insertion scheduled runs;
- * stopping it right away cancels that start.
+ * stopping it right away cancels that start. WebKit lays a copy out at its start position, off the
+ * edge, and starts it on that first layout, which a stop() before it misses; a zero scroll amount
+ * keeps the copy unscrolled there and changes nothing elsewhere.
  */
 function restMarquees(doc: Document): void {
   for (const marquee of Array.from(doc.getElementsByTagName("marquee"))) {
     // Marquees nested in one already replaced left the document with it.
     if (!marquee.isConnected) continue;
     const still = marquee.cloneNode(true) as HTMLMarqueeElement;
+    const copies = [still, ...Array.from(still.getElementsByTagName("marquee"))];
+    for (const copy of copies) copy.setAttribute("scrollamount", "0");
     marquee.replaceWith(still);
-    for (const copy of [still, ...Array.from(still.getElementsByTagName("marquee"))]) copy.stop();
+    for (const copy of copies) copy.stop();
   }
 }
 
