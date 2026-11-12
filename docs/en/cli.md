@@ -67,7 +67,7 @@ Render a file or web page to a video of the swarm building it, with sound by def
 | `--width <px>` | `1280` | Viewport width in CSS px, 16–7680 |
 | `--height <px>` | `720` | Viewport height in CSS px, 16–7680 |
 | `--scale <n>` | `1` | Pixels per CSS px; the video is width and height times this value, 0.25–4. Neither side may exceed 8192 px |
-| `--fps <n>` | `30` | Frames per second, 1–120; each frame advances `1000 / fps` ms. The player steps once per frame, so another fps gives a slightly different build, not every other frame of the same one |
+| `--fps <n>` | `30` | Frames per second, 1–120; frame n shows `n * 1000 / fps` ms. The player always takes 120 steps a second, so rates that divide 120 (15, 24, 30, 60, ...) film the same build, only sampled more or less often; rates such as 25 or 50 give a slightly different build |
 | `--max-duration <s>` | `120` | Stop the video at this many seconds, 1–3600; warns when the build has not finished |
 | `--duration <s>` | Off | Exact video length, 0.1–3600 s: keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
 
@@ -282,6 +282,6 @@ Progress goes to stderr and never mixes with file data: a progress bar with the 
 
 ## Determinism
 
-The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms and is captured once it is ready and three animation frames have passed, so the browser has painted, rastered and shown it; the browser runs without a frame rate limit, so this wait stays short. BeginFrame control is not used. (A screenshot taken before the browser had rastered the frame could draw rounded corners and other anti-aliased edges a shade differently between runs, at scales such as 0.5, 2.5 or 3.) Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
+The CLI fixes viewport, DPR, seed and frame step. Determinism comes from the player's own virtual clock: each frame advances `1000 / fps` ms (the player moves in 120 steps a second within it, whatever the frame rate) and is captured once it is ready and three animation frames have passed, so the browser has painted, rastered and shown it; the browser runs without a frame rate limit, so this wait stays short. BeginFrame control is not used. (A screenshot taken before the browser had rastered the frame could draw rounded corners and other anti-aliased edges a shade differently between runs, at scales such as 0.5, 2.5 or 3.) Sound events render offline to WAV, are padded with silence or cut to the video length, and are then muxed; muxing does not use `-shortest`, so audio and video have the same length.
 
 Deterministic validation compares raw frames and PCM, not MP4/WebM bytes; the per-frame PNG hashes and the sound log hash that `--manifest-out` records can be compared across two runs directly. Encoder versions, threads and platforms can change compressed bytes without changing the pictures or sound. Reproduction also requires the same input, CLI/adapters, browser, fonts, ffmpeg and export settings.

@@ -8,7 +8,7 @@ import type {
   SourceInput,
 } from "@swarmloom/core";
 import { base64ToBytes, bytesToBase64 } from "../base64";
-import { RenderSession } from "../session";
+import { ENGINE_TICK_RATE, RenderSession } from "../session";
 import { blueprintSha256 } from "./digest";
 import { LiveStage, livePageOf, watchShadowRoots } from "./live";
 import {
@@ -236,6 +236,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
           tailMs: init.tail,
           live: goesLive,
           cues: init.cues,
+          tickRate: ENGINE_TICK_RATE,
           createPlayer: deps.createPlayer,
           onWarning: (error) => warn(error.message),
         });

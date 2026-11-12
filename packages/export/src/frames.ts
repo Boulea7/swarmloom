@@ -1,5 +1,5 @@
 import type { PlayerOptions, SoundEvent } from "@swarmloom/core";
-import { RenderSession } from "./session";
+import { ENGINE_TICK_RATE, RenderSession } from "./session";
 
 /** Options for {@link exportFrames}. */
 export interface FrameExportOptions {
@@ -37,7 +37,8 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
  * Plays a blueprint on a `VirtualClock`, one frame at a time, for deterministic video export.
  *
  * Frame 0 is the first frame of the intro (t = 0). Frame times are computed from the frame index,
- * not accumulated, so long exports do not drift. The player is created with `controls: false`
+ * not accumulated, so long exports do not drift. The engine ticks 120 times a second whatever the
+ * frame rate, so rates that divide 120 (24, 30, 60, ...) show the same build. The player is created with `controls: false`
  * unless the options say otherwise, and is destroyed when the export ends or fails.
  *
  * @param options Player options; the clock is supplied by the exporter.
@@ -61,6 +62,7 @@ export async function exportFrames(
     player: { controls: false, ...options },
     tailMs: frames.tailMs,
     onWarning: frames.onWarning,
+    tickRate: ENGINE_TICK_RATE,
   });
   try {
     await session.start();

@@ -12,7 +12,7 @@ export interface SessionStatus {
 
 /** A player action at a fixed session time (see {@link RenderSessionOptions.cues}). */
 export interface SessionCue {
-  /** Session time in ms; the cue applies at the end of the first step that reaches it. */
+  /** Session time in ms; the cue applies at the end of the first step (tick, with `tickRate`) reaching it. */
   at: number;
   /**
    * "pause", "resume", "finish" (complete the build quickly) or "live": go live now, as the
@@ -31,8 +31,8 @@ export interface RenderSessionOptions {
   /**
    * Go live once the finale settles (player state "done"), as the toolbar's go live does: the
    * cursors leave and the stage turns into the finished page, whose own animations then play on
-   * through the rest of the tail. The player goes live at the end of the step that reached "done".
-   * Default false (the finale runs through the whole tail).
+   * through the rest of the tail. The player goes live at the end of the step (tick, with
+   * `tickRate`) that reached "done". Default false (the finale runs through the whole tail).
    */
   live?: boolean;
   /**
@@ -49,14 +49,33 @@ export interface RenderSessionOptions {
    * session; throw from this callback to make them fatal.
    */
   onWarning?: (error: Error) => void;
+  /**
+   * Engine ticks per second (1..1000). Each {@link RenderSession.step} then advances the clock in
+   * ticks that end at the times `k * 1000 / tickRate`, plus a short tick to the step's end when that
+   * is not one of them, and every tick waits for `player.ready()`. The engine calls cursors in,
+   * hands out tasks and moves the camera once per tick, so with a fixed rate every frame rate that
+   * divides it samples the same build; cues and go live then apply at the end of a tick, not of a
+   * step. Default: none, one tick per step.
+   */
+  tickRate?: number;
 }
 
 /** States that mean the build itself has completed. */
 const BUILT: ReadonlySet<PlayerState> = new Set(["finale", "done", "live"]);
 /** Largest single step; longer jumps would skip choreography and are almost certainly a driver bug. */
 export const MAX_STEP_MS = 10_000;
-/** Float slack when comparing summed frame steps with cue times. */
+/** Float slack when comparing summed frame steps with cue and tick times. */
 const TIME_EPSILON = 1e-6;
+/**
+ * Engine ticks per second of the CLI's and Studio's exports (`RenderSessionOptions.tickRate`), the
+ * rate of the engine's physics step: frame rates that divide 120 (24, 30, 60, ...) show one build.
+ */
+export const ENGINE_TICK_RATE = 120;
+
+/** Session time of tick boundary `k`, computed as the CLI computes frame times so the deltas match. */
+function tickTime(k: number, rate: number): number {
+  return (k * 1000) / rate;
+}
 
 function toError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error(String(reason));
@@ -90,6 +109,11 @@ export class RenderSession {
   #pausedAt: number | null = null;
   /** Sound log shifts: events from index `from` on are moved `shift` ms later (sorted by `from`). */
   readonly #shifts: { from: number; shift: number }[] = [];
+  readonly #tickRate: number | undefined;
+  /** Index of the last tick boundary at or before the session time. */
+  #tick = 0;
+  /** The session time is the tick boundary `#tick` exactly (no short tick since). */
+  #aligned = true;
 
   constructor(options: RenderSessionOptions) {
     const tail = options.tailMs ?? 0;
@@ -101,6 +125,11 @@ export class RenderSession {
     const bad = this.#cues.find((cue) => !Number.isFinite(cue.at) || cue.at < 0);
     if (bad) throw new RangeError(`cue time must be a finite number >= 0, got ${bad.at}`);
     this.#onWarning = options.onWarning;
+    const rate = options.tickRate;
+    if (rate !== undefined && !(rate >= 1 && rate <= 1000)) {
+      throw new RangeError(`tickRate must be within 1..1000, got ${rate}`);
+    }
+    this.#tickRate = rate;
     const create = options.createPlayer ?? coreCreatePlayer;
     this.player = create({ ...options.player, clock: this.clock });
     this.#unsubscribe = [
@@ -167,12 +196,37 @@ export class RenderSession {
     if (!Number.isFinite(ms) || ms < 0 || ms > MAX_STEP_MS) {
       throw new RangeError(`step() needs 0 <= ms <= ${MAX_STEP_MS}, got ${ms}`);
     }
+    const rate = this.#tickRate;
+    if (rate === undefined) {
+      this.#advance(ms, this.#elapsed + ms);
+      return this.#settle();
+    }
+    const end = this.#elapsed + ms;
+    let ticks = 0;
+    for (let next = tickTime(this.#tick + 1, rate); next <= end + TIME_EPSILON; next = tickTime(this.#tick + 1, rate)) {
+      if (ticks++ > 0) await this.#settle();
+      // A whole tick spans the same times at every frame rate, so the engine gets the same deltas.
+      this.#advance(next - (this.#aligned ? tickTime(this.#tick, rate) : this.#elapsed), next);
+      this.#tick++;
+      this.#aligned = true;
+    }
+    // A frame time between two ticks (a frame rate that does not divide the tick rate) gets a short tick.
+    const short = end > this.#elapsed + TIME_EPSILON;
+    if (short || ticks === 0) {
+      if (ticks > 0) await this.#settle();
+      this.#advance(Math.max(0, end - this.#elapsed), Math.max(end, this.#elapsed));
+      if (short) this.#aligned = false;
+    }
+    return this.#settle();
+  }
+
+  /** One clock tick of `dt` ms that ends at session time `to`, then the cues and go live it made due. */
+  #advance(dt: number, to: number): void {
     // Update elapsed first: state listeners fired during advance() read it.
-    this.#elapsed += ms;
-    this.clock.advance(ms);
+    this.#elapsed = to;
+    this.clock.advance(dt);
     this.#applyCues();
     this.#goLiveWhenDone();
-    return this.#settle();
   }
 
   status(): SessionStatus {
