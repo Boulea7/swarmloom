@@ -183,7 +183,7 @@ export function assemblePlayer(options: PlayerOptions, zones: PlayerZones): Play
     });
     const soundEngine = zones.createSound(soundOptions);
     sound = soundEngine;
-    const i18n = zones.createI18n(options.locale);
+    const i18n = zones.createI18n(options.locale, options.messages);
     const player = new Engine({
       stage,
       sound: soundEngine,

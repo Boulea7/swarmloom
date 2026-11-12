@@ -541,6 +541,14 @@ export interface PlayerOptions {
   scrubber?: boolean;
   /** BCP 47 tag for toolbar strings; defaults to navigator.language. */
   locale?: string;
+  /**
+   * Optional. Toolbar, progress and announcement strings for `locale`, keyed like the built-in
+   * catalogs (`"toolbar.play"`, `"progress.layers"`). A message is text with `{name}` variables, or
+   * plural forms keyed by CLDR category (`other` required) that select on `{count}`. They take
+   * precedence over the built-in catalog; a missing or malformed entry falls back to it, then to
+   * English. A host whose bundle leaves the other catalogs out passes the one it needs here.
+   */
+  messages?: Readonly<Record<string, string | ({ other: string } & Partial<Record<Intl.LDMLPluralRule, string>>)>>;
   plugins?: Plugin[];
   /** Restore the real page (overlay mode) or show the final content (inline) when done/closed. */
   onLive?: () => void;
