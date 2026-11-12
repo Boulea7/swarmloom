@@ -462,6 +462,11 @@ describe("Engine", () => {
     expect(h.stage.live("icon")).toHaveLength(0);
     h.run(2, ms);
     expect(h.engine.soundLog).toEqual([{ t: 300, name: "swell", pan: 0 }]);
+    // Halfway through the fade the original is half gone, not dropped, and the stage not yet blanked.
+    h.run(OPENING_FADE_MS / 2 / ms - 1, ms);
+    expect(alphas.at(-1)).toBeGreaterThan(0.25);
+    expect(alphas.at(-1)).toBeLessThan(0.75);
+    expect(h.stage.calls.reset).toBe(0);
     h.until(() => h.engine.state === "finale", 120_000, ms);
     // The original faded out to nothing, then the stage was blanked once for the build.
     const fade = alphas.slice(1) as number[];
@@ -484,7 +489,8 @@ describe("Engine", () => {
     const h = harness(page, { intro: false, follow: "tour", liveTop: true });
     void h.engine.play();
     h.until(() => h.engine.state === "finale");
-    expect(h.engine.scrollY).toBeGreaterThan(1000);
+    const top = h.engine.scrollY;
+    expect(top).toBeGreaterThan(1000);
     h.engine.goLive();
     const ys: number[] = [];
     for (let f = 0; f < 120 && h.stage.calls.goLive === 0; f++) {
@@ -494,6 +500,10 @@ describe("Engine", () => {
     }
     expect(ys.length).toBeGreaterThan(Math.ceil(EXIT_MS / 16));
     expect(ys.every((y, i) => i === 0 || y <= (ys[i - 1] as number))).toBe(true);
+    // A glide, not a jump: halfway the view sits between the top and where it started.
+    const mid = ys[Math.floor(ys.length / 2)] as number;
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(top);
     expect(ys.at(-1)).toBe(0);
     expect(h.stage.calls.goLive).toBe(1);
   });
