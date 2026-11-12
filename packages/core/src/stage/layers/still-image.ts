@@ -1,5 +1,13 @@
 import { animatedDataUrl, firstFrameUrl, stillBitmapResponse } from "./still-bitmap";
-import { MAX_SVG_CHARS, SVG_TYPE, stillSvgDataUrl, stillSvgMarkup, svgDataUrl } from "./still-svg";
+import {
+  MAX_SVG_CHARS,
+  type StillEmbed,
+  SVG_TYPE,
+  stillSvgDataUrl,
+  stillSvgMarkup,
+  svgDataUrl,
+  svgImageHrefs,
+} from "./still-svg";
 
 /*
  * Still copies of animated images. An `<img>` plays an animated SVG (still-svg.ts) or an animated
@@ -72,7 +80,7 @@ async function fetchStill(doc: Document, url: URL): Promise<string | null | unde
       void res.body?.cancel().catch(() => undefined);
       return null;
     }
-    const markup = stillSvgMarkup(await res.text());
+    const markup = await stillSvgMarkup(await res.text(), embedded(doc));
     return markup ? svgDataUrl(markup, url.hash) : null;
   } catch {
     // Network errors, timeouts and pages that block the request keep the file's own clock.
@@ -112,15 +120,19 @@ function sameOriginFile(src: string, doc: Document): URL | null {
 
 /**
  * What an `<img>` should load for `src`: `src` itself, or a still `data:` copy when `src` is an
- * animated image the stage can read. An SVG `data:` URL answers at once; animated bitmap `data:`
- * URLs, same-origin files and blob: URLs answer through a promise (decoded or fetched once, then
- * cached), which never rejects and falls back to `src`. A file that gave no copy before answers `src`
- * at once. `doc` fetches and draws the copies.
+ * animated image the stage can read. An SVG `data:` URL answers at once, unless it embeds an
+ * animated bitmap; such SVGs, animated bitmap `data:` URLs, same-origin files and blob: URLs answer
+ * through a promise (decoded or fetched once, then cached), which never rejects and falls back to
+ * `src`. A file that gave no copy before answers `src` at once. `doc` fetches and draws the copies.
  */
 export function stillImageSource(src: string, doc: Document): string | Promise<string> {
   let still: Promise<string | null>;
-  if (/^data:image\/svg\+xml[;,]/i.test(src)) return stillSvgDataUrl(src) ?? src;
-  if (/^data:/i.test(src)) {
+  if (/^data:image\/svg\+xml[;,]/i.test(src)) {
+    // A cached copy (of an SVG that embeds an animated bitmap) spares decoding that bitmap again.
+    const svg = stills.has(src) ? undefined : stillSvgDataUrl(src, embedded(doc));
+    if (svg === null || typeof svg === "string") return svg ?? src;
+    still = cached(src, () => svg ?? Promise.resolve(null));
+  } else if (/^data:/i.test(src)) {
     // A cached copy spares decoding the file again.
     const bitmap = stills.has(src) ? undefined : animatedDataUrl(src);
     if (bitmap === null) return src;
@@ -164,4 +176,50 @@ export function showStill(
   return source.then((copy) => {
     if (!gone()) set(copy);
   });
+}
+
+/** The still copies an SVG shown as an image embeds (see stillSvgMarkup), as image layers show them. */
+function embedded(doc: Document): StillEmbed {
+  return (src) => stillImageSource(src, doc);
+}
+
+/** Loads and decodes `src` in `doc`, so an image switched to it paints in the next frame. */
+export function preload(src: string, doc: Document): Promise<void> {
+  const img = doc.createElement("img");
+  img.src = src;
+  return img.decode().then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/**
+ * Points the SVG `<image>` and `<feImage>` elements under `root` (inline SVG of an HTML page) at
+ * still copies of the animated images they show, through {@link stillImageSource}: they play them on
+ * the browser's own clock, as an `<img>` does. Returns a promise that settles once every copy is in
+ * place and decoded (it never rejects), or null when nothing is swapped.
+ */
+export function holdSvgImages(root: Document | Element, doc: Document): Promise<void> | null {
+  const waits: Promise<void>[] = [];
+  for (const attr of svgImageHrefs(root)) {
+    const el = attr.ownerElement;
+    const raw = attr.value.trim();
+    // An `<feImage>` naming an element of the page.
+    if (raw.startsWith("#")) continue;
+    let src: string;
+    try {
+      src = new URL(raw, el?.baseURI).href;
+    } catch {
+      continue;
+    }
+    const swap = (copy: string): Promise<void> | undefined => {
+      if (copy === src || !el) return;
+      attr.value = copy;
+      return preload(copy, el.ownerDocument);
+    };
+    const still = stillImageSource(src, doc);
+    const swapped = typeof still === "string" ? swap(still) : still.then(swap);
+    if (swapped) waits.push(swapped);
+  }
+  return waits.length > 0 ? Promise.all(waits).then(() => undefined) : null;
 }

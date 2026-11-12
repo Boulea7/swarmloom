@@ -93,7 +93,7 @@ describe("export in the browser", () => {
     }
   });
 
-  it("shows an animated GIF on the live page as its first frame, as an <img> at the same size and as a background", async () => {
+  it("shows an animated GIF on the live page as its first frame: an <img> at the same size, a background, an SVG <image>", async () => {
     // 1x1 GIF, red then blue, looping.
     const gif =
       "data:image/gif;base64,R0lGODlhAQABAIABAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAQABAAACAkQBACH5BAAKAAAALAAAAAABAAEAAAICTAEAOw==";
@@ -101,7 +101,7 @@ describe("export in the browser", () => {
     frame.setAttribute("sandbox", "allow-same-origin");
     frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
     const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
-    frame.srcdoc = `<style>i{display:block;height:4px;background:url(${gif})}</style><body style="margin:0"><img src="${gif}"><i></i>`;
+    frame.srcdoc = `<style>i{display:block;height:4px;background:url(${gif})}</style><body style="margin:0"><img src="${gif}"><i></i><svg width="4" height="4"><image href="${gif}" width="4" height="4"/></svg>`;
     document.body.append(frame);
     try {
       await loaded;
@@ -121,6 +121,7 @@ describe("export in the browser", () => {
         'url("data:image/png;',
         "important",
       ]);
+      expect(doc.querySelector("svg image")?.getAttribute("href")?.slice(0, 15)).toBe("data:image/png;");
     } finally {
       frame.remove();
     }

@@ -18,5 +18,5 @@ export { createRng } from "./rng";
 export type { RenderOfflineOptions } from "./sound/index";
 export { encodeWav, quantize, renderOffline } from "./sound/index";
 export { holdAllCssImages } from "./stage/layers/still-css";
-export { stillImageSource } from "./stage/layers/still-image";
+export { holdSvgImages, stillImageSource } from "./stage/layers/still-image";
 export type * from "./types";

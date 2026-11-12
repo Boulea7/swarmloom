@@ -1,4 +1,4 @@
-import { stillImageSource } from "./still-image";
+import { preload, stillImageSource } from "./still-image";
 
 /*
  * Still copies of animated images painted by CSS. A url() in `background-image`, `mask-image`,
@@ -24,16 +24,6 @@ const urlOf = (dq: string | undefined, sq: string | undefined, bare: string | un
 
 function cssUrl(url: string): string {
   return `url("${url.replace(/[\\"]/g, "\\$&").replace(/\n/g, "\\a ")}")`;
-}
-
-/** Loads and decodes `src` in `doc`, so a CSS image switched to it paints in the next frame. */
-function preload(src: string, doc: Document): Promise<void> {
-  const img = doc.createElement("img");
-  img.src = src;
-  return img.decode().then(
-    () => undefined,
-    () => undefined,
-  );
 }
 
 /** Writes `copies` over the url()s `read` holds, into `el`'s inline style. */

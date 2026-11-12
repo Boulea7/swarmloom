@@ -429,6 +429,28 @@ describe("stage: reveal semantics per kind", () => {
     expect(animatedBitmapType(new Uint8Array(await (await fetch(img.src)).arrayBuffer()))).toBeNull();
   });
 
+  it.each([
+    { name: "<image href>", embed: `<image href="${GIF_RED_BLUE}" width="40" height="40"/>` },
+    {
+      name: "<feImage xlink:href>",
+      embed: `<filter id="f"><feImage xlink:href="${GIF_RED_BLUE}"/></filter><rect width="40" height="40" filter="url(#f)"/>`,
+    },
+  ])("image: an SVG embedding an animated GIF ($name) shows its first frame", async ({ embed }) => {
+    const xlink = "http://www.w3.org/1999/xlink";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="${xlink}" width="40" height="40">${embed}</svg>`;
+    const src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    const { stage } = mount([{ id: "s", kind: "image", box: { x: 0, y: 0, w: 40, h: 40 }, src }]);
+    stage.reveal("s", 1);
+    await stage.ready();
+    const img = (stage.el("s") as HTMLElement).querySelector("img") as HTMLImageElement;
+    const shown = new DOMParser().parseFromString(await (await fetch(img.src)).text(), "image/svg+xml");
+    const embedded = shown.querySelector("image, feImage");
+    const href = embedded?.getAttribute("href") ?? embedded?.getAttributeNS(xlink, "href") ?? "";
+    // One frame: nothing left for the wall clock to play.
+    expect(href.slice(0, 22)).toBe("data:image/png;base64,");
+    expect(animatedBitmapType(new Uint8Array(await (await fetch(href)).arrayBuffer()))).toBeNull();
+  });
+
   it("media: labelled placeholder that fades in", () => {
     const { stage } = mount([{ id: "m", kind: "media", box: { x: 0, y: 0, w: 320, h: 180 }, label: "Video" }]);
     const el = stage.el("m") as HTMLElement;

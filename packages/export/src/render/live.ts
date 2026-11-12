@@ -1,4 +1,4 @@
-import { holdAllCssImages, stillImageSource } from "@swarmloom/core";
+import { holdAllCssImages, holdSvgImages, stillImageSource } from "@swarmloom/core";
 import { AnimationSeeker } from "./seek";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -94,8 +94,9 @@ function restMarquees(doc: Document): void {
  * its animation). An `<img>` plays them on the browser's clock, which no seek reaches. The copy has
  * the same pixel size, so nothing reflows (the adapter dropped `srcset`). Animated CSS images of its
  * elements (backgrounds, masks, border images, list markers) are overridden inline with still copies
- * the same way (core's holdAllCssImages); pseudo-elements keep theirs. Images the render page cannot
- * read (cross-origin files) keep their own clock.
+ * the same way (core's holdAllCssImages); pseudo-elements keep theirs. The `<image>` and `<feImage>`
+ * elements of its inline SVG show still copies too (core's holdSvgImages). Images the render page
+ * cannot read (cross-origin files) keep their own clock.
  */
 async function stillImages(page: LivePage, doc: Document): Promise<void> {
   await Promise.all([
@@ -108,6 +109,7 @@ async function stillImages(page: LivePage, doc: Document): Promise<void> {
       await img.decode().catch(() => undefined);
     }),
     holdAllCssImages(page.document.querySelectorAll<HTMLElement>("*"), doc, true),
+    holdSvgImages(page.document, doc),
   ]);
 }
 
