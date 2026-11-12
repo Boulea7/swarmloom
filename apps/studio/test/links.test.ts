@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { normalizeSourceUrl, parseRoute, type Route, routeToUrl } from "../src/route";
 import { DEFAULT_SETTINGS, impactOf } from "../src/settings";
@@ -101,6 +103,14 @@ describe("routes", () => {
     const href = routeToUrl(route, BASE);
     expect(new URL(href).hash).toBe("#d=abc_-123");
     expect(parseRoute(href)).toEqual(route);
+  });
+
+  it("lists every setting parameter in the README", () => {
+    const params = [...new URL(routeToUrl({ overrides: DEFAULT_SETTINGS }, BASE)).searchParams.keys()];
+    const readme = readFileSync(resolve(import.meta.dirname, "../README.md"), "utf8");
+    const row = readme.split("\n").find((line) => line.endsWith("| Settings for this visit only. |")) ?? "";
+    const listed = [...(row.split("|")[1] ?? "").matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+    expect(listed.sort()).toEqual(params.sort());
   });
 
   it.each(["javascript:alert(1)", "data:text/html,<b>x</b>", "https://user:pw@a.example/", "file:///etc/passwd"])(
