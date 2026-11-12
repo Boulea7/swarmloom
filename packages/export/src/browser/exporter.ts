@@ -6,6 +6,7 @@ import { FRAME_ATTRIBUTE } from "./marker";
 import { type ColorScheme, type MediaPin, pinMediaFeatures } from "./media";
 import { type FontWatch, watchFontFaces } from "./raster/fonts";
 import { FrameRasterizer } from "./raster/rasterize";
+import { watchSheetEdits } from "./raster/sheet-edits";
 import { type FrameProgress, runFrameSchedule } from "./schedule";
 
 /** Player settings of an export: the CLI's `render` flags. */
@@ -230,9 +231,11 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
   try {
     opened = await openFrame(o, container, scheme);
     const { win, api } = opened;
-    // Watch before init(): the stage attaches its closed shadow roots and adapters register fonts there.
+    // Watch before init(): the stage attaches its closed shadow roots and adapters register fonts there,
+    // and a rule declaration taken during it is compared from then on.
     shadows = watchShadowRoots(win);
     fonts = watchFontFaces(win);
+    watchSheetEdits(win);
     pinPixelRatio(win);
     const pinned = pinMediaFeatures(win, shadows, { scheme, width, height });
     media = pinned;

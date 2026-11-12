@@ -2,6 +2,7 @@ import type { ShadowWatch } from "../../render/live";
 import { FarCache } from "./far";
 import { FontFaceCache, type FontWatch } from "./fonts";
 import { LONG_PIECE, networkGate, ResourceCache, type ResourcePolicy } from "./resources";
+import type { SheetMark } from "./sheet-edits";
 import { type CanvasOverlay, type FarBox, type FrameSnapshot, type SnapshotStats, snapshotFrame } from "./snapshot";
 import { StillWatch } from "./still";
 import { readBaseline, type StyleBaseline } from "./styles";
@@ -45,8 +46,8 @@ interface DrawnFrame {
   watch: StillWatch | null;
 }
 
-/** Whether two lists hold the same strings in order (the pieces of two snapshots, the rules of the sheets). */
-function sameTexts(a: readonly string[], b: readonly string[]): boolean {
+/** Whether two snapshots are made of the same pieces. */
+function sameParts(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((part, i) => part === b[i]);
 }
 
@@ -97,8 +98,8 @@ export class FrameRasterizer {
   #last: DrawnFrame | null = null;
   /** The boxes earlier snapshots wrote away from the viewport, written again while unchanged. */
   readonly #far = new FarCache<FarBox>();
-  /** The rules of the sheets before the last capture ({@link StillWatch.rules}). */
-  #rules: readonly string[] = [];
+  /** The style sheets before the last capture ({@link StillWatch.sheets}). */
+  #sheets: SheetMark | null = null;
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -177,12 +178,12 @@ export class FrameRasterizer {
     this.#baseline ??= readBaseline(document);
     const watch = new StillWatch({ document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() });
     // The far cache does not read rules edited in place through the CSSOM; the still watch does.
-    if (!sameTexts(watch.rules, this.#rules)) this.#far.forget();
-    this.#rules = watch.rules;
+    if (!this.#sheets?.holds()) this.#far.forget();
+    this.#sheets = watch.sheets;
     try {
       const { parts, stats, overlays, settled, pixels } = await this.snapshot(signal, scale);
       let img = this.#last?.img;
-      if (!img || !sameTexts(parts, this.#last?.parts ?? [])) {
+      if (!img || !sameParts(parts, this.#last?.parts ?? [])) {
         img = new Image();
         // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
         // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
