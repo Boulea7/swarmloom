@@ -447,6 +447,23 @@ function zIndex(cs: CSSStyleDeclaration): number | null {
   return Number.isFinite(z) ? z : null;
 }
 
+/**
+ * Displays whose scroll size takes in what overflows the boxes in flow in them (an inline box has
+ * none; table parts are left to their cells).
+ */
+const SCROLL_BOXES = new Set([
+  "block",
+  "flow-root",
+  "list-item",
+  "inline-block",
+  "flex",
+  "inline-flex",
+  "grid",
+  "inline-grid",
+]);
+/** Overflow values that clip a box's content to its padding box (`clip` may draw past it). */
+const CLIPPING_OVERFLOW = new Set(["hidden", "auto", "scroll"]);
+
 /** What of a box {@link offscreen} still checks: everything. */
 const OPEN = 0;
 /** Below a positioned box that clips its content away from view: only fixed boxes escape the clip. */
@@ -463,6 +480,11 @@ type Reach = typeof OPEN | typeof CLIPPED | typeof SEALED;
  * is read. With `floats`, a floating box in it also counts as showing: it can move content that
  * follows `el`. With `transparent`, `el` paints nothing at all. Reads boxes and a few styles, a
  * small fraction of what writing the subtree costs.
+ *
+ * What overflows a box is read from its scroll size, which takes in what overflows the in-flow
+ * boxes in it too (translated, transformed or not, as scrollbars show it): once a box above or
+ * left of the area is found far that way, so is all the in-flow content in it, and only the boxes
+ * out of flow in it are read again. Scroll sizes were most of the cost on long pages.
  *
  * Something visible may refer to an SVG element with an id wherever it sits (a gradient, clip path,
  * or a shape a `<use>` copies). Those are added to `kept`, to be written on their own when the
@@ -481,8 +503,12 @@ function offscreen(
     right >= area.left && left <= area.right && bottom >= area.top && top <= area.bottom;
   const stack: Element[] = [el];
   const reaches: Reach[] = [transparent ? SEALED : OPEN];
+  // Whether whatever overflows the box lies in a box found far already: a box in flow adds it to
+  // the scroll size of the box around it, or is clipped by that box.
+  const covers: boolean[] = [false];
   for (let next = stack.pop(); next; next = stack.pop()) {
     let reach = reaches.pop() as Reach;
+    let covered = covers.pop() as boolean;
     if (next.namespaceURI === SVG_NS) {
       if (next.id) {
         if (!kept) return false;
@@ -506,16 +532,32 @@ function offscreen(
         }
         if (floats && next !== el && cs.getPropertyValue("float") !== "none") return false;
         const box = next as HTMLElement;
-        const openX = cs.getPropertyValue("overflow-x") === "visible";
-        const openY = cs.getPropertyValue("overflow-y") === "visible";
-        if (box.offsetWidth > 0 || box.offsetHeight > 0) {
-          const right = openX
-            ? r.right + Math.max(0, box.scrollWidth - box.clientWidth) * (r.width / box.offsetWidth || 1)
-            : r.right;
-          const bottom = openY
-            ? r.bottom + Math.max(0, box.scrollHeight - box.clientHeight) * (r.height / box.offsetHeight || 1)
-            : r.bottom;
+        const overflowX = cs.getPropertyValue("overflow-x");
+        const overflowY = cs.getPropertyValue("overflow-y");
+        const openX = overflowX === "visible";
+        const openY = overflowY === "visible";
+        // A box out of flow adds to the scroll size of its containing block, which may lie outside;
+        // a sticky box's offset is not in it.
+        if (position !== "static" && position !== "relative") covered = false;
+        // What overflows reaches out right and down (as read here): only a box above or left of the
+        // area may reach into it, along the axis it falls short on.
+        const spills = r.left <= area.right && r.top <= area.bottom;
+        if (!covered && spills && (box.offsetWidth > 0 || box.offsetHeight > 0)) {
+          const right =
+            openX && r.right < area.left
+              ? r.right + Math.max(0, box.scrollWidth - box.clientWidth) * (r.width / box.offsetWidth || 1)
+              : r.right;
+          const bottom =
+            openY && r.bottom < area.top
+              ? r.bottom + Math.max(0, box.scrollHeight - box.clientHeight) * (r.height / box.offsetHeight || 1)
+              : r.bottom;
           if (near(r.left, r.top, right, bottom)) return false;
+          // Far along an axis its scroll size bounds, or that it clips: so is whatever overflows the
+          // boxes in flow in it.
+          const bounds = (open: boolean, overflow: string) => open || CLIPPING_OVERFLOW.has(overflow);
+          covered =
+            ((right < area.left && bounds(openX, overflowX)) || (bottom < area.top && bounds(openY, overflowY))) &&
+            SCROLL_BOXES.has(cs.getPropertyValue("display"));
         }
         // Its content is clipped to it, all but the fixed boxes it does not hold.
         if (!openX && !openY && position !== "static") reach = holdsFixed(cs) ? SEALED : CLIPPED;
@@ -529,6 +571,7 @@ function offscreen(
       if (child.nodeType !== 1) continue;
       stack.push(child as Element);
       reaches.push(reach);
+      covers.push(covered);
     }
   }
   return true;
@@ -1942,7 +1985,8 @@ function* emitElement(
   }
   walk.out.push(`<${tag}${xmlns}${attrs}${cls}${style}>`);
   if (emptied) {
-    keep(walk, emptied.kept, el, view, handed());
+    // What it hands on is merged only for the SVG elements it keeps (most such boxes keep none).
+    if (emptied.kept.length > 0) keep(walk, emptied.kept, el, view, handed());
     walk.out.push(`</${tag}>`);
     return;
   }

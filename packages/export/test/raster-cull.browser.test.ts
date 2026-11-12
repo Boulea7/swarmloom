@@ -146,6 +146,36 @@ it("reads each box of a deep wrapper chain once for the margins passed through i
   expect(afters).toBeLessThan(3 * depth);
 });
 
+it("reads what overflows a far box once for the boxes in flow in it, drawing what reaches into view", async () => {
+  // A pseudo-element of a box deep in a far one reaches into view: only the far box's scroll size tells.
+  const reach = `<div style="height:10px"><div><div class=reach></div></div></div>`;
+  const card = (i: number) =>
+    `<section style="height:40px"><h3>far ${i}</h3><div><p>text</p><p>more</p></div></section>`;
+  const cards = Array.from({ length: 6 }, (_, i) => card(i)).join("");
+  const { win, rasterizer } = await frameOf(`<!doctype html><style>h3,p{margin:0}
+    .reach{display:flow-root;height:10px}
+    .reach::after{content:"";display:block;width:50px;height:50px;margin-top:1010px;background:rgb(255,0,0)}
+    </style><body style="margin:0">${reach}${cards}<div style="height:3000px"></div>${cards}`);
+  win.scrollTo(0, 1000);
+  let reads = 0;
+  const proto = (win as Window & typeof globalThis).Element.prototype;
+  for (const name of ["scrollWidth", "scrollHeight"] as const) {
+    const { get } = Object.getOwnPropertyDescriptor(proto, name) as PropertyDescriptor;
+    Object.defineProperty(proto, name, {
+      configurable: true,
+      get() {
+        reads++;
+        return get?.call(this);
+      },
+    });
+  }
+  const { svg } = await rasterizer.snapshot();
+  expect(svg).not.toContain("far ");
+  // The six far cards above the view once each, the chain reaching into view once a box; none below.
+  expect(reads).toBeLessThanOrEqual(12);
+  expect((await drawn(rasterizer))(25, 30)).toEqual([255, 0, 0]);
+});
+
 it("writes far boxes empty around SVG ids, keeping the clip paths, gradients and symbols drawn elsewhere", async () => {
   // Cards as design tools export their icons: a clip path or gradient with an id inside each.
   const icon = (i: number) =>
