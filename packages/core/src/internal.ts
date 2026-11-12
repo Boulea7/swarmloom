@@ -129,8 +129,10 @@ export interface Stage extends StageApi {
   /**
    * Per-frame draw, called by the engine after it moved agents:
    * virtualization, transient overlays, cursor canvas. `now` is engine time (caret blink etc.).
+   * `paint` false (a tick nobody sees, see Clock.onTick) does all of that but repainting the
+   * cursor canvas, whose time-driven state (ruler slide, overlay change times) still advances.
    */
-  render(now: number, agents: readonly AgentView[]): void;
+  render(now: number, agents: readonly AgentView[], paint?: boolean): void;
   /**
    * Optional: a frame the engine simulated without drawing it (each seek step). The stage does
    * the per-frame bookkeeping of render() without drawing: task touches age and virtualization

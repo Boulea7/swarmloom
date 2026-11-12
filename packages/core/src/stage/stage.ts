@@ -448,7 +448,7 @@ export class SwarmStage implements Stage {
     if (!this.#destroyed) this.#overlay.setRulers(on === true, this.#reduced);
   }
 
-  render(now: number, agents: readonly AgentView[]): void {
+  render(now: number, agents: readonly AgentView[], paint = true): void {
     if (this.#destroyed) return;
     const t = typeof now === "number" && Number.isFinite(now) ? now : 0;
     const frame = this.#nextFrame();
@@ -475,7 +475,7 @@ export class SwarmStage implements Stage {
     v.originY = g.offsetY - g.scrollTop;
     v.scrollX = (g.scrollLeft - g.offsetX) / g.scale;
     v.scrollY = (g.scrollTop - g.offsetY) / g.scale;
-    overlay.render(t, Array.isArray(agents) ? agents : NO_AGENTS);
+    overlay.render(t, Array.isArray(agents) ? agents : NO_AGENTS, paint !== false);
   }
 
   /**

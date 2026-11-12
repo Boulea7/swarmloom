@@ -103,6 +103,7 @@ export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerVi
     s.objectFit = layer.fit === "contain" || layer.fit === "cover" ? layer.fit : "fill";
   }
   let gone = false;
+  let settled: Promise<void> | null = null;
   // An animated bitmap data: URL, a same-origin file or a blob: URL shows at once and is swapped for
   // its still copy once decoded or fetched.
   const still =
@@ -214,7 +215,10 @@ export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerVi
               () => undefined,
             )
           : Promise.resolve();
-      return still ? still.then(decoded) : decoded();
+      // Once: the image does not change after its still copy is in place, and an export asks
+      // before every engine tick.
+      settled ??= still ? still.then(decoded) : decoded();
+      return settled;
     },
     destroy() {
       gone = true;

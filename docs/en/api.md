@@ -322,7 +322,7 @@ virtual.advance(1000 / 30);
 virtual.stop();
 ```
 
-`VirtualClock.advance(ms)` advances only while running and emits exactly one tick. It cannot be re-entered from a tick callback, and rejects negative or non-finite values.
+`VirtualClock.advance(ms)` advances only while running and emits exactly one tick. It cannot be re-entered from a tick callback, and rejects negative or non-finite values. `advance(ms, { draw: false })` emits a tick nobody sees: the player advances as usual but does not repaint its cursor canvas. Exports advance the engine ticks between two captured frames this way.
 
 The same seed and clock are only part of determinism. Fonts, input, viewport, adapters and plugin versions must also be fixed.
 

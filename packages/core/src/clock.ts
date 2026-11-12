@@ -1,10 +1,10 @@
 import type { Clock, VirtualClockLike } from "./types";
 
-type TickFn = (dt: number, now: number) => void;
+type TickFn = (dt: number, now: number, draw?: boolean) => void;
 
-function emit(listeners: ReadonlySet<TickFn>, dt: number, now: number): void {
+function emit(listeners: ReadonlySet<TickFn>, dt: number, now: number, draw: boolean): void {
   // Iterate over a copy so listeners may unsubscribe while being called.
-  for (const fn of [...listeners]) fn(dt, now);
+  for (const fn of [...listeners]) fn(dt, now, draw);
 }
 
 export interface RealtimeClockOptions {
@@ -98,7 +98,7 @@ export class RealtimeClock implements Clock {
     this.#elapsed += dt;
     // Schedule first so a throwing listener cannot stall the clock.
     this.#handle = this.#requestFrame(this.#frame);
-    emit(this.#listeners, dt, this.#elapsed);
+    emit(this.#listeners, dt, this.#elapsed, true);
   };
 }
 
@@ -137,15 +137,19 @@ export class VirtualClock implements VirtualClockLike {
     this.#running = false;
   }
 
-  /** Moves time forward by `ms` (>= 0) and delivers exactly one tick when running. */
-  advance(ms: number): void {
+  /**
+   * Moves time forward by `ms` (>= 0) and delivers exactly one tick when running. `draw: false`
+   * marks a tick whose frame nobody sees (an exporter's tick between two captured frames): listeners
+   * advance their state but may skip painting.
+   */
+  advance(ms: number, options?: { draw?: boolean }): void {
     if (!Number.isFinite(ms) || ms < 0) throw new RangeError(`advance() needs a finite ms >= 0, got ${ms}`);
     if (this.#ticking) throw new Error("advance() must not be called from a tick listener");
     if (!this.#running) return;
     this.#elapsed += ms;
     this.#ticking = true;
     try {
-      emit(this.#listeners, ms, this.#elapsed);
+      emit(this.#listeners, ms, this.#elapsed, options?.draw !== false);
     } finally {
       this.#ticking = false;
     }

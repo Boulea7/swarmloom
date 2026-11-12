@@ -17,6 +17,7 @@ export function mountMedia(env: MountEnv, layer: MediaLayer, z: number): LayerVi
   const label = typeof layer.label === "string" ? layer.label.slice(0, 200) : "";
   let img: HTMLImageElement | null = null;
   let still: Promise<void> | null = null;
+  let settled: Promise<void> | null = null;
   if (typeof layer.src === "string" && layer.src && isSafeUrl(layer.src)) {
     img = doc.createElement("img");
     img.decoding = "async";
@@ -79,7 +80,9 @@ export function mountMedia(env: MountEnv, layer: MediaLayer, z: number): LayerVi
               () => undefined,
             )
           : Promise.resolve();
-      return still ? still.then(decoded) : decoded();
+      // Once, as image layers do (see image.ts).
+      settled ??= still ? still.then(decoded) : decoded();
+      return settled;
     },
     destroy() {
       img = null;

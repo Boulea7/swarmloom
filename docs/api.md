@@ -322,7 +322,7 @@ virtual.advance(1000 / 30);
 virtual.stop();
 ```
 
-`VirtualClock.advance(ms)` 只在时钟运行时推进，且每次调用发出一次 tick。它不能在 tick 回调中重入，也不接受负数或非有限值。
+`VirtualClock.advance(ms)` 只在时钟运行时推进，且每次调用发出一次 tick。它不能在 tick 回调中重入，也不接受负数或非有限值。`advance(ms, { draw: false })` 发出一个不会被截取的 tick：播放器照常推进，只是不重绘光标画布。导出在两个截取帧之间的引擎 tick 就这样推进。
 
 相同种子与时钟只是确定性的一部分。字体、输入、视口、适配器和插件版本也必须固定。
 

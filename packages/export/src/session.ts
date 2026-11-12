@@ -77,7 +77,8 @@ export interface RenderSessionOptions {
    * is not one of them, and every tick waits for `player.ready()`. The engine calls cursors in,
    * hands out tasks and moves the camera once per tick, so with a fixed rate every frame rate that
    * divides it samples the same build; cues and go live then apply at the end of a tick, not of a
-   * step. Default: none, one tick per step.
+   * step. Only a step's last tick repaints the cursor canvas (the others pass `draw: false` to
+   * `VirtualClock.advance`): the frame is captured after it. Default: none, one tick per step.
    */
   tickRate?: number;
 }
@@ -267,14 +268,19 @@ export class RenderSession {
     return this.#settle();
   }
 
-  /** Advances by `ms` in ticks of `rate`, waiting for the player between them (not after the last). */
+  /**
+   * Advances by `ms` in ticks of `rate`, waiting for the player between them (not after the last).
+   * Only the last tick draws: the step's frame shows what it leaves.
+   */
   async #advanceTicks(ms: number, rate: number): Promise<void> {
     const end = this.#elapsed + ms;
     let ticks = 0;
     for (let next = tickTime(this.#tick + 1, rate); next <= end + TIME_EPSILON; next = tickTime(this.#tick + 1, rate)) {
       if (ticks++ > 0) await this.#settle();
       // A whole tick spans the same times at every frame rate, so the engine gets the same deltas.
-      this.#advance(next - (this.#aligned ? tickTime(this.#tick, rate) : this.#elapsed), next);
+      // It is the last unless a later tick, whole or short, reaches the end.
+      const last = end <= next + TIME_EPSILON;
+      this.#advance(next - (this.#aligned ? tickTime(this.#tick, rate) : this.#elapsed), next, last);
       this.#tick++;
       this.#aligned = true;
     }
@@ -287,11 +293,14 @@ export class RenderSession {
     }
   }
 
-  /** One clock tick of `dt` ms that ends at session time `to`, then the cues and go live it made due. */
-  #advance(dt: number, to: number): void {
+  /**
+   * One clock tick of `dt` ms that ends at session time `to`, then the cues and go live it made due.
+   * `draw` false: no frame is captured after it, so the player need not repaint its cursor canvas.
+   */
+  #advance(dt: number, to: number, draw = true): void {
     // Update elapsed first: state listeners fired during advance() read it.
     this.#elapsed = to;
-    this.clock.advance(dt);
+    this.clock.advance(dt, { draw });
     this.#applyCues();
     this.#goLiveWhenDone();
   }

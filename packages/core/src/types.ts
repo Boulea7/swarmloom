@@ -260,15 +260,20 @@ export interface Adapter {
 export interface Clock {
   /** Milliseconds since start, scaled by nothing (speed is applied by the engine). */
   now(): number;
-  /** Subscribe to ticks; `dt` in ms. Returns an unsubscribe function. */
-  onTick(fn: (dt: number, now: number) => void): () => void;
+  /**
+   * Subscribe to ticks; `dt` in ms. `draw` is false for a tick whose frame nobody sees (an export's
+   * engine tick between two captured frames): the player advances as usual but skips repainting
+   * the cursor canvas. A clock that leaves it out draws every tick. Returns an unsubscribe function.
+   */
+  onTick(fn: (dt: number, now: number, draw?: boolean) => void): () => void;
   start(): void;
   stop(): void;
   readonly running: boolean;
 }
 
 export interface VirtualClockLike extends Clock {
-  advance(ms: number): void;
+  /** One tick of `ms`; `draw: false` marks it as one nobody sees (see {@link Clock.onTick}). */
+  advance(ms: number, options?: { draw?: boolean }): void;
 }
 
 /** Seeded PRNG returning [0, 1). All engine randomness goes through one of these. */

@@ -1,8 +1,16 @@
 import { type BubbleChrome, CursorPainter } from "../cursor";
 import type { AgentView, ResolvedTheme } from "../internal";
 import type { OverlayHandle, OverlayLevel, Rect } from "../types";
-import { type GuideLine, type OverlayRecord, PAINTERS, type PaintEnv, paintGuideLines, RANKS } from "./kinds";
-import type { Props } from "./props";
+import {
+  type GuideLine,
+  IMAGE_KINDS,
+  type OverlayRecord,
+  PAINTERS,
+  type PaintEnv,
+  paintGuideLines,
+  RANKS,
+} from "./kinds";
+import { type Props, str } from "./props";
 import { RULER_SIZE, Rulers } from "./rulers";
 import { deriveTokens, type Tokens } from "./tokens";
 import { createViewTransform, type ViewTransform } from "./view";
@@ -111,11 +119,13 @@ export class OverlayLayer {
     let i = list.length;
     while (i > 0 && (list[i - 1]?.rank ?? 0) > rec.rank) i--;
     list.splice(i, 0, rec);
+    this.#load(rec);
     return {
       update: (next) => {
         if (!rec.alive || !isObject(next)) return;
         Object.assign(rec.props, next);
         rec.changed = true;
+        this.#load(rec);
       },
       remove: () => this.#remove(rec),
     };
@@ -164,8 +174,12 @@ export class OverlayLayer {
     this.#dirty = true;
   }
 
-  /** Paints one frame. Returns the number of agents drawn. */
-  render(now: number, agents: readonly AgentView[]): number {
+  /**
+   * Paints one frame and returns the number of agents drawn. With `paint` false (a frame nobody
+   * sees) the canvas is left as it is and only what later frames depend on advances: the ruler
+   * slide and the change times of the overlays (caret blink).
+   */
+  render(now: number, agents: readonly AgentView[], paint = true): number {
     const dt = Number.isFinite(this.#lastNow) ? now - this.#lastNow : 0;
     this.#lastNow = now;
     const marks = this.#level === "full";
@@ -176,6 +190,13 @@ export class OverlayLayer {
     const v = this.view;
     const guides = marks ? this.guideCount : 0;
     const busy = !this.#hidden && (this.#records.length > 0 || guides > 0 || agents.length > 0 || rulers > 0.001);
+    const hidden = HIDDEN_KINDS[this.#level];
+    const list = this.#records;
+    if (!paint) {
+      // Stamped as a painted frame would; #dirty still describes the canvas the last one left.
+      if (busy) for (const rec of list) if (!hidden.has(rec.kind)) stamp(rec, now);
+      return 0;
+    }
     if (!busy && !this.#dirty) return 0;
     ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
     ctx.globalAlpha = 1;
@@ -184,21 +205,16 @@ export class OverlayLayer {
     if (!busy) return 0;
 
     paintGuideLines(ctx, this.guides, guides, v, this.#env);
-    const hidden = HIDDEN_KINDS[this.#level];
-    const list = this.#records;
     const badges = !hidden.has("size-badge") && list.some((rec) => rec.kind === "size-badge");
     this.#env.tags = badges ? this.#cursors.tagBoxes(agents, v, this.#level !== "none") : NO_TAGS;
     for (let i = 0; i < list.length; i++) {
       const rec = list[i];
       if (!rec || hidden.has(rec.kind)) continue;
-      if (rec.changed || !Number.isFinite(rec.changedAt)) {
-        rec.changed = false;
-        rec.changedAt = now;
-      }
-      const paint = PAINTERS[rec.kind];
-      if (!paint) continue;
+      stamp(rec, now);
+      const painter = PAINTERS[rec.kind];
+      if (!painter) continue;
       try {
-        paint(ctx, rec, v, this.#env, now);
+        painter(ctx, rec, v, this.#env, now);
       } catch {
         // A malformed overlay must not break the frame; restore the shared state it may have left.
         ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
@@ -234,6 +250,15 @@ export class OverlayLayer {
     if (i >= 0) this.#records.splice(i, 1);
   }
 
+  /**
+   * Starts loading the image an overlay shows (see IMAGE_KINDS) when it is named, not at the first
+   * paint, so `imagesSettled()` waits for it before a captured frame shows the overlay.
+   */
+  #load(rec: OverlayRecord): void {
+    const src = IMAGE_KINDS.has(rec.kind) ? str(rec.props, "src") : undefined;
+    if (src) this.#image(src);
+  }
+
   #image(src: string): HTMLImageElement | null {
     let e = this.#images.get(src);
     if (!e) {
@@ -257,6 +282,14 @@ export class OverlayLayer {
       e = entry;
     }
     return e.ok ? e.img : null;
+  }
+}
+
+/** Records the engine time of an overlay's latest update, once per frame it is drawn in. */
+function stamp(rec: OverlayRecord, now: number): void {
+  if (rec.changed || !Number.isFinite(rec.changedAt)) {
+    rec.changed = false;
+    rec.changedAt = now;
   }
 }
 
