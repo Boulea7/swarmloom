@@ -6,12 +6,12 @@ description: 在 Chrome、Edge、Firefox、Safari、PWA、折叠屏和手表上�
 # 安装
 
 ::: warning 发布状态
-商店条目和签名安装包尚未发布，扩展功能仍在实现中。本页同时给出规划中的正式入口和当前源码构建方法。源码包只用于开发验证，不代表功能已经完成。
+Studio 已上线，可以安装为 PWA。商店条目和签名扩展包尚未发布，扩展功能仍在实现中。各小节标题旁的标记说明该入口已可用、只有开发包，还是仍在规划中。源码包只用于开发验证，不代表功能已经完成。
 :::
 
 ## 选择入口
 
-| 环境 | 规划入口 | 说明 |
+| 环境 | 入口 | 说明 |
 | --- | --- | --- |
 | Chrome / Edge 桌面 | Manifest V3 扩展 | 原页重建、选区重建、Studio 文件导入 |
 | Brave / Opera / Vivaldi 桌面 | Chromium 扩展包 | 复用 Chrome 包，逐一做兼容验证 |
@@ -89,9 +89,9 @@ Android 与桌面使用同一个 Firefox 包和同一个 AMO 条目。移动端�
 
 正式安装仍需要 AMO 签名。开发验证通过 Mozilla 的 `web-ext`、ADB 和已启用调试的设备进行；在真机完成验证前，建议使用 Studio PWA。
 
-## Safari：从源码构建 <Badge type="warning" text="规划中" />
+## Safari：从源码构建 <Badge type="warning" text="开发包" />
 
-Safari Web Extension 必须装进容器 App。不能把 Chromium 的 ZIP 直接交给 Safari。
+Safari Web Extension 必须装进容器 App。不能把 Chromium 的 ZIP 直接交给 Safari。签名的 TestFlight 和 App Store 版本仍在规划中，真机测试尚未完成。
 
 ### 准备
 
@@ -104,22 +104,14 @@ Safari Web Extension 必须装进容器 App。不能把 Chromium 的 ZIP 直接�
 在仓库根目录完成扩展构建后运行：
 
 ```bash
-if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
-  tool=safari-web-extension-packager
-else
-  tool=safari-web-extension-converter
-fi
-
-xcrun "$tool" apps/extension/dist/safari \
-  --project-location build/safari \
-  --copy-resources --swift --no-open --no-prompt --force
+pnpm --filter @swarmloom/extension package:safari
 ```
 
-新版 Xcode 使用 `safari-web-extension-packager`；旧版工具名为 `safari-web-extension-converter`。`--copy-resources` 会把资源复制进工程，后续修改源目录不会自动同步，需要重新打包。
+该脚本把 `apps/extension/dist/safari/` 封装成 Xcode 工程，输出到 `apps/extension/build/safari/`。它优先使用新版 Xcode 的 `safari-web-extension-packager`，没有时改用旧版的 `safari-web-extension-converter`。脚本名之后的参数（如 `--app-name`、`--bundle-identifier`）会原样传给该工具。资源会复制进工程，后续修改源码不会自动同步，需要重新构建并打包。
 
 ### 运行到各系统
 
-1. 在 Xcode 中打开 `build/safari/` 下生成的工程。
+1. 在 Xcode 中打开 `apps/extension/build/safari/` 下生成的工程。
 2. 选择开发团队，按需修改 Bundle ID，并确认容器 App 与 Safari Web Extension target 都已签名。
 3. 分别选择 macOS、iOS、iPadOS 或 visionOS 的目标与设备，然后运行容器 App。模拟器可用于无签名开发构建；真机需要签名。
 4. macOS：在 Safari 设置的“扩展”中启用 SwarmLoom。
@@ -128,7 +120,7 @@ xcrun "$tool" apps/extension/dist/safari \
 
 移动 Safari 不支持桌面右键菜单和窗口管理。文件导入使用文件选择器、拖放或系统分享。Safari 扩展不能读取本地文件，在 `file://` 文档上点击 SwarmLoom 会打开 Studio 的文件选择器。Safari 的 `storage.sync` 不应被理解为跨设备同步。
 
-## Studio PWA <Badge type="warning" text="规划中" />
+## Studio PWA <Badge type="tip" text="已上线" />
 
 打开 [Studio](https://boulea7.github.io/swarmloom/studio/) 后即可作为网页使用。安装是可选的；安装后能使用独立窗口和平台支持的分享、文件入口。
 
@@ -154,18 +146,18 @@ iOS 不使用 Chromium 的自动安装提示。添加到主屏幕后，从主屏
 
 ## 折叠屏
 
-不需要单独安装。Studio 规划在左右双屏时把舞台与设置分栏，在上下双屏时改为上下布局，避免按钮和关键内容跨过铰链。
+不需要单独安装。浏览器支持 Viewport Segments 时，Studio 会分成两个窗格，内容不会跨过铰链。左右双屏时，首页左侧放打开入口、右侧放示例库；播放器左侧放舞台，设置和对话框停靠在右侧。上下双屏时，播放器在铰链上方，设置和对话框在下方。
 
-Viewport Segments 目前不是跨浏览器基线。不支持时会回退到普通响应式布局。旋转或折叠不会重新播种或改变导出时间线。
+Viewport Segments 是 Chromium 的能力，目前不是跨浏览器基线。其他浏览器使用普通响应式布局。旋转或折叠不会重新播种或改变导出时间线。
 
 ## 智能手表：诚实的替代方案
 
 手表不安装 SwarmLoom 浏览器扩展，也不承诺通用 PWA、后台播放或任意网页重建。
 
-规划提供以下替代：
+可用的替代方式：
 
-- 通过短链接打开 `?watch=1` 精简播放器；小视口只保留播放、进度和“在手机打开”。
-- 默认静音，先显示静态 poster，避免圆屏角落放置关键控件。
+- 打开带 `?watch=1` 的 Studio 链接即进入手表精简播放器，手表尺寸的屏幕也会自动切换。它只保留播放、进度、下一个示例和“在手机上打开”（显示二维码）。
+- 播放器先显示静态 poster，默认静音。圆形表盘加上 `?round=1`，所有控件都会留在圆内。
 - 复杂内容在手机或桌面生成 MP4、动画 WebP 或静态帧，再发送到手表查看。
 
 watchOS 的网页入口通常来自信息或邮件链接；Wear OS 的浏览器和安装方式随型号与地区变化。手表播放器用于观看已生成场景，不是在手表当前网页上召唤光标群。

@@ -6,12 +6,12 @@ description: Use SwarmLoom on Chrome, Edge, Firefox, Safari, PWAs, foldables and
 # Install
 
 ::: warning Release status
-Store listings and signed packages have not been published, and extension features are still being implemented. This page separates planned release routes from current source builds. Source packages are for development verification, not a claim of feature completeness.
+Studio is online and can be installed as a PWA. Store listings and signed extension packages have not been published, and extension features are still being implemented. The badge on each section shows whether a route is available, a development build or planned. Source packages are for development verification, not a claim of feature completeness.
 :::
 
 ## Choose an entry point
 
-| Environment | Planned route | Notes |
+| Environment | Route | Notes |
 | --- | --- | --- |
 | Chrome / Edge desktop | Manifest V3 extension | In-place page and selection rebuilding, plus Studio file import |
 | Brave / Opera / Vivaldi desktop | Chromium package | Reuses the Chrome package, with per-browser compatibility checks |
@@ -89,9 +89,9 @@ Android uses the same Firefox package and the same AMO listing as desktop. Deskt
 
 Regular installation still requires AMO signing. Development verification uses Mozilla's `web-ext`, ADB and a debug-enabled device. Use Studio PWA until real-device verification is complete.
 
-## Safari: build from source <Badge type="warning" text="Planned" />
+## Safari: build from source <Badge type="warning" text="Development package" />
 
-A Safari Web Extension must ship inside a container app. Safari cannot install the Chromium ZIP directly.
+A Safari Web Extension must ship inside a container app. Safari cannot install the Chromium ZIP directly. Signed TestFlight and App Store builds are planned; testing on real devices is not done yet.
 
 ### Requirements
 
@@ -105,22 +105,14 @@ A Safari Web Extension must ship inside a container app. Safari cannot install t
 After building the extension, run this from the repository root:
 
 ```bash
-if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
-  tool=safari-web-extension-packager
-else
-  tool=safari-web-extension-converter
-fi
-
-xcrun "$tool" apps/extension/dist/safari \
-  --project-location build/safari \
-  --copy-resources --swift --no-open --no-prompt --force
+pnpm --filter @swarmloom/extension package:safari
 ```
 
-Recent Xcode uses `safari-web-extension-packager`; the older tool is `safari-web-extension-converter`. `--copy-resources` copies files into the project, so later source changes require another packaging pass.
+The script wraps `apps/extension/dist/safari/` into an Xcode project under `apps/extension/build/safari/`. It uses `safari-web-extension-packager` from recent Xcode and falls back to the older `safari-web-extension-converter`. Arguments after the script name, such as `--app-name` or `--bundle-identifier`, are passed to that tool. The project gets copies of the files, so later source changes require another build and packaging pass.
 
 ### Run on each operating system
 
-1. Open the generated project under `build/safari/` in Xcode.
+1. Open the generated project under `apps/extension/build/safari/` in Xcode.
 2. Select a development team, adjust Bundle IDs if needed, and sign both the container app and Safari Web Extension targets.
 3. Select the appropriate macOS, iOS, iPadOS or visionOS destination and run the container app. Simulators support unsigned development builds; physical devices require signing.
 4. macOS: enable SwarmLoom in Safari's **Extensions** settings.
@@ -129,7 +121,7 @@ Recent Xcode uses `safari-web-extension-packager`; the older tool is `safari-web
 
 Mobile Safari has no desktop context-menu or window-management APIs. Use file pickers, drag and drop, or system sharing for files. Safari extensions cannot read local files, so clicking SwarmLoom on a `file://` document opens Studio on its file picker. Safari's `storage.sync` should not be interpreted as cross-device synchronisation.
 
-## Studio PWA <Badge type="warning" text="Planned" />
+## Studio PWA <Badge type="tip" text="Online" />
 
 [Studio](https://boulea7.github.io/swarmloom/studio/) works as a normal web app. Installation is optional; an installed app adds a standalone window and platform-dependent sharing and file entry points.
 
@@ -155,18 +147,18 @@ iOS does not use Chromium's automatic installation prompt. Launching from the Ho
 
 ## Foldables
 
-No separate package is needed. Studio plans to put the stage and settings on separate segments for a horizontal dual screen, and stack them for a vertical dual screen. Controls and important content should not cross the hinge.
+No separate package is needed. Where the browser supports Viewport Segments, Studio splits into two panes and keeps content off the hinge. On a side-by-side dual screen, the home page puts the open actions on the left and the gallery on the right, and the player keeps the stage on the left with settings and dialogs on the right. On a stacked dual screen, the player sits above the hinge and settings and dialogs below it.
 
-Viewport Segments is not a cross-browser baseline. Unsupported browsers keep the ordinary responsive layout. Rotation and folding do not reseed the scene or alter the export timeline.
+Viewport Segments is a Chromium feature, not a cross-browser baseline. Other browsers keep the ordinary responsive layout. Rotation and folding do not reseed the scene or alter the export timeline.
 
 ## Watches: honest substitutes
 
 SwarmLoom does not provide a watch browser extension, and does not promise a general PWA, background playback or arbitrary page rebuilding on watches.
 
-Planned alternatives are:
+The alternatives are:
 
-- Open the tiny `?watch=1` player through a short link. It keeps only playback, progress and **Open on phone**.
-- Use a static poster first, mute by default, and keep important controls away from round-screen corners.
+- Open Studio with `?watch=1` for the small watch player; watch-sized screens switch to it on their own. It keeps only playback, progress, the next example and **Open on phone**, which shows a QR code.
+- The player shows a static poster first and plays muted. Add `?round=1` on a round face to keep every control inside the circle.
 - Generate MP4, animated WebP or a still frame on a phone or desktop, then send that result to the watch.
 
 On watchOS, web content is commonly opened from Messages or Mail links. Wear OS browser availability and installation vary by model and region. The watch player shows an already generated scene; it does not summon a swarm on the watch's current page.
