@@ -19,7 +19,7 @@ function command(target: string, targetIsFile: boolean, name = target) {
 describe("CLI command", () => {
   it.each([
     ["notes.md", "notes.md"],
-    ["https://example.com/docs/%E4%B8%AD.md", "https://example.com/docs/%E4%B8%AD.md"],
+    ["https://example.com/docs/中.md", "https://example.com/docs/中.md"],
     ["My Notes (1).md", '"My Notes (1).md"'],
     ["x';calc;#.md", `"x';calc;#.md"`],
     ["@notes.md", '"@notes.md"'],
@@ -36,6 +36,9 @@ describe("CLI command", () => {
     'x".md',
     "x!.md",
     "%COMSPEC%.md",
+    // cmd.exe reads `%DATE%` here, also inside double quotes, so percent-escapes are never written.
+    "%DATE%20.md",
+    "https://example.com/docs/%E4%B8%AD.md",
     "--chrome=calc.exe",
   ])("refuses %j", (arg) => {
     expect(shellArg(arg)).toBeNull();

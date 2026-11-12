@@ -52,10 +52,12 @@ export interface CliCommand {
 }
 
 /**
- * Unquoted, these characters mean the same in POSIX shells, PowerShell and cmd.exe. A `%` is only
- * allowed in a percent-escape such as `%20`, so cmd.exe cannot be made to expand `%PATH%` and the like.
+ * Unquoted, these characters mean the same in POSIX shells, PowerShell and cmd.exe. `%` is never
+ * allowed: cmd.exe expands `%NAME%` for any variable that is set, even inside double quotes and even
+ * when the text looks like percent-escapes (`%DATE%20` holds `%DATE%`), and no escape for it reads the
+ * same in the other shells. A link with percent-escapes is therefore replaced by a saved file.
  */
-const BARE = /^(?:[\p{L}\p{M}\p{N}_./:@+=-]|%[0-9A-Fa-f]{2})+$/u;
+const BARE = /^[\p{L}\p{M}\p{N}_./:@+=-]+$/u;
 
 /**
  * Inside double quotes these characters stay literal in all three shells. The set has to hold even
@@ -63,11 +65,11 @@ const BARE = /^(?:[\p{L}\p{M}\p{N}_./:@+=-]|%[0-9A-Fa-f]{2})+$/u;
  * so cmd.exe operators (`&`, `|`, `<`, `>`, `^`) are never allowed. `"`, `$`, `` ` ``, `\` and `!` keep
  * a meaning inside double quotes in at least one shell.
  */
-const QUOTABLE = /^(?:[\p{L}\p{M}\p{N}_./:@+=,;'#?*~()[\]{} -]|%[0-9A-Fa-f]{2})+$/u;
+const QUOTABLE = /^[\p{L}\p{M}\p{N}_./:@+=,;'#?*~()[\]{} -]+$/u;
 
 /**
  * Writes one argument so that POSIX shells, PowerShell and cmd.exe all pass it to the CLI unchanged.
- * Returns null when no spelling works in all of them (shell operators, quotes, `$`), or when the CLI
+ * Returns null when no spelling works in all of them (shell operators, quotes, `$`, `%`), or when the CLI
  * would read the argument as an option. The caller must then avoid the argument altogether.
  */
 export function shellArg(arg: string): string | null {
