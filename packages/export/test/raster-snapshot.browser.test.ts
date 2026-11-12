@@ -299,3 +299,28 @@ it("embeds a large photo only as large as its box needs, unless it may show larg
   expect(r).toBeLessThan(100);
   expect(b).toBeGreaterThan(150);
 });
+
+it("decodes the image again only once the snapshot changed, reusing the encoding of long resources", async () => {
+  const texture = await noisy(160, 120, "image/png");
+  const { win, rasterizer } = await frameOf(
+    `<body style="margin:0"><div style="width:100px;height:50px;background:url(${texture})"></div><p>a</p></body>`,
+  );
+  const decode = vi.spyOn(HTMLImageElement.prototype, "decode");
+  const encode = vi.spyOn(globalThis, "encodeURIComponent");
+  try {
+    const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+    await rasterizer.draw(ctx);
+    // Nothing changed: the decoded image is drawn again.
+    await rasterizer.draw(ctx);
+    expect(decode).toHaveBeenCalledTimes(1);
+    encode.mockClear();
+    (win.document.querySelector("p") as HTMLElement).textContent = "b";
+    await rasterizer.draw(ctx);
+    expect(decode).toHaveBeenCalledTimes(2);
+    // Only the markup around the texture was encoded again.
+    expect(Math.max(...encode.mock.calls.map(([text]) => String(text).length))).toBeLessThan(texture.length);
+  } finally {
+    decode.mockRestore();
+    encode.mockRestore();
+  }
+});

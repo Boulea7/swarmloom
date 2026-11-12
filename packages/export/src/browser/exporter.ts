@@ -178,7 +178,8 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * decodes its image in one task, which grows with the web fonts and images it embeds (in Chromium
  * about 40 ms per MB of the faces the frame's text uses). Photos in `<img>` elements are embedded
  * only as large as their boxes need, so large ones add little; large CSS background images, video
- * frames and canvases add their full size.
+ * frames and canvases add their full size. A frame whose snapshot equals the last one reuses its
+ * image.
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).

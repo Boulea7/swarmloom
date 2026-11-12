@@ -31,6 +31,11 @@ async function decoded(img: HTMLImageElement): Promise<void> {
   });
 }
 
+/** Whether two snapshots are made of the same pieces. */
+function sameParts(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((part, i) => part === b[i]);
+}
+
 /** False when the canvas is tainted by another origin: drawing it would taint the target too. */
 function readable(canvas: HTMLCanvasElement): boolean {
   try {
@@ -75,6 +80,8 @@ export class FrameRasterizer {
    * next frames mostly use the same, and encoding megabytes again took tens of milliseconds.
    */
   #encoded = new Map<string, string>();
+  /** The last image drawn and the parts it was made of. */
+  #last: { parts: readonly string[]; img: HTMLImageElement } | null = null;
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -111,7 +118,9 @@ export class FrameRasterizer {
   }
 
   /**
-   * Draws the current frame into `ctx` at its origin, scaled to `ctx.canvas`, over white.
+   * Draws the current frame into `ctx` at its origin, scaled to `ctx.canvas`, over white. A frame
+   * whose snapshot is the same as the last one's (the page held still while only the overlays,
+   * such as the cursors, moved) reuses its decoded image.
    *
    * @throws The signal's reason when it aborts while the snapshot walk pauses.
    */
@@ -124,11 +133,15 @@ export class FrameRasterizer {
       signal,
       Math.max(width / this.#o.width, height / this.#o.height),
     );
-    const img = new Image();
-    // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
-    // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
-    img.src = this.#uri(parts);
-    await decoded(img);
+    let img = this.#last?.img;
+    if (!img || !sameParts(parts, this.#last?.parts ?? [])) {
+      img = new Image();
+      // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
+      // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
+      img.src = this.#uri(parts);
+      await decoded(img);
+      this.#last = { parts, img };
+    }
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
