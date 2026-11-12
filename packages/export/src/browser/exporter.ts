@@ -1,6 +1,6 @@
 import { renderOffline } from "@swarmloom/core";
 import { type ShadowWatch, watchShadowRoots } from "../render/live";
-import type { RenderApi, RenderInfo, RenderInit, RenderInput } from "../render/protocol";
+import { defaultTail, type RenderApi, type RenderInfo, type RenderInit, type RenderInput } from "../render/protocol";
 import { CHANNELS, type CodecProbe, type EncodingPlan, planEncoding, SAMPLE_RATE, VideoFileWriter } from "./encode";
 import { FRAME_ATTRIBUTE } from "./marker";
 import { type ColorScheme, type MediaPin, pinMediaFeatures } from "./media";
@@ -178,8 +178,14 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * decodes its image in one task, which grows with the web fonts and images it embeds (in Chromium
  * about 40 ms per MB of the faces the frame's text uses). Photos in `<img>` elements are embedded
  * only as large as their boxes need, so large ones add little; large CSS background images, video
- * frames and canvases add their full size. A frame whose snapshot equals the last one reuses its
- * image.
+ * frames and canvases add their full size. While the page holds still since the last frame (no
+ * mutation, load, scroll, focus or Web Animation change in it or in the live page it shows, the
+ * same pixels in each canvas drawn into the image, and no video, frame of another origin or SMIL
+ * in it), as through an opening or after going live, a frame skips the snapshot and draws the last
+ * image again under the cursors; a frame whose snapshot equals the last one's also reuses its image.
+ * Otherwise, as while one animation runs on a long live page, the snapshot writes each box away
+ * from the viewport as the last one wrote it while nothing in it changed and it stayed away, without
+ * reading it again.
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).
@@ -230,7 +236,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     pinPixelRatio(win);
     const pinned = pinMediaFeatures(win, shadows, { scheme, width, height });
     media = pinned;
-    const tail = settings.tail ?? 2500;
+    const tail = settings.tail ?? defaultTail(settings);
     // Loading the input can take long; cancelling removes the frame (below) rather than waiting.
     const info = await unlessAborted(api.init({ ...settings, input: o.input, width, height, fps, tail }), signal);
 
@@ -286,6 +292,9 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     // its encoding and muxing, and removes the frame.
     if (plan.audio) {
       report("sound");
+      // The last frame stays up until durationMs. Run the clock through that interval too (nothing is
+      // captured) so the sounds raised in it are logged, as the CLI does.
+      await unlessAborted(api.step(result.durationMs - result.elapsedMs), signal);
       const events = await unlessAborted(api.soundLog(), signal);
       const soundOptions = {
         enabled: true,

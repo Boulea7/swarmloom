@@ -12,6 +12,9 @@
  * The worker installs on the first visit to the hosted Studio, not only when the app is installed,
  * so every visitor gets the warm-up (the Studio docs' "Offline use" section says so).
  * Updates wait until the page asks (`MSG_SKIP_WAITING`), so a running build is never cut off.
+ * Windows already open then keep the page they opened with, so an older release's shell and
+ * assets stay cached until each of those windows has closed or reloaded: their lazy chunks (an
+ * adapter, the exporter) still load, offline too, after the host dropped them.
  * Remote files (other origins) are never cached.
  */
 
@@ -60,6 +63,12 @@ const shareUrl = new URL(SHARE_TARGET_PATH, scope).href;
  */
 const LOOKUP: CacheQueryOptions = { ignoreVary: true };
 
+/**
+ * Key, in this release's shell cache, of the ids of the Studio windows open when it took over (a
+ * JSON list). Older releases are dropped once none of them is open any more.
+ */
+const OLD_WINDOWS_URL = new URL("__old-windows", scope).href;
+
 /** pdf.js's files in the build this engine runs, the only one the PDF reader loads here. */
 const WARM_PDF = __WARM_PDF__[pdfBuild()];
 
@@ -85,7 +94,14 @@ self.addEventListener("install", (event) => {
   );
 });
 
-async function cleanUp(): Promise<void> {
+/** Ids of the Studio windows open now, whichever worker controls them (or none). */
+async function openWindows(): Promise<string[]> {
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  return windows.filter((client) => client.url.startsWith(scope)).map((client) => client.id);
+}
+
+/** Drops the shells of older releases and the assets this release does not list. */
+async function dropOldReleases(): Promise<void> {
   for (const name of await caches.keys()) {
     if (name.startsWith(SHELL_PREFIX) && name !== SHELL_CACHE) await caches.delete(name);
   }
@@ -94,6 +110,10 @@ async function cleanUp(): Promise<void> {
   for (const request of await assets.keys()) {
     if (!current.has(request.url)) await assets.delete(request);
   }
+}
+
+/** Drops share-target items nobody picked up in time. */
+async function expireInbox(): Promise<void> {
   const inbox = await caches.open(INBOX_CACHE);
   const now = Date.now();
   for (const request of await inbox.keys()) {
@@ -103,8 +123,40 @@ async function cleanUp(): Promise<void> {
   }
 }
 
+/** In memory only: after a restart, the record under OLD_WINDOWS_URL says what is still awaited. */
+let tidied = false;
+let tidying: Promise<void> | undefined;
+
+/** Drops older releases once every window open at activation has closed or reloaded. */
+function tidy(): Promise<void> {
+  if (tidied) return Promise.resolve();
+  tidying ??= (async () => {
+    const shell = await caches.open(SHELL_CACHE);
+    const record = await shell.match(OLD_WINDOWS_URL);
+    if (record) {
+      const open = new Set(await openWindows());
+      if (((await record.json()) as string[]).some((id) => open.has(id))) return;
+      await dropOldReleases();
+      await shell.delete(OLD_WINDOWS_URL);
+    }
+    tidied = true;
+  })().finally(() => {
+    tidying = undefined;
+  });
+  return tidying;
+}
+
+async function activate(): Promise<void> {
+  // Read before claiming: every Studio window open now runs an older release (or none yet).
+  const old = await openWindows();
+  if (old.length === 0) await dropOldReleases();
+  else await (await caches.open(SHELL_CACHE)).put(OLD_WINDOWS_URL, new Response(JSON.stringify(old)));
+  await expireInbox();
+  await self.clients.claim();
+}
+
 self.addEventListener("activate", (event) => {
-  event.waitUntil(cleanUp().then(() => self.clients.claim()));
+  event.waitUntil(activate());
 });
 
 self.addEventListener("message", (event) => {
@@ -112,9 +164,11 @@ self.addEventListener("message", (event) => {
 });
 
 async function cacheFirst(request: Request, cacheName: string): Promise<Response> {
+  // This release first; then any cache, for a window still on an older release (see tidy).
   const hit =
     (await caches.match(request, { ...LOOKUP, cacheName: SHELL_CACHE })) ??
-    (await caches.match(request, { ...LOOKUP, cacheName }));
+    (await caches.match(request, { ...LOOKUP, cacheName })) ??
+    (await caches.match(request, LOOKUP));
   if (hit) return hit;
   const response = await fetch(request);
   if (response.ok && response.type === "basic") {
@@ -201,6 +255,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (request.method !== "GET" || !url.startsWith(scope)) return;
+  event.waitUntil(tidy());
   if (request.mode === "navigate") {
     event.respondWith(navigation(request));
     // A browser update can switch the PDF reader to the other pdf.js build between two releases of

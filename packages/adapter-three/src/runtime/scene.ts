@@ -125,8 +125,8 @@ function easeInOut(t: number): number {
 
 /**
  * The WebGL backdrop of a 3D build: owns the reveal state (always) and the GPU scene (while
- * mounted). Rendering happens only in {@link frame} (engine time) and, after the build, on
- * user orbit input; nothing is drawn when nothing changed.
+ * mounted). Rendering happens only in {@link frame} (engine time, frames somebody sees) and, after
+ * the build, on user orbit input; nothing is drawn when nothing changed.
  */
 export class ModelScene {
   readonly state: RevealState;
@@ -137,6 +137,10 @@ export class ModelScene {
   #mounted: Mounted | null = null;
   #reducedMotion = false;
   #redraw = true;
+  /** A frame changed the picture since the last render (frames nobody sees leave it to the next). */
+  #unpainted = false;
+  /** Engine time of the last frame since the last render that changed the shadow, or NaN. */
+  #shadowAt = Number.NaN;
   #finaleAt: number | null = null;
   #userOrbit = false;
   #cameraMoved = false;
@@ -318,6 +322,8 @@ export class ModelScene {
     const m = this.#mounted;
     if (!m) return;
     this.#mounted = null;
+    this.#unpainted = false;
+    this.#shadowAt = Number.NaN;
     if (this.#interactiveFrame)
       m.renderer.domElement.ownerDocument.defaultView?.cancelAnimationFrame(this.#interactiveFrame);
     this.#interactiveFrame = 0;
@@ -615,14 +621,18 @@ export class ModelScene {
   /* Per-frame update                                                  */
   /* ---------------------------------------------------------------- */
 
-  /** Advances to engine time `now` and renders when anything changed or is animating. */
-  frame(now: number): void {
+  /**
+   * Advances to engine time `now` and renders when anything changed or is animating. A frame nobody
+   * sees (`draw` false, an export's tick between two captured frames) only advances: the next one
+   * with `draw` renders what it left, the same picture as when every frame rendered.
+   */
+  frame(now: number, draw = true): void {
     const state = this.state;
     state.now = now;
     const m = this.#mounted;
     if (!m) return;
     let changed = this.#redraw || state.dirty;
-    if (state.dirty || now < state.animatingUntil) m.renderer.shadowMap.needsUpdate = true;
+    if (state.dirty || now < state.animatingUntil) this.#shadowAt = now;
     if (state.dirty) {
       m.stateTexture.needsUpdate = true;
       const mean = state.materialMean();
@@ -652,9 +662,32 @@ export class ModelScene {
       if (t >= 1) this.#finaleAt = -1;
     }
     if (now < state.animatingUntil) changed = true;
-    if (!changed) return;
-    m.shared.uSlTime.value = now;
-    this.#redraw = false;
+    if (changed) {
+      m.shared.uSlTime.value = now;
+      this.#redraw = false;
+      this.#unpainted = true;
+    }
+    if (draw && this.#unpainted) this.#paint(m);
+  }
+
+  /**
+   * Renders what the frames since the last render left: the picture of the last that changed it,
+   * the shadow of the last that changed the shadow. Faces grow in the shadow pass too (uSlTime), so
+   * an earlier shadow is rendered at its own time first.
+   */
+  #paint(m: Mounted): void {
+    const shadowAt = this.#shadowAt;
+    this.#unpainted = false;
+    this.#shadowAt = Number.NaN;
+    if (!Number.isNaN(shadowAt)) {
+      m.renderer.shadowMap.needsUpdate = true;
+      const at = m.shared.uSlTime.value;
+      if (shadowAt !== at) {
+        m.shared.uSlTime.value = shadowAt;
+        this.#render();
+        m.shared.uSlTime.value = at;
+      }
+    }
     this.#render();
   }
 

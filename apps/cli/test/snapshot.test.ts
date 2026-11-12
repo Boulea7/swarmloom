@@ -4,18 +4,21 @@
  * instead (see ./real-deps), and a wrong SWARMLOOM_CHROME always does.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { launchBrowser, newContext } from "../src/browser/launch";
+import { snapshotPage } from "../src/browser/snapshot";
 import { snapshotCommand } from "../src/commands/snapshot";
 import { findBrowser } from "../src/discovery/browser";
 import { systemHost } from "../src/discovery/host";
 import { findOptional, skipReason } from "./real-deps";
 
-const SNAPSHOT_DOUBLE = path.join(import.meta.dirname, "fixtures/snapshot.js");
+const FIXTURES = path.join(import.meta.dirname, "fixtures");
+const SNAPSHOT_DOUBLE = path.join(FIXTURES, "snapshot.js");
 /**
  * 2 s, 2 fps, 16x16 VP9, as a data: URL so it is seekable to any time (a server without range requests
  * allows only 0). `ffmpeg -f lavfi -i testsrc2=size=16x16:rate=2:duration=2 -c:v libvpx-vp9 -b:v 10k`
@@ -78,6 +81,21 @@ describe.skipIf(missing)(`snapshot in a real browser${missing ? ` (skipped: ${mi
     }
   }, 120_000);
 
+  it("loads the style sheet next to a local HTML file", async () => {
+    const out: string[] = [];
+    const io = { out: (line: string) => out.push(line), err: () => {} };
+    const argv = [path.join(FIXTURES, "page/index.html"), "-o", "-", "--chrome", chrome as string, "--quiet"];
+    const code = await snapshotCommand.run(argv, {
+      io,
+      cwd: FIXTURES,
+      env: {},
+      assets: { snapshotBundle: SNAPSHOT_DOUBLE },
+    });
+    expect(code).toBe(0);
+    // style.css sets it; without the file the body stays transparent.
+    expect(JSON.parse(out.join("\n")).background).toBe("rgb(1, 2, 3)");
+  }, 120_000);
+
   it("captures animations in a pose that does not depend on when the capture ran", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "swarmloom-snapshot-"));
     try {
@@ -117,6 +135,73 @@ h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
     }
   }, 120_000);
 
+  it("freezes the transitions the pre-scroll pass starts", async () => {
+    // A card below the fold slides 100 px over 60 s once it scrolls into view: read at its end state.
+    const page = `<!doctype html><title>t</title><style>
+.card { transition: transform 60s linear } .card.in { transform: translateX(100px) }
+</style><div style="height: 3000px"></div><p class="card">card</p>
+<script>new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) e.target.classList.add("in");
+}).observe(document.querySelector(".card"));</script>`;
+    const server = createServer((_req, res) => res.setHeader("content-type", "text/html").end(page));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const out: string[] = [];
+      const io = { out: (line: string) => out.push(line), err: () => {} };
+      const argv = [url, "-o", "-", "--chrome", chrome as string, "--quiet"];
+      const code = await snapshotCommand.run(argv, {
+        io,
+        cwd: tmpdir(),
+        env: {},
+        assets: { snapshotBundle: SNAPSHOT_DOUBLE },
+      });
+      expect(code).toBe(0);
+      const { layers } = JSON.parse(out.join("\n")) as { layers: { text: string; box: { x: number } }[] };
+      expect(layers.map((l) => [l.text, Math.round(l.box.x)])).toEqual([["card", 108]]);
+    } finally {
+      server.close();
+    }
+  }, 120_000);
+
+  it("freezes the loops that the freeze itself starts", async () => {
+    // Ending the entrance animation and pausing the video fire events that start endless slides;
+    // both are read half a cycle in (+150 px), not wherever real time had them.
+    const page = `<!doctype html><title>t</title><style>
+@keyframes enter { from { transform: translateX(0) } to { transform: translateX(10px) } }
+@keyframes slide { from { transform: translateX(0) } to { transform: translateX(300px) } }
+.enter { animation: enter 60s linear forwards } .slide { animation: slide 1s linear infinite }
+</style><p id="chain" class="enter">chain</p><p id="paused">paused</p>
+<video autoplay muted loop playsinline src="${CLIP}"></video>
+<script>
+const chain = document.getElementById("chain");
+chain.addEventListener("animationend", (e) => { if (e.animationName === "enter") chain.className = "slide"; });
+document.querySelector("video").addEventListener("pause", () => { document.getElementById("paused").className = "slide"; });
+</script>`;
+    const server = createServer((_req, res) => res.setHeader("content-type", "text/html").end(page));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const out: string[] = [];
+      const io = { out: (line: string) => out.push(line), err: () => {} };
+      const argv = [url, "-o", "-", "--chrome", chrome as string, "--quiet"];
+      const code = await snapshotCommand.run(argv, {
+        io,
+        cwd: tmpdir(),
+        env: {},
+        assets: { snapshotBundle: SNAPSHOT_DOUBLE },
+      });
+      expect(code).toBe(0);
+      const { layers } = JSON.parse(out.join("\n")) as { layers: { text: string; box: { x: number } }[] };
+      expect(layers.map((l) => [l.text, Math.round(l.box.x)])).toEqual([
+        ["chain", 158],
+        ["paused", 158],
+      ]);
+    } finally {
+      server.close();
+    }
+  }, 120_000);
+
   it("stops playing videos in the same pose as animations", async () => {
     const page = `<!doctype html><title>t</title>
 <video id="loop" autoplay muted loop playsinline src="${CLIP}"></video>
@@ -147,4 +232,28 @@ for (const v of videos) for (const type of ["playing", "pause", "seeked"]) v.add
       server.close();
     }
   }, 120_000);
+
+  it("captures a page whose video freeze never ends once the step times out", async () => {
+    // The video never loads and the page drops long timers, so the in-page 3 s deadline never fires.
+    const page = `<!doctype html><title>t</title><h1>Hello</h1><video autoplay muted src="/stall.mp4"></video>
+<script>const st = setTimeout; window.setTimeout = (f, d, ...a) => (d >= 1000 ? 0 : st(f, d, ...a));</script>`;
+    const server = createServer((req, res) => {
+      if (req.url === "/") res.setHeader("content-type", "text/html").end(page);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const launch = { webPages: true, requireSandbox: false, onUnsandboxed: () => {} };
+    const browser = await launchBrowser(chrome as string, launch);
+    try {
+      const view = { width: 800, height: 600, scale: 1, colorScheme: "light", locale: "en-US" } as const;
+      const context = await newContext(browser, view);
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const bundle = await readFile(SNAPSHOT_DOUBLE, "utf8");
+      const { blueprint } = await snapshotPage(context, { url, bundle, timeoutMs: 5000 });
+      expect(blueprint.layers.map((l) => (l as { text?: string }).text)).toEqual(["Hello"]);
+    } finally {
+      await browser.close();
+      server.closeAllConnections();
+      server.close();
+    }
+  }, 60_000);
 });

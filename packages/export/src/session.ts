@@ -6,13 +6,19 @@ export interface SessionStatus {
   state: PlayerState;
   built: number;
   total: number;
-  /** The build finished and the tail time has elapsed since. */
+  /**
+   * The build finished and the tail time has elapsed since, every cue has applied, and a go live
+   * under way has shown the page (see {@link RenderSessionOptions.tailMs}).
+   */
   done: boolean;
 }
 
 /** A player action at a fixed session time (see {@link RenderSessionOptions.cues}). */
 export interface SessionCue {
-  /** Session time in ms; the cue applies at the end of the first step (tick, with `tickRate`) reaching it. */
+  /**
+   * Session time in ms; the cue applies at the end of the first step reaching it (with `tickRate`, the
+   * first tick, whole or short: see {@link RenderSessionOptions.tickRate}).
+   */
   at: number;
   /**
    * "pause", "resume", "finish" (complete the build quickly), "live": go live now, as the
@@ -40,7 +46,13 @@ export interface SessionScroll {
 export interface RenderSessionOptions {
   /** Player options; the session supplies its own `VirtualClock`. */
   player: Omit<PlayerOptions, "clock">;
-  /** Time to keep running after the build completes (finale), ms. Default 0. */
+  /**
+   * Time to keep running after the build completes (finale), ms. Default 0. A cue still to come
+   * when it ends holds the end until that cue has applied, so every cue lands in the video whatever
+   * the build's length. A go live (automatic or cued) still under way then holds the end until the
+   * stage shows the page (`PlayerOptions.onLive`), so a video never stops mid-glide (`liveTop`) or
+   * with cursors leaving; a stage that never reports live is given up on 2.5 s after go live.
+   */
   tailMs?: number;
   /**
    * Go live once the finale settles (player state "done"), as the toolbar's go live does: the
@@ -52,7 +64,8 @@ export interface RenderSessionOptions {
   /**
    * Player actions at fixed session times, applied in time order (ties in the given order).
    * While paused the session keeps counting time, so {@link RenderSession.soundLog} shifts later
-   * events by the paused time and stays aligned with the frames.
+   * events by the paused time and stays aligned with the frames. The session is not done before the
+   * last cue has applied (see {@link tailMs}).
    */
   cues?: readonly SessionCue[];
   /** Player factory. Default `createPlayer` from `@swarmloom/core`. */
@@ -69,7 +82,10 @@ export interface RenderSessionOptions {
    * is not one of them, and every tick waits for `player.ready()`. The engine calls cursors in,
    * hands out tasks and moves the camera once per tick, so with a fixed rate every frame rate that
    * divides it samples the same build; cues and go live then apply at the end of a tick, not of a
-   * step. Default: none, one tick per step.
+   * step. At a frame rate that does not divide it the short ticks are ticks too: a cue due by a frame
+   * time applies there, and the sounds logged in a short tick carry its end, so that build differs.
+   * Only a step's last tick repaints the cursor canvas (the others pass `draw: false` to
+   * `VirtualClock.advance`): the frame is captured after it. Default: none, one tick per step.
    */
   tickRate?: number;
 }
@@ -91,6 +107,12 @@ function tickTime(k: number, rate: number): number {
   return (k * 1000) / rate;
 }
 
+/**
+ * Longest wait, from go live, for the stage to show the page once the tail is over: the glide back
+ * to the top (`liveTop`) takes at most 1.2 s and an overlay stage then fades out for about 0.5 s.
+ */
+const GO_LIVE_LIMIT_MS = 2500;
+
 /** The view counts as moved between two steps when its top edge moved by more than this, px. */
 const SCROLL_EPSILON = 1e-3;
 
@@ -111,7 +133,10 @@ export class RenderSession {
   readonly player: Player;
   readonly tailMs: number;
   readonly #live: boolean;
-  #wentLive = false;
+  /** Session time the session went live (automatically or at a cue), or null. */
+  #liveAt: number | null = null;
+  /** The stage shows the live page (`PlayerOptions.onLive` ran). */
+  #liveShown = false;
   #elapsed = 0;
   #builtAt: number | null = null;
   #error: Error | null = null;
@@ -142,7 +167,7 @@ export class RenderSession {
     if (!Number.isFinite(tail) || tail < 0) throw new RangeError(`tailMs must be a finite number >= 0, got ${tail}`);
     this.tailMs = tail;
     this.#cues = [...(options.cues ?? [])].sort((a, b) => a.at - b.at);
-    // A live cue sets the go-live time itself.
+    // A live cue sets the go-live time itself; the session runs on until it has applied.
     this.#live = (options.live ?? false) && !this.#cues.some((cue) => cue.action === "live");
     const bad = this.#cues.find((cue) => !Number.isFinite(cue.at) || cue.at < 0);
     if (bad) throw new RangeError(`cue time must be a finite number >= 0, got ${bad.at}`);
@@ -157,7 +182,15 @@ export class RenderSession {
     }
     this.#tickRate = rate;
     const create = options.createPlayer ?? coreCreatePlayer;
-    this.player = create({ ...options.player, clock: this.clock });
+    const onLive = options.player.onLive;
+    this.player = create({
+      ...options.player,
+      clock: this.clock,
+      onLive: () => {
+        this.#liveShown = true;
+        onLive?.();
+      },
+    });
     this.#unsubscribe = [
       this.player.on("state", (e) => {
         if (BUILT.has(e.state)) this.#markBuilt();
@@ -242,14 +275,19 @@ export class RenderSession {
     return this.#settle();
   }
 
-  /** Advances by `ms` in ticks of `rate`, waiting for the player between them (not after the last). */
+  /**
+   * Advances by `ms` in ticks of `rate`, waiting for the player between them (not after the last).
+   * Only the last tick draws: the step's frame shows what it leaves.
+   */
   async #advanceTicks(ms: number, rate: number): Promise<void> {
     const end = this.#elapsed + ms;
     let ticks = 0;
     for (let next = tickTime(this.#tick + 1, rate); next <= end + TIME_EPSILON; next = tickTime(this.#tick + 1, rate)) {
       if (ticks++ > 0) await this.#settle();
       // A whole tick spans the same times at every frame rate, so the engine gets the same deltas.
-      this.#advance(next - (this.#aligned ? tickTime(this.#tick, rate) : this.#elapsed), next);
+      // It is the last unless a later tick, whole or short, reaches the end.
+      const last = end <= next + TIME_EPSILON;
+      this.#advance(next - (this.#aligned ? tickTime(this.#tick, rate) : this.#elapsed), next, last);
       this.#tick++;
       this.#aligned = true;
     }
@@ -262,11 +300,14 @@ export class RenderSession {
     }
   }
 
-  /** One clock tick of `dt` ms that ends at session time `to`, then the cues and go live it made due. */
-  #advance(dt: number, to: number): void {
+  /**
+   * One clock tick of `dt` ms that ends at session time `to`, then the cues and go live it made due.
+   * `draw` false: no frame is captured after it, so the player need not repaint its cursor canvas.
+   */
+  #advance(dt: number, to: number, draw = true): void {
     // Update elapsed first: state listeners fired during advance() read it.
     this.#elapsed = to;
-    this.clock.advance(dt);
+    this.clock.advance(dt, { draw });
     this.#applyCues();
     this.#goLiveWhenDone();
   }
@@ -274,7 +315,11 @@ export class RenderSession {
   status(): SessionStatus {
     const { built, total } = this.player.progress;
     // Tolerate float error from summing 1000 / fps steps.
-    const done = this.#builtAt !== null && this.#elapsed - this.#builtAt >= this.tailMs - 1e-6;
+    const done =
+      this.#builtAt !== null &&
+      this.#elapsed - this.#builtAt >= this.tailMs - 1e-6 &&
+      this.#nextCue >= this.#cues.length &&
+      !this.#goingLive();
     return { state: this.player.state, built, total, done };
   }
 
@@ -347,9 +392,15 @@ export class RenderSession {
   }
 
   #goLive(): void {
-    if (this.#wentLive) return;
-    this.#wentLive = true;
+    if (this.#liveAt !== null) return;
+    this.#liveAt = this.#elapsed;
     this.player.goLive();
+  }
+
+  /** A go live started but the stage does not show the page yet (and has not run out of time). */
+  #goingLive(): boolean {
+    const at = this.#liveAt;
+    return at !== null && !this.#liveShown && this.#elapsed - at < GO_LIVE_LIMIT_MS - TIME_EPSILON;
   }
 
   #markBuilt(): void {

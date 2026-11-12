@@ -36,6 +36,7 @@ import {
   sourceDigest,
   writeAtomic,
 } from "../pipeline/evidence";
+import { frameLimit } from "../pipeline/frames";
 import { inputFilePath, isWebUrl, outputStem, type RenderSource, resolveSource } from "../pipeline/input";
 import { formatClock, lineWidth, wrapFields } from "../pipeline/progress";
 import { type PlayerSettings, type RenderSummary, renderVideo } from "../pipeline/render";
@@ -55,10 +56,11 @@ Output:
       --height <px>       Viewport height in CSS px (16-7680). Default: 720
       --scale <n>         Pixels per CSS px; the video is width*scale x height*scale (0.25-4). Default: 1
       --fps <n>           Frames per second (1-120). Default: 30
-      --max-duration <s>  Stop after this many seconds of video (1-3600). Default: 120
-      --duration <s>      Exact video length in seconds (0.1-3600): keeps capturing after the build
-                          (the finale, then the finished page) and cuts an unfinished build there.
-                          Replaces --max-duration
+      --max-duration <s>  Stop after this many seconds of video (1-3600; a video with sound stops by
+                          600). Default: 120
+      --duration <s>      Exact video length in seconds (0.1-3600; 600 with sound): keeps capturing
+                          after the build (the finale, then the finished page) and cuts an unfinished
+                          build there. Replaces --max-duration
 
 Swarm:
       --agents <n|auto>   Number of cursors (1-256) or auto. Default: auto
@@ -77,9 +79,11 @@ Swarm:
       --intro <style>     warp (cursors circle the file icon, then fan out) | outline (three
                           cursors draw the largest shapes, then the rest joins) | none. Default: warp
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
-                          goes live and its own animations play. Default: 2500
+                          goes live and its own animations play; a go live still under way at the
+                          end runs on until the page shows. Default: 2500 (3700 with --live-top)
       --no-live           Keep the finale through the whole tail instead of going live
-      --live-top          Going live glides back to the top of the page while the cursors leave
+      --live-top          Going live glides back to the top of the page (up to 1.2 s) while the
+                          cursors leave
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
       --bpm <n>           Tempo the placement notes, the fan-out and the final chord snap to (eighth
                           notes, 40-240). Default: 112
@@ -87,12 +91,16 @@ Swarm:
                           nearest sixteenth note (up to 30 ms early or 60 ms late, one per sound
                           and sixteenth) and leaves out the ones too far off. Default: notes
       --cue <at>:<action> Player action at a fixed video time; repeatable. <at> is seconds (12.5),
-                          milliseconds (12500ms) or beats from the start at --bpm (26b). <action> is
+                          milliseconds (12500ms) or beats at an explicit --bpm (26b). <action> is
                           pause (every cursor holds), resume, finish (complete the build quickly),
                           live (go live then, not when the finale settles; also with --no-live) or
-                          speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=0.6 then
-                          17b:speed=0.45 hurries only the start). Applied at the first 1/120 s
-                          step at or after <at>, at any fps; same-time cues in order given
+                          speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=2 then
+                          17b:speed=1 hurries only the start). Applied at the first 1/120 s
+                          step at or after <at>; at an fps that does not divide 120 (25, 50)
+                          a frame time that comes first applies it. Either way the first frame
+                          at or after <at> shows it; same-time cues in order given. The video
+                          runs past the tail until the last cue has shown, so that needs a frame
+                          before --duration or --max-duration
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
                           and plain-http files from other sites are never loaded
@@ -136,6 +144,15 @@ Exit codes: 0 ok, 1 usage error, 2 missing Chrome/ffmpeg, 3 render failure, 130 
 
 /** Build speeds --speed and speed cues accept. */
 const SPEED_RANGE = { min: 0.05, max: 16 } as const;
+/** Default --tail, ms, as on the render page (`defaultTail` of @swarmloom/export). */
+const DEFAULT_TAIL_MS = 2500;
+/** --live-top adds the longest glide back to the top to the default tail, ms. */
+const LIVE_TOP_TAIL_MS = 1200;
+/**
+ * Longest video with sound, ms: the soundtrack is rendered in one piece, and core's renderOffline
+ * refuses more than 10 minutes (MAX_RENDER_MS) to bound its float buffer.
+ */
+const MAX_SOUND_MS = 600_000;
 
 const OPTIONS = {
   output: { type: "string", short: "o" },
@@ -205,6 +222,8 @@ export interface RenderOptions {
   maxDurationMs: number;
   /** --duration: exactly maxDurationMs of video. */
   fixedLength: boolean;
+  /** Sound lowered a longer --max-duration to the 10 minutes a video with sound may last. */
+  soundCapped: boolean;
   cues: ResolvedCue[];
   /** Absolute evidence paths. */
   audioOut?: string;
@@ -252,7 +271,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     overlays: readEnum("overlays", values.overlays, ["full", "minimal", "none"], "full"),
     finale: readEnum("finale", values.finale, ["flock", "halo", "none"], "flock"),
     follow: readEnum("follow", values.follow, ["tour", "none"], "tour"),
-    tail: readInt("tail", values.tail, 2500, 0, 60_000),
+    tail: readInt("tail", values.tail, DEFAULT_TAIL_MS + (values["live-top"] ? LIVE_TOP_TAIL_MS : 0), 0, 60_000),
     live: !values["no-live"],
     sound: !values["no-sound"] && formatHasAudio(format),
   };
@@ -275,14 +294,29 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     throw new UsageError("Use either --duration (exact length) or --max-duration (upper limit), not both");
   }
   const fixedLength = values.duration !== undefined;
-  const maxDurationMs = fixedLength
+  const requestedMs = fixedLength
     ? readNumber("duration", values.duration, 0, { min: 0.1, max: 3600 }) * 1000
     : readNumber("max-duration", values["max-duration"], 120, { min: 1, max: 3600 }) * 1000;
+  // Checked here, not after minutes of capturing: the soundtrack is rendered after the last frame.
+  // --duration asks for that length, so a longer one fails now; --max-duration is only an upper
+  // limit (the build may end long before it), so sound lowers it to the 10 minutes instead.
+  if (settings.sound && fixedLength && requestedMs > MAX_SOUND_MS) {
+    throw new UsageError(
+      `--duration must be at most ${MAX_SOUND_MS / 1000} with sound (got "${values.duration}")`,
+      "Add --no-sound, or use --format gif or webp, for a longer video.",
+    );
+  }
+  const soundCapped = settings.sound === true && requestedMs > MAX_SOUND_MS;
+  const maxDurationMs = soundCapped ? MAX_SOUND_MS : requestedMs;
   const fps = readInt("fps", values.fps, 30, 1, 120);
   const cues = (values.cue ?? []).map((spec) => parseCue(spec, settings.bpm, fps));
+  // The first frame at or after a cue shows it, so a cue needs a frame left; the video then runs at
+  // least to that frame, even when the build ends long before.
+  const frames = frameLimit(maxDurationMs, fps);
   for (const cue of cues) {
-    if (cue.at >= maxDurationMs) {
-      throw new UsageError(`--cue ${cue.spec} is at or after the end of the video (${maxDurationMs / 1000} s)`);
+    if (cue.frame >= frames) {
+      const end = `${maxDurationMs / 1000} s at ${fps} fps`;
+      throw new UsageError(`--cue ${cue.spec} comes after the last frame of the video (${end})`);
     }
   }
   const evidence = {
@@ -310,6 +344,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     fps,
     maxDurationMs,
     fixedLength,
+    soundCapped,
     cues,
     ...evidence,
     settings,
@@ -463,18 +498,79 @@ export function resolveOutput(
   return { output, format: inferred };
 }
 
+/**
+ * Refuses outputs that would fail only when they are written, after the whole capture: a png-seq
+ * directory that is not empty, a file path that is a directory, and a path the file system refuses
+ * to look up (a name that is too long, a parent that is a file). Only a missing path is fine.
+ * @throws UsageError naming the output.
+ */
 async function checkOutputPath(opts: RenderOptions): Promise<void> {
-  if (opts.format === "png-seq") {
-    if (!(await isMissingOrEmptyDir(opts.output))) {
-      throw new UsageError(
-        `Output directory is not empty: ${opts.output}`,
-        "Choose a new or empty directory for png-seq.",
-      );
-    }
-    return;
+  if (opts.format === "png-seq" && !(await isMissingOrEmptyDir(opts.output))) {
+    throw new UsageError(
+      `Output directory is not empty: ${opts.output}`,
+      "Choose a new or empty directory for png-seq.",
+    );
   }
-  const info = await stat(opts.output).catch(() => null);
-  if (info?.isDirectory()) throw new UsageError(`Output is a directory: ${opts.output}`);
+  for (const [label, file] of outputPaths(opts)) {
+    if (file === opts.output && opts.format === "png-seq") continue;
+    const info = await stat(file).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw new UsageError(`${label} cannot be written to ${file} (${error.code ?? error.message})`);
+    });
+    if (info?.isDirectory()) throw new UsageError(`${label} is a directory: ${file}`);
+  }
+}
+
+/**
+ * Names Windows opens as a device whatever follows a dot or spaces: "NUL.mp4" and "com1 .wav" are the
+ * device, not a file. The superscript digits are reserved too.
+ */
+const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?= *(?:\.|$))/i;
+
+/**
+ * Characters Win32 refuses in a file name (`:` names an NTFS stream of another file), and a trailing
+ * dot or space, which Win32 drops, so the file would be saved under another name.
+ */
+const WINDOWS_UNSAFE = /[<>:"|?*]|[. ]$/;
+
+/** Whether Windows cannot save a file under exactly this name (Studio's export checks the same). */
+function windowsCannotHold(name: string): boolean {
+  return WINDOWS_DEVICE.test(name) || WINDOWS_UNSAFE.test(name) || [...name].some((ch) => ch.charCodeAt(0) < 0x20);
+}
+
+/**
+ * On Windows, refuses an output whose file name, or the name of a folder on its path, Win32 cannot
+ * create. The video and the evidence files are moved into place (their folders made) after the whole
+ * capture, so such a name would otherwise fail only then. The root (`C:\`, `\\server\share\`,
+ * `\\?\C:\`) is not a name and is skipped.
+ * @throws UsageError naming the output.
+ */
+function checkWindowsNames(opts: RenderOptions, platform: NodeJS.Platform): void {
+  if (platform !== "win32") return;
+  for (const [label, file] of outputPaths(opts)) {
+    const names = file
+      .slice(path.win32.parse(file).root.length)
+      .split(/[\\/]/)
+      .filter((name) => name !== "");
+    const bad = names.findIndex(windowsCannotHold);
+    if (bad === -1) continue;
+    const where = bad === names.length - 1 ? `as "${names[bad]}"` : `in a folder named "${names[bad]}"`;
+    throw new UsageError(
+      `${label} cannot be saved ${where} on Windows`,
+      'Use names without < > : " | ? * or control characters, not ending in a dot or space, and not a device name such as NUL or COM1.',
+    );
+  }
+}
+
+/** The video and the evidence outputs that were asked for, with their names for messages. */
+function outputPaths(opts: RenderOptions): [string, string][] {
+  const outputs: [string, string | undefined][] = [
+    ["The output", opts.output],
+    ["--audio-out", opts.audioOut],
+    ["--events-out", opts.eventsOut],
+    ["--manifest-out", opts.manifestOut],
+  ];
+  return outputs.filter((entry): entry is [string, string] => entry[1] !== undefined);
 }
 
 /**
@@ -487,14 +583,7 @@ async function checkInputKept(opts: RenderOptions, cwd: string): Promise<void> {
   if (isWebUrl(opts.input)) return;
   const input = inputFilePath(opts.input, cwd);
   const inputId = await fileId(input);
-  const outputs: [string, string | undefined][] = [
-    ["The output", opts.output],
-    ["--audio-out", opts.audioOut],
-    ["--events-out", opts.eventsOut],
-    ["--manifest-out", opts.manifestOut],
-  ];
-  for (const [label, file] of outputs) {
-    if (!file) continue;
+  for (const [label, file] of outputPaths(opts)) {
     if (sameFileKey(file) === sameFileKey(input) || (inputId !== null && (await fileId(file)) === inputId)) {
       throw new UsageError(`${label} would overwrite the input ${input}`, "Write every output to another file.");
     }
@@ -562,6 +651,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   const source = await resolveSource(opts.input, { cwd: ctx.cwd, signal: ctx.signal });
   await checkInputKept(opts, ctx.cwd);
   const host = ctx.host ?? systemHost(ctx.env);
+  checkWindowsNames(opts, host.platform);
   const browser = findBrowser(host, { flag: opts.chrome, playwright: installedPlaywright() });
   let ffmpeg: { path: string; caps: FfmpegCaps; version: FfmpegVersion } | undefined;
   if (opts.format !== "png-seq") {
@@ -598,6 +688,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       settings: opts.settings,
       maxDurationMs: opts.maxDurationMs,
       fixedLength: opts.fixedLength,
+      soundCapped: opts.soundCapped,
       cues: opts.cues.map(({ at, action, speed }) => (speed === undefined ? { at, action } : { at, action, speed })),
       evidence: wantsEvidence(opts)
         ? { audio: Boolean(opts.audioOut), events: Boolean(opts.eventsOut), manifest: Boolean(opts.manifestOut) }
@@ -630,8 +721,11 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   if (opts.quiet) return 0;
   if (!summary.finished) {
     const layers = summary.last.total > 0 ? ` (${summary.last.built} of ${summary.last.total} layers built)` : "";
-    const flag = opts.fixedLength ? "--duration" : "--max-duration";
-    warn(io, `stopped at ${flag} ${formatClock(opts.maxDurationMs / 1000)} before the build finished${layers}`);
+    const clock = formatClock(opts.maxDurationMs / 1000);
+    const limit = opts.soundCapped
+      ? `${clock}, the longest video with sound (add --no-sound for more),`
+      : `${opts.fixedLength ? "--duration" : "--max-duration"} ${clock}`;
+    warn(io, `stopped at ${limit} before the build finished${layers}`);
   }
   if (summary.blockedRequests > 0 && !opts.verbose) {
     warn(io, `blocked ${summary.blockedRequests} request(s) the input made to other sites (see --verbose)`);

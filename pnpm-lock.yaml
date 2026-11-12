@@ -412,6 +412,9 @@ importers:
       '@swarmloom/adapter-code':
         specifier: workspace:*
         version: link:../adapter-code
+      '@swarmloom/adapter-html':
+        specifier: workspace:*
+        version: link:../adapter-html
       '@swarmloom/core':
         specifier: workspace:*
         version: link:../core

@@ -1,7 +1,10 @@
+import type { PlayerEvent } from "@swarmloom/core";
 import { afterEach, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
+import { routeToUrl } from "../src/route";
+import { qrCode } from "../src/views/qr";
 import { fakeServices } from "./fakes";
 
 let app: StudioApp | null = null;
@@ -44,17 +47,51 @@ it("keeps focus inside the watch QR dialog until it closes", async () => {
   expect(document.activeElement).toBe(phone);
 });
 
+it("hands the phone the settings the watch plays with, not the wrist-only ones", async () => {
+  history.replaceState(
+    null,
+    "",
+    `${location.pathname}?watch=1&example=notes&opening=1&live-top=1&intro=outline&speed=3`,
+  );
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = {
+    version: 1 as const,
+    entries: [{ id: "notes", path: "notes.md", format: "markdown", title: "Notes", size: 64, group: "notes" }],
+  };
+  app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
+
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+  const overrides = { speed: 3, intro: "outline", opening: true, liveTop: true } as const;
+  const url = routeToUrl(
+    { source: { kind: "example", id: "notes" }, autoplay: true, overrides },
+    `${location.origin}${location.pathname}`,
+  );
+  // The QR code is drawn from the link alone: the same modules mean the same link.
+  const modules = (svg: Element | null | undefined) => svg?.querySelector("path")?.getAttribute("d");
+  expect(modules(root.querySelector(".watch-qr svg"))).toBe(modules(qrCode(url, "")));
+});
+
 /**
- * Mounts the watch face at `query`, with one example called `title`. With `hold`, the build keeps
- * running, so the controls are due to fade; without, it finishes as soon as it starts.
+ * Mounts the watch face at `query`, with two examples (so **Next** shows), the first called `title`.
+ * With `hold`, the build keeps running, so the controls are due to fade; without, it finishes as
+ * soon as it starts. A player state instead ends the first build in that state, as the engine
+ * reports "finale" or "done" (a resume after a pause returns there), and holds every later one.
  */
-async function mountWatch(query: string, hold = true, title = "Notes"): Promise<HTMLElement> {
+async function mountWatch(
+  query: string,
+  hold: boolean | "finale" | "done" = true,
+  title = "Notes",
+): Promise<HTMLElement> {
   history.replaceState(null, "", `${location.pathname}${query}`);
   const root = document.createElement("div");
   document.body.append(root);
   const manifest = {
     version: 1 as const,
-    entries: [{ id: "notes", path: "notes.md", format: "markdown", title, size: 64, group: "notes" }],
+    entries: [
+      { id: "notes", path: "notes.md", format: "markdown", title, size: 64, group: "notes" },
+      { id: "more", path: "more.md", format: "markdown", title: "More", size: 64, group: "more" },
+    ],
   };
   const fake = fakeServices({
     manifest,
@@ -62,14 +99,29 @@ async function mountWatch(query: string, hold = true, title = "Notes"): Promise<
     fetch: async () => new Response("# Notes\n"),
   });
   const createPlayer = fake.services.createPlayer;
+  let end = typeof hold === "string" ? hold : undefined;
   if (hold)
-    fake.services.createPlayer = (options) =>
-      new Proxy(createPlayer(options), {
-        get: (player, key) =>
-          key === "play"
-            ? () => player.play().then(() => new Promise<void>(() => undefined))
-            : Reflect.get(player, key),
+    fake.services.createPlayer = (options) => {
+      const finish = end;
+      end = undefined;
+      let report: ((event: PlayerEvent) => void) | undefined;
+      return new Proxy(createPlayer(options), {
+        get: (player, key) => {
+          if (key === "on")
+            return (type: PlayerEvent["type"], fn: (event: PlayerEvent) => void) => {
+              if (type === "state") report = fn;
+              return player.on(type, fn);
+            };
+          if (key === "play")
+            return () =>
+              player
+                .play()
+                .then(() => (finish ? report?.({ type: "state", state: finish }) : new Promise<void>(() => undefined)));
+          if (key === "resume" && finish) return () => report?.({ type: "state", state: finish });
+          return Reflect.get(player, key);
+        },
       });
+    };
   app = await mountStudio(root, fake.services);
   return root;
 }
@@ -85,6 +137,25 @@ it("keeps the faded watch controls on screen while one has keyboard focus", asyn
   await expect.poll(() => face?.dataset.playing).toBe("true");
   await new Promise((resolve) => setTimeout(resolve, 2900)); // past the 2.6 s fade-out delay
   expect([face?.dataset.controls, document.activeElement]).toEqual(["shown", play]);
+});
+
+it.each([
+  { press: "pause", end: "finale", phase: "done" },
+  { press: "replay", end: "done", phase: "playing" },
+] as const)("stays on the example when the wearer presses $press at the end", async ({ press, end, phase }) => {
+  const root = await mountWatch("?watch=1", end);
+  const face = root.querySelector<HTMLElement>(".view-watch");
+  const title = root.querySelector(".watch-title");
+  const play = root.querySelector<HTMLButtonElement>(".watch-play");
+  const example = title?.textContent;
+  play?.click();
+  await expect.poll(() => face?.dataset.phase).toBe("done");
+  play?.click();
+  await new Promise((resolve) => setTimeout(resolve, 2900)); // past the 2.4 s move to the next example
+  expect([title?.textContent, face?.dataset.phase]).toEqual([example, phase]);
+  if (press !== "pause") return;
+  play?.click(); // resume: the finale plays out and the face moves on again
+  await expect.poll(() => title?.textContent, { timeout: 4000 }).not.toBe(example);
 });
 
 it("plays a round face inside its inscribed square and clears the controls soon after resume", async () => {
@@ -105,29 +176,47 @@ it("plays a round face inside its inscribed square and clears the controls soon 
 });
 
 it.each([
-  { size: 180, phase: "idle" },
-  { size: 180, phase: "done" },
-  { size: 140, phase: "idle" },
-])("keeps every $phase control of a $size px round face inside its inscribed square", async ({ size, phase }) => {
+  { size: 180, phase: "idle", titled: true },
+  { size: 180, phase: "done", titled: true },
+  { size: 140, phase: "idle", titled: false },
+  { size: 100, phase: "idle", titled: false },
+  { size: 140, phase: "playing", titled: false },
+  { size: 100, phase: "playing", titled: false },
+])("keeps every $phase control of a $size px round face inside its inscribed square", async (row) => {
+  const { size, phase, titled } = row;
   await page.viewport(size, size);
   try {
-    const root = await mountWatch("?watch=1&round=1", false, "Willkommen bei SwarmLoom: so entsteht eine Seite");
+    const title = "Willkommen bei SwarmLoom: so entsteht eine Seite";
+    const root = await mountWatch("?watch=1&round=1", phase === "playing", title);
     const face = root.querySelector<HTMLElement>(".view-watch");
-    if (phase === "done") {
+    if (phase !== "idle") {
       root.querySelector<HTMLButtonElement>(".watch-play")?.click();
-      await expect.poll(() => face?.dataset.phase).toBe("done");
+      await expect.poll(() => face?.dataset.phase).toBe(phase);
     }
     const safe = root.querySelector<HTMLElement>(".watch-safe")?.getBoundingClientRect();
-    const title = root.querySelector<HTMLElement>(".watch-title");
-    if (!safe || !title) throw new Error("no watch face");
-    // A long title keeps to one line, or gives way entirely on the smallest faces.
-    const line = parseFloat(getComputedStyle(title).lineHeight);
-    if (title.getClientRects().length > 0) expect(title.getBoundingClientRect().height).toBeLessThan(line * 2);
+    const heading = root.querySelector<HTMLElement>(".watch-title");
+    if (!safe || !heading) throw new Error("no watch face");
+    // Play, Next and phone always render; the title only where it fits. Without this, controls that
+    // all vanished would pass the bounds checks below (no rects: top Infinity, bottom -Infinity).
+    const shown = (el: Element) => el.getClientRects().length > 0;
+    const buttons = [...root.querySelectorAll<HTMLElement>(".watch-play, .watch-actions > *")];
+    expect([shown(heading), ...buttons.map(shown)]).toEqual([titled, true, true, true]);
+    // A long title keeps to one line.
+    const line = parseFloat(getComputedStyle(heading).lineHeight);
+    if (titled) expect(heading.getBoundingClientRect().height).toBeLessThan(line * 2);
     const controls = [...root.querySelectorAll<HTMLElement>(".watch-safe > *, .watch-actions > *")]
-      .filter((el) => el.getClientRects().length > 0)
+      .filter(shown)
       .map((el) => el.getBoundingClientRect());
-    expect(Math.min(...controls.map((r) => r.top))).toBeGreaterThanOrEqual(safe.top - 0.5);
-    expect(Math.max(...controls.map((r) => r.bottom))).toBeLessThanOrEqual(safe.bottom + 0.5);
+    const bounds = {
+      top: Math.min(...controls.map((r) => r.top)),
+      right: Math.max(...controls.map((r) => r.right)),
+      bottom: Math.max(...controls.map((r) => r.bottom)),
+      left: Math.min(...controls.map((r) => r.left)),
+    };
+    expect(bounds.top).toBeGreaterThanOrEqual(safe.top - 0.5);
+    expect(bounds.right).toBeLessThanOrEqual(safe.right + 0.5);
+    expect(bounds.bottom).toBeLessThanOrEqual(safe.bottom + 0.5);
+    expect(bounds.left).toBeGreaterThanOrEqual(safe.left - 0.5);
   } finally {
     await page.viewport(414, 896);
   }

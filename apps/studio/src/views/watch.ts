@@ -2,11 +2,12 @@ import type { PlayerOptions, PlayerState } from "@swarmloom/core";
 import type { AppContext, View } from "../context";
 import { type ExampleEntry, entriesForLocale } from "../examples/manifest";
 import { formatById } from "../formats-meta";
-import { restorable, routeToUrl, type SourceRef } from "../route";
+import { portable, routeToUrl, type SourceRef } from "../route";
 import { Session, type SessionPhase } from "../session";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { qrCode } from "./qr";
+import { shareableSettings } from "./share-link";
 import { thumbnail } from "./thumb";
 
 /**
@@ -238,17 +239,34 @@ export function createWatch(ctx: AppContext): View {
     }, idleMs);
   };
 
+  /**
+   * Moves on to the next example a little after a build ends or fails. A pause holds the face on
+   * the example, and a replay (a new run: the phase leaves "done") drops the pending move.
+   */
+  const syncCycle = () => {
+    const due = phase === "error" || (phase === "done" && state !== "paused");
+    if (!due) {
+      window.clearTimeout(cycleTimer);
+      cycleTimer = 0;
+    } else if (cycleTimer === 0) {
+      cycleTimer = window.setTimeout(() => {
+        cycleTimer = 0;
+        advance(false);
+      }, CYCLE_DELAY_MS);
+    }
+  };
+
   function wake(): void {
     if (qr.open) return;
     showControls(root.dataset.playing !== "true");
   }
 
   function load(item: Item, autostart: boolean): void {
-    window.clearTimeout(cycleTimer);
     session?.destroy();
     host.replaceChildren();
     state = "idle";
     phase = "idle";
+    syncCycle();
     setProgress(0);
     title.textContent = item.title;
     poster.replaceChildren(
@@ -269,11 +287,8 @@ export function createWatch(ctx: AppContext): View {
       onPhase: (next) => {
         phase = next;
         if (next === "ready") current.start();
-        if (next === "done") {
-          setProgress(1);
-          cycleTimer = window.setTimeout(() => advance(false), CYCLE_DELAY_MS);
-        }
-        if (next === "error") cycleTimer = window.setTimeout(() => advance(false), CYCLE_DELAY_MS);
+        if (next === "done") setProgress(1);
+        syncCycle();
         render();
         if (next === "playing") showControls(false, PLAY_IDLE_MS);
         if (next === "done" || next === "error") showControls(true);
@@ -281,6 +296,7 @@ export function createWatch(ctx: AppContext): View {
       onProgress: (built, total) => setProgress(total > 0 ? built / total : 0),
       onState: (next) => {
         state = next;
+        syncCycle();
         render();
       },
     });
@@ -320,8 +336,11 @@ export function createWatch(ctx: AppContext): View {
   function phoneUrl(): string {
     const item = items[index];
     const ref = item?.ref;
-    if (!ref || !restorable(ref)) return ctx.appUrl;
-    return routeToUrl({ source: ref, autoplay: true }, ctx.appUrl);
+    if (!ref || !portable(ref)) return ctx.shareUrl;
+    // The phone plays the same show: every performance setting in effect here (saved or from this
+    // link), not the wrist-only WATCH_OVERRIDES. A `#d=` payload's own settings win there as here.
+    const overrides = shareableSettings(ctx.settings);
+    return routeToUrl({ source: ref, autoplay: true, overrides }, ctx.shareUrl);
   }
 
   function showQr(): void {

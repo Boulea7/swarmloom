@@ -1,7 +1,20 @@
-import { restorable, routeToUrl } from "../route";
+import { portable, routeToUrl } from "../route";
+import type { StudioTarget } from "../services";
 import { DEFAULT_SETTINGS, type StudioSettings } from "../settings";
 import { encodeShare, MAX_SHARE_LENGTH, SHARE_SETTING_KEYS, sanitizeShareName } from "../share";
 import type { OpenedSource } from "../source";
+
+/** The hosted Studio: the online gallery and the page links made in the extension's Studio open. */
+export const HOSTED_STUDIO = "https://boulea7.github.io/swarmloom/studio/";
+
+/**
+ * The Studio page a link for someone else or another device opens. The extension's own pages
+ * (`chrome-extension://<id>/...`) open only in the browser that installed it, so links made there
+ * point at the hosted Studio; the web build links to itself.
+ */
+export function shareBase(target: StudioTarget, appUrl: string): string {
+  return target === "extension" ? HOSTED_STUDIO : appUrl;
+}
 
 /** Why a source cannot be shared as a link. */
 export type ShareRefusal = "binary" | "tooLarge" | "unsupported";
@@ -18,17 +31,14 @@ export function shareableSettings(s: StudioSettings): Partial<StudioSettings> {
 }
 
 /**
- * Builds a link that reopens `opened` elsewhere: examples and remote URLs by reference, small text
- * inputs compressed into the hash, anything else refused with a reason the UI can explain.
+ * Builds a link on `base` (see {@link shareBase}) that reopens `opened` elsewhere: examples and web
+ * URLs by reference, small text inputs (local `file:` URLs too) compressed into the hash, anything
+ * else refused with a reason the UI can explain.
  */
-export async function buildShareLink(
-  opened: OpenedSource,
-  settings: StudioSettings,
-  appUrl: string,
-): Promise<ShareLink> {
+export async function buildShareLink(opened: OpenedSource, settings: StudioSettings, base: string): Promise<ShareLink> {
   const overrides = shareableSettings(settings);
-  if (restorable(opened.ref) && opened.ref.kind !== "shared") {
-    return { ok: true, url: routeToUrl({ source: opened.ref, autoplay: true, overrides }, appUrl) };
+  if (portable(opened.ref) && opened.ref.kind !== "shared") {
+    return { ok: true, url: routeToUrl({ source: opened.ref, autoplay: true, overrides }, base) };
   }
   const name = sanitizeShareName(opened.name);
   if (opened.text === undefined || !name) return { ok: false, reason: "binary" };
@@ -39,5 +49,5 @@ export async function buildShareLink(
     return { ok: false, reason: "unsupported" };
   }
   if (payload.length > MAX_SHARE_LENGTH) return { ok: false, reason: "tooLarge" };
-  return { ok: true, url: routeToUrl({ source: { kind: "shared", payload }, autoplay: true }, appUrl) };
+  return { ok: true, url: routeToUrl({ source: { kind: "shared", payload }, autoplay: true }, base) };
 }

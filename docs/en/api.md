@@ -73,7 +73,7 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `overlays` | `full` / `minimal` / `none`, default `full` | Editing marks while building: `minimal` leaves out size badges, distance labels, guide lines and rulers; `none` also leaves out selections, empty frames, pen lines and anchors, carets and status bubbles, so only the cursors, their name tags and the content remain. The intro icon and the halo finale are always drawn |
 | `follow` | `scroll` / `tour` / `none` | Follow the user, tour automatically, or keep a fixed viewport |
 | `reducedMotion` | `auto` / `boolean` | Defaults to the system reduced-motion preference |
-| `intro` | `boolean \| "outline"` | Intro: `true` (default) is the icon orbit and fan-out; `"outline"` shows no icon, three cursors first draw the largest shapes in view (paths and boxes, two each) and the rest joins once all of them are taken; `false` has no intro |
+| `intro` | `boolean \| "outline"` | Intro: `true` (default) is the icon orbit and fan-out; `"outline"` shows no icon, up to three cursors (fewer when `agents` is smaller) first draw the largest shapes in view (paths and boxes, two per cursor) and the rest joins once all of them are taken; `false` has no intro |
 | `finale` | `flock` / `halo` / `none` | Flock, audio-reactive halo, or no finale |
 | `opening` | `number`, default 0 | Ms to show the original first (inline: the finished content; overlay: the page), then fade into the blank canvas and start the intro |
 | `liveTop` | `boolean`, default false | Going live glides back to the top while the cursors leave |
@@ -93,7 +93,9 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `volume` | Master volume from 0 to 1 |
 | `pack` | `studio`, `soft`, `8bit`, `silent-keys` or a custom pack ID |
 | `bpm` | Musical-grid tempo |
-| `beatSync` | Snap sounds to the `bpm` grid: `true` (default) puts placement notes, the fan-out and the final chord on the next eighth note; `"all"` also puts keys, clicks, snaps, pen anchors and heading ticks on the nearest sixteenth note (at most 30 ms early or 60 ms late, one per sound and sixteenth; hits farther off stay silent); `false` plays every sound when it happens |
+| `beatSync` | Snap sounds to the `bpm` grid: `true` (default) puts placement notes, the fan-out and the final chord on the next eighth note; `"all"` also puts keys, clicks, snaps, pen anchors and heading ticks on the nearest sixteenth note (at most 30 ms early or 60 ms late, one per sound and sixteenth; hits farther off stay silent); `false` keeps every sound at its event time |
+
+Some events stay silent whatever `beatSync` is: events the pack has no voice for, a second placement note in the same eighth note, the opening swell, fan-out, final chord or sweep repeated within 400 ms, and typing, pointer sounds and ticks beyond 6, 5 and 4 per 100 ms. `soundTimes()` returns `null` for them.
 
 `ThemeSpec` accepts `palette`, `accent`, `select` and `chrome`. Cursor colours cycle through `palette` in order.
 
@@ -238,6 +240,8 @@ const fragment = await snapshotHtml("<h1>Hello</h1>", {
 | `inlineImages` | false; convert same-origin images to data URLs for another document |
 | `signal` | Cancel the snapshot |
 
+`prescroll(document, signal?)` runs the same pre-pass on its own. To fix the pose of animations after the pre-pass and before the snapshot, call it first, then call `snapshot()` with `prescroll: false`.
+
 `snapshotHtml()` additionally requires `width` and accepts `css`, `document`, `baseUrl`, `background`, `scheme` and `icon`.
 
 ::: warning Security boundary
@@ -301,7 +305,7 @@ Choreography rules:
 - Use Promises only for asset decoding, never wall-clock timing.
 - Use `agent.rng`, not `Math.random()` or `Date.now()`.
 - Remove overlays, release presses and call `stage.finish()` in `finally`.
-- `setup()` may return cleanup; `frame(now, dt)` uses engine time.
+- `setup()` may return cleanup; `frame(now, dt, draw)` uses engine time. `draw` is false for an export's engine ticks between two captured frames: advance as usual, and leave a WebGL render to the next frame with `draw` true, which shows what the skipped ones changed.
 - Optional `restSpot(vp, rng)` returns where an idle cursor rests next (stage px), so idle cursors stay off text the stage cannot see, such as a terminal screen; null keeps the default wandering in the middle of the viewport. Use only the given `rng` for randomness.
 - A plugin that keeps state provides `perPlayer()`: every player calls it once and uses the fresh instance, so one `LoadedSource` can drive several players at once.
 - `stage.reducedMotion` is true when the player builds without motion; keep still poses then instead of starting animations.
@@ -321,7 +325,7 @@ virtual.advance(1000 / 30);
 virtual.stop();
 ```
 
-`VirtualClock.advance(ms)` advances only while running and emits exactly one tick. It cannot be re-entered from a tick callback, and rejects negative or non-finite values.
+`VirtualClock.advance(ms)` advances only while running and emits exactly one tick. It cannot be re-entered from a tick callback, and rejects negative or non-finite values. `advance(ms, { draw: false })` emits a tick nobody sees: the player advances as usual but does not repaint its cursor canvas, and plugins get `draw` false in `frame()`. Exports advance the engine ticks between two captured frames this way.
 
 The same seed and clock are only part of determinism. Fonts, input, viewport, adapters and plugin versions must also be fixed.
 

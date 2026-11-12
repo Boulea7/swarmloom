@@ -296,14 +296,17 @@ it("keeps the native look of form controls and the UA's placeholder colour", asy
   // The bar's middle row: WebKit's native bar is 6px tall, Chromium's and Firefox's taller.
   const bar = (win.document.querySelector("progress") as HTMLElement).getBoundingClientRect();
   const [red = 0, green = 0, blue = 0] = ctx.getImageData(50, Math.floor(bar.top + bar.height / 2), 1, 1).data;
-  const text = ctx.getImageData(0, 16, SIZE, 34).data.filter((_, i) => i % 4 === 0);
+  // Only the field's own rows: Firefox's progress box is 18px tall, and its blue bar has no red.
+  const field = (win.document.querySelector("input") as HTMLElement).getBoundingClientRect();
+  const top = Math.ceil(field.top);
+  const text = ctx.getImageData(0, top, SIZE, Math.floor(field.bottom) - top).data.filter((_, i) => i % 4 === 0);
   // A clone given the UA's border or background as author styles draws a green fallback bar.
   // The native bars are different blues (Firefox's darker than Chromium's, WebKit's rgb(52,132,228)).
   expect(blue > 150 && green < 180 && red < 80).toBe(true);
-  // Chromium's root clone used to pin the placeholder to the root's resolved text fill colour.
-  // Firefox does not apply author ::placeholder rules inside an SVG image (a documented
-  // pseudo-element limit), so the grey-placeholder assertion is Chromium-specific.
-  if (server.browser !== "firefox") expect(Math.min(...text)).toBeGreaterThan(80);
+  // A resolved text fill colour on the root clone, inherited down to the placeholder, drew it black;
+  // a blank field would pass that alone, so the grey glyphs must be there too (about 1200 pixels).
+  expect(Math.min(...text)).toBeGreaterThan(80);
+  expect(text.filter((red) => red < 240).length).toBeGreaterThan(200);
 });
 
 it("draws a video's poster, and its controls over a dark backdrop when it has no picture", async () => {
@@ -415,4 +418,80 @@ it("decodes the image again only once the snapshot changed, reusing the encoding
     decode.mockRestore();
     encode.mockRestore();
   }
+});
+
+it("walks the frame again only after a mutation, a scroll, an animation seek or a change of canvas pixels in the image", async () => {
+  const { win, rasterizer } = await frameOf(
+    '<body style="margin:0"><div id=s style="height:100px;overflow:hidden">' +
+      '<div style="height:100px;background:rgb(255,0,0)"></div><div style="height:100px;background:rgb(0,0,255)"></div>' +
+      "</div></body>",
+  );
+  const box = win.document.getElementById("s") as HTMLElement;
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  // Nothing changed: no walk.
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  // Neither a scroll nor a seek of a paused animation mutates the DOM.
+  box.scrollTop = 100;
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  const fade = box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1000, fill: "forwards" });
+  fade.pause();
+  expect((await frame())[0]).toBe(3);
+  fade.currentTime = 1000;
+  expect(await frame()).toEqual([4, [255, 255, 255]]);
+  fade.cancel();
+  // A canvas painted over is drawn into the image: its pixels change without a mutation.
+  box.innerHTML = '<canvas width=10 height=10></canvas><p style="margin:0;height:10px;background:#fff"></p>';
+  expect((await frame())[0]).toBe(5);
+  expect((await frame())[0]).toBe(5);
+  const canvas = box.querySelector("canvas") as HTMLCanvasElement;
+  (canvas.getContext("2d") as CanvasRenderingContext2D).fillRect(0, 0, 1, 1);
+  expect((await frame())[0]).toBe(6);
+});
+
+it("watches a same-origin frame's document rather than walking it every frame, unless it cannot read it", async () => {
+  const { win, rasterizer } = await frameOf(
+    `<body style="margin:0"><iframe style="border:0;width:${SIZE}px;height:${SIZE}px" srcdoc="<body style='margin:0'>` +
+      "<div id=s style='height:100px;overflow:hidden'><div style='height:100px;background:rgb(255,0,0)'></div>" +
+      "<div style='height:100px;background:rgb(0,0,255)'></div></div></body>\"></iframe></body>",
+  );
+  const inner = (win.document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document;
+  const box = inner.getElementById("s") as HTMLElement;
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  box.scrollTop = 100;
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  (box.lastElementChild as HTMLElement).style.background = "rgb(0, 255, 0)";
+  expect(await frame()).toEqual([3, [0, 255, 0]]);
+  const fade = box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1000, fill: "forwards" });
+  fade.pause();
+  expect((await frame())[0]).toBe(4);
+  fade.currentTime = 1000;
+  expect(await frame()).toEqual([5, [255, 255, 255]]);
+  fade.cancel();
+  // A frame of another origin is drawn empty and may show a document later: every frame walks.
+  box.innerHTML = '<iframe sandbox style="border:0;width:10px;height:10px"></iframe>';
+  expect((await frame())[0]).toBe(6);
+  expect((await frame())[0]).toBe(7);
+});
+
+it("walks every frame that reads a shadow root the source does not list", async () => {
+  const { win, rasterizer } = await frameOf('<body style="margin:0"><div id=h></div></body>');
+  (win.document.getElementById("h") as HTMLElement).attachShadow({ mode: "open" }).innerHTML = "<p>open</p>";
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  await rasterizer.draw(ctx);
+  await rasterizer.draw(ctx);
+  expect(walk).toHaveBeenCalledTimes(2);
 });

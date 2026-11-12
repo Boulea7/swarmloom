@@ -80,8 +80,8 @@ export function createThreePlugin(scene: ModelScene, reproject: Reprojector, isD
       if (isDisposed()) throw new Error("This 3D model was disposed; load it again to play it.");
       return scene.mount(host, stage.reducedMotion === true);
     },
-    frame(now) {
-      scene.frame(now);
+    frame(now, _dt, draw) {
+      scene.frame(now, draw !== false);
     },
     project: map,
   };

@@ -77,8 +77,9 @@ jobs:
           echo "::warning::apt mirrors unreachable, installing the browsers without their system packages"
           pnpm exec playwright install chromium firefox
       - run: pnpm test:browser
-      # The in-browser exporter, the stage and the live page in Firefox too: its foreignObject rasterising, native
-      # controls, media queries, WebCodecs and scrolling differ from Chromium's. The webkit job runs them in WebKit.
+      # The in-browser exporter, the stage, the live page and the offline sound render in Firefox too: its foreignObject
+      # rasterising, native controls, media queries, WebCodecs, scrolling and OfflineAudioContext slicing differ from
+      # Chromium's. The webkit job runs them in WebKit.
       - run: pnpm test:firefox
       # Builds the --e2e Chromium package and drives it in Playwright's Chromium (apps/extension/test/e2e).
       - run: pnpm test:e2e
@@ -117,6 +118,7 @@ jobs:
 
   # The same CLI tests on Windows and macOS, whose paths, file names and output checks differ from Linux's.
   # The runner images carry Google Chrome, which the CLI finds in its default install location; ffmpeg is installed here.
+  # On Windows launch.test.ts runs only its cases that keep the sandbox: the fallback cases need a /bin/sh stand-in.
   cli-render:
     name: cli render (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

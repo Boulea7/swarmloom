@@ -1,4 +1,5 @@
 import { yieldTask } from "../schedule";
+import type { FarCache } from "./far";
 import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
 import { pickImageSets } from "./image-set";
 import { BLANK_IMAGE, LONG_PIECE, type ResourceCache } from "./resources";
@@ -41,6 +42,8 @@ const SKIP_SVG = new Set([
   "style",
   "script",
 ]);
+/** SMIL elements: they change what they animate without a mutation. */
+const SMIL_ELEMENTS = new Set(["animate", "animateTransform", "animateMotion", "animateColor", "set", "discard"]);
 /** SMIL elements that animate a target. */
 const SMIL_ANIMATIONS = "animate,set,animateMotion,animateTransform,animateColor";
 /** Animated attributes whose DOM property has another name, or is a pair written as "x y". */
@@ -186,6 +189,12 @@ export interface SnapshotSource {
    * as its box needs (see {@link ResourceCache.fitted}).
    */
   scale?: number;
+  /**
+   * The boxes earlier walks wrote away from the viewport, to write again without reading their
+   * subtrees while nothing they depend on changed (see {@link FarCache}). Without it every walk
+   * reads them all.
+   */
+  far?: FarCache<FarBox>;
 }
 
 /** What one snapshot found worth reporting. */
@@ -196,6 +205,8 @@ export interface SnapshotStats {
    * show: transparent, away from the viewport, or under a frame that covers it.
    */
   culled: number;
+  /** Of those, the ones written as an earlier walk wrote them, without reading them again. */
+  reused: number;
   /** Walks started over because the page changed while the walk paused. */
   restarts: number;
 }
@@ -215,6 +226,19 @@ export interface CanvasOverlay {
   clip: Box;
 }
 
+/** A scroll container or document viewport the walk read, with its scroll offsets then. */
+export interface ScrollMark {
+  el: Element;
+  left: number;
+  top: number;
+}
+
+/** A canvas whose pixels went into the image, with the data URL read for it. */
+export interface CanvasMark {
+  canvas: HTMLCanvasElement;
+  url: string;
+}
+
 /** One serialised frame. */
 export interface FrameSnapshot {
   /** The image's markup (`parts` joined when read). */
@@ -229,6 +253,19 @@ export interface FrameSnapshot {
   stats: SnapshotStats;
   /** Canvases to draw over the image, in paint order (a WebGL model, then the cursor layer). */
   overlays: CanvasOverlay[];
+  /**
+   * The scroll offsets the image depends on: each scroll container written and each document
+   * viewport (same-origin frames included), as the walk read them. Null when the image shows what
+   * can change without a DOM mutation or a scroll: a video, a frame whose document cannot be read,
+   * a shadow root the source does not list, SMIL animations, an image still loading.
+   */
+  settled: readonly ScrollMark[] | null;
+  /**
+   * The canvases whose pixels are in the image rather than drawn over it (one painted under a live
+   * page, for one): they change without a mutation, so the image holds only while each gives the
+   * same data URL again.
+   */
+  pixels: readonly CanvasMark[];
 }
 
 export interface Box {
@@ -289,7 +326,7 @@ interface PathEntry {
  */
 interface KeptElements {
   slot: number;
-  elements: Element[];
+  elements: readonly Element[];
   /** The box left out or written empty. */
   root: Element;
   view: DocView;
@@ -303,6 +340,67 @@ interface Hollow {
   margins: Record<string, string>;
   /** SVG elements in it with an id (see {@link KeptElements}). */
   kept: Element[];
+  /** It holds its content's margins and floats in (a block formatting context, a cell, an item). */
+  contained: boolean;
+}
+
+/**
+ * How a box away from the viewport was written, to write it the same way again while nothing it
+ * depends on changed (see {@link FarCache}): left out (`cut`), or as an empty box.
+ */
+export interface FarBox {
+  cut: boolean;
+  /** The SVG elements with an id kept from it (see {@link KeptElements}). */
+  kept: readonly Element[];
+  /** Its inherited values (an empty box hands them on to the SVG elements it keeps). */
+  own: InheritedValues | null;
+  /** An empty box's start tag up to where its class goes, the rest of it, and its end tag. */
+  head: string;
+  tail: string;
+  close: string;
+  /** Rules of its pseudo-elements without their class (`::before{...}`). */
+  rules: readonly string[];
+  z: number;
+  /** It is a scroll container, at scroll offsets 0 (a {@link ScrollMark} of the walk). */
+  scrolls: boolean;
+  /** Reading it met a shadow root the source does not list (see {@link FrameSnapshot.settled}). */
+  unlisted: boolean;
+}
+
+/** A box left out, as a {@link FarBox}. */
+const CUT: FarBox = {
+  cut: true,
+  kept: [],
+  own: null,
+  head: "",
+  tail: "",
+  close: "",
+  rules: [],
+  z: 0,
+  scrolls: false,
+  unlisted: false,
+};
+
+/**
+ * What reading the subtree of a box for the checks of a far box met (see {@link FarCache.record}),
+ * and where the boxes it read lie: the union of their boxes.
+ */
+interface FarProbe extends Box {
+  /**
+   * A box laid out against one that may lie outside the subtree: absolutely positioned or fixed
+   * with no containing block in it ({@link heldIn}), or sticky.
+   */
+  loose: boolean;
+  /** SMIL animations, which change what they animate without a mutation. */
+  smil: boolean;
+  /** A shadow root the source does not list. */
+  unlisted: boolean;
+  /**
+   * Where what overflows the box itself ends, right and down, as {@link offscreen} read it (its
+   * scroll size takes in what overflows the boxes in it): Infinity along an axis it did not read.
+   */
+  edgeRight: number;
+  edgeBottom: number;
 }
 
 /** Tells whether the documents read so far changed after the walk read them. */
@@ -317,6 +415,8 @@ interface Walk {
   smil: SmilTargets;
   resources: ResourceCache;
   shadowRootOf: (host: Element) => ShadowRoot | null;
+  /** The shadow roots the source lists; a change in any other goes unseen (see {@link FrameSnapshot.settled}). */
+  listed: ReadonlySet<ShadowRoot>;
   out: string[];
   rules: string[];
   /** Fonts the walk saw asked for: computed `font-style|font-weight|font-stretch`, a newline, `font-family`. */
@@ -328,6 +428,8 @@ interface Walk {
   canvases: (string | null)[];
   /** Canvases painted last so far, in paint order. */
   overlays: OverlayCandidate[];
+  /** See {@link FrameSnapshot.pixels}. */
+  pixels: CanvasMark[];
   /** Ancestors of the element being written, in the frame document only. */
   path: PathEntry[];
   /** Elements whose background the canvas paints instead (see {@link emitDocument}). */
@@ -337,6 +439,14 @@ interface Walk {
   /** What {@link contentEdge} found for each box read, at its top and bottom edges. */
   edges: { start: Map<Element, Edge | null>; end: Map<Element, Edge | null> };
   watch: ChangeWatch | null;
+  /** See {@link SnapshotSource.far}. */
+  far: FarCache<FarBox> | null;
+  /** What the far checks of the box being written met in its subtree, while they read it. */
+  probe: FarProbe | null;
+  /** See {@link FrameSnapshot.settled}. */
+  scrolls: ScrollMark[];
+  /** Something written can change without a DOM mutation or a scroll (see {@link FrameSnapshot.settled}). */
+  unsettled: boolean;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
   stats: SnapshotStats;
@@ -510,6 +620,7 @@ function offscreen(
     let reach = reaches.pop() as Reach;
     let covered = covers.pop() as boolean;
     if (next.namespaceURI === SVG_NS) {
+      if (walk.probe && SMIL_ELEMENTS.has(next.localName)) walk.probe.smil = true;
       if (next.id) {
         if (!kept) return false;
         kept.push(next);
@@ -523,12 +634,21 @@ function offscreen(
       // A clip leaves out a fixed box only through a box that holds it.
       if (reach === CLIPPED) reach = position === "fixed" ? OPEN : holdsFixed(cs) ? SEALED : CLIPPED;
       if (reach === OPEN) {
+        if (walk.probe && !walk.probe.loose && next !== el && position !== "static" && position !== "relative") {
+          walk.probe.loose = !heldIn(next, position, el, view);
+        }
         const r = next.getBoundingClientRect();
         if (near(r.left, r.top, r.right, r.bottom)) {
           // A box sitting at the origin may be no box at all (display: none or contents).
           const boxless =
             r.width === 0 && r.height === 0 && r.x === 0 && r.y === 0 && next.getClientRects().length === 0;
           if (!boxless) return false;
+        } else if (walk.probe) {
+          const probe = walk.probe;
+          probe.left = Math.min(probe.left, r.left);
+          probe.top = Math.min(probe.top, r.top);
+          probe.right = Math.max(probe.right, r.right);
+          probe.bottom = Math.max(probe.bottom, r.bottom);
         }
         if (floats && next !== el && cs.getPropertyValue("float") !== "none") return false;
         const box = next as HTMLElement;
@@ -552,6 +672,12 @@ function offscreen(
               ? r.bottom + Math.max(0, box.scrollHeight - box.clientHeight) * (r.height / box.offsetHeight || 1)
               : r.bottom;
           if (near(r.left, r.top, right, bottom)) return false;
+          // The far box being written (see FarProbe): its own overflow, where read above.
+          if (walk.probe && next === el) {
+            const inf = Number.POSITIVE_INFINITY;
+            walk.probe.edgeRight = !openX || r.right < area.left ? right : inf;
+            walk.probe.edgeBottom = !openY || r.bottom < area.top ? bottom : inf;
+          }
           // Far along an axis its scroll size bounds, or that it clips: so is whatever overflows the
           // boxes in flow in it.
           const bounds = (open: boolean, overflow: string) => open || CLIPPING_OVERFLOW.has(overflow);
@@ -575,6 +701,21 @@ function offscreen(
     }
   }
   return true;
+}
+
+/**
+ * Whether the containing block of `el`, positioned `position` (absolute, fixed or sticky), lies in
+ * the subtree of `root`, an ancestor of it: then it moves with that subtree only. A sticky box
+ * sticks to the nearest scroll container, which may lie outside.
+ */
+function heldIn(el: Element, position: string, root: Element, view: DocView): boolean {
+  if (position === "sticky") return false;
+  for (let up = flatParent(el); up?.nodeType === 1; up = flatParent(up)) {
+    const cs = view.win.getComputedStyle(up as Element);
+    if (holdsFixed(cs) || (position === "absolute" && cs.getPropertyValue("position") !== "static")) return true;
+    if (up === root) return false;
+  }
+  return false;
 }
 
 function isList(el: Element): boolean {
@@ -736,7 +877,7 @@ function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocV
   // The box keeps its own counters and pseudo-elements, its content's would go: a list's items too,
   // which step its `list-item` counter for the boxes after it.
   if (stepsCounters(walk, flatChildren(walk, el), view)) return null;
-  return { margins, kept: kept ?? [] };
+  return { margins, kept: kept ?? [], contained };
 }
 
 /** Whether a block box holds its content's margins and floats in by its overflow or containment. */
@@ -1181,7 +1322,7 @@ function paintsBox(cs: CSSStyleDeclaration, special: boolean): boolean {
 
 /** Writes the overlay candidates' pixels into the snapshot after all: something paints over them. */
 function dropOverlays(walk: Walk): void {
-  for (const overlay of walk.overlays) walk.canvases[overlay.index] = canvasDataUrl(overlay.canvas);
+  for (const { canvas, index } of walk.overlays) walk.canvases[index] = canvasPixels(walk, canvas);
   walk.overlays = [];
 }
 
@@ -1305,7 +1446,7 @@ function overlayOf(
 
 /** The `src` of a canvas clone: its pixels, or a token while it may be drawn over the snapshot instead. */
 function canvasSource(walk: Walk, canvas: HTMLCanvasElement, overlay: CanvasOverlay | null): string {
-  if (!overlay) return pixelsToken(walk, canvasDataUrl(canvas));
+  if (!overlay) return pixelsToken(walk, canvasPixels(walk, canvas));
   const index = walk.canvases.push(null) - 1;
   walk.overlays.push({ ...overlay, index });
   return token(walk, "k", index);
@@ -1328,7 +1469,15 @@ function shiftedTranslate(current: string, dx: number, dy: number): string {
   return `${x + dx}px ${y + dy}px${z}`;
 }
 
-function canvasDataUrl(canvas: HTMLCanvasElement): string {
+/** The data URL of a canvas written into the image, noted in {@link Walk.pixels}. */
+function canvasPixels(walk: Walk, canvas: HTMLCanvasElement): string {
+  const url = canvasDataUrl(canvas);
+  walk.pixels.push({ canvas, url });
+  return url;
+}
+
+/** A canvas's pixels as a PNG data URL; a blank image when it is empty or cannot be read. */
+export function canvasDataUrl(canvas: HTMLCanvasElement): string {
   try {
     return canvas.width > 0 && canvas.height > 0 ? canvas.toDataURL("image/png") : BLANK_IMAGE;
   } catch {
@@ -1638,7 +1787,14 @@ function attributes(walk: Walk, el: Element): string {
  */
 function flatChildren(walk: Walk, el: Element): readonly Node[] {
   const root = walk.shadowRootOf(el) ?? el.shadowRoot;
-  if (root) return Array.from(root.childNodes);
+  if (root) {
+    if (!walk.listed.has(root)) {
+      walk.unsettled = true;
+      if (walk.probe) walk.probe.unlisted = true;
+      walk.far?.watchRoot(root);
+    }
+    return Array.from(root.childNodes);
+  }
   if (el.localName === "slot" && el.namespaceURI === XHTML_NS) {
     const assigned = (el as HTMLSlotElement).assignedNodes({ flatten: true });
     if (assigned.length > 0) return assigned;
@@ -1858,17 +2014,34 @@ function* emitElement(
   if (svg && SKIP_SVG.has(local)) return;
   // Before any of its elements is written: an animation may target the svg itself (its viewBox).
   if (svg && parentNs !== SVG_NS) collectSmil(walk.smil, el);
+  // Not in a scrolled box (its scroll offset would be in the markup) nor in a far table row.
+  const far = !svg && scroll === null && walk.kept && context !== FAR_ROW ? walk.far : null;
+  const key = far ? { win: view.win, reach: view.reach, parent, parentNs, context } : null;
+  const known = far && key ? far.reuse(el, key) : null;
+  if (known) {
+    writeFar(walk, el, view, parent, known);
+    return;
+  }
   const cs = view.win.getComputedStyle(el);
   const display = cs.getPropertyValue("display");
   // SVG resources (gradients, symbols) count even inside display:none, so only HTML subtrees go.
   if (!svg && display === "none") return;
+  const probe: FarProbe | null = far ? farProbe() : null;
+  walk.probe = probe;
   const cut = svg ? null : culled(walk, el, cs, view);
   if (cut) {
+    walk.probe = null;
     walk.stats.culled++;
     keep(walk, cut, el, view, parent);
+    if (far && key && probe && !probe.smil) {
+      const box: FarBox = { ...CUT, kept: cut, unlisted: probe.unlisted };
+      const extent = farExtent(el, cs, probe);
+      far.record(el, { ...key, extent, loose: probe.loose, open: false, scrolls: false }, box);
+    }
     return;
   }
   const emptied = svg ? null : hollowable(walk, el, cs, view, context);
+  walk.probe = null;
   const hollow = emptied !== null;
   if (hollow) walk.stats.culled++;
   // A table row away from the viewport keeps its cells; both are written with what places them only.
@@ -1882,6 +2055,9 @@ function* emitElement(
   const override: Record<string, string> = {};
   const overflowX = cs.getPropertyValue("overflow-x");
   const overflowY = cs.getPropertyValue("overflow-y");
+  const scrolls =
+    (overflowX !== "visible" && overflowX !== "clip") || (overflowY !== "visible" && overflowY !== "clip");
+  if (scrolls) walk.scrolls.push({ el, left: el.scrollLeft, top: el.scrollTop });
   // No scrollbars in a still frame; scroll offsets become a shift of the children.
   if (overflowX === "auto" || overflowX === "scroll") override["overflow-x"] = "hidden";
   if (overflowY === "auto" || overflowY === "scroll") override["overflow-y"] = "hidden";
@@ -1914,6 +2090,8 @@ function* emitElement(
     override["transform-box"] = "view-box";
   }
   const frame = local === "iframe" && !svg;
+  // A video's picture and controls change without a mutation (a frame's document: see emitFrame).
+  if (local === "video" && !svg) walk.unsettled = true;
   // A video shows its controls while paused (playing, they hide once the pointer is away).
   const player = local === "video" && !svg && (el as HTMLVideoElement).controls && (el as HTMLVideoElement).paused;
   if (frame || player) {
@@ -1950,6 +2128,7 @@ function* emitElement(
   // The scrolling element reports the viewport's scroll, which emitDocument already applied.
   const scrolled = (el.scrollLeft !== 0 || el.scrollTop !== 0) && el !== el.ownerDocument.scrollingElement;
   const contentScroll = scrolled ? scrollOf(el, cs) : boxless ? scroll : null;
+  const rulesFrom = walk.rules.length;
   const pseudo =
     svg || replaced || VOID.has(local) ? null : pseudoRules(walk, el, view, handed, bare && !tablePart, contentScroll);
   if (pseudo && !bare) dropOverlays(walk);
@@ -1958,6 +2137,8 @@ function* emitElement(
   let attrs = attributes(walk, el);
   if (!svg && local === "img") {
     const img = el as HTMLImageElement;
+    // Its size may change once it has loaded.
+    if (!img.complete) walk.unsettled = true;
     const src = img.currentSrc || img.src;
     attrs +=
       src && !src.startsWith("#")
@@ -1993,6 +2174,26 @@ function* emitElement(
     // What it hands on is merged only for the SVG elements it keeps (most such boxes keep none).
     if (emptied.kept.length > 0) keep(walk, emptied.kept, el, view, handed());
     walk.out.push(`</${tag}>`);
+    if (far && key && probe && !probe.smil && !scrolled && !walk.onCanvas.has(el)) {
+      const box: FarBox = {
+        cut: false,
+        kept: emptied.kept,
+        own,
+        head: `<${tag}${xmlns}${attrs}`,
+        tail: `${style}>`,
+        close: `</${tag}>`,
+        rules: pseudo ? walk.rules.slice(rulesFrom).map((rule) => rule.slice(pseudo.length + 1)) : [],
+        z,
+        scrolls,
+        unlisted: probe.unlisted,
+      };
+      // A resource token is resolved for this walk only.
+      const tokens = `\uE000${walk.key}`;
+      if (![box.head, box.tail, ...box.rules].some((text) => text.includes(tokens))) {
+        const { loose } = probe;
+        far.record(el, { ...key, extent: farExtent(el, cs, probe), loose, open: !emptied.contained, scrolls }, box);
+      }
+    }
     return;
   }
   if (local === "textarea" && !svg) {
@@ -2023,12 +2224,86 @@ function* emitElement(
   walk.out.push(`</${tag}>`);
 }
 
+function farProbe(): FarProbe {
+  const inf = Number.POSITIVE_INFINITY;
+  return {
+    loose: false,
+    smil: false,
+    unlisted: false,
+    left: inf,
+    top: inf,
+    right: -inf,
+    bottom: -inf,
+    edgeRight: inf,
+    edgeBottom: inf,
+  };
+}
+
+/**
+ * Where what a far box may draw lies (see `FarKey.extent`): the boxes its checks read in it (the
+ * probe), widened right and down by what overflows its own box, as {@link offscreen} read it;
+ * unbounded along an axis it did not read, or when its scroll size cannot be read as such (a
+ * transformed box, a table part). A box below or right of the viewport then stays away while it
+ * stays there.
+ */
+function farExtent(el: Element, cs: CSSStyleDeclaration, probe: FarProbe): Box {
+  const box = el as HTMLElement;
+  const plain =
+    el.namespaceURI === XHTML_NS &&
+    SCROLL_BOXES.has(cs.getPropertyValue("display")) &&
+    ["transform", "translate", "rotate", "scale"].every((name) => cs.getPropertyValue(name) === "none") &&
+    box.offsetWidth > 0 &&
+    box.offsetHeight > 0;
+  const inf = Number.POSITIVE_INFINITY;
+  return {
+    left: probe.left,
+    top: probe.top,
+    right: plain ? Math.max(probe.right, probe.edgeRight) : inf,
+    bottom: plain ? Math.max(probe.bottom, probe.edgeBottom) : inf,
+  };
+}
+
+/**
+ * Writes a box away from the viewport as an earlier walk wrote it (see {@link FarBox}), counting it
+ * and noting what the walk would have noted reading it.
+ */
+function writeFar(walk: Walk, el: Element, view: DocView, parent: InheritedValues | null, box: FarBox): void {
+  walk.stats.culled++;
+  walk.stats.reused++;
+  if (box.unlisted) walk.unsettled = true;
+  if (box.cut) {
+    keep(walk, box.kept, el, view, parent);
+    return;
+  }
+  walk.stats.elements++;
+  if (view.top && box.z > 0) raise(walk, box.z);
+  if (box.scrolls) walk.scrolls.push({ el, left: 0, top: 0 });
+  let cls = "";
+  if (box.rules.length > 0) {
+    const name = `sl${walk.nextClass++}`;
+    cls = ` class="${name}"`;
+    for (const rule of box.rules) walk.rules.push(`.${name}${rule}`);
+  }
+  walk.out.push(`${box.head}${cls}${box.tail}`);
+  if (box.kept.length > 0) {
+    const handed = parent && box.own ? new Map([...parent, ...box.own]) : box.own;
+    keep(walk, box.kept, el, view, handed);
+  }
+  walk.out.push(box.close);
+}
+
 /**
  * Records the SVG elements with an id of `root`, a box left out or written empty, and keeps a slot
  * for them here in the output (see {@link emitKept}). `parent` is what the slot's parent clone
  * passes on.
  */
-function keep(walk: Walk, elements: Element[], root: Element, view: DocView, parent: InheritedValues | null): void {
+function keep(
+  walk: Walk,
+  elements: readonly Element[],
+  root: Element,
+  view: DocView,
+  parent: InheritedValues | null,
+): void {
   if (elements.length === 0 || !walk.kept) return;
   walk.kept.push({ slot: walk.out.push("") - 1, elements, root, view, parent });
 }
@@ -2138,7 +2413,11 @@ function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaratio
     doc = null;
   }
   const win = doc?.defaultView as (Window & typeof globalThis) | null | undefined;
-  if (!doc?.documentElement || !win) return;
+  if (!doc?.documentElement || !win) {
+    // Drawn empty, but it may show a document later without a mutation here.
+    walk.unsettled = true;
+    return;
+  }
   walk.watch?.observe(doc);
   const width = frame.clientWidth;
   const height = frame.clientHeight;
@@ -2290,6 +2569,8 @@ function* emitDocument(
   at: { x: number; y: number } = { x: 0, y: 0 },
 ): Steps {
   const doc = view.win.document;
+  const viewport = doc.scrollingElement ?? doc.documentElement;
+  walk.scrolls.push({ el: viewport, left: viewport.scrollLeft, top: viewport.scrollTop });
   const owner = backgroundOwner(doc, view.win);
   if (owner) walk.onCanvas.add(owner);
   const bg = canvasBackground(view.win, owner, canvasBackdrop(doc, frame));
@@ -2537,11 +2818,14 @@ async function walkFrame(
   const byHost = new Map<Element, ShadowRoot>(roots.map((root) => [root.host, root]));
   const atomic = restarts >= MAX_RESTARTS;
   const watch = atomic ? null : watchChanges(source.document, roots);
+  const far = source.far ?? null;
+  far?.begin(source);
   const walk: Walk = {
     baseline,
     smil: { attributes: new Map(), moving: new Set() },
     resources,
     shadowRootOf: (host) => byHost.get(host) ?? source.shadowRootOf(host),
+    listed: new Set(roots),
     out: [],
     rules: [],
     fonts: new Set(),
@@ -2549,13 +2833,18 @@ async function walkFrame(
     urlIndex: new Map(),
     canvases: [],
     overlays: [],
+    pixels: [],
     path: [],
     onCanvas: new Set(),
     kept: [],
     edges: { start: new Map(), end: new Map() },
     watch,
+    far,
+    probe: null,
+    scrolls: [],
+    unsettled: false,
     deadline: 0,
-    stats: { elements: 0, culled: 0, restarts },
+    stats: { elements: 0, culled: 0, reused: 0, restarts },
     nextClass: 0,
     key: tokenKey(),
   };
@@ -2622,6 +2911,7 @@ export async function snapshotFrame(
 ): Promise<FrameSnapshot> {
   let walk: Walk | null = null;
   for (let restarts = 0; !walk; restarts++) walk = await walkFrame(source, baseline, resources, restarts, signal);
+  source.far?.commit(walk.scrolls);
   const doc = source.document;
   const docs = [doc];
   for (const frame of Array.from(doc.querySelectorAll("iframe"))) {
@@ -2632,6 +2922,8 @@ export async function snapshotFrame(
     }
   }
   const fonts = await fontCss(walk, source, docs, faces);
+  const smil = walk.smil.attributes.size > 0 || walk.smil.moving.size > 0;
+  const settled = walk.unsettled || smil ? null : walk.scrolls;
   for (const { index } of walk.overlays) walk.canvases[index] = BLANK_IMAGE;
   const data = await Promise.all(walk.urls.map(({ url, fallback }) => resources.resolve(url, fallback)));
   // What `<img>` clones show: large photos only as large as their boxes need.
@@ -2678,5 +2970,7 @@ export async function snapshotFrame(
     parts,
     stats: walk.stats,
     overlays,
+    settled,
+    pixels: walk.pixels,
   };
 }

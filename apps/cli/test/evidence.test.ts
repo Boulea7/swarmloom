@@ -79,6 +79,10 @@ describe("capture evidence", () => {
     expect(doc.events[0]).toMatchObject({ t: 1900, frame: 57, at: null });
     const longer = JSON.parse(eventsDocument(late, { fps: 30, frames: 61, durationMs: 2001, bpm: 90 }));
     expect(longer.events[0].at).toBeCloseTo(2000, 6);
+    // The log runs through the last frame's interval: a key logged past that frame's time is on it.
+    const key = [{ t: 1990, name: "key", pan: 0 }];
+    const tail = JSON.parse(eventsDocument(key, { fps: 30, frames: 60, durationMs: 2000 }));
+    expect(tail.events[0]).toMatchObject({ frame: 59, at: 1990 });
   });
 
   it("records settings, cues, programs and an aggregate of the frame hashes", () => {

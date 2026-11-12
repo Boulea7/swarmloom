@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   Blueprint,
   LoadedSource,
@@ -7,7 +10,14 @@ import type {
   SourceInput,
 } from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { base64ToBytes, bytesToBase64, createRenderApi, type RenderDeps, type RenderInit } from "../src/index";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  createRenderApi,
+  parseInit,
+  type RenderDeps,
+  type RenderInit,
+} from "../src/index";
 import { LiveStage } from "../src/render/live";
 import { ClockPlayer } from "./fake-player";
 
@@ -22,14 +32,14 @@ const base: RenderInit = { input: { name: "a.md", text: "# Hi" }, width: 320, he
 
 function setup(make: (input: SourceInput) => Blueprint = () => blueprint, deps: Pick<RenderDeps, "awaitPaint"> = {}) {
   const players: ClockPlayer[] = [];
-  const loads: { input: SourceInput; format?: string; width: number }[] = [];
+  const loads: { input: SourceInput; format?: string; width: number; terminalFont?: string }[] = [];
   const dispose = vi.fn();
   const audio = vi.fn(async (events: readonly SoundEvent[], durationMs: number, _opts?: RenderOfflineOptions) =>
     Uint8Array.from([events.length, Math.round(durationMs / 10)]),
   );
   const api = createRenderApi({
-    async load(input, ctx, { format }): Promise<LoadedSource> {
-      loads.push({ input, format, width: ctx.width });
+    async load(input, ctx, { format, terminalFont }): Promise<LoadedSource> {
+      loads.push({ input, format, width: ctx.width, terminalFont });
       return { blueprint: make(input), dispose };
     },
     createPlayer(options: PlayerOptions) {
@@ -141,6 +151,9 @@ describe("render page protocol", () => {
     await api.init({ ...base, opening: 500, liveTop: true });
     const [player] = players as [ClockPlayer];
     expect(player.options).toMatchObject({ opening: 500, liveTop: true });
+    // The default tail makes room for the glide back to the top.
+    const untimed = { ...base, tail: undefined };
+    expect([parseInit(untimed).tail, parseInit({ ...untimed, liveTop: true }).tail]).toEqual([2500, 3700]);
     // The view after each 40 ms step: still, down 100 px over two steps, still, up 40 px, still.
     for (const y of [0, 0, 40, 100, 100, 100, 60, 60]) {
       player.scrollY = y;
@@ -152,10 +165,11 @@ describe("render page protocol", () => {
     ]);
   });
 
-  it("passes the intro through to the player", async () => {
-    const { api, players } = setup();
-    await api.init({ ...base, intro: "outline" });
-    expect(players[0]?.options.intro).toBe("outline");
+  it("passes the intro and overlays to the player and the terminal font to the loader", async () => {
+    const { api, players, loads } = setup();
+    await api.init({ ...base, intro: "outline", overlays: "none", terminalFont: "fill" });
+    expect(players[0]?.options).toMatchObject({ intro: "outline", overlays: "none" });
+    expect(loads[0]?.terminalFont).toBe("fill");
     api.dispose();
     const short = { ...base, intro: "short" } as unknown as RenderInit;
     await expect(api.init(short)).rejects.toThrow('intro must be a boolean or "outline"');
@@ -297,6 +311,34 @@ describe("render page protocol", () => {
   });
 
   it.each([
+    ["600 ms after go live", 600, 1720],
+    ["never", null, 3600],
+  ])("ends a tail that runs out mid go live once the page shows (%s) or at the limit", async (_, shows, end) => {
+    // happy-dom has no Web Animations for the live page's seek.
+    const show = vi.spyOn(LiveStage.prototype, "goLive").mockImplementation(() => {});
+    const { api, players } = setup();
+    // Built at 1000 ms; the 300 ms tail runs out while the go live cued at 1100 ms still glides.
+    await api.init({ ...base, tail: 300, liveTop: true, cues: [{ at: 1100, action: "live" }] });
+    const [player] = players as [ClockPlayer];
+    vi.spyOn(player, "goLive").mockImplementation(() => {
+      if (shows === null) return;
+      let left = shows;
+      const off = player.options.clock?.onTick((dt) => {
+        left -= dt;
+        if (left > 1e-6) return;
+        off?.();
+        player.options.onLive?.();
+      });
+    });
+    let frames = 1;
+    while (!(await api.step(40)).done && frames < 200) frames++;
+    // The page shows at 1700 ms (frame 43); a stage that never shows it ends 2500 ms after go live.
+    expect(frames * 40).toBe(end);
+    expect(show).toHaveBeenCalledTimes(shows === null ? 0 : 1);
+    show.mockRestore();
+  });
+
+  it.each([
     [{}, true],
     [{ live: false }, false],
     [{ reducedMotion: true }, false],
@@ -400,5 +442,15 @@ describe("render page protocol", () => {
     await api.init(base);
     await expect(api.step(-1)).rejects.toThrow(RangeError);
     await expect(api.step(60_000)).rejects.toThrow("step() needs 0 <= ms <= 10000");
+  });
+
+  it("lists every init option in the README's init() signature", () => {
+    const readme = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../README.md"), "utf8");
+    const listed = /`init\(\{ ([^}]+) \}\)`/
+      .exec(readme)?.[1]
+      .split(", ")
+      .map((field) => field.replace(/\?$/, ""));
+    // parseInit fills every field but `blueprint`, which it adds only when one is given.
+    expect(listed?.sort()).toEqual([...Object.keys(parseInit(base)), "blueprint"].sort());
   });
 });

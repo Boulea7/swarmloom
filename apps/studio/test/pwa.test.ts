@@ -2,11 +2,15 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { supportsModernBuild } from "../../../packages/adapter-pdf/src/runtime";
 import { fileHandlerAccept, releaseVersion, shellFiles, splitPdfBuilds, warmFiles, webManifest } from "../build/pwa";
 import { acceptAttribute, availableFormats } from "../src/formats-meta";
+import type { StudioI18n } from "../src/i18n";
+import { registerServiceWorker } from "../src/pwa";
 import { pdfBuild } from "../src/sw/pdf-build";
+import { MSG_SKIP_WAITING } from "../src/sw/protocol";
+import type { Toaster } from "../src/ui/toast";
 
 type Item = Parameters<typeof shellFiles>[0][string];
 
@@ -139,5 +143,69 @@ describe("PWA precache", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+const fakeWorker = () =>
+  Object.assign(new EventTarget(), { state: "installing" as ServiceWorkerState, postMessage: vi.fn() });
+type FakeWorker = ReturnType<typeof fakeWorker>;
+
+/** One Studio tab: its own worker container and registration, a toast log and a reload counter. */
+async function studioTab(controller: FakeWorker | null) {
+  const container = Object.assign(new EventTarget(), { controller });
+  const registration = Object.assign(new EventTarget(), { installing: null as FakeWorker | null, waiting: null });
+  const registered = Promise.resolve(registration);
+  Object.assign(container, { register: () => registered });
+  const toasts: { message: string; run?: () => void }[] = [];
+  const show: Toaster["show"] = (message, opts) => toasts.push({ message, run: opts?.action?.run });
+  const toast = { show } as unknown as Toaster;
+  const reload = vi.fn();
+  const win = { navigator: { serviceWorker: container }, location: { reload } } as unknown as Window;
+  registerServiceWorker(win, toast, () => ({ t: (key: string) => key }) as StudioI18n);
+  await registered;
+  return {
+    toasts,
+    reload,
+    /** The browser installs `worker` for this tab's registration. */
+    install(worker: FakeWorker) {
+      registration.installing = worker;
+      registration.dispatchEvent(new Event("updatefound"));
+      worker.state = "installed";
+      worker.dispatchEvent(new Event("statechange"));
+    },
+    /** `worker` activates and takes this tab over. */
+    switchTo(worker: FakeWorker) {
+      worker.state = "activated";
+      container.controller = worker;
+      container.dispatchEvent(new Event("controllerchange"));
+    },
+  };
+}
+
+describe("PWA updates", () => {
+  it("offers a later version as an update to the page the first worker claimed", async () => {
+    const tab = await studioTab(null);
+    const first = fakeWorker();
+    tab.install(first);
+    tab.switchTo(first);
+    tab.install(fakeWorker());
+    expect(tab.toasts.map((t) => t.message)).toEqual(["offline.ready", "update.ready"]);
+    expect(tab.reload).not.toHaveBeenCalled();
+  });
+
+  it("reloads only the tab where the user picked Reload; another tab keeps running and offers it", async () => {
+    const old = fakeWorker();
+    const [picked, other] = [await studioTab(old), await studioTab(old)];
+    const next = fakeWorker();
+    picked.install(next);
+    other.install(next);
+    picked.toasts.at(-1)?.run?.();
+    expect(next.postMessage).toHaveBeenCalledWith(MSG_SKIP_WAITING);
+    picked.switchTo(next);
+    other.switchTo(next);
+    expect([picked.reload.mock.calls.length, other.reload.mock.calls.length]).toEqual([1, 0]);
+    // The other tab's offer now reloads into the version that already runs.
+    other.toasts.at(-1)?.run?.();
+    expect(other.reload).toHaveBeenCalledTimes(1);
   });
 });

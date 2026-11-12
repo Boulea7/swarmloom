@@ -7,7 +7,8 @@
 // Usage: node examples/pdf/generate.mjs [--out path] [--chrome path]
 // Chromium: --chrome, $SWARMLOOM_CHROME, ~/bin/chromium, else Playwright's own build.
 // Fonts come from the machine (Liberation/DejaVu/Noto CJK here), so other machines may
-// produce slightly different bytes; the committed file is the reference sample.
+// produce slightly different bytes; the committed file is the reference sample. Chromium
+// embeds subsets of those fonts: SOURCES.md must name every embedded font and its licence.
 
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";

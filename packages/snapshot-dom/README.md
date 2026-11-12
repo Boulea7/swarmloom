@@ -28,6 +28,6 @@ How it works:
 
 Options (`SnapshotOptions`): `origin`, `source`, `maxLayers` (6000), `maxHeight` (60 000 px), `detectDuplicates` (true), `detectGuides` (true), `screenshot`, `prescroll` (false: up to 16 steps or 2.5 s, scroll position restored), `inlineImages` (false: same-origin and blob images become data URLs), `showFormValues` (false), `signal`. `snapshotHtml` adds `width`, `css`, `document`, `baseUrl`, `background`, `scheme` and `icon`. Invalid options reject with a `TypeError` or `RangeError`.
 
-Limits: closed shadow roots and cross-origin frames are placeholders. 3D transforms keep only their 2D part. Text in transformed subtrees is not used for baseline guides. CSS animations are captured as they are at capture time; callers that need a fixed pose (such as the HTML adapter) settle them before calling. The edge-case page used by the browser tests is `examples/web/demo.html`.
+Limits: closed shadow roots and cross-origin frames are placeholders. 3D transforms keep only their 2D part. Text in transformed subtrees is not used for baseline guides. CSS animations are captured as they are at capture time; callers that need a fixed pose (such as the HTML adapter) settle them before calling. To settle what the pre-scroll starts too (reveal-on-scroll transitions), call the exported `prescroll(document, signal?)` first, settle, then call `snapshot` without `prescroll`, as the CLI does. The edge-case page used by the browser tests is `examples/web/demo.html`.
 
 License: MIT.

@@ -92,7 +92,16 @@ describe("Engine", () => {
     const h = harness(page, { follow: "tour", seed: 5 });
     void h.engine.play();
     h.run(200);
+    // The stage resets at the run's start: a reset mounts the layers around the view at once.
+    const resetAt: number[] = [];
+    const reset = h.stage.reset.bind(h.stage);
+    h.stage.reset = () => {
+      resetAt.push(h.stage.scrollY);
+      reset();
+    };
+    expect(h.stage.scrollY).toBeGreaterThan(0);
     h.engine.replay();
+    expect(resetAt).toEqual([0]);
     const replayed = finish(h);
     expect(replayed.log).toEqual(expected.log);
     expect(replayed.hash).toBe(expected.hash);
@@ -462,6 +471,11 @@ describe("Engine", () => {
     expect(h.stage.live("icon")).toHaveLength(0);
     h.run(2, ms);
     expect(h.engine.soundLog).toEqual([{ t: 300, name: "swell", pan: 0 }]);
+    // Halfway through the fade the original is half gone, not dropped, and the stage not yet blanked.
+    h.run(OPENING_FADE_MS / 2 / ms - 1, ms);
+    expect(alphas.at(-1)).toBeGreaterThan(0.25);
+    expect(alphas.at(-1)).toBeLessThan(0.75);
+    expect(h.stage.calls.reset).toBe(0);
     h.until(() => h.engine.state === "finale", 120_000, ms);
     // The original faded out to nothing, then the stage was blanked once for the build.
     const fade = alphas.slice(1) as number[];
@@ -484,7 +498,8 @@ describe("Engine", () => {
     const h = harness(page, { intro: false, follow: "tour", liveTop: true });
     void h.engine.play();
     h.until(() => h.engine.state === "finale");
-    expect(h.engine.scrollY).toBeGreaterThan(1000);
+    const top = h.engine.scrollY;
+    expect(top).toBeGreaterThan(1000);
     h.engine.goLive();
     const ys: number[] = [];
     for (let f = 0; f < 120 && h.stage.calls.goLive === 0; f++) {
@@ -494,6 +509,10 @@ describe("Engine", () => {
     }
     expect(ys.length).toBeGreaterThan(Math.ceil(EXIT_MS / 16));
     expect(ys.every((y, i) => i === 0 || y <= (ys[i - 1] as number))).toBe(true);
+    // A glide, not a jump: halfway the view sits between the top and where it started.
+    const mid = ys[Math.floor(ys.length / 2)] as number;
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(top);
     expect(ys.at(-1)).toBe(0);
     expect(h.stage.calls.goLive).toBe(1);
   });
@@ -532,6 +551,20 @@ describe("Engine", () => {
     expect(h.stage.calls.reset).toBe(2);
   });
 
+  it("seek() after finish() in a reduced-motion opening replays, matching a fresh seek", () => {
+    const settings = { seed: 7, reducedMotion: true, opening: 1500 };
+    const fresh = harness(samplePage(), settings);
+    fresh.engine.seek(1000);
+    const h = harness(samplePage(), settings);
+    void h.engine.play();
+    h.run(30);
+    h.engine.finish();
+    h.engine.seek(1000);
+    expect(h.engine.state).toBe(fresh.engine.state);
+    expect(h.stage.hash.value).toBe(fresh.stage.hash.value);
+    expect([...h.stage.reveals]).toEqual([...fresh.stage.reveals]);
+  });
+
   it("rests idle cursors at the spot a plugin's restSpot picks", () => {
     const spot = { x: 700, y: 60 };
     const slow: Plugin = {
@@ -556,6 +589,21 @@ describe("Engine", () => {
     expect(h.engine.state).toBe("building");
     // Two cursors wait while the third works.
     expect(at.filter((p) => Math.hypot(p.x - spot.x, p.y - spot.y) < 12)).toHaveLength(2);
+  });
+
+  it("tells plugins which frames nobody sees, and lets them paint once when paused after those", () => {
+    const calls: string[] = [];
+    const probe: Plugin = { name: "probe", frame: (now, dt, draw) => calls.push(`${now}/${dt}/${draw}`) };
+    const h = harness(samplePage(), { intro: false }, { plugins: [testPlugin, probe] });
+    void h.engine.play();
+    h.clock.advance(8, { draw: false });
+    h.clock.advance(8);
+    h.clock.advance(8, { draw: false });
+    h.engine.pause();
+    h.clock.advance(8, { draw: false });
+    h.clock.advance(8);
+    h.clock.advance(8);
+    expect(calls).toEqual(["8/8/false", "16/8/true", "24/8/false", "24/0/true"]);
   });
 
   it("sizes the crew automatically and labels agents per mode", () => {

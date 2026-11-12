@@ -259,6 +259,8 @@ export class Engine implements Player {
   #errors = 0;
   #diagnosticsShown = false;
   #seeking = false;
+  /** The plugins' last frame was one nobody sees, so they may not have painted what it left. */
+  #pluginsUnpainted = false;
   /** finish() rushed this run, so its later frames no longer match a replay. */
   #rushed = false;
   #soundFailed = false;
@@ -287,7 +289,7 @@ export class Engine implements Player {
     this.#build = this.#newBuild();
     this.#roster = this.#newRoster();
     this.#unsubscribe.push(
-      this.#clock.onTick((dt) => this.#onTick(dt)),
+      this.#clock.onTick((dt, _now, draw) => this.#onTick(dt, draw !== false)),
       this.#stage.onUserScroll((y) => {
         this.#userScrolled = true;
         this.#camera.userScrolled(y, this.#pt);
@@ -384,8 +386,10 @@ export class Engine implements Player {
     this.#abortAll();
     this.#intro.end();
     this.#finale.end(this.#roster);
-    this.#guard(() => this.#stage.reset());
+    // Scroll first: reset() mounts the blank layers around the view at once, and that view must be
+    // the run's start, not the old one (a back seek would mount and drop a whole screen there).
     this.#guard(() => this.#stage.scrollTo(this.#deps.initialScroll));
+    this.#guard(() => this.#stage.reset());
     this.#resetRun();
     this.#state = "idle";
     this.#begin();
@@ -439,9 +443,13 @@ export class Engine implements Player {
     let s = this.#state === "paused" ? this.#resumeState : this.#state;
     if ((s !== "intro" && s !== "building") || this.#fade) return;
     if (this.#opening) {
-      // Skips the rest of the opening; reduced motion then already fades everything in.
+      // Skips the rest of the opening; reduced motion then already fades everything in, but early,
+      // so the run is rushed all the same and a later seek() must replay it.
       this.#endOpening();
-      if (this.#fade) return;
+      if (this.#fade) {
+        this.#rushed = true;
+        return;
+      }
       s = this.#state;
     }
     if (s === "intro") this.#fanOut();
@@ -856,9 +864,10 @@ export class Engine implements Player {
    * integrated in slices of at most MAX_TICK_MS so player time always equals the clock time
    * delivered, then drawn once. Slicing stops early only when this tick ends the run (goes live
    * or destroys the player); a player already live keeps the whole delta, since live plugins and
-   * the cursor exit follow player time.
+   * the cursor exit follow player time. A tick nobody sees (`draw` false) leaves the cursor canvas
+   * unpainted.
    */
-  #onTick(dt: number): void {
+  #onTick(dt: number, draw: boolean): void {
     const s = this.#state;
     if (s === "idle" || s === "destroyed") return;
     // Read phase first: the layout is clean until this tick's tasks write to the DOM.
@@ -868,7 +877,7 @@ export class Engine implements Player {
     do {
       const slice = Math.min(left, MAX_TICK_MS);
       left -= slice;
-      this.#frame(slice, left <= 0);
+      this.#frame(slice, left <= 0, draw);
     } while (left > 0 && !this.#endedDuringTick(wasLive));
   }
 
@@ -886,8 +895,11 @@ export class Engine implements Player {
     return this.#state === "destroyed" || (!wasLive && this.#state === "live");
   }
 
-  /** Advances every timeline by `dt` player ms; draws when `draw` (and not seeking). */
-  #frame(dt: number, draw: boolean): void {
+  /**
+   * Advances every timeline by `dt` player ms; draws when `draw` (and not seeking), painting the
+   * cursor canvas only when `paint` (see Stage.render). Plugins get `paint` as their frame's `draw`.
+   */
+  #frame(dt: number, draw: boolean, paint = true): void {
     const vp = this.#readViewport();
     if (this.#state !== "paused") {
       this.#pt += dt;
@@ -914,10 +926,13 @@ export class Engine implements Player {
         default:
           break;
       }
-      this.#framePluginsTick(dt);
+      this.#framePluginsTick(dt, paint);
+    } else if (paint && this.#pluginsUnpainted) {
+      // Paused right after ticks nobody saw (a cued pause in an export): plugins paint what they left.
+      this.#framePluginsTick(0, true);
     }
     this.#userScrolled = false;
-    if (draw && !this.#seeking) this.#render();
+    if (draw && !this.#seeking) this.#render(paint);
   }
 
   #stepIntro(dt: number, vp: Rect): void {
@@ -1137,22 +1152,24 @@ export class Engine implements Player {
     this.#build.schedule.setBoundary(vp.y + vp.h * (1 + LOOKAHEAD_SHARE));
   }
 
-  #render(): void {
+  #render(paint = true): void {
     const s = this.#state;
     if (s === "idle" || s === "destroyed") return;
     const views: readonly AgentView[] = this.#roster.views(this.#project);
     try {
-      this.#stage.render(this.#pt, views);
+      this.#stage.render(this.#pt, views, paint);
     } catch (error) {
       this.#report(error);
     }
   }
 
-  #framePluginsTick(dt: number): void {
+  /** Calls every plugin's frame hook; `draw` false: nobody sees this frame (see Plugin.frame). */
+  #framePluginsTick(dt: number, draw = true): void {
+    this.#pluginsUnpainted = !draw;
     for (const plugin of this.#framePlugins) {
       if (this.#failedPlugins.has(plugin)) continue;
       try {
-        plugin.frame?.(this.#pt, dt);
+        plugin.frame?.(this.#pt, dt, draw);
       } catch (error) {
         this.#failedPlugins.add(plugin);
         this.#report(new Error(`plugin "${plugin.name}" frame(): ${errorMessage(error)}`, { cause: error }));

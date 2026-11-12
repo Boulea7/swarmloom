@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StudioServices } from "../src/services";
 import { Session, type SessionPhase } from "../src/session";
 import { DEFAULT_SETTINGS } from "../src/settings";
+import { fakePlayer } from "./fakes";
 
 type Listener = (event: PlayerEvent) => void;
 
@@ -211,6 +212,26 @@ describe("Session", () => {
 
     session.seek(1);
     expect(session.position).toBe(1);
+    session.destroy();
+  });
+
+  it("asks for a new player when sound comes on with a pack or beat choice made while muted", () => {
+    const log = { loads: [], contexts: [], players: [], created: [], calls: [] };
+    const session = sessionWith((options) => fakePlayer(options, log, undefined));
+    session.rebuild(true);
+    const muted = { ...DEFAULT_SETTINGS, sound: false };
+    session.apply(muted);
+    // The restart this asks for is skipped: the player keeps the old pack and no beat hits.
+    expect(session.apply({ ...muted, soundPack: "soft", beatHits: true })).toBe("rebuild");
+    // The toolbar's sound button, then Studio applying the setting it adopted.
+    const toolbar = (on: boolean) => {
+      session.player?.setSound(on);
+      return session.apply(session.playSettings);
+    };
+    expect(session.apply({ ...session.playSettings, sound: true })).toBe("rebuild"); // settings panel
+    expect([toolbar(false), toolbar(true)]).toEqual(["none", "rebuild"]);
+    session.rebuild(true); // the new player has them: unmuting is live again
+    expect([toolbar(false), toolbar(true)]).toEqual(["none", "none"]);
     session.destroy();
   });
 

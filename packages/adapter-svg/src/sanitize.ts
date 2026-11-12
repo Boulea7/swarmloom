@@ -87,8 +87,25 @@ const SAFE_IMAGE_DATA = /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|svg\+xml)[;
 const SAFE_FONT_DATA =
   /^data:(?:font\/[\w.+-]+|application\/(?:font-woff2?|x-font-woff|font-sfnt|x-font-ttf|x-font-otf))[;,]/i;
 const FRAGMENT = /^#[^\s#]+$/;
-/** Matches `url(...)` with optional quotes; group 2 is the target. */
+/** Matches `url(...)` with optional quotes; group 2 is the target. For attribute values. */
 const CSS_URL = /url\(\s*(['"]?)(.*?)\1\s*\)/gi;
+/**
+ * CSS tokens as far as {@link sanitizeCss} needs them, read like the browser's tokenizer on text
+ * without escapes and with `\n` newlines: a comment; a string (an unterminated one ends at a newline
+ * or the end); a name (group 1) after an optional `@` and before an optional `(` (group 2, a
+ * function); a run of characters that never matter; or any other single character.
+ */
+const CSS_TOKEN =
+  /\/\*[\s\S]*?(?:\*\/|$)|(["'])(?:(?!\1)[^\n])*(?:\1|(?=\n)|$)|@?([\w\x80-\uffff-]+)(\(?)|[^"'/@();{}\w\x80-\uffff-]+|[\s\S]/y;
+/**
+ * What follows `url(` when the browser reads one URL from it: a string (group 2) or an unquoted
+ * URL (group 3), then `)` or the end of the text (an unclosed `url(` at the end still loads).
+ */
+const CSS_URL_REST =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: an unquoted URL ends at a control character, as in the CSS tokenizer.
+  /[ \t\n]*(?:(["'])((?:(?!\1)[^\n])*)(?:\1|$|(?=\n))|([^\x00-\x20"'()\x7f]*))[ \t\n]*(?:\)|$)/y;
+/** Functions that load a URL written as a plain string, or run script (legacy `expression()`). */
+const NEUTRALISED_FUNCTIONS = new Set(["image-set", "-webkit-image-set", "src", "expression"]);
 
 export interface SanitizeReport {
   /** Removed element names with counts. */
@@ -174,19 +191,46 @@ export function decodeCssEscapes(css: string): string {
  * The decoded text is what gets written back, and the browser decodes it again, so backslashes left
  * over (from `\\` or `\5c`) are dropped too: `\\75rl(` decodes to `\75rl(`, which CSS reads as `url(`.
  * (`loadsExternal` must not do this: it keeps the original value, and `url(\\#a)` loads `\#a`.)
+ * The rest is read token by token as the browser reads it, so a `url(` in a string or comment is
+ * not taken for one, and one `url()` cannot run on over the next: the browser closes `url('#a'` at
+ * the `)` after a comment, so a `url()` that follows is read, and refused, on its own.
  */
 export function sanitizeCss(css: string): string {
-  let out = decodeCssEscapes(css).replace(/\\/g, "");
+  // The CSS tokenizer turns CRLF, CR and FF into LF first; the token patterns then need one newline.
+  let text = decodeCssEscapes(css)
+    .replace(/\\/g, "")
+    .replace(/\r\n?|\f/g, "\n");
   // A space, not "": deleting the inner rule of `@imp@import "a";ort "https://…"` would join a new @import.
-  out = out.replace(/@import\b[^;]*;?/gi, " ");
-  out = out.replace(CSS_URL, (whole, _q: string, target: string) => (isSafeCssUrl(target) ? whole : "none"));
-  // An unbalanced url( could still hide a request, and image-set()/src() accept bare strings.
-  out = out.replace(/url\s*\((?![^)]*\))/gi, "none(");
-  out = out.replace(/(?:-webkit-)?image-set\s*\(|\bsrc\s*\(/gi, "invalid(");
-  out = out.replace(/expression\s*\(/gi, "invalid(");
-  out = out.replace(/-moz-binding|behavior\s*:/gi, "invalid:");
-  out = out.replace(/javascript:/gi, "invalid:");
-  return out;
+  text = text.replace(/@import\b[^;]*;?/gi, " ");
+  const out: string[] = [];
+  const token = new RegExp(CSS_TOKEN);
+  const rest = new RegExp(CSS_URL_REST);
+  for (let at = 0; at < text.length; ) {
+    token.lastIndex = at;
+    // Always matches: the last alternative takes any single character.
+    const m = token.exec(text) as RegExpExecArray;
+    at = token.lastIndex;
+    const [tok, , name, paren] = m;
+    const fn = paren && !tok.startsWith("@") ? (name ?? "").toLowerCase() : "";
+    if (fn === "url") {
+      rest.lastIndex = at;
+      const u = rest.exec(text);
+      if (u) {
+        at = rest.lastIndex;
+        out.push(isSafeCssUrl(u[2] ?? u[3] ?? "") ? text.slice(m.index, at) : "none");
+      } else {
+        // Not one URL (a bad url, or a comment before the closing paren): keep it from loading.
+        out.push("none(");
+      }
+    } else {
+      out.push(NEUTRALISED_FUNCTIONS.has(fn) ? "invalid(" : tok);
+    }
+  }
+  // These replacements never touch quotes, comment marks or newlines, so the tokens read above stay put.
+  return out
+    .join("")
+    .replace(/-moz-binding|behavior(?=\s*:)/gi, "invalid")
+    .replace(/javascript:/gi, "invalid:");
 }
 
 /**

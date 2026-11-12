@@ -1,7 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { mountStudio, type StudioApp } from "../src/app";
+import type { StudioTarget } from "../src/services";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { decodeShare, encodeShare } from "../src/share";
+import { HOSTED_STUDIO } from "../src/views/share-link";
 import { fakeServices } from "./fakes";
 
 let app: StudioApp | null = null;
@@ -27,7 +29,7 @@ const shared = { seed: 42, speed: 2, finale: "halo" } as const;
 const { seed, speed, finale } = DEFAULT_SETTINGS;
 
 /** Mounts Studio on a `#d=` link carrying {@link shared}, with the saved settings at their defaults. */
-async function openLink() {
+async function openLink(target?: StudioTarget) {
   const payload = await encodeShare({ name: "notes.md", text: "# N", settings: shared });
   history.replaceState(null, "", `/?lang=en#d=${payload}`);
   const root = document.createElement("div");
@@ -35,6 +37,7 @@ async function openLink() {
   const { services, log } = fakeServices({
     manifest: { version: 1, entries: [] },
     examplesBase: "https://studio.test/x/",
+    target,
   });
   const studio = await mountStudio(root, services);
   app = studio;
@@ -60,6 +63,17 @@ it("shares a link's settings on, shows them, and lets Restore defaults clear the
   byLabel("Restore defaults")?.click();
   expect(studio.context.settings).toMatchObject({ seed, speed, finale });
   expect(log.players.at(-1)).toMatchObject({ seed, speed, finale });
+});
+
+// The extension's own page (chrome-extension://<id>/studio.html) opens only in the browser that has it.
+it("shares from the extension's Studio a link to the hosted Studio", async () => {
+  const { byLabel } = await openLink("extension");
+  const copied: string[] = [];
+  vi.spyOn(navigator.clipboard, "writeText").mockImplementation(async (text) => void copied.push(text));
+  byLabel("Share")?.click();
+  const link = await until(() => copied[0]);
+  expect(link.split(/[?#]/)[0]).toBe(HOSTED_STUDIO);
+  expect((await decodeShare(new URLSearchParams(new URL(link).hash.slice(1)).get("d") ?? "")).settings).toEqual(shared);
 });
 
 it("leaves a link's settings behind with its view", async () => {
@@ -90,5 +104,31 @@ it("takes speed, sound and tour changed on the player's toolbar into the panel, 
 
   // A setting that needs a new player keeps the toolbar's choices.
   studio.context.updateSettings({ agents: 12 });
-  expect(log.players.at(-1)).toMatchObject({ agents: 12, speed: 3, sound: false, follow: "scroll" });
+  expect(log.players.at(-1)).toMatchObject({ agents: 12, speed: 3, sound: { enabled: false }, follow: "scroll" });
+});
+
+it("brings an entry's URL settings back on Back, and drops the ones the user changed from its URL", async () => {
+  history.replaceState(null, "", "/?lang=en&opening=1&live-top=1&intro=outline");
+  const root = document.createElement("div");
+  document.body.append(root);
+  const { services } = fakeServices({ manifest: { version: 1, entries: [] }, examplesBase: "https://studio.test/x/" });
+  const studio = await mountStudio(root, services);
+  app = studio;
+  const fromLink = { opening: true, liveTop: true, intro: "outline" } as const;
+  studio.context.navigate({ source: null });
+  studio.context.updateSettings({ opening: false, liveTop: false, intro: "warp" });
+  expect(location.search).toBe("?lang=en");
+  studio.context.toggleSettings();
+  const opening = () =>
+    [...document.querySelectorAll<HTMLInputElement>(".panel-settings .switch")].find(
+      (input) => input.labels?.[0]?.textContent === "Show the original first",
+    );
+
+  history.back();
+  await until(() => studio.context.settings.opening);
+  expect(studio.context.settings).toMatchObject(fromLink);
+  expect(opening()?.checked).toBe(true);
+  history.forward();
+  await until(() => !studio.context.settings.opening);
+  expect(studio.context.settings).toMatchObject({ opening: false, liveTop: false, intro: "warp" });
 });

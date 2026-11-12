@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@swarmloom/adapter-code": "workspace:*",
+    "@swarmloom/adapter-html": "workspace:*",
     "@swarmloom/core": "workspace:*",
     "@swarmloom/snapshot-dom": "workspace:*",
     "dompurify": "^3.4.17",

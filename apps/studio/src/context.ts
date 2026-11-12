@@ -34,8 +34,13 @@ export interface AppContext {
   readonly scheme: "light" | "dark";
   /** Session-local file or pasted text of the current history entry, if it still has one. */
   readonly local: LocalInput | null;
-  /** Absolute URL of the app page without query or hash (base for share links). */
+  /** Absolute URL of the app page without query or hash (base for in-app links). */
   readonly appUrl: string;
+  /**
+   * Base of links for someone else or another device (share, the watch QR code): {@link appUrl},
+   * or the hosted Studio in the extension, whose own pages open only in the browser that has it.
+   */
+  readonly shareUrl: string;
   /**
    * Changes and persists settings; views are notified through {@link View.settingsChanged} and an
    * open settings panel shows the new values.

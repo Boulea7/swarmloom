@@ -224,6 +224,35 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
   expect(meanDiff(plainStart as Uint8ClampedArray, start)).toBeLessThan(LOSS);
 });
 
+/** Three blocks taller than the frame: the tour scrolls down, and going live glides back up with `liveTop`. */
+const TALL_PAGE =
+  '<!doctype html><html><body style="margin:0;font:24px sans-serif">' +
+  '<h1 style="margin:0;height:300px;background:#dfe7ff">Top</h1>' +
+  '<p style="margin:0;height:300px;background:#ffe6d5">Middle</p>' +
+  '<p style="margin:0;height:300px;background:#d9f5ee">Bottom</p></body></html>';
+
+it("exports the same frames at 15 and 30 fps with an opening, outline intro, live top and beat sync", {
+  timeout: 300_000,
+}, async () => {
+  // Settings as the Studio makes them. At speed 8 the build ends near 3.2 s, the page goes live and
+  // glides back to the top by 5 s, where both takes stop, inside the tail.
+  const take = (fps: number) =>
+    exportClip({
+      input: { name: "tall.html", type: "text/html", text: TALL_PAGE },
+      width: 320,
+      height: 200,
+      fps,
+      settings: { seed: 7, speed: 8, tail: 3000, opening: 300, intro: "outline", liveTop: true, beatSync: "all" },
+      maxDurationMs: 5000,
+    });
+  const fast = await take(30);
+  expect([fast.frames, fast.finished]).toEqual([150, true]);
+  expect(new Set(fast.frameSha256).size).toBeGreaterThan(30);
+  // Each 15 fps frame is the 30 fps frame at the same time: both ran the same 1/120 s engine ticks.
+  const slow = await take(15);
+  expect(slow.frameSha256).toEqual(fast.frameSha256.filter((_, i) => i % 2 === 0));
+});
+
 it("streams a video larger than a Blob part through the spool into the file", { timeout: 180_000 }, async () => {
   // One frame a second gives a rate-controlled encoder a large budget per frame, and fresh noise does
   // not compress, so a few frames fill more than a part whatever the engine's encoder.

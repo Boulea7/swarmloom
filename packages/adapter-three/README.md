@@ -39,6 +39,8 @@ The plugin:
   studio rig (hemisphere and key light, room reflections), a soft ground shadow and a fading floor grid.
   Without WebGL 2 it shows an accessible notice instead and the build still runs.
 - `frame(now)` renders on engine time, and only when something changed, so exports are frame-exact.
+  An export's engine ticks between two captured frames (`draw` false) only advance the scene; the next
+  captured frame renders what they left, the same picture as rendering every tick.
 - `project(p)` maps a build-time anchor to the current screen point once the camera has moved, so cursors
   stay on the model during and after the finale orbit.
 - Under the player's reduced motion (`StageApi.reducedMotion`; `reducedMotion: "auto"` reads

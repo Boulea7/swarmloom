@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanExamples } from "../build/examples";
 import { isSupportingAsset, pageDirsOf } from "../src/examples/manifest";
@@ -18,6 +18,17 @@ describe("examples manifest", () => {
     // The copyright and licence of copied samples ship next to them, unlisted.
     expect(files).toContain("doc/SOURCES.md");
     expect(paths).not.toContain("doc/SOURCES.md");
+  });
+
+  it("gives every sample of a format its own title", () => {
+    // Cards and their "Play <title>" labels go by title; only language variants of one sample may share it.
+    const { manifest } = scanExamples(resolve(import.meta.dirname, "../../../examples"));
+    const groups = new Map<string, Set<string>>();
+    for (const e of manifest.entries) {
+      const key = `${e.format}: ${e.title}`;
+      groups.set(key, (groups.get(key) ?? new Set()).add(e.group));
+    }
+    expect([...groups].filter(([, g]) => g.size > 1).map(([key]) => key)).toEqual([]);
   });
 
   it("ships the licence of every library template a sample generator builds on", () => {
@@ -44,6 +55,23 @@ describe("examples manifest", () => {
       }
     }
     expect(checked).toEqual(expect.arrayContaining(["docx", "sheet", "slides"]));
+  });
+
+  it("names every font embedded in a sample PDF in the folder's SOURCES.md", () => {
+    // Chromium embeds subsets of the machine's fonts (Liberation is GPL v2 with an exception), not MIT material.
+    const root = resolve(import.meta.dirname, "../../../examples");
+    const { files } = scanExamples(root);
+    const pdfs = files.filter((f) => f.endsWith(".pdf"));
+    expect(pdfs).toContain("pdf/brochure.pdf");
+    for (const pdf of pdfs) {
+      const bytes = readFileSync(join(root, pdf), "latin1");
+      const fonts = new Set([...bytes.matchAll(/\/FontName\s*\/(?:[A-Z]{6}\+)?([^\s/<>[\]()]+)/g)].map((m) => m[1]));
+      const notice = `${dirname(pdf)}/SOURCES.md`;
+      expect(files, `${pdf} embeds ${[...fonts].join(", ")}`).toContain(notice);
+      const text = readFileSync(join(root, notice), "utf8");
+      const missing = [...fonts].filter((font) => !text.includes(`${font}\``));
+      expect(missing, notice).toEqual([]);
+    }
   });
 
   it("lists the second-wave formats and draws snippets from text only", () => {

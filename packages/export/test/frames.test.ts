@@ -65,6 +65,8 @@ describe("exportFrames", () => {
   it("stops at maxDurationMs and rejects bad options", async () => {
     const result = await exportFrames({ blueprint }, { fps: 10, maxDurationMs: 50, onFrame: () => undefined });
     expect(result.frames).toBe(1);
+    // The one frame stays up for 100 ms, the whole build: the sound log holds its four keys.
+    expect(result.soundLog).toHaveLength(4);
     await expect(exportFrames({ blueprint }, { fps: 0, onFrame: () => undefined })).rejects.toThrow(RangeError);
   });
 });

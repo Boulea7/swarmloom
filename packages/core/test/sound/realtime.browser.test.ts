@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
-import { createSound } from "../../src/sound";
+import { createSound, soundTimes } from "../../src/sound";
+import { Synth } from "../../src/sound/synth";
+import type { SoundEvent } from "../../src/types";
 
 describe("createSound in a real browser", () => {
   it("reports the autoplay lock, unlocks on any gesture and plays the chord it kept", async () => {
@@ -28,6 +30,26 @@ describe("createSound in a real browser", () => {
     expect(sound.locked).toBe(false);
     sound.destroy();
     expect(sound.levels()).toBeNull();
+  });
+
+  it("admits the sounds of one frame in time order, hearing the beat hits the export keeps", async () => {
+    await userEvent.click(document.body);
+    const ctx = new AudioContext({ latencyHint: "interactive" });
+    await ctx.resume();
+    const play = vi.spyOn(Synth.prototype, "play");
+    const options = { bpm: 180, beatSync: "all" } as const;
+    const sound = createSound({ enabled: true, ...options }, { createContext: () => ctx });
+    // Agents step one after another, so a later one can sound earlier in the same frame.
+    const frame: SoundEvent[] = [
+      { t: 45, name: "key", pan: 0 },
+      { t: 29, name: "key", pan: 0 },
+    ];
+    for (const ev of frame) sound.play(ev);
+    await vi.waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+    const heard = soundTimes(frame, { sound: options }).filter((t) => t !== null);
+    expect(play.mock.calls.map(([ev]) => ev.at)).toEqual(heard.sort((a, b) => a - b));
+    play.mockRestore();
+    sound.destroy();
   });
 
   it("analyses the microphone without playing it back, and reports denial", async () => {

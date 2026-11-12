@@ -260,15 +260,21 @@ export interface Adapter {
 export interface Clock {
   /** Milliseconds since start, scaled by nothing (speed is applied by the engine). */
   now(): number;
-  /** Subscribe to ticks; `dt` in ms. Returns an unsubscribe function. */
-  onTick(fn: (dt: number, now: number) => void): () => void;
+  /**
+   * Subscribe to ticks; `dt` in ms. `draw` is false for a tick whose frame nobody sees (an export's
+   * engine tick between two captured frames): the player advances as usual but skips repainting
+   * the cursor canvas and tells plugins (see {@link Plugin.frame}). A clock that leaves it out draws
+   * every tick. Returns an unsubscribe function.
+   */
+  onTick(fn: (dt: number, now: number, draw?: boolean) => void): () => void;
   start(): void;
   stop(): void;
   readonly running: boolean;
 }
 
 export interface VirtualClockLike extends Clock {
-  advance(ms: number): void;
+  /** One tick of `ms`; `draw: false` marks it as one nobody sees (see {@link Clock.onTick}). */
+  advance(ms: number, options?: { draw?: boolean }): void;
 }
 
 /** Seeded PRNG returning [0, 1). All engine randomness goes through one of these. */
@@ -318,7 +324,8 @@ export interface SoundOptions {
    * true (default): placement notes, the fan-out and the final chord sound on the next eighth note.
    * "all": also keys, clicks, snaps, pen anchors and heading ticks, each on the nearest sixteenth
    * note at most 30 ms earlier or 60 ms later, one per sound and sixteenth; a hit with no line that
-   * close stays silent. false: every sound plays when it happens.
+   * close stays silent. false: every sound keeps its event time. In every mode the sound policy still
+   * drops unvoiced events, extra notes per eighth, repeated one-shots and rate-capped hits.
    */
   beatSync?: boolean | "all";
 }
@@ -438,8 +445,14 @@ export interface Plugin {
   renderers?: Record<string, LayerRenderer<any>>;
   /** Called once after the stage mounts; return a cleanup. Used for WebGL scenes, camera orbits, etc. */
   setup?(stage: StageApi, host: HTMLElement): void | (() => void);
-  /** Called every frame with engine time. */
-  frame?(now: number, dt: number): void;
+  /**
+   * Called every frame with engine time. `draw` is false for a frame nobody sees (an export's engine
+   * tick between two captured frames, see {@link Clock.onTick}): advance as usual, but painting (a
+   * WebGL render) may wait for the next frame with `draw` true, which must then show what the
+   * skipped ones left. A player paused after such frames calls once more, with `dt` 0 and the same
+   * `now`, when it next draws. Left out, `draw` means true.
+   */
+  frame?(now: number, dt: number, draw?: boolean): void;
   /** Map a stage point to a screen point (3D projection). Default identity. */
   project?(p: Point): Point;
   /**
@@ -514,9 +527,9 @@ export interface PlayerOptions {
   reducedMotion?: "auto" | boolean;
   /**
    * Intro of the build. true (default): the cursors shuttle behind the file icon for 1.5 to 2.5 s,
-   * then fan out. "outline": no icon; three cursors walk in and draw the largest shapes in view
-   * (paths and boxes, two each), and the rest of the swarm joins once all of them are taken. false:
-   * the swarm walks in and starts at once.
+   * then fan out. "outline": no icon; up to three cursors (fewer when `agents` is smaller) walk in
+   * and draw the largest shapes in view (paths and boxes, two per cursor), and the rest of the swarm
+   * joins once all of them are taken. false: the swarm walks in and starts at once.
    */
   intro?: boolean | "outline";
   /**

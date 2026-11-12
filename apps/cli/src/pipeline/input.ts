@@ -221,8 +221,10 @@ function decodeUtf8(bytes: Uint8Array): string | null {
  */
 const SIBLING_ASSETS = new Set([
   ".png",
+  ".apng",
   ".jpg",
   ".jpeg",
+  ".jfif",
   ".gif",
   ".webp",
   ".avif",

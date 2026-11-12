@@ -27,7 +27,10 @@ export interface FrameLoopResult {
   frames: number;
   /** Video length: frames / fps, in ms. */
   durationMs: number;
-  /** Engine time of the last captured frame, in ms. */
+  /**
+   * Engine time of the last captured frame, in ms. The loop stops there; a caller that needs the
+   * engine through the whole video (the soundtrack) steps `durationMs - elapsedMs` more.
+   */
   elapsedMs: number;
   /** False when the loop stopped at maxFrames before the page reported done. */
   finished: boolean;
@@ -42,6 +45,11 @@ const BUILT_STATES: ReadonlySet<string> = new Set(["finale", "done", "live"]);
 /** Engine time of frame `n`, computed from the index so steps never accumulate rounding drift. */
 export function frameTime(n: number, fps: number): number {
   return (n * 1000) / fps;
+}
+
+/** Most frames a video of `maxDurationMs` captures (the frame loop's `maxFrames`): at least one. */
+export function frameLimit(maxDurationMs: number, fps: number): number {
+  return Math.max(1, Math.round((maxDurationMs * fps) / 1000));
 }
 
 /**

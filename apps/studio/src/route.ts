@@ -112,6 +112,8 @@ function parseOverrides(p: URLSearchParams): Partial<StudioSettings> {
     finale: "finale",
     intro: "intro",
     follow: "follow",
+    opening: "opening",
+    "live-top": "liveTop",
     motion: "reducedMotion",
     sound: "sound",
     pack: "soundPack",
@@ -130,7 +132,7 @@ function parseOverrides(p: URLSearchParams): Partial<StudioSettings> {
  *
  * Supported: `?example=<id>`, `?src=<url>`, `#d=<payload>`, `?inbox=<id>`, `?key=<storage key>`,
  * `?launch=1`, `?from=bookmarklet`, `?import=1`, `?autoplay=1`, `?watch=1`, `?round=1`, plus setting overrides `agents`, `speed`,
- * `seed`, `labels`, `theme`, `finale`, `intro`, `follow`, `motion`, `sound`, `pack` and `lang`.
+ * `seed`, `labels`, `theme`, `finale`, `intro`, `follow`, `opening`, `live-top`, `motion`, `sound`, `pack` and `lang`.
  */
 export function parseRoute(href: string, opts: RouteOptions = {}): Route {
   let url: URL;
@@ -161,11 +163,22 @@ const OVERRIDE_PARAMS: ReadonlyArray<[keyof StudioSettings, string]> = [
   ["finale", "finale"],
   ["intro", "intro"],
   ["follow", "follow"],
+  ["opening", "opening"],
+  ["liveTop", "live-top"],
   ["reducedMotion", "motion"],
   ["sound", "sound"],
   ["soundPack", "pack"],
   ["locale", "lang"],
 ];
+
+/** `href` without the URL parameters of `fields`; unchanged (not re-encoded) when it has none of them. */
+export function withoutOverrides(href: string, fields: readonly (keyof StudioSettings)[]): string {
+  const url = new URL(href);
+  const params = OVERRIDE_PARAMS.filter(([field, param]) => fields.includes(field) && url.searchParams.has(param));
+  if (params.length === 0) return href;
+  for (const [, param] of params) url.searchParams.delete(param);
+  return url.href;
+}
 
 /**
  * Builds the URL for a route relative to the app base (`base` is the absolute app URL ending in `/`).
@@ -217,4 +230,12 @@ export function routeToUrl(route: Partial<Route>, base: string): string {
 /** True when a source can be reopened from its URL alone (after a reload or on another device). */
 export function restorable(source: SourceRef): boolean {
   return source.kind === "example" || source.kind === "url" || source.kind === "shared";
+}
+
+/**
+ * True when a link can reopen the source in another browser or on another device. A `file:` URL
+ * (accepted in the extension's Studio) only opens on this machine, so it is not portable.
+ */
+export function portable(source: SourceRef): boolean {
+  return source.kind === "url" ? /^https?:/i.test(source.url) : restorable(source);
 }

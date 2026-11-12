@@ -11,6 +11,8 @@
 
 .view-watch {
   --safe: 7cqmin;
+  /* Side of the safe area, which every control has to fit in. */
+  --room: calc(100cqmin - 2 * var(--safe));
   /* The watch face is always dark (OLED friendly), whatever the theme: tinted, never pure black. */
   --watch-bg: oklch(8% 0.008 277);
   --watch-face: oklch(15% 0.012 277);
@@ -166,12 +168,14 @@
   -webkit-line-clamp: 2;
 }
 
+/* Each touch-size floor gives way to a share of the safe area, so on the smallest faces the
+   controls shrink rather than spill past it (and, on a round face, out of the circle). */
 .watch-play {
   display: grid;
   flex-shrink: 0;
   place-items: center;
-  width: clamp(56px, 34cqmin, 120px);
-  height: clamp(56px, 34cqmin, 120px);
+  width: clamp(min(56px, 0.58 * var(--room)), 34cqmin, 120px);
+  height: clamp(min(56px, 0.58 * var(--room)), 34cqmin, 120px);
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -200,7 +204,7 @@
 }
 
 /* Below this the inscribed square cannot hold even that line above the play button and the small
-   buttons at their minimum touch sizes: the title gives way, the poster still shows the build. */
+   buttons at their touch sizes: the title gives way, the poster still shows the build. */
 @container (height < 175px) {
   .view-watch[data-round="true"] .watch-title {
     display: none;
@@ -208,7 +212,9 @@
 }
 
 /* While a build plays (or is paused), the controls sit small along the bottom so the stage stays in
-   view: no title, the play button in a row with the others. */
+   view: no title, the play button in a row with the others. That row (play, next, phone and two
+   gaps) is wider than the 40 + 36 + 36 px floors allow below a ~185 px round face, so the floors
+   give way to shares of the safe area that always fit it. */
 .view-watch[data-phase="playing"] .watch-safe {
   flex-direction: row;
   align-items: flex-end;
@@ -220,8 +226,8 @@
 }
 
 .view-watch[data-phase="playing"] .watch-play {
-  width: clamp(40px, 20cqmin, 64px);
-  height: clamp(40px, 20cqmin, 64px);
+  width: clamp(min(40px, 0.3 * var(--room)), 20cqmin, 64px);
+  height: clamp(min(40px, 0.3 * var(--room)), 20cqmin, 64px);
 }
 
 .view-watch[data-round="true"] .watch-play-icon {
@@ -233,6 +239,11 @@
   width: 42%;
   height: auto;
   min-width: 24px;
+}
+
+/* The glyph shrinks with a playing button that gave way, instead of spilling out of it. */
+.view-watch[data-phase="playing"] .watch-play-icon svg {
+  min-width: min(24px, 0.22 * var(--room));
 }
 
 .view-watch[data-phase="opening"] .watch-play,
@@ -249,14 +260,20 @@
   display: grid;
   flex-shrink: 0;
   place-items: center;
-  width: clamp(36px, 17cqmin, 48px);
-  height: clamp(36px, 17cqmin, 48px);
+  width: clamp(min(36px, 0.36 * var(--room)), 17cqmin, 48px);
+  height: clamp(min(36px, 0.36 * var(--room)), 17cqmin, 48px);
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: oklch(97% 0.006 277 / 0.16);
   color: var(--watch-ink);
   cursor: pointer;
+}
+
+/* The playing row's small buttons give way sooner, so three buttons and two gaps still fit. */
+.view-watch[data-phase="playing"] .watch-actions .watch-icon-btn {
+  width: clamp(min(36px, 0.27 * var(--room)), 17cqmin, 48px);
+  height: clamp(min(36px, 0.27 * var(--room)), 17cqmin, 48px);
 }
 
 /* Without the poster (playing, paused or finished) the page shows through, light or dark: the small

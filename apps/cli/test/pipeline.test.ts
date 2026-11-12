@@ -11,7 +11,7 @@ import { planMux, planVideo } from "../src/pipeline/encode";
 import { type FrameSource, runFrameLoop } from "../src/pipeline/frames";
 import { inputBase, isSiblingAsset, nameForUrl, servedInput, toRenderInput } from "../src/pipeline/input";
 import { fitFields, Progress, wrapFields } from "../src/pipeline/progress";
-import { resolveRequestPath, startStaticServer } from "../src/server/static";
+import { contentType, resolveRequestPath, startStaticServer } from "../src/server/static";
 import { guard } from "../src/util/async";
 
 /** A page whose build is done once `doneAt` engine ms have elapsed. */
@@ -150,6 +150,12 @@ describe("encoder plans", () => {
     expect(args).not.toContain("-shortest");
   });
 
+  it("writes WebM without random UIDs or a wall-clock date, so equal takes give equal bytes", () => {
+    const stream = planVideo("webm", 30, "/tmp/x", FULL).stream;
+    const muxed = planMux("webm", { video: "v.webm", wav: "a.wav", output: "o.webm", durationMs: 1000 }, FULL);
+    for (const args of [stream, muxed]) expect(args.slice(-3, -1)).toEqual(["-fflags", "+bitexact"]);
+  });
+
   it("reports a missing encoder as a missing dependency", () => {
     const caps = { encoders: new Set(["aac"]), filters: new Set<string>() };
     expect(() => planVideo("mp4", 30, "/tmp", caps)).toThrow("no libx264 encoder");
@@ -244,7 +250,7 @@ describe("static server input mount", () => {
   it("publishes only sibling assets, never documents, scripts or dotfiles", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "swarmloom-mount-"));
     await mkdir(path.join(dir, "img"));
-    for (const name of ["img/shot.png", "notes.md", ".hidden.png", "index.html"]) {
+    for (const name of ["img/shot.png", "img/anim.apng", "notes.md", ".hidden.png", "index.html"]) {
       await writeFile(path.join(dir, name), "x");
     }
     const server = await startStaticServer({
@@ -256,13 +262,16 @@ describe("static server input mount", () => {
         await Promise.all(
           [
             "/input/tok/img/shot.png",
+            "/input/tok/img/anim.apng",
             "/input/tok/notes.md",
             "/input/tok/.hidden.png",
             "/input/tok/",
             "/input/x/img/shot.png",
           ].map((p) => status(new URL(p, server.url))),
         ),
-      ).toEqual([200, 404, 404, 404, 404]);
+      ).toEqual([200, 200, 404, 404, 404, 404]);
+      // Snapshots inline only image/* responses; anything else keeps the short-lived loopback URL.
+      expect(["a.apng", "a.jfif", "a.bmp"].map(contentType)).toEqual(["image/apng", "image/jpeg", "image/bmp"]);
     } finally {
       await server.close();
       await rm(dir, { recursive: true, force: true });

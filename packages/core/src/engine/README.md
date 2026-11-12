@@ -16,7 +16,7 @@ Owner: engine team. Also owns `src/player.ts`, `src/clock.ts`, `src/rng.ts`, `sr
 | `agent.ts`, `easing.ts`, `steer.ts` | `AgentApi` per cursor: bent minimum-jerk travel with a tiny overshoot, straight drags, steering physics |
 | `roster.ts`, `crew.ts`, `labels.ts` | Agent pool: join from the edges, wander, retire, leave; names, "Agent 07", role and custom labels |
 | `camera.ts` | Scroll speed estimate (more agents on fast scrolls) and the tour, which never scrolls past unfinished work (and moves on faster while the crew has nothing in sight) |
-| `intro.ts`, `outline.ts` | Warp opening: cursors shuttle on a band behind the icon for 1.5 to 2.5 s, then fan out. Outline opening: three cursors take only the largest shapes in view until all are taken, then the swarm is called |
+| `intro.ts`, `outline.ts` | Warp opening: cursors shuttle on a band behind the icon for 1.5 to 2.5 s, then fan out. Outline opening: up to three cursors (fewer with a smaller pool) take only the largest shapes in view, two each, until all are taken, then the swarm is called |
 | `finale.ts`, `flock.ts`, `spatial-hash.ts`, `halo.ts` | Finale: boids around the pointer with a uniform-grid hash, halo rings driven by sound levels, or fade out |
 | `crossfade.ts` | Cursor-free build in plan order (reduced motion, finish now, and the out-of-sight fill below) |
 | `streams.ts`, `options.ts`, `events.ts`, `constants.ts` | Seeded random streams, option validation, the event hub, tunables |

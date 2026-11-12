@@ -6,7 +6,7 @@ import { serveCommand } from "./commands/serve";
 import { snapshotCommand } from "./commands/snapshot";
 import type { Command, CommandContext } from "./commands/types";
 import { briefMessage, CliError, ExitCode } from "./errors";
-import { type CliIo, paint } from "./io";
+import { type CliIo, paint, printableIo } from "./io";
 
 export type { CommandContext } from "./commands/types";
 export type { CliIo } from "./io";
@@ -34,12 +34,13 @@ export type RunOptions = Partial<Omit<CommandContext, "io">> & { io: CliIo };
 
 /**
  * Runs the CLI with `argv` (without the node and script paths).
- * Never throws: failures are printed to stderr and turned into the exit code.
+ * Never throws: failures are printed to stderr and turned into the exit code. Control characters in
+ * stderr lines are escaped (page errors, console messages and blueprint text end up there).
  *
  * @returns 0 ok, 1 usage error, 2 missing dependency, 3 render failure, 130 interrupted.
  */
 export async function run(argv: string[], options: RunOptions): Promise<number> {
-  const ctx: CommandContext = { env: process.env, cwd: process.cwd(), ...options };
+  const ctx: CommandContext = { env: process.env, cwd: process.cwd(), ...options, io: printableIo(options.io) };
   const { io } = ctx;
   const [first, ...rest] = argv;
 

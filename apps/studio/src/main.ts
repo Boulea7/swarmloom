@@ -10,10 +10,9 @@ import { sanitizeManifest } from "./examples/manifest";
 import { receiveHandoff } from "./handoff";
 import type { CoreI18n } from "./i18n";
 import { launchHandler, readInbox, registerServiceWorker } from "./pwa";
-import type { StoredInput, StudioServices } from "./services";
-
-/** Hosted Studio, linked from builds without examples (the extension). */
-const HOSTED_STUDIO = "https://boulea7.github.io/swarmloom/studio/";
+import type { StudioServices } from "./services";
+import { readStored } from "./stored";
+import { HOSTED_STUDIO } from "./views/share-link";
 
 /**
  * Core's translator, when the core package exports it (`createI18n`, core-ui seam). Read through
@@ -23,45 +22,6 @@ function coreI18n(locale: string): CoreI18n | null {
   // Reflect keeps the bundler from flagging the (not yet exported) binding at build time.
   const create: unknown = Reflect.get(core, "createI18n");
   return typeof create === "function" ? (create as (locale?: string) => CoreI18n)(locale) : null;
-}
-
-interface ExtensionStorageArea {
-  get(keys: string): Promise<Record<string, unknown>>;
-  remove(keys: string): Promise<void>;
-}
-
-function extensionStorage(): ExtensionStorageArea[] {
-  const chrome = (
-    globalThis as { chrome?: { storage?: { session?: ExtensionStorageArea; local?: ExtensionStorageArea } } }
-  ).chrome;
-  return [chrome?.storage?.session, chrome?.storage?.local].filter((a): a is ExtensionStorageArea => Boolean(a));
-}
-
-/** Validates what the extension stored under a handoff key: a name plus exactly one payload. */
-function storedInput(value: unknown): StoredInput | null {
-  if (!value || typeof value !== "object") return null;
-  const v = value as Record<string, unknown>;
-  const str = (x: unknown) => (typeof x === "string" ? x : undefined);
-  const out: StoredInput = { name: str(v.name)?.slice(0, 200) ?? "input" };
-  const type = str(v.type);
-  if (type) out.type = type.slice(0, 200);
-  const payloads = ["url", "text", "base64"].filter((k) => typeof v[k] === "string");
-  if (payloads.length !== 1) return null;
-  if (typeof v.url === "string") out.url = v.url;
-  if (typeof v.text === "string") out.text = v.text;
-  if (typeof v.base64 === "string") out.base64 = v.base64;
-  return out;
-}
-
-/** Reads and removes a handoff entry from extension storage (session first, then local). */
-async function readStored(key: string): Promise<StoredInput | null> {
-  for (const area of extensionStorage()) {
-    const record = await area.get(key);
-    if (!record || !(key in record)) continue;
-    await area.remove(key).catch(() => undefined);
-    return storedInput(record[key]);
-  }
-  return null;
 }
 
 function localStore(): Storage | undefined {
@@ -88,7 +48,7 @@ function boot(): void {
     coreI18n,
     fetch: window.fetch.bind(window),
     storage: localStore(),
-    readStored: target === "extension" ? readStored : undefined,
+    readStored: target === "extension" ? (key) => readStored(key) : undefined,
     readInbox: (id) => readInbox(id, new URL(import.meta.env.BASE_URL, window.location.href).href),
     onLaunch: launchHandler(window),
     receiveHandoff: (signal) => receiveHandoff(window, signal),

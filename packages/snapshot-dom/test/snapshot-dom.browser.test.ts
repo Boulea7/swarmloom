@@ -331,6 +331,17 @@ describe("edge cases", () => {
     expect(media?.kind === "media" && media.label).toBe("Map");
     expect(media?.kind === "media" && media.src?.startsWith("data:image/")).toBe(true);
   });
+
+  it("lets the page observe every prescroll step", async () => {
+    // In view only at the first step (0.9 viewports down): the second step is already past it.
+    const doc = await mountPage(
+      `<body style="margin:0"><div style="height:${1.4 * VIEW_H}px"></div><p id="mid" style="margin:0">waiting</p>` +
+        `<div style="height:${3 * VIEW_H}px"></div><script>new IntersectionObserver((e)=>{if(e[0].isIntersecting)` +
+        "e[0].target.textContent='Seen on the way'}).observe(document.getElementById('mid'))</script></body>",
+    );
+    const bp = await snapshot(doc, { prescroll: true });
+    expect(textWith(bp, "Seen on the way")).toBeDefined();
+  });
 });
 
 describe("long pages", () => {

@@ -25,7 +25,7 @@ export {
 export { FRAME_ATTRIBUTE, isExportFrame } from "./marker";
 export { type FontWatch, type WatchedFace, watchFontFaces } from "./raster/fonts";
 export { FrameRasterizer, type RasterizerOptions } from "./raster/rasterize";
-export type { Box, CanvasOverlay, FrameSnapshot, SnapshotStats } from "./raster/snapshot";
+export type { Box, CanvasMark, CanvasOverlay, FrameSnapshot, ScrollMark, SnapshotStats } from "./raster/snapshot";
 export {
   type FrameDriver,
   type FrameProgress,

@@ -6,6 +6,7 @@ import {
   languageForFence,
   lineToHtml,
 } from "@swarmloom/adapter-code";
+import { localOrigin } from "@swarmloom/adapter-html";
 import type {
   Blockquote,
   Code,
@@ -63,7 +64,7 @@ export interface RenderInputs {
   diagrams: ReadonlyMap<Code, string>;
   /** Formula renderer; absent when math is disabled or failed to load. */
   math?: (tex: string, display: boolean) => MathResult;
-  /** Allow `https:` images. Default true; false keeps only data:, blob: (and local file:) images. */
+  /** Allow `https:` images. Default true; false keeps only data:, blob: and local (file:, loopback http:) images. */
   remoteImages?: boolean;
   /** Maps a relative image path to a URL (files from a dropped folder or zip). */
   resolveAsset?: AssetResolver;
@@ -167,11 +168,15 @@ export function assetPath(url: string): string {
   return out.join("/");
 }
 
-/** True when `url` has the same origin as `base` (for `http:`, the server the document came from). */
-function sameOrigin(url: string, base: string | undefined): boolean {
-  if (!base) return false;
+/**
+ * True when `url` is on the loopback origin of a plain-http `base`: the local server the document
+ * came from, such as the CLI's for the input folder (adapter-html's `localOrigin`).
+ */
+function onLocalOrigin(url: string, base: string | undefined): boolean {
+  const local = localOrigin(base);
+  if (!local) return false;
   try {
-    return new URL(url).origin === new URL(base).origin;
+    return new URL(url).origin === local;
   } catch {
     return false;
   }
@@ -180,8 +185,9 @@ function sameOrigin(url: string, base: string | undefined): boolean {
 /**
  * An image source safe to load, or undefined. Allowed: raster/SVG data: URLs, blob: URLs,
  * `https:` (unless `policy.remote` is false), `file:` when the document itself is a local file and
- * `http:` on the document's own origin (such as the CLI's local server for the input folder).
- * Other plain `http:` is refused: it would be mixed content in the Studio and leak the reader's address.
+ * `http:` on the loopback origin of a plain-http base (such as the CLI's local server for the input
+ * folder), with remote images on or off. Other plain `http:` is refused, a remote http base's own
+ * origin included: it is not local, would be mixed content in the Studio and leaks the reader's address.
  */
 export function safeImageSrc(url: string, base?: string, policy: ImagePolicy = {}): string | undefined {
   const v = url.trim();
@@ -193,7 +199,7 @@ export function safeImageSrc(url: string, base?: string, policy: ImagePolicy = {
   if (scheme === "blob") return resolved;
   if (scheme === "https") return policy.remote === false ? undefined : resolved;
   if (scheme === "file") return base !== undefined && schemeOf(base) === "file" ? resolved : undefined;
-  if (scheme === "http") return sameOrigin(resolved, base) ? resolved : undefined;
+  if (scheme === "http") return onLocalOrigin(resolved, base) ? resolved : undefined;
   return undefined;
 }
 

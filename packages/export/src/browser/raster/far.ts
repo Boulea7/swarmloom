@@ -1,0 +1,605 @@
+import type { InheritedValues } from "./styles";
+
+/** A box in CSS px of a document's viewport. */
+interface Area {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * CSS properties whose animation changes how its target and what is inside it look, never where
+ * anything else is laid out. Animating anything else may move any box of the document.
+ */
+const PAINT_ONLY = new Set([
+  "opacity",
+  "transform",
+  "translate",
+  "rotate",
+  "scale",
+  "transform-origin",
+  "perspective",
+  "perspective-origin",
+  "offset-path",
+  "offset-distance",
+  "offset-rotate",
+  "offset-anchor",
+  "offset-position",
+  "color",
+  "background-color",
+  "background-position",
+  "background-position-x",
+  "background-position-y",
+  "background-size",
+  "box-shadow",
+  "text-shadow",
+  "filter",
+  "backdrop-filter",
+  "clip-path",
+  "mask-position",
+  "mask-size",
+  "outline-color",
+  "outline-offset",
+  "outline-width",
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color",
+  "text-decoration-color",
+  "text-emphasis-color",
+  "caret-color",
+  "accent-color",
+  "column-rule-color",
+  "-webkit-text-fill-color",
+  "-webkit-text-stroke-color",
+  "fill",
+  "fill-opacity",
+  "stroke",
+  "stroke-opacity",
+  "stroke-dashoffset",
+  "stroke-dasharray",
+  "stroke-width",
+  "stop-color",
+  "stop-opacity",
+  "flood-color",
+  "flood-opacity",
+  "lighting-color",
+  "z-index",
+]);
+/** Keyframe members that name no property. */
+const KEYFRAME_TIMING = new Set(["offset", "computedOffset", "easing", "composite"]);
+/**
+ * Selector parts whose match on an element may change with a mutation that is neither in its
+ * subtree nor on one of its ancestors: sibling combinators, structural and relational
+ * pseudo-classes. A false match (`[class~=a]`, `::first-line`) only makes the check stricter.
+ */
+const NONLOCAL_SELECTOR = /[+~]|:(?:has|nth-|first-|last-|only-|empty|host-context)/;
+/** Elements whose content sheets or document-wide colours depend on. */
+const SHEET_OWNERS = new Set(["style", "link", "meta"]);
+/**
+ * Elements the UA's sheet styles by their place among their siblings (a details element's first
+ * summary, a fieldset's first legend): a change of their children may restyle any of them.
+ */
+const STRUCTURED = new Set(["details", "fieldset"]);
+/** Events that change a box without a mutation: loads, and popovers and details opening or closing. */
+const EVENTS = ["load", "error", "toggle"] as const;
+
+/** One document as far as the boxes cached in it go, its watched shadow roots included. */
+interface Scope {
+  doc: Document;
+  observer: MutationObserver;
+  /** The document and the shadow roots in it that are observed. */
+  targets: Set<Document | ShadowRoot>;
+  /** Mutation records and event targets since the last walk. */
+  records: MutationRecord[];
+  events: EventTarget[];
+  fontsDone: boolean;
+  /** What {@link sheetState}, {@link fontState}, focus and Web Animations read at the last walk. */
+  sheets: unknown[];
+  fonts: string;
+  focus: unknown[];
+  animations: Map<Animation, string | null>;
+  /**
+   * Whether the sheets match by local selectors only ({@link NONLOCAL_SELECTOR}): a mutation then
+   * restyles the subtree of its target only. Otherwise any mutation may restyle any box.
+   */
+  local: boolean;
+  /** Bumped by a change that may move or restyle any box of the document. */
+  epoch: number;
+  /** Bumped by any change, layout or scroll that may move a box laid out against one far away. */
+  stir: number;
+  /** Bumped by any change that is not a scroll: floats outside a box may then move against it. */
+  changes: number;
+  listener: (event: Event) => void;
+  onFonts: () => void;
+}
+
+/** A box written away from the viewport, with what tells that it would be written the same again. */
+interface Entry<T> {
+  scope: Scope;
+  data: T;
+  win: Window;
+  reach: Area;
+  parent: string;
+  parentNs: string;
+  context: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** {@link FarKey.extent} from its box's edges (outwards negative at the left and top). */
+  extent: Area;
+  loose: boolean;
+  open: boolean;
+  scrolls: boolean;
+  epoch: number;
+  stir: number;
+  changes: number;
+  /** The last walk it was written in. */
+  walk: number;
+}
+
+/** What {@link FarCache.record} keeps of a box, besides what is read from it. */
+export interface FarKey {
+  win: Window;
+  reach: Area;
+  parent: InheritedValues | null;
+  parentNs: string;
+  context: number;
+  /**
+   * Where what it may draw lies, in the same px as its box: unless it is loose, all of it moves
+   * with its box, so a box that only moved stays away while this does.
+   */
+  extent: Area;
+  /**
+   * Something in it is laid out against a box outside it (absolutely positioned, fixed or sticky
+   * boxes): it may move without its own box moving, after any change in the document, scrolling
+   * included.
+   */
+  loose: boolean;
+  /**
+   * Its content flows around floats outside it (a box that is no block formatting context): it
+   * may reflow after any change in the document, though not when all of it scrolls.
+   */
+  open: boolean;
+  /** It is a scroll container: written while its scroll offsets are 0, and marked for the still check. */
+  scrolls: boolean;
+}
+
+const inheritedKeys = new WeakMap<InheritedValues, string>();
+
+/** The inherited values a box is written against, as one string (read once per parent map). */
+function inheritedKey(parent: InheritedValues | null): string {
+  if (!parent) return "";
+  let key = inheritedKeys.get(parent);
+  if (key === undefined) {
+    key = "";
+    for (const [name, value] of parent) key += `${name}:${value};`;
+    inheritedKeys.set(parent, key);
+  }
+  return key;
+}
+
+/**
+ * The parent of a node in the flattened tree of its document: its slot, else its parent, a shadow
+ * root's host. A document's own box (in a frame) depends only on the frame's size, which the
+ * entries key on, so the walk up stops there.
+ */
+function up(node: Node): Node | null {
+  const slot = (node as Partial<Slottable>).assignedSlot;
+  if (slot) return slot;
+  const parent = node.parentNode;
+  if (parent) return parent.nodeType === 11 ? (parent as ShadowRoot).host : parent;
+  return node.nodeType === 11 ? (node as ShadowRoot).host : null;
+}
+
+function same(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
+}
+
+function sameArea(a: Area, b: Area): boolean {
+  return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+}
+
+/** Whether the extent `around` a box at `r` (see {@link Entry.extent}) lies wholly outside `area`. */
+function away(r: DOMRectReadOnly, around: Area, area: Area): boolean {
+  return (
+    r.right + around.right < area.left ||
+    r.left + around.left > area.right ||
+    r.bottom + around.bottom < area.top ||
+    r.top + around.top > area.bottom
+  );
+}
+
+function ruleCount(sheet: CSSStyleSheet): number {
+  try {
+    return sheet.cssRules.length;
+  } catch {
+    return -1;
+  }
+}
+
+function sheetsOf(target: Document | ShadowRoot): CSSStyleSheet[] {
+  return [...Array.from(target.styleSheets ?? []), ...(target.adoptedStyleSheets ?? [])] as CSSStyleSheet[];
+}
+
+/** The style sheets that apply in a scope, with what tells that one changed (not rules edited in place). */
+function sheetState(targets: Iterable<Document | ShadowRoot>): unknown[] {
+  const state: unknown[] = [];
+  for (const target of targets) {
+    for (const sheet of sheetsOf(target)) state.push(sheet, sheet.disabled, sheet.media.mediaText, ruleCount(sheet));
+  }
+  return state;
+}
+
+const localSheets = new WeakMap<CSSStyleSheet, { count: number; local: boolean }>();
+
+/** Whether a sheet only has selectors {@link NONLOCAL_SELECTOR} does not match; false while unreadable. */
+function localSheet(sheet: CSSStyleSheet): boolean {
+  const count = ruleCount(sheet);
+  const known = localSheets.get(sheet);
+  if (known?.count === count) return known.local;
+  const local = count >= 0 && localRules(sheet.cssRules);
+  localSheets.set(sheet, { count, local });
+  return local;
+}
+
+function localRules(rules: CSSRuleList): boolean {
+  for (const rule of Array.from(rules)) {
+    const r = rule as CSSRule & { selectorText?: unknown; cssRules?: CSSRuleList; styleSheet?: CSSStyleSheet | null };
+    if (typeof r.selectorText === "string" && NONLOCAL_SELECTOR.test(r.selectorText)) return false;
+    // Type tags, not instanceof: the rule may belong to another frame's realm.
+    const kind = Object.prototype.toString.call(rule).slice(8, -1);
+    // A container's size or a scope's limits may change without a mutation in what they style.
+    if (kind === "CSSContainerRule" || kind === "CSSScopeRule") return false;
+    if (r.styleSheet && !localSheet(r.styleSheet)) return false;
+    if (r.cssRules && !localRules(r.cssRules)) return false;
+  }
+  return true;
+}
+
+/** Whether every sheet of a scope is {@link localSheet}. */
+function localScope(targets: Iterable<Document | ShadowRoot>): boolean {
+  for (const target of targets) if (!sheetsOf(target).every(localSheet)) return false;
+  return true;
+}
+
+/** The state of a document's fonts: any change, or a font still loading, may move any text. */
+function fontState(doc: Document, faces: number): string {
+  const fonts = doc.fonts;
+  return `${fonts?.status} ${fonts?.size} ${faces}`;
+}
+
+/** A CSS property name from a keyframe member (`backgroundColor`, `webkitTextFillColor`). */
+function cssName(member: string): string {
+  const name = member.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+  return name.startsWith("webkit-") ? `-${name}` : name;
+}
+
+const paintOnlyAnimations = new WeakMap<Animation, boolean>();
+
+/** Whether an animation only animates {@link PAINT_ONLY} properties. */
+function paintOnly(animation: Animation): boolean {
+  const known = paintOnlyAnimations.get(animation);
+  if (known !== undefined) return known;
+  let only = false;
+  const effect = animation.effect as KeyframeEffect | null;
+  if (effect && typeof effect.getKeyframes === "function") {
+    try {
+      only = effect
+        .getKeyframes()
+        .every((frame) => Object.keys(frame).every((key) => KEYFRAME_TIMING.has(key) || PAINT_ONLY.has(cssName(key))));
+    } catch {
+      only = false;
+    }
+  }
+  paintOnlyAnimations.set(animation, only);
+  return only;
+}
+
+/** An animation's state for comparing frames; null while it runs on the wall clock. */
+function animationState(animation: Animation): string | null {
+  if (animation.playState === "running") return null;
+  return `${animation.playState} ${String(animation.currentTime)} ${animation.playbackRate}`;
+}
+
+/** Whether a mutation adds, removes or edits a style sheet or a colour-scheme meta element. */
+function touchesSheets(record: MutationRecord): boolean {
+  const owner = (node: Node | null) => node?.nodeType === 1 && SHEET_OWNERS.has((node as Element).localName);
+  if (owner(record.target) || (record.type === "characterData" && owner(record.target.parentNode))) return true;
+  if (record.type !== "childList") return false;
+  for (const list of [record.addedNodes, record.removedNodes]) {
+    for (const node of Array.from(list)) {
+      if (owner(node) || (node.nodeType === 1 && (node as Element).querySelector("style,link,meta"))) return true;
+    }
+  }
+  return false;
+}
+
+/** What the walk needs of a document: its view, and where it reads shadow roots and FontFace faces. */
+export interface FarSource {
+  document: Document;
+  shadowRoots(): Iterable<ShadowRoot>;
+  faces(): readonly unknown[];
+}
+
+/**
+ * Remembers the boxes a snapshot walk wrote away from the viewport (left out, or written as empty
+ * boxes), with the markup it wrote for each, and tells the next walk which of them it may write
+ * the same way again without reading their subtrees: a long page held still under one CSS
+ * animation, after going live, otherwise reads every far box again on every frame.
+ *
+ * A box written again must still be away from the viewport, written against the same inherited
+ * values, keys and box, with nothing in its subtree changed. Before each walk, {@link begin} reads
+ * what changed since the last one in each document a box was cached in (its watched shadow roots
+ * included), and drops what that may have reached:
+ * - a mutation drops the boxes it is inside of, and those inside its target (attributes) or the
+ *   nodes it added; any box at all where the sheets match by more than an element and its
+ *   ancestors ({@link NONLOCAL_SELECTOR}, container and scope rules, a sheet that cannot be read),
+ *   or when it adds or edits a style sheet;
+ * - a load or error (images, frames), and a popover or details element opening or closing, as a
+ *   mutation of its target; of a style sheet, as any change of the sheets;
+ * - a Web Animation that runs or moved since: the boxes inside its target and those around it when
+ *   it only animates how its target paints ({@link PAINT_ONLY}), any box otherwise;
+ * - a change of the sheets, the font sets, a font loading, or a change of focus: any box.
+ * The walk then checks each box itself: the same size, and the same place or, when what is in it
+ * all moves with it, an extent still away from the viewport; for a box with something laid out
+ * against a box outside it, the same place and no change at all in its document, scroll offsets
+ * included; for a box whose content flows around floats outside it, no change in its document but
+ * scrolling. Rules edited in place through the CSSOM, form control state, custom element
+ * definitions and custom states are not seen, as by the still check (`StillWatch`).
+ */
+export class FarCache<T> {
+  readonly #scopes = new Map<Document, Scope>();
+  #entries = new Map<Element, Entry<T>>();
+  readonly #pending = new Map<Element, Entry<T>>();
+  /** Scroll offsets the last walk read (see `FrameSnapshot.settled`). */
+  #scrolls: readonly { el: Element; left: number; top: number }[] = [];
+  #walk = 0;
+
+  /** Reads what changed since the last walk; call at the start of every walk. */
+  begin(source: FarSource): void {
+    this.#walk++;
+    this.#pending.clear();
+    const top = this.#scope(source.document);
+    for (const root of source.shadowRoots()) this.watchRoot(root);
+    const reached = new Set<Node>();
+    for (const scope of Array.from(this.#scopes.values())) {
+      if (scope.doc.defaultView === null) {
+        this.#drop(scope);
+        continue;
+      }
+      this.#read(scope, scope === top ? source.faces().length : 0, reached);
+    }
+    for (const { el, left, top: y } of this.#scrolls) {
+      if (el.scrollLeft !== left || el.scrollTop !== y) {
+        const scope = this.#scopes.get(el.ownerDocument);
+        if (scope) scope.stir++;
+      }
+    }
+    if (reached.size === 0) return;
+    for (const el of Array.from(this.#entries.keys())) {
+      for (let node: Node | null = el; node; node = up(node)) {
+        if (reached.has(node)) {
+          this.#entries.delete(el);
+          break;
+        }
+      }
+    }
+  }
+
+  /** Observes a shadow root the walk reads (no change before this call reaches what it read). */
+  watchRoot(root: ShadowRoot): void {
+    const scope = this.#scope(root.ownerDocument);
+    if (!scope || scope.targets.has(root)) return;
+    this.#observe(scope, root);
+  }
+
+  /**
+   * The data of a box written in the last walk away from the viewport, when it would be written
+   * the same way now, else null.
+   */
+  reuse(el: Element, key: Omit<FarKey, "extent" | "loose" | "open" | "scrolls">): T | null {
+    const entry = this.#entries.get(el);
+    if (!entry) return null;
+    const { scope } = entry;
+    if (entry.epoch !== scope.epoch || (entry.loose && entry.stir !== scope.stir)) return null;
+    if (entry.open && entry.changes !== scope.changes) return null;
+    // A mutation since the walk started: it is read before the next one.
+    if (scope.records.length > 0 || scope.events.length > 0) return null;
+    if (entry.win !== key.win || entry.parentNs !== key.parentNs || entry.context !== key.context) return null;
+    if (!sameArea(entry.reach, key.reach) || entry.parent !== inheritedKey(key.parent)) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width !== entry.width || r.height !== entry.height) return null;
+    // Moved: still away while all it may draw is, which moved with it.
+    const moved = r.left !== entry.left || r.top !== entry.top;
+    if (moved && (entry.loose || !away(r, entry.extent, key.reach))) return null;
+    if (entry.scrolls && (el.scrollLeft !== 0 || el.scrollTop !== 0)) return null;
+    entry.walk = this.#walk;
+    return entry.data;
+  }
+
+  /** Keeps a box written away from the viewport, once the walk completes ({@link commit}). */
+  record(el: Element, key: FarKey, data: T): void {
+    const scope = this.#scope(el.ownerDocument);
+    if (!scope) return;
+    const r = el.getBoundingClientRect();
+    const { extent } = key;
+    this.#pending.set(el, {
+      scope,
+      data,
+      win: key.win,
+      reach: { ...key.reach },
+      parent: inheritedKey(key.parent),
+      parentNs: key.parentNs,
+      context: key.context,
+      left: r.left,
+      top: r.top,
+      width: r.width,
+      height: r.height,
+      extent: {
+        left: extent.left - r.left,
+        top: extent.top - r.top,
+        right: extent.right - r.right,
+        bottom: extent.bottom - r.bottom,
+      },
+      loose: key.loose,
+      open: key.open,
+      scrolls: key.scrolls,
+      epoch: scope.epoch,
+      stir: scope.stir,
+      changes: scope.changes,
+      walk: this.#walk,
+    });
+  }
+
+  /**
+   * Keeps the boxes the completed walk recorded, and drops those it did not write again (gone, or
+   * no longer reached). `scrolls` are the scroll offsets it read.
+   */
+  commit(scrolls: readonly { el: Element; left: number; top: number }[]): void {
+    for (const [el, entry] of this.#pending) this.#entries.set(el, entry);
+    this.#pending.clear();
+    const kept = new Map<Element, Entry<T>>();
+    for (const [el, entry] of this.#entries) if (entry.walk === this.#walk) kept.set(el, entry);
+    this.#entries = kept;
+    this.#scrolls = scrolls;
+  }
+
+  /** The boxes kept for the next walk (for tests and diagnostics). */
+  get size(): number {
+    return this.#entries.size;
+  }
+
+  #scope(doc: Document): Scope | null {
+    const known = this.#scopes.get(doc);
+    if (known) return known;
+    const win = doc.defaultView as (Window & typeof globalThis) | null;
+    if (!win) return null;
+    const scope: Scope = {
+      doc,
+      observer: new win.MutationObserver((records) => {
+        scope.records.push(...records);
+      }),
+      targets: new Set(),
+      records: [],
+      events: [],
+      fontsDone: false,
+      sheets: [],
+      fonts: fontState(doc, 0),
+      focus: [],
+      animations: new Map(),
+      local: false,
+      epoch: 0,
+      stir: 0,
+      changes: 0,
+      listener: (event) => {
+        if (event.target) scope.events.push(event.target);
+      },
+      onFonts: () => {
+        scope.fontsDone = true;
+      },
+    };
+    doc.fonts?.addEventListener("loadingdone", scope.onFonts);
+    this.#scopes.set(doc, scope);
+    this.#observe(scope, doc);
+    return scope;
+  }
+
+  #observe(scope: Scope, target: Document | ShadowRoot): void {
+    scope.targets.add(target);
+    scope.observer.observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
+    for (const type of EVENTS) target.addEventListener(type, scope.listener, true);
+    // What is read without events starts here; the boxes cached so far in the scope go once.
+    scope.sheets = sheetState(scope.targets);
+    scope.local = localScope(scope.targets);
+    scope.focus = Array.from(scope.targets, (t) => t.activeElement);
+    for (const animation of target.getAnimations?.() ?? []) scope.animations.set(animation, animationState(animation));
+    scope.epoch++;
+  }
+
+  #drop(scope: Scope): void {
+    scope.observer.disconnect();
+    for (const target of scope.targets) {
+      for (const type of EVENTS) target.removeEventListener(type, scope.listener, true);
+    }
+    scope.doc.fonts?.removeEventListener("loadingdone", scope.onFonts);
+    this.#scopes.delete(scope.doc);
+  }
+
+  /**
+   * Reads what changed in a scope since the last walk: bumps its epoch for a change that may reach
+   * any box, drops the boxes around each node changed in a narrower way, and adds those nodes to
+   * `reached` when what is inside them may have changed too.
+   */
+  #read(scope: Scope, faces: number, reached: Set<Node>): void {
+    const records = scope.records.splice(0);
+    records.push(...scope.observer.takeRecords());
+    const events = scope.events.splice(0);
+    let all = scope.fontsDone || scope.doc.fonts?.status === "loading";
+    scope.fontsDone = false;
+    const fonts = fontState(scope.doc, faces);
+    if (fonts !== scope.fonts) all = true;
+    scope.fonts = fonts;
+    const sheets = sheetState(scope.targets);
+    if (!same(sheets, scope.sheets)) {
+      all = true;
+      scope.sheets = sheets;
+      scope.local = localScope(scope.targets);
+    }
+    const focus = Array.from(scope.targets, (t) => t.activeElement);
+    if (!same(focus, scope.focus)) all = true;
+    scope.focus = focus;
+    for (const record of records) {
+      if (all || !scope.local || touchesSheets(record)) {
+        all = true;
+        break;
+      }
+      const target = record.target;
+      if (record.type === "characterData") {
+        if (target.parentNode) this.#reach(target.parentNode, false, reached);
+      } else if (record.type === "attributes") {
+        this.#reach(target, true, reached);
+      } else {
+        this.#reach(target, target.nodeType === 1 && STRUCTURED.has((target as Element).localName), reached);
+        for (const node of Array.from(record.addedNodes)) if (node.nodeType === 1) this.#reach(node, true, reached);
+      }
+    }
+    for (const target of events) {
+      const node = target as Node;
+      if (all || typeof node.nodeType !== "number") continue;
+      if (node.nodeType === 1 && SHEET_OWNERS.has((node as Element).localName)) all = true;
+      else this.#reach(node, true, reached);
+    }
+    const animations = new Map<Animation, string | null>();
+    for (const target of scope.targets) {
+      for (const animation of target.getAnimations?.() ?? []) animations.set(animation, animationState(animation));
+    }
+    const moved = (animation: Animation) => {
+      const target = (animation.effect as KeyframeEffect | null)?.target;
+      if (!target) return;
+      if (paintOnly(animation)) this.#reach(target, true, reached);
+      else all = true;
+    };
+    for (const [animation, state] of animations) {
+      if (state === null || scope.animations.get(animation) !== state) moved(animation);
+    }
+    for (const animation of scope.animations.keys()) if (!animations.has(animation)) moved(animation);
+    scope.animations = animations;
+    if (all) scope.epoch++;
+    if (all || records.length > 0 || events.length > 0) {
+      scope.stir++;
+      scope.changes++;
+    }
+  }
+
+  /**
+   * Drops the boxes `node` is in or is (its change is in their subtree), and adds it to `reached`
+   * when `subtree`: what is inside it may have changed too.
+   */
+  #reach(node: Node, subtree: boolean, reached: Set<Node>): void {
+    if (subtree) reached.add(node);
+    for (let at: Node | null = node; at; at = up(at)) if (at.nodeType === 1) this.#entries.delete(at as Element);
+  }
+}

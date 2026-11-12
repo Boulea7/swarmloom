@@ -26,7 +26,8 @@ export const SPEED_RANGE = { min: 0.05, max: 16 } as const;
 export interface RenderCue {
   /**
    * Video time in ms (frame `n` shows `n * 1000 / fps`); applied at the first engine tick (1/120 s) at
-   * or after it, at any frame rate, so the first frame at or after it shows it.
+   * or after it, or at a frame time that comes first (only at a frame rate that does not divide 120,
+   * which also steps to each frame time), so the first frame at or after it shows it.
    */
   at: number;
   /**
@@ -38,6 +39,19 @@ export interface RenderCue {
   action: CueAction;
   /** New build speed of a "speed" cue, 0.05..16; required by it and not allowed on the others. */
   speed?: number;
+}
+
+/**
+ * Default {@link RenderInit.tail}, ms: the finale settles (1.2 s), the cursors leave and the page
+ * plays a while. `liveTop` adds {@link LIVE_TOP_TAIL_MS}.
+ */
+export const DEFAULT_TAIL_MS = 2500;
+/** Default tail added with `liveTop`: the longest glide back to the top, ms. */
+export const LIVE_TOP_TAIL_MS = 1200;
+
+/** The default tail for these settings (see {@link DEFAULT_TAIL_MS}). */
+export function defaultTail(settings: Pick<RenderInit, "liveTop">): number {
+  return DEFAULT_TAIL_MS + (settings.liveTop ? LIVE_TOP_TAIL_MS : 0);
 }
 
 export const TERMINAL_FONTS = ["fit", "fill"] as const;
@@ -67,7 +81,10 @@ export interface RenderInit {
   sound?: boolean;
   finale?: "flock" | "halo" | "none";
   locale?: string;
-  /** Hold time after the build completes (finale, then the live page), ms. Default 2500. */
+  /**
+   * Hold time after the build completes (finale, then the live page), ms. Default 2500, 3700 with
+   * `liveTop` ({@link defaultTail}). A go live under way when it ends runs on until the page shows.
+   */
   tail?: number;
   /**
    * Opening before the intro, ms: the finished content shows this long, then fades into the blank
@@ -118,7 +135,7 @@ export interface RenderInit {
 
 /** What `init()` reports about the loaded input. */
 export interface RenderInfo {
-  /** Estimated length of the whole video (build plus tail), ms; 0 when unknown. */
+  /** Estimated length of the whole video (build plus tail, or up to the last cue when later), ms; 0 when unknown. */
   estimatedMs: number;
   /** Number of layers in the blueprint. */
   layers: number;
@@ -148,7 +165,7 @@ export interface RenderStep {
   state: string;
   built: number;
   total: number;
-  /** True once the build finished AND `tail` ms elapsed. */
+  /** True once the build finished AND `tail` ms elapsed (and a go live under way has shown the page). */
   done: boolean;
 }
 
@@ -165,8 +182,9 @@ export interface RenderApi {
    */
   step(ms: number): Promise<RenderStep>;
   /**
-   * Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for `durationMs`. Pass the
-   * video's length (frames * 1000 / fps): its last frame lasts one frame past the elapsed time, the default.
+   * Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for `durationMs` (default: the
+   * elapsed time). The last frame stays up for one more frame: step through that interval without a
+   * screenshot first, so the log holds its sounds, and pass the video's length (frames * 1000 / fps).
    */
   audioWav(durationMs?: number): Promise<string>;
   /**
@@ -177,7 +195,8 @@ export interface RenderApi {
   soundLog(): Promise<SoundEvent[]>;
   /**
    * Every stretch of scrolling so far (the tour, a go-live glide), in time order, on the same clock
-   * as {@link soundLog}. A stretch still moving at the last step ends there.
+   * as {@link soundLog}. A stretch still moving at the last step ends there: read it before stepping
+   * past the last frame.
    */
   scrollLog(): Promise<RenderScroll[]>;
   /** Destroys the player and releases the loaded source; `init()` may be called again afterwards. */
@@ -328,7 +347,7 @@ export function parseInit(raw: unknown): ParsedInit {
     sound: sound ?? true,
     finale: oneOf(raw, "finale", FINALES),
     locale: optionalString(raw, "locale"),
-    tail: number(raw, "tail", 0, 600_000) ?? 2500,
+    tail: number(raw, "tail", 0, 600_000) ?? defaultTail({ liveTop }),
     opening: number(raw, "opening", 0, 600_000),
     live: live ?? true,
     liveTop,

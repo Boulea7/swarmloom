@@ -95,7 +95,8 @@ class RateWindow {
 
 /**
  * Decides which events sound and when. It is a pure function of the event sequence, shared by
- * realtime playback and offline rendering so both make the same choices:
+ * realtime playback and offline rendering, which both feed it events in time order (ties in
+ * emission order), so both make the same choices:
  *  - events without a voice in the pack, or with a non-finite time, are dropped;
  *  - musical events snap forward to the eighth-note grid ({@link quantize});
  *  - at most one `note` per grid slot: extra notes are dropped, never queued for later slots;

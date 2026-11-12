@@ -263,8 +263,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         active = { init, loaded, session, live: stage, host, paint };
         await paintFrames(paint);
         const eta = session.player.eta();
+        const built = (Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail;
         return {
-          estimatedMs: Math.round((Number.isFinite(eta) && eta > 0 ? eta : 0) + init.tail),
+          // The session also runs on to the last cue (parseInit sorts them).
+          estimatedMs: Math.round(Math.max(built, init.cues.at(-1)?.at ?? 0)),
           layers: loaded.blueprint.layers.length,
           blueprintSha256: sha,
         };

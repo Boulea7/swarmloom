@@ -987,6 +987,33 @@ describe("stage: lifecycle", () => {
     window.scrollTo(0, 0);
   });
 
+  it("overlay: a replay with an opening after go-live puts the canvas back over the page to fade in", async () => {
+    const bp = blueprint([], { w: window.innerWidth, h: 2000 });
+    const stage = createStage({
+      blueprint: bp,
+      mode: "overlay",
+      host: document.body,
+      theme: resolveTheme("auto", bp, false),
+      plugins: [],
+      reducedMotion: false,
+      rng: createRng(3),
+      initialScroll: 0,
+    });
+    cleanups.push(() => stage.destroy());
+    const host = document.documentElement.querySelector(":scope > swarmloom-stage") as HTMLElement;
+    const entered = await drive(stage, stage.enter());
+    const t = await drive(stage, stage.goLive(), entered);
+    expect(host.isConnected).toBe(false);
+    // The engine's replay with an opening: reset(), then original(1) fading towards the blank canvas.
+    stage.reset();
+    stage.original?.(1);
+    expect(host.isConnected).toBe(true);
+    expect(host.hasAttribute("data-passive")).toBe(true);
+    stage.original?.(0.5);
+    stage.render(t + 16, []);
+    expect((stage.root.querySelector(".root") as HTMLElement).style.opacity).toBe("0.5");
+  });
+
   it("overlay: enter() focuses the scroller, but a replay leaves focus on the stage's toolbar", async () => {
     const bp = blueprint([], { w: window.innerWidth, h: 2000 });
     const stage = createStage({

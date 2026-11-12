@@ -125,4 +125,27 @@ describe("three adapter with the loom-bot sample", () => {
       expect(host.querySelector("canvas")).toBeNull();
     },
   );
+
+  it.skipIf(!webgl)("renders only the frames somebody sees, once, with what the others left", () => {
+    // Every render clears the canvas first, so clear() calls count renders.
+    const clear = vi.spyOn(WebGL2RenderingContext.prototype, "clear");
+    const cleanup = plugin.setup?.({ reducedMotion: false } as never, host);
+    try {
+      // The fresh mount leaves a redraw: frames nobody sees (an export's ticks between two captured
+      // frames) keep it for the next frame that draws. Long after the build nothing else moves.
+      const t = 3_600_000;
+      clear.mockClear();
+      plugin.frame?.(t, 8, false);
+      plugin.frame?.(t + 8, 8, false);
+      expect(clear).not.toHaveBeenCalled();
+      plugin.frame?.(t + 16, 8, true);
+      expect(clear).toHaveBeenCalled();
+      clear.mockClear();
+      plugin.frame?.(t + 24, 8, true);
+      expect(clear).not.toHaveBeenCalled();
+    } finally {
+      clear.mockRestore();
+      if (typeof cleanup === "function") cleanup();
+    }
+  });
 });

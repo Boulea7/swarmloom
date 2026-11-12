@@ -15,7 +15,7 @@ import { moveIntoPlace } from "../util/fs";
 import { trackTempDir } from "../util/owned";
 import { type PlatformFont, RenderPageDriver } from "./driver";
 import { type FrameImageType, formatHasAudio, frameImageType, type OutputFormat } from "./encode";
-import { runFrameLoop } from "./frames";
+import { frameLimit, runFrameLoop } from "./frames";
 import { inputBase, type RenderSource, servedInput, toRenderInput } from "./input";
 import { type FrameWriter, ffmpegWriter, pngSequenceWriter } from "./output";
 import { formatClock, Progress } from "./progress";
@@ -49,6 +49,8 @@ export interface RenderJob {
   maxDurationMs: number;
   /** Capture exactly `maxDurationMs` of video even after the build is done (--duration). */
   fixedLength?: boolean;
+  /** `maxDurationMs` is the 10 minutes a video with sound may last, less than --max-duration. */
+  soundCapped?: boolean;
   /** Player actions at fixed video times. */
   cues?: RenderCue[];
   evidence?: EvidenceRequest;
@@ -176,12 +178,15 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     if (!job.fixedLength && estimate > job.maxDurationMs) {
       const need = formatClock(estimate / 1000);
       const max = formatClock(job.maxDurationMs / 1000);
-      warn(io, `the build needs about ${need} but --max-duration is ${max}; the video will stop early`);
+      const limit = job.soundCapped
+        ? `a video with sound stops at ${max} (add --no-sound for more)`
+        : `--max-duration is ${max}`;
+      warn(io, `the build needs about ${need} but ${limit}; the video will stop early`);
     }
 
     const writer = await createWriter(job, deps, tmp, imageType);
     cleanup.defer(() => writer.abort());
-    const maxFrames = Math.max(1, Math.round((job.maxDurationMs * job.fps) / 1000));
+    const maxFrames = frameLimit(job.maxDurationMs, job.fps);
     progress.expect(job.fixedLength ? maxFrames : Math.min(maxFrames, Math.ceil((estimate * job.fps) / 1000) + 1));
     const frameSha256: string[] = [];
     const sink = (frame: Uint8Array, index: number) => {
@@ -196,15 +201,20 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       onFrame: (frame, step) => progress.update({ frame, ...step }),
     });
     const fonts = evidence?.manifest ? await driver.platformFonts() : undefined;
+    // Stretches of scrolling are timed by the frames: read them before the clock runs past the last one.
+    const scrolls = evidence?.events ? await driver.scrollLog() : undefined;
+    const soundtrack = job.settings.sound && formatHasAudio(job.format);
+    // The last frame stays up until durationMs. Run the clock through that interval too (nothing is
+    // captured) so the sounds raised in it are logged, and frame rates that divide the engine's tick
+    // rate get one soundtrack.
+    if (soundtrack || evidence?.events) await driver.step(result.durationMs - result.elapsedMs);
 
     progress.phase("encoding");
     let output = await writer.finish();
     let audio = false;
     let wav: Uint8Array | null = null;
-    // A single frame never advanced the clock, so there is no soundtrack to render.
-    if (job.settings.sound && formatHasAudio(job.format) && result.elapsedMs > 0) {
+    if (soundtrack) {
       progress.phase("rendering sound");
-      // The whole video: the last frame lasts one frame past the elapsed time.
       wav = await driver.audioWav(result.durationMs);
       if (wav) {
         progress.phase("adding sound");
@@ -213,7 +223,6 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       }
     }
     const events = evidence?.events ? await driver.soundLog() : undefined;
-    const scrolls = evidence?.events ? await driver.scrollLog() : undefined;
     const browserVersion = browser.version();
     await driver.dispose();
     progress.clear();

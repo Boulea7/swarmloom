@@ -1,10 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { link, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import pkg from "../package.json" with { type: "json" };
 import { parseRenderOptions, sameFileKey } from "../src/commands/render";
+import { systemHost } from "../src/discovery/host";
 import { run } from "../src/run";
 
 const cwd = path.resolve("/work");
@@ -36,6 +37,16 @@ describe("swarmloom entry", () => {
     expect(result.code).toBe(code);
     expect(result.out).toContain(out);
     expect(result.err).toContain(err);
+  });
+
+  it("escapes control characters on stderr, where page errors are quoted, and keeps its colours", async () => {
+    const err: string[] = [];
+    const io = { out: () => {}, err: (l: string) => err.push(l), color: true };
+    const code = await run(["\u001b]52;c;cHduZWQ=\u0007\u009b2J"], { io, cwd, env: {} });
+    expect(code).toBe(1);
+    expect(err[0]).toContain(
+      '\u001b[31merror:\u001b[0m Unknown command "\\x1b]52;c;cHduZWQ=\\x07\\x9b2J"\n\nSwarmLoom ',
+    );
   });
 
   it("lists formats with the web page row", async () => {
@@ -75,7 +86,23 @@ describe("render options", () => {
       settings: { terminalFont: "fill" },
     });
     const opening = parseRenderOptions(["a.md", "--bpm", "120", "--opening", "3b", "--live-top"], cwd);
-    expect(opening).toMatchObject({ settings: { opening: 1500, liveTop: true } });
+    // The default tail makes room for the glide back to the top; a given one stays.
+    expect(opening).toMatchObject({ settings: { opening: 1500, liveTop: true, tail: 3700 } });
+    expect(parseRenderOptions(["a.md", "--live-top", "--tail", "1500"], cwd)).toMatchObject({
+      settings: { tail: 1500 },
+    });
+    // The soundtrack is what caps a video at 10 minutes; silent ones keep the full range.
+    expect(parseRenderOptions(["a.md", "--duration", "3600", "--no-sound"], cwd)).toMatchObject({
+      maxDurationMs: 3_600_000,
+    });
+    expect(parseRenderOptions(["a.md", "-f", "gif", "--max-duration", "3600"], cwd)).toMatchObject({
+      maxDurationMs: 3_600_000,
+    });
+    // --max-duration is only a limit: with sound a longer one is lowered, not refused.
+    expect(parseRenderOptions(["a.md", "-o", "x.webm", "--max-duration", "3600"], cwd)).toMatchObject({
+      maxDurationMs: 600_000,
+      soundCapped: true,
+    });
   });
 
   it.each([
@@ -106,8 +133,11 @@ describe("render options", () => {
     [["a.md", "--locale", "not a tag"], "--locale must be a BCP 47 language tag"],
     [["a.md", "b.md"], 'Unexpected argument "b.md"'],
     [["a.md", "--duration", "5", "--max-duration", "9"], "either --duration (exact length) or --max-duration"],
+    [["a.md", "--duration", "601"], '--duration must be at most 600 with sound (got "601")'],
     [["a.md", "--duration", "4", "--cue", "8b:pause"], "counts beats, which needs --bpm"],
-    [["a.md", "--duration", "4", "--bpm", "120", "--cue", "8b:pause"], "at or after the end of the video"],
+    [["a.md", "--duration", "4", "--bpm", "120", "--cue", "8b:pause"], "after the last frame of the video (4 s"],
+    // Before the end, but after the last frame (966.7 ms at 30 fps): no frame would show it.
+    [["a.md", "--duration", "1", "--cue", "990ms:pause"], "after the last frame of the video (1 s at 30 fps)"],
     [["a.md", "--cue", "3:rewind"], "--cue must look like <time>:<action>"],
     [["a.md", "--opening", "soon"], "--opening must be a time"],
     [["a.md", "--opening", "61"], "--opening must be at most 60 s"],
@@ -198,6 +228,38 @@ describe("render input", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["win32", ["-o", "report?.mp4"], 'The output cannot be saved as "report?.mp4" on Windows'],
+    [
+      "win32",
+      ["-f", "png-seq", "-o", "frames", "--events-out", "NUL.json"],
+      '--events-out cannot be saved as "NUL.json"',
+    ],
+    [
+      "win32",
+      ["-f", "png-seq", "-o", "frames", "--events-out", "bad?/events.json"],
+      '--events-out cannot be saved in a folder named "bad?" on Windows',
+    ],
+    ["linux", ["-f", "png-seq", "-o", "frames", "--events-out", "."], "--events-out is a directory"],
+  ] as const)(
+    "refuses on %s an output that could only be written after the capture: %j",
+    async (platform, args, message) => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "swarmloom-cli-"));
+      try {
+        await writeFile(path.join(dir, "take.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
+        const err: string[] = [];
+        // Any executable passes the browser lookup; the check must stop the run before a browser starts.
+        const argv = ["render", "take.svg", ...args, "--chrome", process.execPath];
+        const host = { ...systemHost({}), platform };
+        const code = await run(argv, { io: { out: () => {}, err: (l) => err.push(l) }, cwd: dir, env: {}, host });
+        expect(err.join("\n")).toContain(message);
+        expect(code).toBe(1);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("documented examples", () => {
@@ -213,5 +275,16 @@ describe("documented examples", () => {
       .filter((p) => p.includes("/") && !p.includes("://"));
     expect(inputs.length).toBeGreaterThan(0);
     expect(inputs.filter((p) => !existsSync(path.join(root, p)))).toEqual([]);
+  });
+
+  it("parse the render options every README suggests", () => {
+    const root = path.resolve(import.meta.dirname, "../../..");
+    const i18n = readdirSync(path.join(root, "docs/i18n")).map((f) => `docs/i18n/${f}`);
+    for (const file of ["README.md", "README.en.md", ...i18n.filter((f) => /README\.[\w-]+\.md$/.test(f))]) {
+      const spans = [...readFileSync(path.join(root, file), "utf8").matchAll(/`(--[a-z][^`]*)`/g)];
+      expect(spans.length, file).toBeGreaterThan(0);
+      const flags = spans.flatMap((m) => (m[1] ?? "").split(/\s+/));
+      expect(() => parseRenderOptions(["a.md", ...flags], cwd), file).not.toThrow();
+    }
   });
 });

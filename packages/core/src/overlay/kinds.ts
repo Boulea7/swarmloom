@@ -545,3 +545,6 @@ export const PAINTERS: Readonly<Record<string, Painter>> = {
   icon,
   halo,
 };
+
+/** Kinds whose painter shows the image `props.src` names (through PaintEnv.image). */
+export const IMAGE_KINDS: ReadonlySet<string> = new Set(["icon"]);

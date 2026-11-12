@@ -5,7 +5,7 @@ Owner: sound zone. WebAudio synthesis for SwarmLoom: no audio files, every sound
 | Module | Role |
 |---|---|
 | `index.ts` | Zone entry: `createSound` (internal, wired by the player), `renderOffline`, `encodeWav`, `quantize` (public). |
-| `realtime.ts` | `createSound`: live engine with autoplay-lock detection, unlock from any page gesture, smooth mute, idle suspend, levels and microphone. |
+| `realtime.ts` | `createSound`: live engine with autoplay-lock detection, unlock from any page gesture, smooth mute, idle suspend, levels and microphone. The events of one task (a frame) are admitted together in time order, as offline rendering admits the log. |
 | `offline.ts` | `renderOffline`: renders a `SoundEvent` log on an `OfflineAudioContext`, bit-identical for the same events, options and browser; `soundTimes`: when each event of a log is heard (or null), without audio. |
 | `wav.ts` | `encodeWav`: 16-bit PCM RIFF/WAVE, all channels interleaved. |
 | `quantize.ts` | Pure eighth-note grid from t = 0 (default 112 BPM) and the sixteenth-note line a hit may move to. |

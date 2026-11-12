@@ -73,7 +73,7 @@ const dispose = () => {
 | `overlays` | `full` / `minimal` / `none`，默认 `full` | 构建时的编辑标记：`minimal` 不画尺寸角标、间距标注、参考线和标尺；`none` 再去掉选框、占位框、钢笔线和锚点、插入符和状态气泡，只留光标、名牌和内容。开场图标和 halo 结尾始终绘制 |
 | `follow` | `scroll` / `tour` / `none` | 跟随用户、自动巡航或固定视口 |
 | `reducedMotion` | `auto` / `boolean` | 默认尊重系统减少动态偏好 |
-| `intro` | `boolean \| "outline"` | 开场：`true`（默认）为图标环绕与扇出；`"outline"` 不显示图标，三个光标先画视野内最大的形状（路径和方框，每个光标两个），全部被领取后其余光标加入；`false` 不要开场 |
+| `intro` | `boolean \| "outline"` | 开场：`true`（默认）为图标环绕与扇出；`"outline"` 不显示图标，最多三个光标（`agents` 更少时按其数量）先画视野内最大的形状（路径和方框，每个光标两个），全部被领取后其余光标加入；`false` 不要开场 |
 | `finale` | `flock` / `halo` / `none` | 群聚、音频响应光环或无结尾 |
 | `opening` | `number`，默认 0 | 先显示原内容的毫秒数（inline 显示完成后的内容，overlay 显示页面），再淡出到空白画布并开始开场 |
 | `liveTop` | `boolean`，默认 false | go live 时一边让光标离开，一边滑回顶部 |
@@ -93,7 +93,9 @@ const dispose = () => {
 | `volume` | 0–1 主音量 |
 | `pack` | `studio`、`soft`、`8bit`、`silent-keys` 或自定义包 ID |
 | `bpm` | 音乐网格速度 |
-| `beatSync` | 声音对齐 `bpm` 网格：`true`（默认）时放置音符、散开音与完成和弦落在下一个八分音符；`"all"` 时按键、点击、吸附、钢笔锚点和标题跳字也落到最近的十六分音符（最多提前 30 ms 或推后 60 ms，每种声音每个十六分音符一次，离得更远的不发声）；`false` 时都按原时刻发声 |
+| `beatSync` | 声音对齐 `bpm` 网格：`true`（默认）时放置音符、散开音与完成和弦落在下一个八分音符；`"all"` 时按键、点击、吸附、钢笔锚点和标题跳字也落到最近的十六分音符（最多提前 30 ms 或推后 60 ms，每种声音每个十六分音符一次，离得更远的不发声）；`false` 时都保持事件原时刻 |
+
+无论 `beatSync` 取何值，以下事件都不发声：音色包里没有对应音色的事件、同一个八分音符内的第二个放置音符、400 ms 内重复的开场渐强、散开音、完成和弦或扫音，以及每 100 ms 超过 6 次的打字声、5 次的指针声和 4 次的跳字声。`soundTimes()` 对它们返回 `null`。
 
 `ThemeSpec` 可提供 `palette`、`accent`、`select` 和 `chrome`。光标颜色按 `palette` 顺序循环。
 
@@ -238,6 +240,8 @@ const fragment = await snapshotHtml("<h1>Hello</h1>", {
 | `inlineImages` | false；同源图片转 data URL，便于跨文档播放 |
 | `signal` | 取消快照 |
 
+`prescroll(document, signal?)` 单独执行同一遍预滚动。需要在预滚动之后、快照之前固定动画姿态时，先调用它，再以 `prescroll: false` 调用 `snapshot()`。
+
 `snapshotHtml()` 额外要求 `width`，并支持 `css`、`document`、`baseUrl`、`background`、`scheme` 和 `icon`。
 
 ::: warning 安全边界
@@ -301,7 +305,7 @@ const player = createPlayer({
 - Promise 只用于图片、字体等资源解码，不用于墙钟计时。
 - 随机性使用 `agent.rng`，不要调用 `Math.random()` 或 `Date.now()`。
 - 在 `finally` 中移除 overlay、释放按压并调用 `stage.finish()`。
-- `setup()` 可返回清理函数；`frame(now, dt)` 使用引擎时间。
+- `setup()` 可返回清理函数；`frame(now, dt, draw)` 使用引擎时间。导出在两个截取帧之间的引擎 tick 传入 `draw` 为 false：照常推进状态，WebGL 渲染可以留到下一个 `draw` 为 true 的帧，由它画出跳过的帧带来的变化。
 - `restSpot(vp, rng)` 可选：返回空闲光标下一个停靠点（stage 坐标），让它们避开舞台看不到的文字（如终端画面）；返回 null 时在视口中部游走。随机数只用传入的 `rng`。
 - 有内部状态的插件提供 `perPlayer()`：每个播放器创建时调用一次并使用返回的新实例，同一个 `LoadedSource` 因而可以同时驱动多个播放器。
 - 播放器以减少动态效果方式构建时 `stage.reducedMotion` 为 true，此时保持静止画面，不要自行启动动画。
@@ -321,7 +325,7 @@ virtual.advance(1000 / 30);
 virtual.stop();
 ```
 
-`VirtualClock.advance(ms)` 只在时钟运行时推进，且每次调用发出一次 tick。它不能在 tick 回调中重入，也不接受负数或非有限值。
+`VirtualClock.advance(ms)` 只在时钟运行时推进，且每次调用发出一次 tick。它不能在 tick 回调中重入，也不接受负数或非有限值。`advance(ms, { draw: false })` 发出一个不会被截取的 tick：播放器照常推进，只是不重绘光标画布，插件的 `frame()` 也收到 `draw` 为 false。导出在两个截取帧之间的引擎 tick 就这样推进。
 
 相同种子与时钟只是确定性的一部分。字体、输入、视口、适配器和插件版本也必须固定。
 
