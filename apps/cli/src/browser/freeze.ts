@@ -32,3 +32,67 @@ export function freezePageAnimations(phase: number): number {
   }
   return frozen;
 }
+
+/** Options of {@link freezePageVideos}. */
+export interface VideoFreeze {
+  /** Pose of looping videos, as a fraction of their duration (see {@link LOOP_PHASE}). */
+  phase: number;
+  /** Longest wait for the metadata and the seeks of all videos together. */
+  timeoutMs: number;
+}
+
+/**
+ * Runs in the captured page: pauses every video that plays or is set to autoplay and seeks it to the
+ * pose of {@link freezePageAnimations}: a loop `phase` of its duration in, a single run at its end.
+ * Then waits until the frame is decoded and painted, so the screenshot and the snapshot show the same
+ * picture in every run. Without it an autoplay hero video was read at whatever frame real time had
+ * reached, so two renders of the same URL built different pages.
+ *
+ * Videos in open shadow roots count; videos in frames do not. A server without range requests lets
+ * the browser seek only to the start, so its videos stop on their first frame. Live streams (no finite
+ * duration) are only paused.
+ *
+ * Self-contained: Playwright sends its source to the page.
+ * @returns How many videos were frozen.
+ */
+export async function freezePageVideos({ phase, timeoutMs }: VideoFreeze): Promise<number> {
+  const videos: HTMLVideoElement[] = [];
+  const collect = (root: Document | ShadowRoot) => {
+    for (const el of root.querySelectorAll("*")) {
+      if (el instanceof HTMLVideoElement && (!el.paused || el.autoplay)) videos.push(el);
+      if (el.shadowRoot) collect(el.shadowRoot);
+    }
+  };
+  collect(document);
+  if (videos.length === 0) return 0;
+  const deadline = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+  const event = (video: HTMLVideoElement, names: string[]) =>
+    Promise.race([
+      deadline,
+      new Promise<void>((resolve) => {
+        for (const name of names) video.addEventListener(name, () => resolve(), { once: true });
+      }),
+    ]);
+  await Promise.all(
+    videos.map(async (video) => {
+      // Also cancels a pending autoplay, so the video cannot start after the capture began.
+      video.pause();
+      const failed = video.error !== null || video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
+      if (video.readyState < HTMLMediaElement.HAVE_METADATA && !failed) {
+        await event(video, ["loadedmetadata", "error"]);
+      }
+      const { duration } = video;
+      if (!Number.isFinite(duration) || duration <= 0) return;
+      video.currentTime = video.loop ? phase * duration : duration;
+      if (video.seeking) await event(video, ["seeked", "error"]);
+    }),
+  );
+  // Two painted frames, so the compositor shows the new video frames before the screenshot.
+  for (let i = 0; i < 2; i++) {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+      setTimeout(resolve, 200);
+    });
+  }
+  return videos.length;
+}
