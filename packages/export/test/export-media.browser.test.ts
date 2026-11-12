@@ -1,7 +1,20 @@
 /// <reference types="@vitest/browser-playwright" />
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { cdp } from "vitest/browser";
+import { cdp, commands, server } from "vitest/browser";
 import { exportVideo } from "../src/browser/index";
+
+/** Media preferences Playwright emulates in every engine (the `emulateMedia` command of vitest.config.ts). */
+interface EmulatedMedia {
+  colorScheme?: "light" | "dark";
+  reducedMotion?: "no-preference" | "reduce";
+  forcedColors?: "none" | "active";
+}
+
+declare module "vitest/browser" {
+  interface BrowserCommands {
+    emulateMedia(media: EmulatedMedia): Promise<void>;
+  }
+}
 
 /**
  * A blue and a grey box; black in a dark color scheme, red with reduced motion, on a wide-gamut or
@@ -35,31 +48,46 @@ function metrics(deviceScaleFactor: number): Promise<unknown> {
   });
 }
 
-/** Host settings the export must not follow, each set and reset through the DevTools protocol. */
-const HOSTS = [
+/** A host setting: `query` holds once it is set; the export's pixels must stay the same if `samePixels`. */
+interface Host {
+  name: string;
+  query: string;
+  set(): Promise<unknown>;
+  reset(): Promise<unknown>;
+  samePixels: boolean;
+}
+
+/** Playwright's defaults, which the test page has outside these cases. */
+const DEFAULT_MEDIA: EmulatedMedia = { colorScheme: "light", reducedMotion: "no-preference", forcedColors: "none" };
+const resetMedia = () => commands.emulateMedia(DEFAULT_MEDIA);
+
+/** Host preferences the export must not follow, set and reset in every engine. */
+const PREFERENCES: Host[] = [
   {
     name: "a dark color scheme",
     query: "(prefers-color-scheme: dark)",
-    set: () =>
-      cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] }),
-    reset: () => cdp().send("Emulation.setEmulatedMedia", { features: [] }),
+    set: () => commands.emulateMedia({ colorScheme: "dark" }),
+    reset: resetMedia,
     samePixels: true,
   },
   {
     name: "reduced motion",
     query: "(prefers-reduced-motion: reduce)",
-    set: () =>
-      cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }),
-    reset: () => cdp().send("Emulation.setEmulatedMedia", { features: [] }),
+    set: () => commands.emulateMedia({ reducedMotion: "reduce" }),
+    reset: resetMedia,
     samePixels: true,
   },
   {
     name: "forced colors",
     query: "(forced-colors: active)",
-    set: () => cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] }),
-    reset: () => cdp().send("Emulation.setEmulatedMedia", { features: [] }),
+    set: () => commands.emulateMedia({ forcedColors: "active" }),
+    reset: resetMedia,
     samePixels: true,
   },
+];
+
+/** Host screens the export must not follow, set and reset through Chromium's DevTools protocol. */
+const SCREENS: Host[] = [
   {
     name: "a wide-gamut touch screen",
     query: "(color-gamut: p3) and (pointer: coarse)",
@@ -139,7 +167,8 @@ afterAll(() => {
   container.remove();
 });
 
-it.each(HOSTS)("exports as the CLI does on a host with $name", { timeout: 120_000 }, async (host) => {
+/** Exports on a host with `host`'s setting, which must change nothing the export shows. */
+async function exportsAsTheCli(host: Host): Promise<void> {
   await host.set();
   try {
     expect(matchMedia(host.query).matches).toBe(true);
@@ -149,4 +178,12 @@ it.each(HOSTS)("exports as the CLI does on a host with $name", { timeout: 120_00
   } finally {
     await host.reset();
   }
-});
+}
+
+it.each(PREFERENCES)("exports as the CLI does on a host with $name", { timeout: 120_000 }, exportsAsTheCli);
+
+it.runIf(server.browser === "chromium").each(SCREENS)(
+  "exports as the CLI does on a host with $name",
+  { timeout: 120_000 },
+  exportsAsTheCli,
+);
