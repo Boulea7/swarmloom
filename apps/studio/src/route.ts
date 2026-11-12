@@ -112,6 +112,8 @@ function parseOverrides(p: URLSearchParams): Partial<StudioSettings> {
     finale: "finale",
     intro: "intro",
     follow: "follow",
+    opening: "opening",
+    "live-top": "liveTop",
     motion: "reducedMotion",
     sound: "sound",
     pack: "soundPack",
@@ -130,7 +132,7 @@ function parseOverrides(p: URLSearchParams): Partial<StudioSettings> {
  *
  * Supported: `?example=<id>`, `?src=<url>`, `#d=<payload>`, `?inbox=<id>`, `?key=<storage key>`,
  * `?launch=1`, `?from=bookmarklet`, `?import=1`, `?autoplay=1`, `?watch=1`, `?round=1`, plus setting overrides `agents`, `speed`,
- * `seed`, `labels`, `theme`, `finale`, `intro`, `follow`, `motion`, `sound`, `pack` and `lang`.
+ * `seed`, `labels`, `theme`, `finale`, `intro`, `follow`, `opening`, `live-top`, `motion`, `sound`, `pack` and `lang`.
  */
 export function parseRoute(href: string, opts: RouteOptions = {}): Route {
   let url: URL;
@@ -161,6 +163,8 @@ const OVERRIDE_PARAMS: ReadonlyArray<[keyof StudioSettings, string]> = [
   ["finale", "finale"],
   ["intro", "intro"],
   ["follow", "follow"],
+  ["opening", "opening"],
+  ["liveTop", "live-top"],
   ["reducedMotion", "motion"],
   ["sound", "sound"],
   ["soundPack", "pack"],

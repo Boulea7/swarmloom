@@ -33,6 +33,8 @@ export const SHARE_SETTING_KEYS: readonly (keyof StudioSettings)[] = [
   "finale",
   "intro",
   "follow",
+  "opening",
+  "liveTop",
 ];
 
 /** Validates untrusted settings and keeps only {@link SHARE_SETTING_KEYS}. */

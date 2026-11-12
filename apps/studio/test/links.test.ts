@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { normalizeSourceUrl, parseRoute, type Route, routeToUrl } from "../src/route";
 import { DEFAULT_SETTINGS, impactOf } from "../src/settings";
 import { decodeShare, encodeShare, MAX_INFLATED_BYTES, ShareError, sanitizeShareName } from "../src/share";
+import type { OpenedSource } from "../src/source";
+import { buildShareLink } from "../src/views/share-link";
 
 const BASE = "https://studio.example/app/";
 
@@ -31,6 +33,19 @@ describe("share links", () => {
     const s = { seed: 7, remoteAssets: true, sound: true, volume: 1, theme: "dark", locale: "ja" };
     const decoded = await decodeShare(await deflate(JSON.stringify({ v: 1, n: "a.md", x: "hi", s })));
     expect(decoded).toEqual({ name: "a.md", text: "hi", settings: { seed: 7 } });
+  });
+
+  // Both shift the build's timeline and its end, so a link without them plays a different show.
+  it.each([
+    ["an example, in the query", { ref: { kind: "example", id: "svg-chart" }, name: "chart.svg" }],
+    ["a local text, in the hash", { ref: { kind: "file", name: "notes.md" }, name: "notes.md", text: "# N" }],
+  ])("carries the opening and the glide to the top for %s", async (_label, opened) => {
+    const settings = { ...DEFAULT_SETTINGS, opening: true, liveTop: true };
+    const link = await buildShareLink(opened as OpenedSource, settings, BASE);
+    if (!link.ok) throw new Error(link.reason);
+    const { source, overrides } = parseRoute(link.url);
+    const carried = source?.kind === "shared" ? (await decodeShare(source.payload)).settings : overrides;
+    expect(carried).toEqual({ opening: true, liveTop: true });
   });
 
   it.each([
@@ -69,6 +84,7 @@ describe("routes", () => {
     ["?import=1", { source: null, import: true }],
     ["?from=bookmarklet", { source: { kind: "handoff" } }],
     ["?example=a&agents=12&speed=2&lang=ja-JP", { overrides: { agents: 12, speed: 2, locale: "ja" } }],
+    ["?example=a&opening=1&live-top=1", { overrides: { opening: true, liveTop: true } }],
   ])("parses %s", (search, expected) => {
     expect(parseRoute(`${BASE}${search}`)).toMatchObject(expected);
   });
