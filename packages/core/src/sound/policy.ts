@@ -1,5 +1,5 @@
 import type { SoundEvent } from "../types";
-import { eighthMs, gridSlot, quantize } from "./quantize";
+import { eighthMs, gridSlot, hitSlot, quantize } from "./quantize";
 import { clamp } from "./scale";
 
 /** A sound event that passed admission, with sanitized parameters and its start time. */
@@ -24,6 +24,12 @@ export interface PolicyOptions {
   readonly bpm: number;
   /** Quantize musical events (`note`, `fanout`, `chord`) to the grid. */
   readonly beatSync: boolean;
+  /**
+   * Also put hits (keys, clicks, snaps, pen anchors, heading ticks, pops) on the sixteenth-note
+   * grid: each moves to a line at most {@link HIT_EARLY_MS} earlier or {@link HIT_LATE_MS} later,
+   * one per sound name and line; a hit with no such line stays silent. Default false.
+   */
+  readonly beatHits?: boolean;
   /** Whether the active pack has a voice for `name`; unvoiced events are dropped. */
   readonly voiced: (name: string) => boolean;
 }
@@ -35,6 +41,10 @@ const ONE_SHOTS: ReadonlySet<string> = new Set(["swell", "fanout", "chord", "swe
 const ONE_SHOT_GAP_MS = 400;
 /** Velocity of events that do not specify one. */
 export const DEFAULT_VELOCITY = 0.8;
+/** With beat hits, a hit may sound this much before its event (live playback schedules 30 ms ahead). */
+export const HIT_EARLY_MS = 30;
+/** With beat hits, a hit may sound this much after its event (late sound is the less noticeable). */
+export const HIT_LATE_MS = 60;
 
 interface RateLimit {
   readonly windowMs: number;
@@ -89,12 +99,15 @@ class RateWindow {
  *  - events without a voice in the pack, or with a non-finite time, are dropped;
  *  - musical events snap forward to the eighth-note grid ({@link quantize});
  *  - at most one `note` per grid slot: extra notes are dropped, never queued for later slots;
+ *  - with beat hits, mechanical sounds move to a nearby sixteenth note, one per name and line, or drop;
  *  - mechanical sounds are rate-limited per category; phrase one-shots are de-duplicated.
  */
 export class EventPolicy {
   readonly #options: PolicyOptions;
   readonly #windows = new Map<string, RateWindow>();
   readonly #lastOneShot = new Map<string, number>();
+  /** Last sixteenth-note line a hit of each name took (beat hits). */
+  readonly #lastHitSlot = new Map<string, number>();
   #lastNoteSlot = -1;
 
   constructor(options: PolicyOptions) {
@@ -126,7 +139,15 @@ export class EventPolicy {
       this.#lastOneShot.set(name, at);
     } else {
       const category = CATEGORY[name];
-      if (category !== undefined && !this.#window(category).tryTake(at)) return null;
+      if (category !== undefined) {
+        if (this.#options.beatHits) {
+          const slot = hitSlot(at, bpm, HIT_EARLY_MS, HIT_LATE_MS);
+          if (slot < 0 || slot <= (this.#lastHitSlot.get(name) ?? -1)) return null;
+          this.#lastHitSlot.set(name, slot);
+          at = (slot * eighthMs(bpm)) / 2;
+        }
+        if (!this.#window(category).tryTake(at)) return null;
+      }
     }
 
     return {

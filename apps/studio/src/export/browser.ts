@@ -57,9 +57,11 @@ export function exportSettingsOf(s: StudioSettings, choices: ExportChoices): Exp
     theme: s.theme === "auto" ? choices.scheme : s.theme,
     labels: s.labels,
     finale: s.finale,
+    intro: s.intro === "outline" ? "outline" : true,
     follow: s.follow === "none" ? "none" : "tour",
     sound: choices.sound,
     pack: s.soundPack,
+    beatSync: s.beatHits ? "all" : true,
     locale: choices.locale,
   };
   if (s.opening) settings.opening = OPENING_MS;

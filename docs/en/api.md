@@ -72,7 +72,7 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `labels` | `LabelMode` / `string[]` | `names`, `agents`, `roles`, `none` or custom labels; `none` also hides status bubbles |
 | `follow` | `scroll` / `tour` / `none` | Follow the user, tour automatically, or keep a fixed viewport |
 | `reducedMotion` | `auto` / `boolean` | Defaults to the system reduced-motion preference |
-| `intro` | `boolean` | Enable the icon orbit and fan-out introduction |
+| `intro` | `boolean \| "outline"` | Intro: `true` (default) is the icon orbit and fan-out; `"outline"` shows no icon, three cursors first draw the largest shapes in view (paths and boxes, two each) and the rest joins once all of them are taken; `false` has no intro |
 | `finale` | `flock` / `halo` / `none` | Flock, audio-reactive halo, or no finale |
 | `opening` | `number`, default 0 | Ms to show the original first (inline: the finished content; overlay: the page), then fade into the blank canvas and start the intro |
 | `liveTop` | `boolean`, default false | Going live glides back to the top while the cursors leave |
@@ -90,7 +90,7 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `volume` | Master volume from 0 to 1 |
 | `pack` | `studio`, `soft`, `8bit`, `silent-keys` or a custom pack ID |
 | `bpm` | Musical-grid tempo |
-| `beatSync` | Quantise notes and task starts to the beat |
+| `beatSync` | Snap sounds to the `bpm` grid: `true` (default) puts placement notes, the fan-out and the final chord on the next eighth note; `"all"` also puts keys, clicks, snaps, pen anchors and heading ticks on the nearest sixteenth note (at most 30 ms early or 60 ms late, one per sound and sixteenth; hits farther off stay silent); `false` plays every sound when it happens |
 
 `ThemeSpec` accepts `palette`, `accent`, `select` and `chrome`. Cursor colours cycle through `palette` in order.
 
@@ -345,4 +345,4 @@ const wav = await renderAudioWav(soundLog, durationMs);
 
 The `swarmloom render` command uses the same frame-by-frame pipeline; see [CLI](./cli.md).
 
-Core also exports `renderOffline()` and `encodeWav()` for custom audio pipelines. Video exporters should always await `player.ready()` so fonts and images cannot be captured before decoding.
+Core also exports `renderOffline()`, `soundTimes()` (when each event sounds with the same settings, `null` when it stays silent) and `encodeWav()` for custom audio pipelines. Video exporters should always await `player.ready()` so fonts and images cannot be captured before decoding.

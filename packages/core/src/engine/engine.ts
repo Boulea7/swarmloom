@@ -56,9 +56,10 @@ import {
   isFollowMode,
   resolveAgentCount,
 } from "./options";
+import { OUTLINE_CREW, outlineMask } from "./outline";
 import { buildPlan, type Plan } from "./planner";
 import { Roster } from "./roster";
-import { DONE } from "./schedule";
+import { AVAILABLE, DONE, LOCKED, WAITING } from "./schedule";
 import { streamRng } from "./streams";
 
 /** Normalized playback settings (see PlayerOptions). */
@@ -69,7 +70,8 @@ export interface EngineSettings {
   labels: LabelMode | readonly string[];
   follow: FollowMode;
   finale: FinaleMode;
-  intro: boolean;
+  /** true: the warp opening; "outline": a few cursors draw the largest shapes first; false: none. */
+  intro: boolean | "outline";
   reducedMotion: boolean;
   /** Opening before the intro, player ms (PlayerOptions.opening); 0 or unset: none. */
   opening?: number;
@@ -231,6 +233,8 @@ export class Engine implements Player {
   #fade: CrossFade | null = null;
   #opening: Opening | null = null;
   #glide: Glide | null = null;
+  /** Outline opening under way: the tasks its few cursors may take (see outline.ts); null otherwise. */
+  #outline: Uint8Array | null = null;
 
   /* Timelines (see class doc). */
   #pt = 0;
@@ -440,6 +444,7 @@ export class Engine implements Player {
       this.#build.abort(a);
       restAfterTask(a, this.#sim);
     }
+    this.#outline = null;
     this.#fade = this.#fadeRest(RUSH_TIMING);
     this.#rushed = true;
   }
@@ -456,6 +461,7 @@ export class Engine implements Player {
     if (s === "live" || s === "destroyed") return;
     this.#abortAll();
     this.#fade = null;
+    this.#outline = null;
     if (this.#opening) {
       // The original already shows the finished content: it stays.
       this.#opening = null;
@@ -559,7 +565,7 @@ export class Engine implements Player {
     const intro =
       s === "intro" && !this.#opening
         ? Math.max(0, this.#intro.endsAt - this.#pt)
-        : s !== "building" && settings.intro && !settings.reducedMotion
+        : s !== "building" && settings.intro === true && !settings.reducedMotion
           ? INTRO_MIN_MS + INTRO_SPAN_MS / 2
           : 0;
     return intro + Math.max(0, remaining) / (speed * crew) + tail / speed;
@@ -672,6 +678,7 @@ export class Engine implements Player {
     this.#fade = null;
     this.#opening = null;
     this.#glide = null;
+    this.#outline = null;
     this.#rushed = false;
     this.#pt = 0;
     this.#tt = 0;
@@ -724,6 +731,9 @@ export class Engine implements Player {
     const { settings } = this.#deps;
     if (settings.reducedMotion) {
       this.#fade = new CrossFade(this.#plan.order, this.#plan.layers, this.#tt, REDUCED_TIMING);
+      this.#setState("building");
+    } else if (settings.intro === "outline") {
+      this.#outline = outlineMask(this.#plan, vp, this.#outlineCrew());
       this.#setState("building");
     } else if (settings.intro) {
       this.#intro.begin(this.#stage, this.#stage.blueprint.icon, vp, at, streamRng(settings.seed, "intro"));
@@ -943,6 +953,10 @@ export class Engine implements Player {
 
     if (this.#fade) {
       this.#fade.step(tt, this.#stage, schedule, (error, layer) => this.#report(layerError(error, layer)));
+    } else if (this.#outline) {
+      this.#runAgents(tt, vp);
+      this.#roster.balance(this.#outlineCrew(), vp, this.#sim);
+      if (this.#outlineTaken(vp)) this.#callSwarm();
     } else {
       this.#runAgents(tt, vp);
       this.#fadeOutOfSight(dtt, vp);
@@ -986,9 +1000,38 @@ export class Engine implements Player {
   #pick(a: Agent, vp: Rect): number {
     const schedule = this.#build.schedule;
     if (this.#nothingInSight || schedule.available === 0) return -1;
-    const i = schedule.pick(a.x, a.y, vp);
+    const i = schedule.pick(a.x, a.y, vp, this.#outline);
     if (i < 0) this.#nothingInSight = true;
     return i;
+  }
+
+  /** Cursors of the outline opening: {@link OUTLINE_CREW}, or the whole pool when it is smaller. */
+  #outlineCrew(): number {
+    return Math.min(OUTLINE_CREW, this.#count);
+  }
+
+  /**
+   * True once every outline task has been taken (or completed), or when the outline cursors can
+   * take none of the rest: nobody works and none of it is available in sight.
+   */
+  #outlineTaken(vp: Rect): boolean {
+    const mask = this.#outline;
+    if (!mask) return true;
+    const { status } = this.#build.schedule;
+    let open = false;
+    for (let i = 0; i < this.#plan.taskCount && !open; i++) {
+      const s = status[i];
+      open = mask[i] === 1 && (s === WAITING || s === LOCKED || s === AVAILABLE);
+    }
+    if (!open) return true;
+    return this.#roster.workingCount() === 0 && !this.#build.schedule.hasWorkInSight(vp, mask);
+  }
+
+  /** Ends the outline opening: the rest of the swarm walks in to fill in the details. */
+  #callSwarm(): void {
+    this.#outline = null;
+    this.#nothingInSight = false;
+    this.#engineSound("fanout", 0);
   }
 
   /**

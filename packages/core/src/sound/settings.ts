@@ -9,7 +9,7 @@ export interface SoundSettingsInput {
   pack?: string;
   volume?: number;
   bpm?: number;
-  beatSync?: boolean;
+  beatSync?: boolean | "all";
   seed?: number;
 }
 
@@ -19,6 +19,8 @@ export interface SoundSettings {
   readonly volume: number;
   readonly bpm: number;
   readonly beatSync: boolean;
+  /** Hits snap to sixteenth notes too (`beatSync: "all"`). */
+  readonly beatHits: boolean;
   readonly seed: number;
 }
 
@@ -40,6 +42,7 @@ export function resolveSettings(input: SoundSettingsInput = {}): SoundSettings {
     volume: volume === undefined ? DEFAULT_VOLUME : clamp(volume, 0, 1),
     bpm: bpm === undefined ? DEFAULT_BPM : clamp(bpm, MIN_BPM, MAX_BPM),
     beatSync: input.beatSync !== false,
+    beatHits: input.beatSync === "all",
     seed: seed === undefined ? 0 : seed >>> 0,
   };
 }

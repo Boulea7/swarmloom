@@ -86,6 +86,7 @@ describe("CLI command", () => {
       ...DEFAULT_SETTINGS,
       follow: "scroll" as const,
       remoteAssets: false,
+      intro: "outline" as const,
       opening: true,
       liveTop: true,
     };
@@ -94,16 +95,21 @@ describe("CLI command", () => {
     // The dialog's length limit is not the CLI default, so long builds stop at the same frame.
     const dialog = { width: 1080, height: 1920, fps: 60, maxDuration: EXPORT_MAX_SECONDS, ...choices };
     expect(buildCliCommand({ ...base, ...dialog }).text).toBe(
-      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --opening 1.5 --live-top --locale zh-CN --no-sound --no-remote",
+      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --intro outline --opening 1.5 --live-top --locale zh-CN --no-sound --no-remote",
     );
     expect(exportSettingsOf(settings, choices)).toMatchObject({
       theme: "dark",
       follow: "tour",
+      intro: "outline",
       sound: false,
       locale: "zh-CN",
       opening: 1500,
       liveTop: true,
     });
+    // Keys on the beat need the soundtrack: the same flag on both paths.
+    const beat = { ...base, ...dialog, sound: true, settings: { ...settings, beatHits: true } };
+    expect(buildCliCommand(beat).text).toContain("--live-top --locale zh-CN --beat-sync all --no-remote");
+    expect(exportSettingsOf(beat.settings, { ...choices, sound: true })).toMatchObject({ beatSync: "all" });
     // English, the light scheme and 30 fps are the CLI defaults.
     const plain = { ...base, settings: DEFAULT_SETTINGS, width: 1280, height: 720, fps: 30, scheme: "light" as const };
     expect(buildCliCommand({ ...plain, locale: "en-GB" }).text).toBe("npx swarmloom render a.md -o a.mp4 --seed 1");

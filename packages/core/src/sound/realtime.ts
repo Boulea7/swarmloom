@@ -238,8 +238,8 @@ class RealtimeSound implements SoundEngine {
   }
 
   #newPolicy(): EventPolicy {
-    const { bpm, beatSync, pack } = this.#settings;
-    return new EventPolicy({ bpm, beatSync, voiced: (name) => pack.voices[name] !== undefined });
+    const { bpm, beatSync, beatHits, pack } = this.#settings;
+    return new EventPolicy({ bpm, beatSync, beatHits, voiced: (name) => pack.voices[name] !== undefined });
   }
 
   #schedule(graph: Graph, ev: SoundEvent): void {
