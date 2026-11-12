@@ -83,7 +83,9 @@ export function soundLogJson(events: readonly SoundEvent[]): string {
  * The --events-out document: the sound log plus the nearest frame of each event and the time the
  * soundtrack plays it. Event times (`t`) are when the engine raised them; `at` is where the mixer puts
  * the sound (the beat grid moves "note", "fanout" and "chord", and with --beat-sync all the hits too),
- * or null when it stays silent. `at` is worked out the same way without a soundtrack (--no-sound, GIF).
+ * or null when it stays silent, including a sound the grid pushes to or past the video's end (the
+ * soundtrack is `durationMs` long and drops it). `at` is worked out the same way without a soundtrack
+ * (--no-sound, GIF).
  * `scrolls` lists each stretch of scrolling on the same clock, with the frames it starts and ends on.
  */
 export function eventsDocument(
@@ -93,6 +95,11 @@ export function eventsDocument(
 ): string {
   const frameOf = (t: number) => Math.round((t * meta.fps) / 1000);
   const heard = soundTimes(events, { bpm: meta.bpm, sound: { beatSync: meta.beatSync ?? true } });
+  // renderOffline() leaves out every sound at or after the end of the video.
+  const heardAt = (i: number) => {
+    const at = heard[i] ?? null;
+    return at !== null && at < meta.durationMs ? at : null;
+  };
   const doc = {
     version: EVENTS_VERSION,
     timeBase: "engine ms on the frames' clock: frame n shows n * 1000 / fps; time held by a pause cue is included",
@@ -102,7 +109,7 @@ export function eventsDocument(
     bpm: meta.bpm ?? null,
     count: events.length,
     soundLogSha256: sha256Hex(soundLogJson(events)),
-    events: events.map((e, i) => ({ ...e, frame: frameOf(e.t), at: heard[i] ?? null })),
+    events: events.map((e, i) => ({ ...e, frame: frameOf(e.t), at: heardAt(i) })),
     scrolls: scrolls.map((s) => ({ ...s, frame: frameOf(s.t), endFrame: frameOf(s.end) })),
   };
   return `${JSON.stringify(doc, null, 1)}\n`;

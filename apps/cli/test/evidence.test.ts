@@ -72,6 +72,15 @@ describe("capture evidence", () => {
     expect(all.events[1].at).toBeCloseTo(1166.667, 3);
   });
 
+  it("leaves `at` null for a note the grid pushes to the end of the video, which the soundtrack drops", () => {
+    // At 90 bpm the note at 1900 ms moves to the eighth at 2000 ms, the end of a 2000 ms video.
+    const late = [{ t: 1900, name: "note", pan: 0, pitch: 3, vel: 0.8 }];
+    const doc = JSON.parse(eventsDocument(late, { fps: 30, frames: 60, durationMs: 2000, bpm: 90 }));
+    expect(doc.events[0]).toMatchObject({ t: 1900, frame: 57, at: null });
+    const longer = JSON.parse(eventsDocument(late, { fps: 30, frames: 61, durationMs: 2001, bpm: 90 }));
+    expect(longer.events[0].at).toBeCloseTo(2000, 6);
+  });
+
   it("records settings, cues, programs and an aggregate of the frame hashes", () => {
     const m = buildManifest(manifestInput);
     expect(m).toMatchObject({
