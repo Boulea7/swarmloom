@@ -85,6 +85,11 @@ const list = (open = "", close = "") =>
   "<style>body{margin:0;font:10px/10px monospace}ol,ul{margin:0}div{padding:1px 0}</style>" +
   `<ol><div>${open}${"<li>i".repeat(30)}${close}</div><div style=height:400px></div><div><li>i<li>i</div></ol>`;
 
+/** `box` far above the view, then a paragraph that shows the counter `name` in its scope. */
+const numbered = (box: string, name: string) =>
+  `<style>body{margin:0;font:10px/10px monospace}ol{margin:0}.far{position:absolute;top:-3000px}p::before{content:counter(${name})}</style>` +
+  `${box}<div style=height:400px></div><p></p>`;
+
 it.each([
   [
     "explicit counters",
@@ -97,7 +102,16 @@ it.each([
   ["list items of the outer list", list(), /<li/g, 32],
   // Items of a list of their own number nothing after it: their wrapper still goes empty.
   ["a list of its own", list("<ul>", "</ul>"), /<li/g, 2],
-])("keeps the counter steps of off-screen content: %s", async (_name, html, tag, count) => {
+  // A box's own reset numbers the boxes after it, a list's items step its counter for them too.
+  ["a reset out of flow", numbered('<div class=far style="counter-reset:n 4">i</div>', "n"), />i</g, 1],
+  ["a list out of flow", numbered("<ol class=far start=4><li>i</ol>", "list-item"), /<li/g, 1],
+  [
+    "the items of a far list",
+    numbered(`<ol style=display:flow-root>${"<li>i".repeat(30)}</ol>`, "list-item"),
+    /<li/g,
+    30,
+  ],
+])("keeps the counters of off-screen content: %s", async (_name, html, tag, count) => {
   const { win, rasterizer } = await frameOf(html);
   win.scrollTo(0, win.document.documentElement.scrollHeight);
   const { svg } = await rasterizer.snapshot();

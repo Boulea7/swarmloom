@@ -106,7 +106,7 @@ const CELL_ALIGNED = new Set(["top", "middle", "bottom"]);
 const TABLE_ROWS = new Set(["table-row-group", "table-header-group", "table-footer-group", "table-row"]);
 /** Text a table row lays out nothing for: CSS white space (a no-break space is not). */
 const CSS_SPACE = /^[ \t\n\r\f]*$/;
-/** HTML lists: the list items inside one number that list only. */
+/** HTML lists: the items inside one step its own `list-item` counter, seen in it and after it only. */
 const LISTS = new Set(["ol", "ul", "menu"]);
 const SIDES = ["top", "right", "bottom", "left"] as const;
 const RADII = ["top-left", "top-right", "bottom-right", "bottom-left"] as const;
@@ -439,14 +439,13 @@ function stepsCounter(cs: CSSStyleDeclaration, listed: boolean): boolean {
  * Whether an element of the flattened subtrees of `nodes`, or one of its `::before`/`::after`
  * boxes, increments or sets a counter, a list item outside any list among them included. Generated
  * content and list markers after them may show that counter, and the snapshot's clones count
- * again: leaving them out would change the numbers. Resets are fine, a counter reset inside a
- * subtree is not seen after it.
- *
- * @param listed The nodes are the content of a list, which numbers its own items.
+ * again: leaving them out would change the numbers. Resets are not looked at: a reset reaches the
+ * boxes after it under the same parent only, so one inside the subtrees is not seen after them.
+ * One on `nodes` themselves is, and is for the caller to check ({@link resetsCounter}).
  */
-function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView, listed = false): boolean {
+function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boolean {
   const stack: [Element, boolean][] = [];
-  for (const node of nodes) if (node.nodeType === 1) stack.push([node as Element, listed]);
+  for (const node of nodes) if (node.nodeType === 1) stack.push([node as Element, false]);
   for (let next = stack.pop(); next; next = stack.pop()) {
     const [el, inList] = next;
     const cs = view.win.getComputedStyle(el);
@@ -468,12 +467,23 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView, listed
 }
 
 /**
+ * Whether `el` itself resets a counter: the reset numbers the boxes after it as well as its own
+ * content (its following siblings and theirs). A list resets `list-item`, which Chromium does not
+ * report in `counter-reset`, and its items step it for the boxes after it too.
+ */
+function resetsCounter(el: Element, cs: CSSStyleDeclaration): boolean {
+  return isList(el) || cs.getPropertyValue("counter-reset") !== "none";
+}
+
+/**
  * An absolutely positioned subtree that cannot show: fully transparent, or with nothing in it near
- * the viewport. Leaving it out cannot move anything else (it is out of flow), unless it counts.
+ * the viewport. Leaving it out cannot move anything else (it is out of flow), unless it counts:
+ * it steps a counter, or resets one for the boxes after it.
  */
 function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView): boolean {
   const position = cs.getPropertyValue("position");
   if (position !== "absolute" && position !== "fixed") return false;
+  if (resetsCounter(el, cs)) return false;
   const hidden = offscreen(walk, el, view, false, cs.getPropertyValue("opacity") === "0");
   return hidden && !stepsCounters(walk, [el], view);
 }
@@ -552,8 +562,9 @@ function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocV
   if (el.getBoundingClientRect().height <= 0) return false;
   // The row of a FAR_ROW cell was found away from the viewport, all of it.
   if (context !== FAR_ROW && !offscreen(walk, el, view, !contained)) return false;
-  // The box keeps its own counters and pseudo-elements, its content's would go.
-  return !stepsCounters(walk, flatChildren(walk, el), view, isList(el));
+  // The box keeps its own counters and pseudo-elements, its content's would go: a list's items too,
+  // which step its `list-item` counter for the boxes after it.
+  return !stepsCounters(walk, flatChildren(walk, el), view);
 }
 
 /** The context a box with this display gives its children by its own layout, its baseline aside. */
