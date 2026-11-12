@@ -440,6 +440,32 @@ describe("stage: reveal semantics per kind", () => {
     expect(fetches).not.toHaveBeenCalled();
   });
 
+  it("overlay: the visited page's own image files are not requested again", async () => {
+    // The extension plays on the page itself: a fetch of its files would tell the site.
+    const src = new URL(`${SPIN_SVG}?page`, location.href).href;
+    const fetches = vi.spyOn(window, "fetch");
+    cleanups.push(() => fetches.mockRestore());
+    const bp = blueprint([{ id: "a", kind: "image", box: { x: 0, y: 0, w: 200, h: 100 }, src }], {
+      w: window.innerWidth,
+      h: 600,
+    });
+    const stage = createStage({
+      blueprint: bp,
+      mode: "overlay",
+      host: document.body,
+      theme: resolveTheme("auto", bp, false),
+      plugins: [],
+      reducedMotion: false,
+      rng: createRng(3),
+      initialScroll: 0,
+    });
+    cleanups.push(() => stage.destroy());
+    stage.reveal("a", 1);
+    await stage.ready();
+    expect(fetches).not.toHaveBeenCalled();
+    expect((stage.el("a") as HTMLElement).querySelector("img")?.getAttribute("src")).toBe(src);
+  });
+
   it("image: a replay decodes no animated image again, however many; the copies go with the last stage", async () => {
     // More than a count-bounded cache of 32 held: mounted in the same order, every one missed.
     const layers: Layer[] = Array.from({ length: 40 }, (_, i) => ({

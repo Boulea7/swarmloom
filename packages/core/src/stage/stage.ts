@@ -206,7 +206,8 @@ export class SwarmStage implements Stage {
     }
     this.#fade = new Fade(this.#opacity);
     this.#guard = new PageGuard(doc);
-    this.#releaseStills = retainStills();
+    // An overlay covers the visited page itself, whose files the stage must not request again.
+    this.#releaseStills = retainStills(o.mode === "overlay" ? doc : undefined);
     try {
       this.#overlay = new OverlayLayer(dom.canvas, o.theme, this.#reduced, o.overlays);
       this.#guides = new GuideLines(this.#registry, this.#overlay.guides, this.#reduced);

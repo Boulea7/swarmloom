@@ -15,7 +15,8 @@ import {
  * freeze and an export's seek, so image layers (and the render page's live page) show a still copy.
  *
  * The stage can only read `data:` URLs, same-origin files (`.svg`, `.gif`, `.png`, `.apng`, `.webp`,
- * `.avif`) and same-origin `blob:` URLs. Other images, such as cross-origin ones, keep their own clock.
+ * `.avif`) and same-origin `blob:` URLs. Other images, such as cross-origin ones, keep their own clock,
+ * and so do the files of a visited page an overlay stage covers (see {@link pages}).
  */
 
 const FETCH_TIMEOUT_MS = 5000;
@@ -52,6 +53,15 @@ let knownChars = 0;
  * they are dropped once the last stage is destroyed (see {@link retainStills}).
  */
 let holders = 0;
+/**
+ * Documents an overlay stage covers, by stages alive: the visited page itself, under the extension
+ * or the bookmarklet. Their files are not fetched (see sameOriginFile): the page loaded them for its
+ * own images, and the stage's request (CORS mode, with the page's cookies, sent to the server again
+ * for a file it serves uncached) would tell the site that SwarmLoom runs on it. Those files keep their
+ * own clock, as cross-origin ones do; `data:` and `blob:` URLs, read without a request, still get
+ * their copies.
+ */
+const pages = new WeakMap<Document, number>();
 
 function dropStill(key: string): void {
   const still = stills.get(key);
@@ -91,14 +101,21 @@ function cached(key: string, make: () => Promise<string | null>): Promise<string
  * Keeps the still copies while the caller (a stage) lives. Returns its release: once every holder
  * released and none came back by the next task (a player rebuilt in place takes over the copies),
  * the copies and answers are dropped, so a destroyed player leaves neither its `data:` URLs nor
- * their copies behind.
+ * their copies behind. `page` is the visited page an overlay stage covers: its files are not fetched
+ * meanwhile (see {@link pages}).
  */
-export function retainStills(): () => void {
+export function retainStills(page?: Document): () => void {
   holders++;
+  if (page) pages.set(page, (pages.get(page) ?? 0) + 1);
   let held = true;
   return () => {
     if (!held) return;
     held = false;
+    if (page) {
+      const left = (pages.get(page) ?? 1) - 1;
+      if (left > 0) pages.set(page, left);
+      else pages.delete(page);
+    }
     if (--holders > 0) return;
     setTimeout(() => {
       if (holders > 0) return;
@@ -184,7 +201,8 @@ function documentOrigin(win: Window): string {
 
 /**
  * A same-origin URL that may hold an animated image, else null: an http(s) URL whose path ends in
- * one of the image extensions above, or a blob: URL (its type is checked once fetched).
+ * one of the image extensions above (not on a visited page an overlay stage covers, see
+ * {@link pages}), or a blob: URL (its type is checked once fetched).
  */
 function sameOriginFile(src: string, doc: Document): URL | null {
   const win = doc.defaultView;
@@ -195,6 +213,7 @@ function sameOriginFile(src: string, doc: Document): URL | null {
     // An opaque origin ("null") matches nothing: such a page cannot read other URLs.
     if (origin === "null" || url.origin !== origin) return null;
     if (url.protocol === "blob:") return url;
+    if (pages.has(doc)) return null;
     const web = url.protocol === "http:" || url.protocol === "https:";
     return web && FILE_PATH.test(url.pathname) ? url : null;
   } catch {
