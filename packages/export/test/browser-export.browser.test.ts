@@ -12,6 +12,7 @@ import emblem from "../../../examples/svg/emblem.svg?raw";
 import { VideoFileWriter } from "../src/browser/encode";
 import { type BrowserExportOptions, type BrowserExportResult, exportVideo } from "../src/browser/index";
 import { frameMicros } from "../src/browser/schedule";
+import type { RenderApi } from "../src/render/protocol";
 
 const FPS = 30;
 /** Frames whose pixels are kept on their way into the encoder, to compare with the decoded file. */
@@ -21,6 +22,8 @@ const addFrame = VideoFileWriter.prototype.addFrame;
 
 let container: HTMLElement;
 let observer: MutationObserver;
+/** Called with each export frame as it is added, before it loads. */
+let onFrame: ((frame: HTMLIFrameElement) => void) | null = null;
 
 beforeAll(() => {
   VideoFileWriter.prototype.addFrame = function (this: VideoFileWriter, index, rgba) {
@@ -36,6 +39,7 @@ beforeAll(() => {
       for (const node of record.addedNodes) {
         const win = (node as HTMLIFrameElement).contentWindow as (Window & Record<string, unknown>) | null;
         if (win) win.__vitest_browser_runner__ = { wrapDynamicImport: (load: () => unknown) => load() };
+        if (node instanceof HTMLIFrameElement) onFrame?.(node);
       }
     }
   });
@@ -136,7 +140,7 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
     expect(meanDiff(decoded[k], pixels)).toBeLessThan(3);
     expect(meanDiff(decoded[k], pixels, moved)).toBeLessThan(24);
   }
-  // Chromium encodes Opus in either container, so sound=true always gets a soundtrack here.
+  // Chromium and Firefox encode Opus in either container, so sound=true always gets a soundtrack here.
   expect(first.plan.audio).not.toBeNull();
   const audio = await input.getPrimaryAudioTrack();
   expect(audio?.codec).toBe(first.plan.audio);
@@ -159,4 +163,54 @@ it("exports a 2 s clip that parses, with identical frames on a second run", { ti
   if (!plainVideo) throw new Error("No video track");
   const [plainStart] = await decodeFrames(plainVideo, [0]);
   expect(meanDiff(plainStart as Uint8ClampedArray, start)).toBeLessThan(3);
+});
+
+it("cancelling removes the export frame at once, while it loads or starts", { timeout: 60_000 }, async () => {
+  for (const stage of ["load", "init"] as const) {
+    const controller = new AbortController();
+    let frame: HTMLIFrameElement | null = null;
+    let loaded = false;
+    let initialised = false;
+    onFrame = (added) => {
+      frame = added;
+      added.addEventListener("load", () => {
+        loaded = true;
+      });
+      if (stage === "load") {
+        controller.abort();
+        return;
+      }
+      // Cancel as the exporter calls init(), which needs a few tasks to load the input.
+      let api: RenderApi | undefined;
+      Object.defineProperty(added.contentWindow, "__swarmloom", {
+        configurable: true,
+        get: () => api,
+        set(value: RenderApi) {
+          const init = value.init;
+          value.init = (o) => {
+            const started = init.call(value, o);
+            started.then(
+              () => {
+                initialised = true;
+              },
+              () => undefined,
+            );
+            controller.abort();
+            return started;
+          };
+          api = value;
+        },
+      });
+    };
+    try {
+      const error = await exportClip({ signal: controller.signal }).catch((e: unknown) => e);
+      expect(error).toMatchObject({ name: "AbortError" });
+      expect(frame).not.toBeNull();
+      expect((frame as HTMLIFrameElement | null)?.isConnected).toBe(false);
+      // The export gave up without waiting for the frame's load or init().
+      expect([stage, stage === "load" ? loaded : initialised]).toEqual([stage, false]);
+    } finally {
+      onFrame = null;
+    }
+  }
 });

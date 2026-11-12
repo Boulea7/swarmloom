@@ -97,9 +97,31 @@ interface OpenFrame {
   api: RenderApi;
 }
 
-/** Adds the hidden frame and waits until its render page has installed `window.__swarmloom`. */
+function abortError(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("The export was cancelled.", "AbortError");
+}
+
+/**
+ * Settles as `work` does, or rejects with the signal's reason as soon as it aborts. For work in the
+ * export frame, which takes no signal: the export then removes the frame, and that stops the work.
+ */
+function unlessAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError(signal));
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+/**
+ * Adds the hidden frame and waits until its render page has installed `window.__swarmloom`. When
+ * the signal aborts meanwhile, the frame is removed at once, which stops its loading.
+ */
 async function openFrame(o: BrowserExportOptions, container: HTMLElement, scheme: ColorScheme): Promise<OpenFrame> {
   const { FRAME_MODULE_URL } = await import("./frame");
+  if (o.signal?.aborted) throw abortError(o.signal);
   const frame = container.ownerDocument.createElement("iframe");
   frame.setAttribute(FRAME_ATTRIBUTE, o.network ?? "https");
   frame.setAttribute("aria-hidden", "true");
@@ -107,20 +129,14 @@ async function openFrame(o: BrowserExportOptions, container: HTMLElement, scheme
   frame.title = "SwarmLoom export";
   frame.style.cssText = `${FRAME_STYLE}width:${o.width}px;height:${o.height}px;`;
   frame.srcdoc = frameDocument(FRAME_MODULE_URL, scheme);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const loaded = new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("The export frame did not start")), FRAME_START_TIMEOUT);
-    frame.addEventListener(
-      "load",
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
+    timer = setTimeout(() => reject(new Error("The export frame did not start")), FRAME_START_TIMEOUT);
+    frame.addEventListener("load", () => resolve(), { once: true });
   });
   container.append(frame);
   try {
-    await loaded;
+    await unlessAborted(loaded, o.signal);
     const win = frame.contentWindow as (Window & typeof globalThis) | null;
     const api = win?.__swarmloom;
     if (!win || !api) throw new Error("The export frame did not start");
@@ -128,6 +144,8 @@ async function openFrame(o: BrowserExportOptions, container: HTMLElement, scheme
   } catch (error) {
     frame.remove();
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -143,10 +161,6 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
   let hex = "";
   for (const b of new Uint8Array(digest)) hex += b.toString(16).padStart(2, "0");
   return hex;
-}
-
-function abortError(signal: AbortSignal): unknown {
-  return signal.reason ?? new DOMException("The export was cancelled.", "AbortError");
 }
 
 /**
@@ -185,6 +199,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
   if (signal?.aborted) throw abortError(signal);
   report("starting");
   const plan = await planEncoding(width, height, fps, sound, o.probe);
+  if (signal?.aborted) throw abortError(signal);
   const soundUnsupported = sound && plan.audio === null;
   if (soundUnsupported) warn("This browser cannot encode sound, so the video is silent");
 
@@ -208,8 +223,8 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     const pinned = pinMediaFeatures(win, shadows, scheme);
     media = pinned;
     const tail = settings.tail ?? 2500;
-    const info = await api.init({ ...settings, input: o.input, width, height, fps, tail });
-    if (signal?.aborted) throw abortError(signal);
+    // Loading the input can take long; cancelling removes the frame (below) rather than waiting.
+    const info = await unlessAborted(api.init({ ...settings, input: o.input, width, height, fps, tail }), signal);
 
     const rasterizer = new FrameRasterizer({
       document: win.document,
