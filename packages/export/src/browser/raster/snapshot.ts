@@ -1,6 +1,7 @@
 import { yieldTask } from "../schedule";
 import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
-import { BLANK_IMAGE, type ResourceCache } from "./resources";
+import { pickImageSets } from "./image-set";
+import { BLANK_IMAGE, LONG_PIECE, type ResourceCache } from "./resources";
 import { type InheritedValues, nativeControl, type StyleBaseline, styleText } from "./styles";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -180,6 +181,11 @@ export interface SnapshotSource {
   shadowRoots(): Iterable<ShadowRoot>;
   /** Faces created through the FontFace API. */
   faces(): readonly WatchedFace[];
+  /**
+   * Device px per CSS px the image is drawn at (default 1): a large photo is embedded only as large
+   * as its box needs (see {@link ResourceCache.fitted}).
+   */
+  scale?: number;
 }
 
 /** What one snapshot found worth reporting. */
@@ -211,13 +217,15 @@ export interface CanvasOverlay {
 
 /** One serialised frame. */
 export interface FrameSnapshot {
-  svg: string;
+  /** The image's markup (`parts` joined when read). */
+  readonly svg: string;
   /**
-   * `svg` in three pieces: before its `@font-face` rules, the rules, and after them. The rules are
-   * the same string object from frame to frame while the fonts stay the same, so whoever encodes
-   * the image can encode them once.
+   * `svg` in consecutive pieces, those of at least {@link LONG_PIECE} characters on their own: the
+   * `@font-face` rules and the data URLs of images, canvases and video frames among them are the
+   * same strings from frame to frame while they stay the same, so whoever encodes the image can
+   * encode each once.
    */
-  parts: readonly [string, string, string];
+  parts: readonly string[];
   stats: SnapshotStats;
   /** Canvases to draw over the image, in paint order (a WebGL model, then the cursor layer). */
   overlays: CanvasOverlay[];
@@ -247,6 +255,11 @@ interface ResourceUse {
   shared: number;
   /** Of those, the `<img>` sources. */
   images: number;
+  /**
+   * Device px of the largest box an `<img>` showing it is drawn in, Infinity when one may draw it
+   * larger than its box (see {@link imageBox}); a video poster counts as unbounded.
+   */
+  fit: { width: number; height: number };
 }
 
 /** A canvas that may become a {@link CanvasOverlay}, and its token index. */
@@ -338,17 +351,26 @@ interface DocView {
   reach: Box;
   /** The frame document itself (not a page inside it). */
   top: boolean;
+  /** Device px of the image per CSS px of this document, the transforms of the frames it is in included. */
+  scale: number;
 }
 
 /** Steps of a walk: each `yield` hands the main thread back until the walk resumes. */
 type Steps = Generator<void, void, void>;
 
-function docView(win: Window & typeof globalThis, width: number, height: number, top: boolean): DocView {
+function docView(
+  win: Window & typeof globalThis,
+  width: number,
+  height: number,
+  top: boolean,
+  scale: number,
+): DocView {
   return {
     win,
     viewport: { left: 0, top: 0, right: width, bottom: height },
     reach: { left: -INK_MARGIN, top: -INK_MARGIN, right: width + INK_MARGIN, bottom: height + INK_MARGIN },
     top,
+    scale,
   };
 }
 
@@ -377,27 +399,42 @@ function tokenKey(): string {
 /**
  * A token for a resource URL, resolved after the walk (see {@link token} for the kinds). URLs used
  * more than once in shareable places are defined once in the sheet: a page bitmap cropped into
- * many layers would otherwise be inlined in every one of them.
+ * many layers would otherwise be inlined in every one of them. `box` is the size an `<img>` ("i")
+ * draws it at (see {@link imageBox}), unbounded when left out.
  */
-function embedUrl(walk: Walk, url: string, kind: "a" | "i" | "c" | "s", fallback?: () => string | null): string {
+function embedUrl(
+  walk: Walk,
+  url: string,
+  kind: "a" | "i" | "c" | "s",
+  fallback?: () => string | null,
+  box?: { width: number; height: number } | null,
+): string {
   if (!url || url.startsWith("#")) return url;
   let index = walk.urlIndex.get(url);
   if (index === undefined) {
     index = walk.urls.length;
     walk.urlIndex.set(url, index);
-    walk.urls.push({ url, fallback, shared: 0, images: 0 });
+    walk.urls.push({ url, fallback, shared: 0, images: 0, fit: { width: 0, height: 0 } });
   }
   const use = walk.urls[index] as ResourceUse;
   use.fallback ??= fallback;
   if (kind === "i" || kind === "c" || kind === "s") use.shared++;
-  if (kind === "i") use.images++;
+  if (kind === "i") {
+    use.images++;
+    use.fit.width = Math.max(use.fit.width, box?.width ?? Number.POSITIVE_INFINITY);
+    use.fit.height = Math.max(use.fit.height, box?.height ?? Number.POSITIVE_INFINITY);
+  }
   return token(walk, kind, index);
 }
 
-/** Tokens for the `url()`s of a CSS value written in a style attribute ("c") or a rule ("s"). */
+/**
+ * Tokens for the `url()`s of a CSS value written in a style attribute ("c") or a rule ("s"), each
+ * `image-set()` first narrowed to the option the CLI shows.
+ */
 function embedCssUrls(walk: Walk, value: string, kind: "c" | "s"): string {
-  if (!value.includes("url(")) return value;
-  return value.replace(CSS_URL, (match, raw: string) => {
+  const css = pickImageSets(value);
+  if (!css.includes("url(")) return css;
+  return css.replace(CSS_URL, (match, raw: string) => {
     const url = raw.includes("\\") ? raw.replace(/\\(.)/g, "$1") : raw;
     if (!url || url.startsWith("#")) return match;
     return embedUrl(walk, url, kind);

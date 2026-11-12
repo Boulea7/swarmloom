@@ -311,9 +311,10 @@ export interface MediaPin {
  * colours (Windows high contrast) also repaint every element in the host's palette, so while they
  * are on, each of those documents and shadow roots also gets a sheet that opts it out.
  *
- * Not covered: `srcset`, `image-set()` and `<source media>` still pick images for the host; the
- * browser's own colours in child frames that opt into both schemes (`color-scheme: light dark`:
- * default text and background, form controls) follow the host's scheme; with forced colours on,
+ * Not covered: `srcset`, `image-set()` and `<source media>` still pick images for the host (the
+ * frame rasterizer draws the `image-set()` option the CLI shows, see pickImageSets); the browser's
+ * own colours in child frames that opt into both schemes (`color-scheme: light dark`: default
+ * text and background, form controls) follow the host's scheme; with forced colours on,
  * system colour keywords (`Canvas`, `CanvasText`) still give the host's palette; and scripts that
  * read `screen` or `navigator.maxTouchPoints` see the host's.
  */

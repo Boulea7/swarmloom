@@ -149,7 +149,10 @@ async function openFrame(o: BrowserExportOptions, container: HTMLElement, scheme
   }
 }
 
-/** Renders at one device pixel per CSS px, as the CLI does at `--scale 1`. */
+/**
+ * Scripts read one device pixel per CSS px, as in the CLI at `--scale 1`. The browser itself keeps
+ * the host's ratio: the frame rasterizer draws the `image-set()` option the CLI shows instead.
+ */
 function pinPixelRatio(win: Window): void {
   Object.defineProperty(win, "devicePixelRatio", { configurable: true, get: () => 1 });
 }
