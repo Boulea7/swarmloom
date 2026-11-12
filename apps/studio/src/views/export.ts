@@ -27,6 +27,11 @@ export interface ExportDeps {
    * video and the command make the same performance. Not `ctx.settings`, the user's saved ones.
    */
   settings: () => StudioSettings;
+  /**
+   * Stills the preview (true) while an export runs with the dialog open, so the export has the
+   * main thread to itself; false lets it play on. Closing the dialog lets go, reopening holds again.
+   */
+  holdPreview?(hold: boolean): void;
 }
 
 export interface Exporter {
@@ -99,6 +104,7 @@ export function createExporter(deps: ExportDeps): Exporter {
   let note: (() => string) | null = null;
   let statusAt = 0;
   let exporterModule: Promise<BrowserExporter> | null = null;
+  let previewHeld = false;
 
   const supported = () => Boolean(ctx.services.loadExporter) && canEncodeInBrowser();
   const soundOn = () => sound ?? settings().sound;
@@ -153,6 +159,7 @@ export function createExporter(deps: ExportDeps): Exporter {
       title: i18n.t("export.title"),
       closeLabel: i18n.t("export.close"),
       class: "panel-dialog panel-export",
+      onClose: () => holdPreview(),
     });
 
     // Shared choices: the in-page export and the command line make the same file from them.
@@ -305,6 +312,14 @@ export function createExporter(deps: ExportDeps): Exporter {
 
   let ui = build();
 
+  /** The preview stands still while an export runs in the open dialog, and plays otherwise. */
+  const holdPreview = () => {
+    const hold = running !== null && ui.panel.isOpen;
+    if (hold === previewHeld) return;
+    previewHeld = hold;
+    deps.holdPreview?.(hold);
+  };
+
   const statusText = (): string => (running ? progressText(progress) : (note?.() ?? (file ? fileText(file) : "")));
 
   /** Puts the state into the DOM; `force` also refreshes a status line updated less than a second ago. */
@@ -367,6 +382,7 @@ export function createExporter(deps: ExportDeps): Exporter {
     running = controller;
     const moveFocus = focusIsOurs();
     render();
+    holdPreview();
     if (moveFocus) ui.cancel?.focus();
     const { signal } = controller;
     const played = settings();
@@ -429,6 +445,7 @@ export function createExporter(deps: ExportDeps): Exporter {
     }
     const refocus = focusIsOnRun();
     render();
+    holdPreview();
     if (refocus) (file ? ui.download : ui.start)?.focus();
   };
 
@@ -443,6 +460,7 @@ export function createExporter(deps: ExportDeps): Exporter {
       ui.renderCommand();
       render();
       ui.panel.open(true);
+      holdPreview();
       // Fetch the exporter now, so it is ready by the time Export is pressed.
       if (supported()) loadExporter().catch((error: unknown) => console.warn("[studio] exporter unavailable", error));
     },
@@ -457,12 +475,14 @@ export function createExporter(deps: ExportDeps): Exporter {
         ui.renderCommand();
         ui.panel.open(true);
       }
+      holdPreview();
     },
     destroy() {
       running?.abort();
       running = null;
       clearFile();
       ui.panel.destroy();
+      holdPreview();
     },
   };
 }

@@ -281,7 +281,12 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   });
 
   // After the session: the dialog reads the settings its preview plays with as it builds.
-  const exporter = createExporter({ ctx, opened: () => session.opened, settings: () => session.playSettings });
+  const exporter = createExporter({
+    ctx,
+    opened: () => session.opened,
+    settings: () => session.playSettings,
+    holdPreview: (hold) => session.hold(hold),
+  });
   root.append(exporter.panel.root);
 
   renderOverlay();

@@ -1,4 +1,11 @@
-import type { LoadedSource, Player, PlayerOptions, PlayerState } from "@swarmloom/core";
+import {
+  type Clock,
+  type LoadedSource,
+  type Player,
+  type PlayerOptions,
+  type PlayerState,
+  RealtimeClock,
+} from "@swarmloom/core";
 import { isCancellation, StudioError } from "./errors";
 import type { SourceRef } from "./route";
 import type { StudioServices } from "./services";
@@ -67,6 +74,45 @@ function messageOf(error: unknown): string {
 }
 
 /**
+ * The preview player's clock: real time that {@link Session.hold} can stop while an in-page export
+ * needs the main thread. The player still decides with start() and stop() whether it runs; a held
+ * clock delivers no frames until it is let go, then goes on without a jump.
+ */
+class PreviewClock implements Clock {
+  private readonly time = new RealtimeClock();
+  private wanted = false;
+  private held = false;
+
+  get running(): boolean {
+    return this.wanted;
+  }
+
+  now(): number {
+    return this.time.now();
+  }
+
+  onTick(fn: (dt: number, now: number) => void): () => void {
+    return this.time.onTick(fn);
+  }
+
+  start(): void {
+    this.wanted = true;
+    if (!this.held) this.time.start();
+  }
+
+  stop(): void {
+    this.wanted = false;
+    this.time.stop();
+  }
+
+  hold(on: boolean): void {
+    this.held = on;
+    if (on) this.time.stop();
+    else if (this.wanted) this.time.start();
+  }
+}
+
+/**
  * One opened source and its player: resolve -> adapter load -> createPlayer, plus settings
  * changes (live player calls, a fresh player, or a fresh load) and teardown. Only one load runs at
  * a time; a newer request aborts the older one.
@@ -86,6 +132,12 @@ export class Session {
   private planExact = false;
 
   private settings: StudioSettings;
+  /** The current player's clock: Studio's own, so {@link hold} can stop it. */
+  private clock: PreviewClock | null = null;
+  /** {@link hold} is on; a new player starts held too. */
+  private held = false;
+  /** {@link hold} paused the player, so letting go resumes it. */
+  private heldPause = false;
   private controller: AbortController | null = null;
   private unsubscribe: Array<() => void> = [];
   private destroyed = false;
@@ -234,6 +286,26 @@ export class Session {
   }
 
   /**
+   * Stills the preview while an in-page export runs, so it does not take the main thread from the
+   * export: a building player pauses (its toolbar and the scrubber show it), and the clock stops
+   * in every state, so nothing moves or redraws. `false` plays on and resumes what the hold paused.
+   */
+  hold(on: boolean): void {
+    if (on === this.held) return;
+    this.held = on;
+    const player = this.player;
+    if (on && (player?.state === "intro" || player?.state === "building")) {
+      player.pause();
+      this.heldPause = true;
+    }
+    this.clock?.hold(on);
+    if (!on && this.heldPause) {
+      this.heldPause = false;
+      player?.resume();
+    }
+  }
+
+  /**
    * Jumps to a fraction of the planned build when the engine supports seeking. The right end (1)
    * lands on the finished build even while the plan is still a short estimate.
    */
@@ -293,6 +365,8 @@ export class Session {
     const loaded = this.loaded;
     if (!loaded) return;
     this.destroyPlayer();
+    const clock = new PreviewClock();
+    clock.hold(this.held);
     const options: PlayerOptions = {
       blueprint: loaded.blueprint,
       mode: "inline",
@@ -301,6 +375,9 @@ export class Session {
       controls: true,
       intro: true,
       ...playerOptionsFrom(this.settings, this.o.locale),
+      clock,
+      // The player stops only a clock it made itself: this one stops here once live, and in destroyPlayer().
+      onLive: () => clock.stop(),
       onClose: () => this.o.onClose?.(),
       ...this.o.overrides,
     };
@@ -312,6 +389,7 @@ export class Session {
       return;
     }
     this.player = player;
+    this.clock = clock;
     this.resetPlan(0);
     this.unsubscribe.push(
       player.on("progress", (e) => {
@@ -389,13 +467,16 @@ export class Session {
   private destroyPlayer(): void {
     for (const off of this.unsubscribe.splice(0)) off();
     const player = this.player;
+    const clock = this.clock;
     this.player = null;
-    if (!player) return;
+    this.clock = null;
+    this.heldPause = false;
     try {
-      player.destroy();
+      player?.destroy();
     } catch (error) {
       console.warn("[studio] player.destroy() failed", error);
     }
+    clock?.stop();
   }
 
   private disposeLoaded(): void {

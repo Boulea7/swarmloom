@@ -290,6 +290,28 @@ describe("Studio in a browser", () => {
     expect(document.activeElement).toBe(copy);
   });
 
+  it("pauses the preview while an export runs in the open dialog", async () => {
+    let finish: ((result: BrowserExportResult) => void) | null = null;
+    const { root, log } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      exportVideo: () => new Promise((resolve) => (finish = resolve)),
+    });
+    (await until(() => root.querySelector<HTMLButtonElement>(".play-big"))).click();
+    const { dialog, start, download } = await openExport(root);
+    const holds = () => log.calls.filter((call) => call === "pause" || call === "resume");
+    start.click();
+    expect(holds()).toEqual(["pause"]);
+    // Closed, the dialog lets the preview play on while the export goes on; reopened, it holds again.
+    dialog.close();
+    await until(() => holds().length === 2);
+    root.querySelector<HTMLButtonElement>('.appbar [aria-keyshortcuts="E"]')?.click();
+    expect(holds()).toEqual(["pause", "resume", "pause"]);
+    const result: Partial<BrowserExportResult> = { blob: new Blob(["V"]), finished: true, warnings: [] };
+    (await until(() => finish))(result as BrowserExportResult);
+    await until(() => !download.hidden);
+    expect(holds()).toEqual(["pause", "resume", "pause", "resume"]);
+  });
+
   it("cancels at once while the exporter is still loading", async () => {
     const unused = () => Promise.reject(new Error("not loaded yet"));
     const { root, services } = await mount("?example=svg-chart", false, {
