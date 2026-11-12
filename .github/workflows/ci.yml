@@ -70,13 +70,15 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       # --with-deps goes through the Ubuntu apt mirrors, whose DNS has failed for hours at a time.
-      # The runner image already carries Chrome's shared libraries, so then install the browser alone.
-      - name: Install Chromium
+      # The runner image already carries Chrome's and Firefox's shared libraries, so then install the browsers alone.
+      - name: Install Chromium and Firefox
         run: |
-          timeout 180 pnpm exec playwright install --with-deps chromium && exit 0
-          echo "::warning::apt mirrors unreachable, installing Chromium without its system packages"
-          pnpm exec playwright install chromium
+          timeout 240 pnpm exec playwright install --with-deps chromium firefox && exit 0
+          echo "::warning::apt mirrors unreachable, installing the browsers without their system packages"
+          pnpm exec playwright install chromium firefox
       - run: pnpm test:browser
+      # The in-browser exporter in Firefox too: its foreignObject rasterising and WebCodecs differ from Chromium's.
+      - run: pnpm test:firefox
       # Builds the --e2e Chromium package and drives it in Playwright's Chromium (apps/extension/test/e2e).
       - run: pnpm test:e2e
       # The CLI tests on a real browser and ffmpeg (apps/cli/test/render.test.ts, snapshot.test.ts):
