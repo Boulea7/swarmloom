@@ -34,3 +34,14 @@ it.each([
   expect(stillImageSource(src, document)).toBe(first);
   expect(decode).toHaveBeenCalledTimes(calls);
 });
+
+it.each([
+  { name: "a literal %", body: "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'>" },
+  { name: "an escape that is no UTF-8", body: "<svg xmlns='http://www.w3.org/2000/svg'><text>caf%E9</text>" },
+])("an animated SVG data: URL not strictly escaped ($name) still gets a still copy", ({ body }) => {
+  const src = `data:image/svg+xml,${body}<rect width='10' height='10'><animate attributeName='x' to='5' dur='1s'/></rect></svg>`;
+  const still = stillImageSource(src, document);
+  expect(typeof still).toBe("string");
+  expect(still).not.toBe(src);
+  expect(decodeURIComponent(still as string)).not.toContain("<animate");
+});

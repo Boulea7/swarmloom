@@ -161,6 +161,27 @@ export function svgDataUrl(markup: string, hash: string): string {
 }
 
 /**
+ * Text of a `data:` URL body as browsers read it: percent escapes decoded to bytes (a `%` that starts
+ * none kept as is, as in an unescaped width='100%'), then base64 when `base64`, then the bytes read as
+ * UTF-8 (a stray byte as U+FFFD). Throws on malformed base64.
+ */
+function dataText(body: string, base64: boolean): string {
+  if (!base64) {
+    try {
+      // The usual, strictly escaped body, decoded natively.
+      return decodeURIComponent(body);
+    } catch {
+      // A literal `%` or an escape that is no UTF-8: decoded byte by byte below.
+    }
+  }
+  let bin = body
+    .replace(/[^\0-\x7f]+/g, encodeURIComponent)
+    .replace(/%([0-9a-f]{2})/gi, (_all, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+  if (base64) bin = atob(bin.replace(/\s+/g, ""));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+/**
  * Still copy of an SVG `data:` URL; null for other URLs, still or undecodable ones. Through a promise
  * when `embed` answers one (see {@link stillSvgMarkup}).
  */
@@ -171,13 +192,7 @@ export function stillSvgDataUrl(src: string, embed?: StillEmbed): Maybe<string |
   const body = src.slice(head[0].length, end < 0 ? undefined : end);
   let text: string;
   try {
-    const raw = decodeURIComponent(body);
-    if (/;base64$/i.test(head[1] ?? "")) {
-      const bin = atob(raw.replace(/\s+/g, ""));
-      text = new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
-    } else {
-      text = raw;
-    }
+    text = dataText(body, /;base64$/i.test(head[1] ?? ""));
   } catch {
     return null;
   }
