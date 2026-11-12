@@ -99,10 +99,13 @@ function restMarquees(doc: Document): void {
  * the same pixel size, so nothing reflows (the adapter dropped `srcset`). Animated CSS images of its
  * elements (backgrounds, masks, border images, list markers) are overridden inline with still copies
  * the same way (core's holdAllCssImages); pseudo-elements keep theirs. The `<image>` and `<feImage>`
- * elements of its inline SVG show still copies too (core's holdSvgImages). Images the render page
- * cannot read (cross-origin files) keep their own clock.
+ * elements of its inline SVG show still copies too (core's holdSvgImages), and so do video posters
+ * and image buttons (`<input type="image">`), which `document.images` leaves out. Images the render
+ * page cannot read (cross-origin files) keep their own clock.
  */
 async function stillImages(page: LivePage, doc: Document): Promise<void> {
+  const posters = page.document.querySelectorAll("video[poster]");
+  const buttons = page.document.querySelectorAll("input[type=image][src]");
   await Promise.all([
     ...Array.from(page.document.images, async (img) => {
       const src = img.currentSrc || img.src;
@@ -112,9 +115,33 @@ async function stillImages(page: LivePage, doc: Document): Promise<void> {
       img.src = still;
       await img.decode().catch(() => undefined);
     }),
+    ...Array.from(posters, (video) => stillAttribute(video, "poster", doc)),
+    ...Array.from(buttons, (input) => stillAttribute(input, "src", doc)),
     holdAllCssImages(page.document.querySelectorAll<HTMLElement>("*"), doc, true),
     holdSvgImages(page.document, doc),
   ]);
+}
+
+/**
+ * Points the image URL attribute `name` of `el` (a video's `poster`, an image button's `src`) at its
+ * still copy, then waits until the copy is decoded in the page, so the element paints it at once.
+ * Neither element has a `decode()` of its own.
+ */
+async function stillAttribute(el: Element, name: "poster" | "src", doc: Document): Promise<void> {
+  const raw = el.getAttribute(name)?.trim();
+  if (!raw) return;
+  let src: string;
+  try {
+    src = new URL(raw, el.baseURI).href;
+  } catch {
+    return;
+  }
+  const still = await stillImageSource(src, doc);
+  if (still === src) return;
+  el.setAttribute(name, still);
+  const probe = el.ownerDocument.createElement("img");
+  probe.src = still;
+  await probe.decode().catch(() => undefined);
 }
 
 /**
