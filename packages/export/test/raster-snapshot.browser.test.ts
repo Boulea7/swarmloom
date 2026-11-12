@@ -154,11 +154,18 @@ it.each([
 
 it("writes live form state without duplicating authored attributes", async () => {
   const { win, rasterizer } = await frameOf(
-    "<input value=Go><input type=checkbox checked id=c><select><option>A<option selected>B</select>",
+    "<input value=Go id=t><input type=checkbox checked id=c><select id=s><option>A<option selected>B</select>",
   );
-  (win.document.getElementById("c") as HTMLInputElement).checked = false;
+  const byId = <T extends HTMLElement>(id: string) => win.document.getElementById(id) as T;
+  // Each control moves away from its authored state: the snapshot has to write what the page shows.
+  byId<HTMLInputElement>("t").value = "Hi";
+  byId<HTMLInputElement>("c").checked = false;
+  byId<HTMLSelectElement>("s").value = "A";
   const { svg } = await rasterizer.snapshot();
   expect(svg).not.toContain("checked");
+  expect(svg).toContain(' value="Hi"');
+  expect(svg).not.toContain('"Go"');
+  expect(svg.match(/<option[^>]*>/g)?.map((tag) => tag.includes(' selected="selected"'))).toEqual([true, false]);
   // A duplicate attribute makes the SVG ill-formed, so it would not decode.
   await expect(pixel(rasterizer, 0, 0)).resolves.toHaveLength(3);
 });
