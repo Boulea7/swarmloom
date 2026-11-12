@@ -183,6 +183,8 @@ node apps/cli/dist/cli.js render examples/svg/emblem.svg -o emblem.mp4
 
 Necesitas Chrome o Chromium; para MP4, WebM, GIF y WebP también necesitas FFmpeg 4 o superior. Ejecuta `node apps/cli/dist/cli.js doctor` para comprobar tu configuración. Cuando se publique el paquete de npm, `npx swarmloom` funcionará directamente (previsto).
 
+Opciones útiles para grabar videos: `--opening 1.5` muestra primero el contenido original, `--intro outline` dibuja primero los contornos grandes, `--overlays minimal` oculta los indicadores de tamaño y las guías, `--cue 12b:live` fija cuándo pasar a la página en vivo y `--beat-sync all` sincroniza los tecleos con el ritmo. Consulta todas las opciones en la [documentación de CLI](https://boulea7.github.io/swarmloom/docs/en/cli.html).
+
 ### Componente web
 
 El paquete de npm `@swarmloom/element` aún no está publicado (previsto). El elemento en sí ya funciona:
