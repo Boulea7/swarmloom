@@ -91,6 +91,23 @@ it("leaves out boxes under a frame that covers the viewport", async () => {
   expect((await drawn(rasterizer))(90, 90)).toEqual([0, 0, 255]);
 });
 
+it("shows what is under a frame whose page has no background, unless the page takes another colour scheme", async () => {
+  // As Chromium draws the go-live tail: the render page takes both schemes, the live page light.
+  for (const [childHead, under, color] of [
+    ["", true, [255, 200, 0]],
+    ["<meta name=color-scheme content=dark>", false, [18, 18, 18]],
+  ] as const) {
+    const { rasterizer } = await frameOf(`<meta name="color-scheme" content="light dark"><body style="margin:0">
+      <div style="position:fixed;inset:0;background:rgb(255,200,0)">beneath</div>
+      <iframe srcdoc="${childHead}<body style='margin:0'>live</body>"
+        style="position:fixed;left:0;top:0;width:${SIZE}px;height:${SIZE}px;border:0;z-index:1"></iframe>
+    </body>`);
+    const { svg } = await rasterizer.snapshot();
+    expect(svg.includes(">beneath<")).toBe(under);
+    expect((await drawn(rasterizer))(90, 90)).toEqual(color);
+  }
+});
+
 it("embeds an image used many times once for images and once for CSS", async () => {
   const canvas = new OffscreenCanvas(2, 1);
   const g = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;

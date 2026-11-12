@@ -494,10 +494,9 @@ interface Cover {
 }
 
 /**
- * A same-origin frame among `children` whose document box covers the whole viewport, or null. The
- * snapshot always draws a frame's document over a solid background, so siblings that keep their
- * subtree in a stacking context painted before it cannot show (the render page's stage under the
- * live page it went live to).
+ * A same-origin frame among `children` whose opaque document box covers the whole viewport, or
+ * null. Siblings that keep their subtree in a stacking context painted before it cannot show (the
+ * render page's stage under the live page it went live to, when that page has a background).
  */
 function coveringFrame(children: readonly Node[], view: DocView): Cover | null {
   let found: Cover | null = null;
@@ -522,8 +521,9 @@ function frameCover(frame: HTMLIFrameElement, view: DocView): number | null {
   }
   const win = doc?.defaultView;
   if (!doc?.documentElement || !win || frame.offsetWidth <= 0 || frame.offsetHeight <= 0) return null;
-  const bg = canvasColor(win, backgroundOwner(doc, win));
-  if (bg !== "#fff" && !bg.startsWith("rgb(")) return null;
+  // Opaque: over a backdrop, or in an opaque colour of its own (rgb() rather than rgba()).
+  const own = canvasBackground(win, backgroundOwner(doc, win), null);
+  if (canvasBackdrop(doc, frame) === null && !own.startsWith("rgb(")) return null;
   // The document box (see emitFrame): at the padding edge, clientWidth x clientHeight, clipped to
   // the padding box.
   const r = frame.getBoundingClientRect();
@@ -1219,7 +1219,7 @@ function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaratio
     x: Number.parseFloat(cs.getPropertyValue("padding-left")) || 0,
     y: Number.parseFloat(cs.getPropertyValue("padding-top")) || 0,
   };
-  yield* emitDocument(walk, docView(win, width, height, false), width, height, at);
+  yield* emitDocument(walk, docView(win, width, height, false), frame, width, height, at);
 }
 
 function transparentColor(color: string): boolean {
@@ -1244,10 +1244,51 @@ function backgroundOwner(doc: Document, win: Window): Element | null {
   return hasBackground(win.getComputedStyle(body)) ? body : null;
 }
 
-/** Canvas colour of a document: that of its background owner ({@link backgroundOwner}), else white. */
-function canvasColor(win: Window, owner: Element | null): string {
+/** Chromium's `Canvas` colour in each scheme. */
+const CANVAS = { light: "rgb(255, 255, 255)", dark: "rgb(18, 18, 18)" } as const;
+/** A `<meta name="color-scheme">` content that parses: identifiers apart by white space. */
+const META_SCHEME = /^\s*[a-z_-][\w-]*(?:\s+[a-z_-][\w-]*)*\s*$/i;
+
+/**
+ * The colour scheme `el` is drawn in, by Chromium's rule: `normal` takes the page's (its first
+ * `<meta name="color-scheme">` that parses), and dark is used when only it is offered or the
+ * window prefers it.
+ */
+function usedScheme(el: Element): keyof typeof CANVAS {
+  const doc = el.ownerDocument;
+  const win = doc.defaultView;
+  if (!win) return "light";
+  let keys = win.getComputedStyle(el).getPropertyValue("color-scheme").trim().toLowerCase().split(/\s+/);
+  if (keys[0] === "normal" || keys[0] === "") {
+    const meta = Array.from(doc.querySelectorAll('meta[name="color-scheme" i][content]')).find((m) =>
+      META_SCHEME.test(m.getAttribute("content") ?? ""),
+    );
+    keys = (meta?.getAttribute("content") ?? "").trim().toLowerCase().split(/\s+/);
+  }
+  if (!keys.includes("dark")) return "light";
+  return !keys.includes("light") || win.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+/**
+ * What a document's canvas shows under its background, or null for what lies under it: the
+ * `Canvas` colour of its root's scheme for the page itself, nothing for the document of `frame`
+ * unless the root and the frame element use different schemes (CSS Color Adjust 1, as Chromium
+ * draws it: a live page without a background shows the stage under it).
+ */
+function canvasBackdrop(doc: Document, frame: Element | null): string | null {
+  const scheme = usedScheme(doc.documentElement);
+  return frame && usedScheme(frame) === scheme ? null : CANVAS[scheme];
+}
+
+/**
+ * The CSS background of a document's canvas: the colour of its background owner
+ * ({@link backgroundOwner}) over the backdrop ({@link canvasBackdrop}).
+ */
+function canvasBackground(win: Window, owner: Element | null, backdrop: string | null): string {
   const color = owner ? win.getComputedStyle(owner).getPropertyValue("background-color") : "";
-  return color && !transparentColor(color) ? color : "#fff";
+  if (!color || transparentColor(color)) return backdrop ?? "transparent";
+  if (!backdrop || color.startsWith("rgb(")) return color;
+  return `linear-gradient(${color},${color}),${backdrop}`;
 }
 
 /** Background longhands {@link canvasImages} sets itself. */
@@ -1305,10 +1346,12 @@ function canvasImages(walk: Walk, view: DocView, owner: Element): string {
  * document's fixed-position boxes (paint containment), and in it the initial containing block,
  * moved by the scroll offset, with the root inside it. Fixed boxes so stay in view when the
  * document is scrolled. The element the canvas took its background from is drawn without it.
+ * `frame` is the element showing the document, null for the frame document itself.
  */
 function* emitDocument(
   walk: Walk,
   view: DocView,
+  frame: HTMLIFrameElement | null,
   width: number,
   height: number,
   at: { x: number; y: number } = { x: 0, y: 0 },
@@ -1316,7 +1359,7 @@ function* emitDocument(
   const doc = view.win.document;
   const owner = backgroundOwner(doc, view.win);
   if (owner) walk.onCanvas.add(owner);
-  const bg = canvasColor(view.win, owner);
+  const bg = canvasBackground(view.win, owner, canvasBackdrop(doc, frame));
   walk.out.push(
     `<div style="display:block;position:absolute;left:${at.x}px;top:${at.y}px;overflow:hidden;contain:paint;` +
       `width:${width}px;height:${height}px;background:${escapeAttr(bg)}">`,
@@ -1524,7 +1567,7 @@ async function walkFrame(
     `<div xmlns="${XHTML_NS}" style="display:block;position:relative;width:${width}px;height:${height}px;overflow:hidden">`,
   );
   try {
-    const steps = emitDocument(walk, docView(win, width, height, true), width, height);
+    const steps = emitDocument(walk, docView(win, width, height, true), null, width, height);
     for (;;) {
       walk.deadline = atomic ? Number.POSITIVE_INFINITY : performance.now() + SLICE_MS;
       if (steps.next().done) return walk;
