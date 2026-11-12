@@ -19,14 +19,18 @@ async function frameOf(html: string): Promise<{ win: Window; rasterizer: FrameRa
   frames.push(frame);
   await loaded;
   const win = frame.contentWindow as Window;
-  const rasterizer = new FrameRasterizer({
+  return { win, rasterizer: rasterizerOf(win) };
+}
+
+/** A new rasterizer reading `win`'s document, remembering nothing of earlier walks. */
+function rasterizerOf(win: Window): FrameRasterizer {
+  return new FrameRasterizer({
     document: win.document,
     width: SIZE,
     height: SIZE,
     shadows: { roots: () => [], stop() {} },
     fonts: { faces: () => [], stop() {} },
   });
-  return { win, rasterizer };
 }
 
 /** Draws the frame and returns a reader of RGB pixels. */
@@ -358,4 +362,48 @@ it("walks in slices and starts over when the page changes meanwhile", async () =
   const { svg, stats } = await rasterizer.snapshot();
   expect(stats.restarts).toBeGreaterThan(0);
   expect(svg).toContain("after");
+});
+
+// What changes between two walks of a long page: the far cards it leaves alone are written as the
+// last walk wrote them, and the frame comes out as a new rasterizer writes it. The even cards hold
+// their content in; the odd ones' content would flow around floats outside them, which any change
+// in the page may move.
+it.for<[string, (win: Window) => void, "all" | "even" | "none"]>([
+  ["nothing", () => {}, "all"],
+  // A paint-only animation in view, as after going live: only its own box is read again.
+  [
+    "an animation in view",
+    (win) => {
+      const animation = (win.document.getElementById("near") as HTMLElement).animate(
+        [{ opacity: 0 }, { opacity: 1 }],
+        1000,
+      );
+      animation.pause();
+      animation.currentTime = 500;
+    },
+    "all",
+  ],
+  ["the scroll", (win) => win.scrollBy(0, 60), "all"],
+  [
+    "a far card's text",
+    (win) => ((win.document.getElementById("c3") as HTMLElement).textContent = "x".repeat(500)),
+    "even",
+  ],
+  ["a far card's height", (win) => ((win.document.getElementById("c1") as HTMLElement).style.height = "220px"), "even"],
+  // Every box inherits it.
+  ["the page's color", (win) => (win.document.body.style.color = "rgb(0,0,255)"), "none"],
+])("writes far boxes again from the last walk until they change: %s", async ([name, change, reused]) => {
+  const card = (i: number) =>
+    `<section id=c${i} style="height:100px;border:1px solid${i % 2 ? "" : ";display:flow-root"}"><h3>far ${i}</h3><p>text</p></section>`;
+  const cards = Array.from({ length: 40 }, (_, i) => card(i)).join("");
+  const { win, rasterizer } = await frameOf(`<!doctype html><body style="margin:0">${cards}
+    <p id=near style="height:98px;margin:0;background:rgb(255,0,0)"></p><div style="height:2000px"></div>`);
+  win.scrollTo(0, 4060);
+  await rasterizer.snapshot();
+  change(win);
+  const { svg, stats } = await rasterizer.snapshot();
+  const fresh = await rasterizerOf(win).snapshot();
+  const count = stats.reused;
+  const which = count === 0 ? "none" : count > 30 ? "all" : count >= 15 ? "even" : String(count);
+  expect({ name, same: svg === fresh.svg, reused: which }).toEqual({ name, same: true, reused });
 });

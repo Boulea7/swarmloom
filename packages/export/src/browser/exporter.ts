@@ -183,6 +183,9 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * same pixels in each canvas drawn into the image, and no video, frame of another origin or SMIL
  * in it), as through an opening or after going live, a frame skips the snapshot and draws the last
  * image again under the cursors; a frame whose snapshot equals the last one's also reuses its image.
+ * Otherwise, as while one animation runs on a long live page, the snapshot writes each box away
+ * from the viewport as the last one wrote it while nothing in it changed and it stayed away, without
+ * reading it again.
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).

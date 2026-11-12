@@ -1,7 +1,8 @@
 import type { ShadowWatch } from "../../render/live";
+import { FarCache } from "./far";
 import { FontFaceCache, type FontWatch } from "./fonts";
 import { LONG_PIECE, networkGate, ResourceCache, type ResourcePolicy } from "./resources";
-import { type CanvasOverlay, type FrameSnapshot, type SnapshotStats, snapshotFrame } from "./snapshot";
+import { type CanvasOverlay, type FarBox, type FrameSnapshot, type SnapshotStats, snapshotFrame } from "./snapshot";
 import { StillWatch } from "./still";
 import { readBaseline, type StyleBaseline } from "./styles";
 
@@ -94,6 +95,8 @@ export class FrameRasterizer {
    */
   #encoded = new Map<string, string>();
   #last: DrawnFrame | null = null;
+  /** The boxes earlier snapshots wrote away from the viewport, written again while unchanged. */
+  readonly #far = new FarCache<FarBox>();
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -121,6 +124,7 @@ export class FrameRasterizer {
         shadowRoots: () => shadows.roots(),
         faces: () => fonts.faces(),
         scale,
+        far: this.#far,
       },
       this.#baseline,
       this.#resources,
