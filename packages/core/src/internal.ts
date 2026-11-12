@@ -164,7 +164,7 @@ export interface Stage extends StageApi {
   original?(alpha: number | null): void;
   /** Instantly reveal every layer to its final state (skip, reduced motion end). */
   finishAll(): void;
-  /** Back to a blank canvas with nothing revealed (replay). */
+  /** Back to a blank canvas with nothing revealed (replay); mounts the layers around the current view at once. */
   reset(): void;
   /** Overlay: sync window scroll, fade the stage out, then call opts.onDone. Inline: hide cursors and transient overlays, keep content. */
   goLive(): Promise<void>;

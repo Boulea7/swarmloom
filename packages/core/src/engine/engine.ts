@@ -386,8 +386,10 @@ export class Engine implements Player {
     this.#abortAll();
     this.#intro.end();
     this.#finale.end(this.#roster);
-    this.#guard(() => this.#stage.reset());
+    // Scroll first: reset() mounts the blank layers around the view at once, and that view must be
+    // the run's start, not the old one (a back seek would mount and drop a whole screen there).
     this.#guard(() => this.#stage.scrollTo(this.#deps.initialScroll));
+    this.#guard(() => this.#stage.reset());
     this.#resetRun();
     this.#state = "idle";
     this.#begin();

@@ -92,7 +92,16 @@ describe("Engine", () => {
     const h = harness(page, { follow: "tour", seed: 5 });
     void h.engine.play();
     h.run(200);
+    // The stage resets at the run's start: a reset mounts the layers around the view at once.
+    const resetAt: number[] = [];
+    const reset = h.stage.reset.bind(h.stage);
+    h.stage.reset = () => {
+      resetAt.push(h.stage.scrollY);
+      reset();
+    };
+    expect(h.stage.scrollY).toBeGreaterThan(0);
     h.engine.replay();
+    expect(resetAt).toEqual([0]);
     const replayed = finish(h);
     expect(replayed.log).toEqual(expected.log);
     expect(replayed.hash).toBe(expected.hash);
