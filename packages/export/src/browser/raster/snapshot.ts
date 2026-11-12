@@ -317,49 +317,71 @@ function zIndex(cs: CSSStyleDeclaration): number | null {
   return Number.isFinite(z) ? z : null;
 }
 
+/** What of a box {@link offscreen} still checks: everything. */
+const OPEN = 0;
+/** Below a positioned box that clips its content away from view: only fixed boxes escape the clip. */
+const CLIPPED = 1;
+/** Below a transparent box, or a clipping one that holds fixed boxes: only SVG elements with an id count. */
+const SEALED = 2;
+type Reach = typeof OPEN | typeof CLIPPED | typeof SEALED;
+
 /**
  * True when nothing of the flattened subtree of `el` can show: every box in it, widened by what
  * overflows it unclipped (text, pseudo-elements), lies outside `view.reach`, and it holds no SVG
- * element with an id (a gradient, symbol or clip path something visible may refer to). Below a
- * positioned box that clips its content and lies outside, nothing is read. With `floats`, a
- * floating box in it also counts as showing: it can move content that follows `el`. Reads boxes
- * and a few styles, a small fraction of what writing the subtree costs.
+ * element with an id (a gradient, symbol or clip path something visible may refer to, wherever it
+ * sits). Below a positioned box that clips its content and lies outside, only the position of each
+ * box is read: a fixed box escapes that clip. With `floats`, a floating box in it also counts as
+ * showing: it can move content that follows `el`. With `transparent`, `el` paints nothing at all
+ * and only the SVG ids count. Reads boxes and a few styles, a small fraction of what writing the
+ * subtree costs.
  */
-function offscreen(walk: Walk, el: Element, view: DocView, floats: boolean): boolean {
+function offscreen(walk: Walk, el: Element, view: DocView, floats: boolean, transparent = false): boolean {
   const area = view.reach;
   const near = (left: number, top: number, right: number, bottom: number) =>
     right >= area.left && left <= area.right && bottom >= area.top && top <= area.bottom;
   const stack: Element[] = [el];
+  const reaches: Reach[] = [transparent ? SEALED : OPEN];
   for (let next = stack.pop(); next; next = stack.pop()) {
+    let reach = reaches.pop() as Reach;
     if (next.namespaceURI === SVG_NS && next.id) return false;
-    const r = next.getBoundingClientRect();
-    if (near(r.left, r.top, r.right, r.bottom)) {
-      // A box sitting at the origin may be no box at all (display: none or contents).
-      const boxless = r.width === 0 && r.height === 0 && r.x === 0 && r.y === 0 && next.getClientRects().length === 0;
-      if (!boxless) return false;
+    if (reach !== SEALED) {
+      const cs = view.win.getComputedStyle(next);
+      const position = cs.getPropertyValue("position");
+      // A clip leaves out a fixed box only through a box that holds it.
+      if (reach === CLIPPED) reach = position === "fixed" ? OPEN : holdsFixed(cs) ? SEALED : CLIPPED;
+      if (reach === OPEN) {
+        const r = next.getBoundingClientRect();
+        if (near(r.left, r.top, r.right, r.bottom)) {
+          // A box sitting at the origin may be no box at all (display: none or contents).
+          const boxless =
+            r.width === 0 && r.height === 0 && r.x === 0 && r.y === 0 && next.getClientRects().length === 0;
+          if (!boxless) return false;
+        }
+        if (floats && next !== el && cs.getPropertyValue("float") !== "none") return false;
+        const box = next as HTMLElement;
+        const openX = cs.getPropertyValue("overflow-x") === "visible";
+        const openY = cs.getPropertyValue("overflow-y") === "visible";
+        if (box.offsetWidth > 0 || box.offsetHeight > 0) {
+          const right = openX
+            ? r.right + Math.max(0, box.scrollWidth - box.clientWidth) * (r.width / box.offsetWidth || 1)
+            : r.right;
+          const bottom = openY
+            ? r.bottom + Math.max(0, box.scrollHeight - box.clientHeight) * (r.height / box.offsetHeight || 1)
+            : r.bottom;
+          if (near(r.left, r.top, right, bottom)) return false;
+        }
+        // Its content is clipped to it, all but the fixed boxes it does not hold.
+        if (!openX && !openY && position !== "static") reach = holdsFixed(cs) ? SEALED : CLIPPED;
+      }
     }
-    const cs = view.win.getComputedStyle(next);
-    if (floats && next !== el && cs.getPropertyValue("float") !== "none") return false;
-    const box = next as HTMLElement;
-    const openX = cs.getPropertyValue("overflow-x") === "visible";
-    const openY = cs.getPropertyValue("overflow-y") === "visible";
-    if (box.offsetWidth > 0 || box.offsetHeight > 0) {
-      const right = openX
-        ? r.right + Math.max(0, box.scrollWidth - box.clientWidth) * (r.width / box.offsetWidth || 1)
-        : r.right;
-      const bottom = openY
-        ? r.bottom + Math.max(0, box.scrollHeight - box.clientHeight) * (r.height / box.offsetHeight || 1)
-        : r.bottom;
-      if (near(r.left, r.top, right, bottom)) return false;
-    }
-    // Its content is clipped to it (fixed-position content would escape; such pages are rare).
-    if (!openX && !openY && cs.getPropertyValue("position") !== "static") continue;
     // A frame's document stays inside the frame's box.
     if (next.localName === "iframe") continue;
     const children = flatChildren(walk, next);
     for (let i = children.length - 1; i >= 0; i--) {
       const child = children[i] as Node;
-      if (child.nodeType === 1) stack.push(child as Element);
+      if (child.nodeType !== 1) continue;
+      stack.push(child as Element);
+      reaches.push(reach);
     }
   }
   return true;
@@ -404,7 +426,7 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
 function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView): boolean {
   const position = cs.getPropertyValue("position");
   if (position !== "absolute" && position !== "fixed") return false;
-  const hidden = cs.getPropertyValue("opacity") === "0" || offscreen(walk, el, view, false);
+  const hidden = offscreen(walk, el, view, false, cs.getPropertyValue("opacity") === "0");
   return hidden && !stepsCounters(walk, [el], view);
 }
 

@@ -55,6 +55,30 @@ it("leaves out what is far from the viewport, keeping layout and what reaches in
   expect({ red: at(75, 50), green: at(25, 40) }).toEqual({ red: [255, 0, 0], green: [0, 255, 0] });
 });
 
+it("keeps what escapes a clipping or transparent box away from view: fixed boxes and SVG resources", async () => {
+  const { win, rasterizer } = await frameOf(`<body style="margin:0">
+    <div style="position:absolute;width:0;height:0;overflow:hidden"><svg>
+      <linearGradient id=g><stop stop-color="rgb(0,255,0)"/></linearGradient></svg></div>
+    <div style="position:absolute;opacity:0"><svg width=0 height=0>
+      <symbol id=s viewBox="0 0 1 1"><rect width=1 height=1 fill="rgb(0,0,255)"/></symbol></svg></div>
+    <div style="position:absolute;width:10px;height:10px;overflow:hidden"><p>clipped away</p></div>
+    <main style="height:1000px"></main>
+    <svg width=50 height=50 style="display:block"><rect width=50 height=50 fill="url(#g)"/></svg>
+    <svg width=50 height=50 style="display:block"><use href="#s" width=50 height=50 /></svg>
+    <footer style="position:relative;overflow:hidden;height:200px;margin-top:2000px">
+      <a style="position:fixed;right:0;bottom:0;width:40px;height:30px;display:block;background:rgb(255,0,0)"></a></footer>
+  </body>`);
+  win.scrollTo(0, 1000);
+  const { svg } = await rasterizer.snapshot();
+  expect(svg).not.toContain("clipped away");
+  const at = await drawn(rasterizer);
+  expect({ gradient: at(25, 25), symbol: at(25, 75), fixed: at(80, 85) }).toEqual({
+    gradient: [0, 255, 0],
+    symbol: [0, 0, 255],
+    fixed: [255, 0, 0],
+  });
+});
+
 it("leaves out boxes under a frame that covers the viewport", async () => {
   const { rasterizer } = await frameOf(`<body style="margin:0">
     <div style="position:fixed;inset:0;background:rgb(255,0,0)">covered</div>
