@@ -259,6 +259,8 @@ export class Engine implements Player {
   #errors = 0;
   #diagnosticsShown = false;
   #seeking = false;
+  /** The plugins' last frame was one nobody sees, so they may not have painted what it left. */
+  #pluginsUnpainted = false;
   /** finish() rushed this run, so its later frames no longer match a replay. */
   #rushed = false;
   #soundFailed = false;
@@ -893,7 +895,7 @@ export class Engine implements Player {
 
   /**
    * Advances every timeline by `dt` player ms; draws when `draw` (and not seeking), painting the
-   * cursor canvas only when `paint` (see Stage.render).
+   * cursor canvas only when `paint` (see Stage.render). Plugins get `paint` as their frame's `draw`.
    */
   #frame(dt: number, draw: boolean, paint = true): void {
     const vp = this.#readViewport();
@@ -922,7 +924,10 @@ export class Engine implements Player {
         default:
           break;
       }
-      this.#framePluginsTick(dt);
+      this.#framePluginsTick(dt, paint);
+    } else if (paint && this.#pluginsUnpainted) {
+      // Paused right after ticks nobody saw (a cued pause in an export): plugins paint what they left.
+      this.#framePluginsTick(0, true);
     }
     this.#userScrolled = false;
     if (draw && !this.#seeking) this.#render(paint);
@@ -1156,11 +1161,13 @@ export class Engine implements Player {
     }
   }
 
-  #framePluginsTick(dt: number): void {
+  /** Calls every plugin's frame hook; `draw` false: nobody sees this frame (see Plugin.frame). */
+  #framePluginsTick(dt: number, draw = true): void {
+    this.#pluginsUnpainted = !draw;
     for (const plugin of this.#framePlugins) {
       if (this.#failedPlugins.has(plugin)) continue;
       try {
-        plugin.frame?.(this.#pt, dt);
+        plugin.frame?.(this.#pt, dt, draw);
       } catch (error) {
         this.#failedPlugins.add(plugin);
         this.#report(new Error(`plugin "${plugin.name}" frame(): ${errorMessage(error)}`, { cause: error }));

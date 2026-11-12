@@ -263,7 +263,8 @@ export interface Clock {
   /**
    * Subscribe to ticks; `dt` in ms. `draw` is false for a tick whose frame nobody sees (an export's
    * engine tick between two captured frames): the player advances as usual but skips repainting
-   * the cursor canvas. A clock that leaves it out draws every tick. Returns an unsubscribe function.
+   * the cursor canvas and tells plugins (see {@link Plugin.frame}). A clock that leaves it out draws
+   * every tick. Returns an unsubscribe function.
    */
   onTick(fn: (dt: number, now: number, draw?: boolean) => void): () => void;
   start(): void;
@@ -444,8 +445,14 @@ export interface Plugin {
   renderers?: Record<string, LayerRenderer<any>>;
   /** Called once after the stage mounts; return a cleanup. Used for WebGL scenes, camera orbits, etc. */
   setup?(stage: StageApi, host: HTMLElement): void | (() => void);
-  /** Called every frame with engine time. */
-  frame?(now: number, dt: number): void;
+  /**
+   * Called every frame with engine time. `draw` is false for a frame nobody sees (an export's engine
+   * tick between two captured frames, see {@link Clock.onTick}): advance as usual, but painting (a
+   * WebGL render) may wait for the next frame with `draw` true, which must then show what the
+   * skipped ones left. A player paused after such frames calls once more, with `dt` 0 and the same
+   * `now`, when it next draws. Left out, `draw` means true.
+   */
+  frame?(now: number, dt: number, draw?: boolean): void;
   /** Map a stage point to a screen point (3D projection). Default identity. */
   project?(p: Point): Point;
   /**

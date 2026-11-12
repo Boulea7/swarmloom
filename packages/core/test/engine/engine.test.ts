@@ -582,6 +582,21 @@ describe("Engine", () => {
     expect(at.filter((p) => Math.hypot(p.x - spot.x, p.y - spot.y) < 12)).toHaveLength(2);
   });
 
+  it("tells plugins which frames nobody sees, and lets them paint once when paused after those", () => {
+    const calls: string[] = [];
+    const probe: Plugin = { name: "probe", frame: (now, dt, draw) => calls.push(`${now}/${dt}/${draw}`) };
+    const h = harness(samplePage(), { intro: false }, { plugins: [testPlugin, probe] });
+    void h.engine.play();
+    h.clock.advance(8, { draw: false });
+    h.clock.advance(8);
+    h.clock.advance(8, { draw: false });
+    h.engine.pause();
+    h.clock.advance(8, { draw: false });
+    h.clock.advance(8);
+    h.clock.advance(8);
+    expect(calls).toEqual(["8/8/false", "16/8/true", "24/8/false", "24/0/true"]);
+  });
+
   it("sizes the crew automatically and labels agents per mode", () => {
     expect(autoAgentCount(0, 390 * 844)).toBe(8);
     expect(autoAgentCount(260, 1280 * 800)).toBeGreaterThan(30);

@@ -304,7 +304,7 @@ const player = createPlayer({
 - Promise 只用于图片、字体等资源解码，不用于墙钟计时。
 - 随机性使用 `agent.rng`，不要调用 `Math.random()` 或 `Date.now()`。
 - 在 `finally` 中移除 overlay、释放按压并调用 `stage.finish()`。
-- `setup()` 可返回清理函数；`frame(now, dt)` 使用引擎时间。
+- `setup()` 可返回清理函数；`frame(now, dt, draw)` 使用引擎时间。导出在两个截取帧之间的引擎 tick 传入 `draw` 为 false：照常推进状态，WebGL 渲染可以留到下一个 `draw` 为 true 的帧，由它画出跳过的帧带来的变化。
 - `restSpot(vp, rng)` 可选：返回空闲光标下一个停靠点（stage 坐标），让它们避开舞台看不到的文字（如终端画面）；返回 null 时在视口中部游走。随机数只用传入的 `rng`。
 - 有内部状态的插件提供 `perPlayer()`：每个播放器创建时调用一次并使用返回的新实例，同一个 `LoadedSource` 因而可以同时驱动多个播放器。
 - 播放器以减少动态效果方式构建时 `stage.reducedMotion` 为 true，此时保持静止画面，不要自行启动动画。
@@ -324,7 +324,7 @@ virtual.advance(1000 / 30);
 virtual.stop();
 ```
 
-`VirtualClock.advance(ms)` 只在时钟运行时推进，且每次调用发出一次 tick。它不能在 tick 回调中重入，也不接受负数或非有限值。`advance(ms, { draw: false })` 发出一个不会被截取的 tick：播放器照常推进，只是不重绘光标画布。导出在两个截取帧之间的引擎 tick 就这样推进。
+`VirtualClock.advance(ms)` 只在时钟运行时推进，且每次调用发出一次 tick。它不能在 tick 回调中重入，也不接受负数或非有限值。`advance(ms, { draw: false })` 发出一个不会被截取的 tick：播放器照常推进，只是不重绘光标画布，插件的 `frame()` 也收到 `draw` 为 false。导出在两个截取帧之间的引擎 tick 就这样推进。
 
 相同种子与时钟只是确定性的一部分。字体、输入、视口、适配器和插件版本也必须固定。
 

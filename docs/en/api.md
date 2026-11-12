@@ -304,7 +304,7 @@ Choreography rules:
 - Use Promises only for asset decoding, never wall-clock timing.
 - Use `agent.rng`, not `Math.random()` or `Date.now()`.
 - Remove overlays, release presses and call `stage.finish()` in `finally`.
-- `setup()` may return cleanup; `frame(now, dt)` uses engine time.
+- `setup()` may return cleanup; `frame(now, dt, draw)` uses engine time. `draw` is false for an export's engine ticks between two captured frames: advance as usual, and leave a WebGL render to the next frame with `draw` true, which shows what the skipped ones changed.
 - Optional `restSpot(vp, rng)` returns where an idle cursor rests next (stage px), so idle cursors stay off text the stage cannot see, such as a terminal screen; null keeps the default wandering in the middle of the viewport. Use only the given `rng` for randomness.
 - A plugin that keeps state provides `perPlayer()`: every player calls it once and uses the fresh instance, so one `LoadedSource` can drive several players at once.
 - `stage.reducedMotion` is true when the player builds without motion; keep still poses then instead of starting animations.
@@ -324,7 +324,7 @@ virtual.advance(1000 / 30);
 virtual.stop();
 ```
 
-`VirtualClock.advance(ms)` advances only while running and emits exactly one tick. It cannot be re-entered from a tick callback, and rejects negative or non-finite values. `advance(ms, { draw: false })` emits a tick nobody sees: the player advances as usual but does not repaint its cursor canvas. Exports advance the engine ticks between two captured frames this way.
+`VirtualClock.advance(ms)` advances only while running and emits exactly one tick. It cannot be re-entered from a tick callback, and rejects negative or non-finite values. `advance(ms, { draw: false })` emits a tick nobody sees: the player advances as usual but does not repaint its cursor canvas, and plugins get `draw` false in `frame()`. Exports advance the engine ticks between two captured frames this way.
 
 The same seed and clock are only part of determinism. Fonts, input, viewport, adapters and plugin versions must also be fixed.
 
