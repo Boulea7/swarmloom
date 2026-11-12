@@ -11,7 +11,7 @@ SwarmLoom's multi-cursor rebuilding concept was inspired by:
 
 - **Joel Califa's Swarm website**, for the idea of many cursors collaborating to build an interface in view.
 - **Dhvanil Patel's Swarm Rebuild extension**, for demonstrating that interaction in a browser extension.
-- **HaloFlux**, for high-level inspiration behind the planned audio-reactive halo finale.
+- **HaloFlux**, for high-level inspiration behind the audio-reactive halo finale.
 
 Thank you to those authors for bringing these interaction ideas to a wider audience. SwarmLoom's multi-format adapters, deterministic engine, plugin architecture, cross-platform shells, offline audio and video pipelines are independently designed and implemented.
 
