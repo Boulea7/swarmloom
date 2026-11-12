@@ -328,20 +328,23 @@ it("cancelling removes the export frame at once, while it loads or starts", { ti
   }
 });
 
-it("cancelling while the sound or the file is made stops that work too", { timeout: 60_000 }, async () => {
+it("cancelling while a frame, the sound or the file is made stops that work too", { timeout: 60_000 }, async () => {
   type Call = (this: VideoFileWriter, ...args: unknown[]) => Promise<unknown>;
-  const writer = VideoFileWriter.prototype as unknown as Record<"addAudio" | "finish", Call>;
-  for (const method of ["addAudio", "finish"] as const) {
+  const writer = VideoFileWriter.prototype as unknown as Record<"addFrame" | "addAudio" | "finish", Call>;
+  for (const method of ["addFrame", "addAudio", "finish"] as const) {
     const original = writer[method];
     const controller = new AbortController();
     let frame: HTMLIFrameElement | null = null;
     let call: Promise<unknown> | null = null;
+    let calls = 0;
     onFrame = (added) => {
       frame = added;
     };
-    // Cancel as the exporter starts the call, as Cancel would during "sound" or "finishing".
+    // Cancel as the exporter starts the call, as Cancel would during "frames", "sound" or "finishing".
     writer[method] = function (...args) {
-      call = original.apply(this, args);
+      calls++;
+      // An encoder that never answers must not hold the export's own cancellation open.
+      call = method === "addFrame" ? new Promise(() => {}) : original.apply(this, args);
       call.catch(() => undefined);
       controller.abort();
       return call;
@@ -352,9 +355,10 @@ it("cancelling while the sound or the file is made stops that work too", { timeo
       );
       expect([method, error]).toMatchObject([method, { name: "AbortError" }]);
       expect((frame as HTMLIFrameElement | null)?.isConnected).toBe(false);
-      // The writer gave up rather than encoding the sound or muxing the file in the background.
+      // The writer gave up rather than encoding or muxing in the background.
       expect(call).not.toBeNull();
-      await expect(call).rejects.toBeDefined();
+      expect(calls).toBe(1);
+      if (method !== "addFrame") await expect(call).rejects.toBeDefined();
     } finally {
       writer[method] = original;
       onFrame = null;

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { type FaceSource, pickFaces, type Span } from "../src/browser/raster/fonts";
+import { type FaceSource, familiesOf, pickFaces, type Span } from "../src/browser/raster/fonts";
 
 /** A face of family "f" named after its descriptors. */
 function face(
@@ -27,6 +27,15 @@ const faces = [
   face("cyrillic", 400, false, [[0x400, 0x4ff]]),
   face("cjk", 400, false, [[0x4e00, 0x4e2f]]),
 ];
+
+it("reads font-family strings and escapes without splitting their commas", () => {
+  expect(familiesOf(String.raw`"Family, One", F\6f o, 'it\'s', sans-serif`)).toEqual([
+    "family, one",
+    "foo",
+    "it's",
+    "sans-serif",
+  ]);
+});
 
 it.each([
   ["a weight it has", ["normal|400|100%"], [], ["regular"]],

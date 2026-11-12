@@ -251,7 +251,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: hash });
     if (!ctx) throw new Error("A 2D canvas is not available");
     writer = new VideoFileWriter(plan, width, height, fps);
-    await writer.start();
+    await unlessAborted(writer.start(), signal);
     const out = writer;
 
     const frameSha256: string[] = [];
@@ -263,13 +263,13 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
           pinned.sweep();
           await rasterizer.draw(ctx, signal);
           if (!hash) {
-            await out.addFrame(index, canvas);
+            await unlessAborted(out.addFrame(index, canvas), signal);
             return;
           }
           const pixels = ctx.getImageData(0, 0, width, height).data;
           const digest = await sha256(pixels);
           if (digest) frameSha256.push(digest);
-          await out.addFrame(index, pixels);
+          await unlessAborted(out.addFrame(index, pixels), signal);
         },
       },
       {

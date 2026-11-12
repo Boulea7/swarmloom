@@ -43,17 +43,57 @@ export function watchFontFaces(win: Window & typeof globalThis): FontWatch {
   };
 }
 
-/** First family of a CSS `font-family` value, lower case and unquoted, plus the rest: every family named. */
+/** A CSS escape in a font family name, decoded as the browser reads it. */
+function unescapeFamily(value: string): string {
+  if (!value.includes("\\")) return value;
+  return value.replace(
+    /\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([^\n\r\f0-9a-f]))|\\[\n\r\f]/gi,
+    (_all, hex?: string, ch?: string) => {
+      if (hex === undefined) return ch ?? "";
+      const cp = Number.parseInt(hex, 16);
+      return cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? "�" : String.fromCodePoint(cp);
+    },
+  );
+}
+
+/** A family name as font matching reads it: unquoted, unescaped and lower case. */
+function familyName(value: string): string {
+  const trimmed = value.trim();
+  const quote = trimmed[0];
+  const unquoted = (quote === '"' || quote === "'") && trimmed.at(-1) === quote ? trimmed.slice(1, -1) : trimmed;
+  return unescapeFamily(unquoted).toLowerCase();
+}
+
+/** Every family in a CSS `font-family` list, lower case and unquoted; commas inside strings do not split it. */
 export function familiesOf(value: string): string[] {
-  return value
-    .split(",")
-    .map((f) =>
-      f
-        .trim()
-        .replace(/^["']|["']$/g, "")
-        .toLowerCase(),
-    )
-    .filter(Boolean);
+  const out: string[] = [];
+  let start = 0;
+  let quote = "";
+  let escaped = false;
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i] as string;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = "";
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === ",") {
+      const family = familyName(value.slice(start, i));
+      if (family) out.push(family);
+      start = i + 1;
+    }
+  }
+  const family = familyName(value.slice(start));
+  if (family) out.push(family);
+  return out;
 }
 
 /** Serialises a CSS string value (font family names) with double quotes. */
@@ -162,14 +202,6 @@ const ALWAYS_SHOWN: readonly Span[] = [
   [0x25a0, 0x25ff],
   [0x3000, 0x303f],
 ];
-
-/** A family name as the walk records it: lower case and unquoted. */
-function familyName(value: string): string {
-  return value
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .toLowerCase();
-}
 
 /** Descriptor values as the face matching sees them: CSS defaults spelled one way. */
 function normal(value: string | undefined, fallback: string): string {
