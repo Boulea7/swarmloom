@@ -106,8 +106,8 @@ describe("CLI command", () => {
     });
   });
 
-  // Windows opens these as devices even with an extension: the source could not be saved under its
-  // name and the video would be thrown away.
+  // Windows opens the first names as devices even with an extension, refuses `?`, `*` and `:` (an NTFS
+  // stream) and drops a trailing dot: the source could not be saved under its name.
   it.each([
     ["NUL.md", "NUL_.md", "NUL_.mp4"],
     ["con.final.md", "con_.final.md", "con_.final.mp4"],
@@ -115,6 +115,10 @@ describe("CLI command", () => {
     ["NUL .md", "NUL_.md", "NUL_.mp4"],
     ["console.md", "console.md", "console.mp4"],
     ["COM10.md", "COM10.md", "COM10.mp4"],
+    ["notes?.md", "notes.md", "notes.mp4"],
+    ["a*b.md", "a-b.md", "a-b.mp4"],
+    ["notes:stream.md", "notes-stream.md", "notes-stream.mp4"],
+    ["notes.md.", "notes.md", "notes.md.mp4"],
   ])("reads %j as %s and writes %s", (name, input, output) => {
     expect(command(name, true)).toEqual({
       text: `swarmloom render ${input} -o ${output} --seed 1`,

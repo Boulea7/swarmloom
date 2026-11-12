@@ -86,11 +86,23 @@ export function shellArg(arg: string): string | null {
  */
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?= *(?:\.|$))/i;
 
+/**
+ * Characters Windows refuses in a file name (`:` names an NTFS stream of another file, not a file),
+ * and a trailing dot or space, which Win32 drops on save while the CLI looks for the name as written.
+ * Control characters never pass {@link shellArg}.
+ */
+const WINDOWS_UNSAFE = /[<>:"/\\|?*]|[. ]$/;
+
+/** Whether a file of this name cannot be saved under exactly that name on Windows. */
+function windowsCannotHold(name: string): boolean {
+  return WINDOWS_DEVICE.test(name) || WINDOWS_UNSAFE.test(name);
+}
+
 /** "report.final.pdf" -> "report.final"; "NUL.md" -> "NUL_" so the output is a file on Windows too. */
 export function stem(name: string): string {
   const ext = extensionOf(name);
   const base = (ext ? name.slice(0, -(ext.length + 1)) : name).replace(/[^\p{L}\p{M}\p{N}._-]+/gu, "-");
-  return (base.replace(/^-+|-+$/g, "") || "swarmloom").replace(WINDOWS_DEVICE, "$&_");
+  return (base.replace(/^-+|[-.]+$/g, "") || "swarmloom").replace(WINDOWS_DEVICE, "$&_");
 }
 
 /** A file name made of {@link BARE} characters, keeping the extension: "R&D notes.md" -> "R-D-notes.md". */
@@ -164,9 +176,9 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
   const d = DEFAULT_SETTINGS;
   // A file name is literal: "%C3%A4.md" is that file, not "ä.md".
   let target = shellArg(o.targetIsFile ? o.target : unescapeLetters(o.target));
-  // Windows cannot hold a file named "NUL.md" (shared text can carry that name), so it is saved under
-  // a safe name like any other name a shell cannot hold.
-  if (o.targetIsFile && WINDOWS_DEVICE.test(o.target)) target = null;
+  // Windows cannot hold a file named "NUL.md", "notes?.md" or "a:b.md" (shared text can carry such a
+  // name), so it is saved under a safe name like any other name a shell cannot hold.
+  if (o.targetIsFile && windowsCannotHold(o.target)) target = null;
   let saveAs = o.targetIsFile && target !== null ? o.target : undefined;
   if (target === null) {
     saveAs = safeFileName(o.targetIsFile ? o.target : o.name);
