@@ -112,8 +112,11 @@ function cssAnimations(state: Live): Animation[] {
 /**
  * Pauses the drawing at `seconds` of its timeline: SMIL, and each CSS animation at the time since it
  * was first seen (0 s for the ones there from the start), so frames never depend on wall-clock time.
+ * SMIL is paused again on every call: Firefox ignores pauseAnimations() on the detached svg at mount,
+ * so its timeline would otherwise run on wall-clock time between frames once the drawing is inserted.
  */
 function seekDrawing(state: Live, seconds: number): void {
+  pause(state.svg);
   seek(state.svg, seconds);
   for (const anim of cssAnimations(state)) {
     const born = state.born.get(anim) ?? seconds;
@@ -206,6 +209,7 @@ export function createSmilPlayback(options: SmilPlaybackOptions = {}): SmilPlayb
       if (!svg) return wrapper;
       // Own shadow root: the drawing's <style> rules and ids must not reach the woven layers.
       (typeof wrapper.attachShadow === "function" ? wrapper.attachShadow({ mode: "open" }) : wrapper).appendChild(svg);
+      // Firefox ignores both while the svg is detached; the first frame after insertion repeats them.
       pause(svg);
       seek(svg, 0);
       // On player time the live switch changes nothing, so there is nothing to watch.

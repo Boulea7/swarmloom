@@ -21,10 +21,12 @@ const firefoxPath = process.env.SWARMLOOM_FIREFOX || undefined;
  * Browser tests that also run in Firefox and WebKit, whose SVG foreignObject rasterising, native
  * form and video controls, media queries, WebCodecs, animated images and scrolling differ from
  * Chromium's: the in-browser exporter and its rasteriser, the stage's frame determinism (still GIFs,
- * exact scroll offsets) and the go-live page. Files built on Chromium-only APIs (CDP, as in
- * export-media) stay out; single engine-specific cases skip themselves or loosen their bounds.
+ * exact scroll offsets), the SVG drawing's SMIL clock and the go-live page. Files built on
+ * Chromium-only APIs (CDP, as in export-media) stay out; single engine-specific cases skip
+ * themselves or loosen their bounds.
  */
 const crossBrowserTests = [
+  "packages/adapter-svg/test/smil.browser.test.ts",
   "packages/core/test/stage/stage.browser.test.ts",
   "packages/export/test/browser-export.browser.test.ts",
   "packages/export/test/export.browser.test.ts",
