@@ -172,3 +172,20 @@ export async function decodeShare(encoded: string): Promise<SharePayload> {
   const settings = shareSettings(record.s);
   return Object.keys(settings).length > 0 ? { name, text: record.x, settings } : { name, text: record.x };
 }
+
+/**
+ * `encoded` with the settings `keys` taken out of it, the same text kept; null when it carries
+ * none of them.
+ *
+ * @throws ShareError like {@link decodeShare} and {@link encodeShare}.
+ */
+export async function withoutShareSettings(
+  encoded: string,
+  keys: readonly (keyof StudioSettings)[],
+): Promise<string | null> {
+  const { name, text, settings } = await decodeShare(encoded);
+  if (!settings || !keys.some((key) => key in settings)) return null;
+  const kept: Partial<StudioSettings> = { ...settings };
+  for (const key of keys) delete kept[key];
+  return encodeShare({ name, text, settings: kept });
+}

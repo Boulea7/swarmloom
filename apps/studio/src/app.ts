@@ -13,6 +13,7 @@ import {
   sanitizeSettings,
   saveSettings,
 } from "./settings";
+import { SHARE_SETTING_KEYS, withoutShareSettings } from "./share";
 import { type LocalInput, readLocalFile } from "./source";
 import { createPanel, type Panel, topModal } from "./ui/dialog";
 import { h, isTyping } from "./ui/dom";
@@ -98,6 +99,10 @@ export async function mountStudio(
    * the view goes. A key the user changes leaves it, the user's value stays.
    */
   let replaced: Partial<StudioSettings> = {};
+  /** Bumped per history entry shown, so an edit of an entry's URL never lands on the next one. */
+  let entry = 0;
+  /** Edits of the `#d=` payload, one after another: each starts from the payload the last one left. */
+  let payloadEdits: Promise<void> = Promise.resolve();
   // The page CSP backs up the adapters' own network checks (decisions-v1 C03). It only tightens:
   // with remote assets off from the start, before anything loads.
   let assetsBlocked = false;
@@ -282,6 +287,7 @@ export async function mountStudio(
       console.warn("[studio] history update failed", error);
     }
     route = next;
+    entry += 1;
     navigated = true;
     renderView();
   }
@@ -322,7 +328,7 @@ export async function mountStudio(
     stored = { ...stored, ...clean };
     saveSettings(services.storage, stored);
     // A setting the user changes stops being a per-visit URL or source override. The entry's URL
-    // drops it too, so Back and Forward to this entry keep the user's value.
+    // drops it too, its query and its `#d=` payload, so Back, Forward and a reload keep the user's value.
     const overrides = { ...route.overrides };
     for (const key of keys) {
       delete overrides[key];
@@ -337,10 +343,41 @@ export async function mountStudio(
         console.warn("[studio] history update failed", error);
       }
     }
+    if (route.source?.kind === "shared" && keys.some((key) => SHARE_SETTING_KEYS.includes(key))) {
+      dropFromPayload(keys);
+    }
     settings = { ...prev, ...clean };
     settingsApplied(prev);
     view?.settingsChanged?.(prev, settings);
     localeApplied(prev);
+  }
+
+  /**
+   * Takes `keys` out of the settings the current entry's `#d=` payload carries, the way a changed
+   * setting's parameter leaves the query (encoding is async, so it lands a moment later). Dropped
+   * once the user has left the entry.
+   */
+  function dropFromPayload(keys: readonly (keyof StudioSettings)[]): void {
+    const at = entry;
+    const edit = async () => {
+      const source = route.source;
+      if (at !== entry || destroyed || source?.kind !== "shared") return;
+      let payload: string | null;
+      try {
+        payload = await withoutShareSettings(source.payload, keys);
+      } catch {
+        // A damaged payload carries no settings to drop.
+        return;
+      }
+      if (!payload || at !== entry || destroyed) return;
+      route = { ...route, source: { kind: "shared", payload } };
+      const url = new URL(win.location.href);
+      const hash = new URLSearchParams(url.hash.slice(1));
+      hash.set("d", payload);
+      url.hash = hash.toString();
+      win.history.replaceState(win.history.state, "", url.href);
+    };
+    payloadEdits = payloadEdits.then(edit).catch((error) => console.warn("[studio] history update failed", error));
   }
 
   function sourceSettings(patch: Partial<StudioSettings>): void {
@@ -446,6 +483,7 @@ export async function mountStudio(
   const onPop = (event: PopStateEvent) => {
     releaseLaunch();
     route = parseRoute(win.location.href, routeOptions);
+    entry += 1;
     local = localOf(event.state);
     navigated = true;
     // The entry's own URL settings apply again over the saved ones, and none of the left entry's
