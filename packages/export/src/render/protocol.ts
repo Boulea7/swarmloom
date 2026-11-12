@@ -182,8 +182,9 @@ export interface RenderApi {
    */
   step(ms: number): Promise<RenderStep>;
   /**
-   * Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for `durationMs`. Pass the
-   * video's length (frames * 1000 / fps): its last frame lasts one frame past the elapsed time, the default.
+   * Base64 WAV (48 kHz stereo, 16-bit) of the sound log rendered offline for `durationMs` (default: the
+   * elapsed time). The last frame stays up for one more frame: step through that interval without a
+   * screenshot first, so the log holds its sounds, and pass the video's length (frames * 1000 / fps).
    */
   audioWav(durationMs?: number): Promise<string>;
   /**
@@ -194,7 +195,8 @@ export interface RenderApi {
   soundLog(): Promise<SoundEvent[]>;
   /**
    * Every stretch of scrolling so far (the tour, a go-live glide), in time order, on the same clock
-   * as {@link soundLog}. A stretch still moving at the last step ends there.
+   * as {@link soundLog}. A stretch still moving at the last step ends there: read it before stepping
+   * past the last frame.
    */
   scrollLog(): Promise<RenderScroll[]>;
   /** Destroys the player and releases the loaded source; `init()` may be called again afterwards. */

@@ -196,15 +196,20 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       onFrame: (frame, step) => progress.update({ frame, ...step }),
     });
     const fonts = evidence?.manifest ? await driver.platformFonts() : undefined;
+    // Stretches of scrolling are timed by the frames: read them before the clock runs past the last one.
+    const scrolls = evidence?.events ? await driver.scrollLog() : undefined;
+    const soundtrack = job.settings.sound && formatHasAudio(job.format);
+    // The last frame stays up until durationMs. Run the clock through that interval too (nothing is
+    // captured) so the sounds raised in it are logged, and frame rates that divide the engine's tick
+    // rate get one soundtrack.
+    if (soundtrack || evidence?.events) await driver.step(result.durationMs - result.elapsedMs);
 
     progress.phase("encoding");
     let output = await writer.finish();
     let audio = false;
     let wav: Uint8Array | null = null;
-    // A single frame never advanced the clock, so there is no soundtrack to render.
-    if (job.settings.sound && formatHasAudio(job.format) && result.elapsedMs > 0) {
+    if (soundtrack) {
       progress.phase("rendering sound");
-      // The whole video: the last frame lasts one frame past the elapsed time.
       wav = await driver.audioWav(result.durationMs);
       if (wav) {
         progress.phase("adding sound");
@@ -213,7 +218,6 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       }
     }
     const events = evidence?.events ? await driver.soundLog() : undefined;
-    const scrolls = evidence?.events ? await driver.scrollLog() : undefined;
     const browserVersion = browser.version();
     await driver.dispose();
     progress.clear();

@@ -286,6 +286,9 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     // its encoding and muxing, and removes the frame.
     if (plan.audio) {
       report("sound");
+      // The last frame stays up until durationMs. Run the clock through that interval too (nothing is
+      // captured) so the sounds raised in it are logged, as the CLI does.
+      await unlessAborted(api.step(result.durationMs - result.elapsedMs), signal);
       const events = await unlessAborted(api.soundLog(), signal);
       const soundOptions = {
         enabled: true,

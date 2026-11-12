@@ -58,6 +58,11 @@ export interface FrameScheduleResult {
   frames: number;
   /** Video length: frames / fps, ms. */
   durationMs: number;
+  /**
+   * Engine time of the last captured frame, ms. The schedule stops there; a caller that needs the
+   * engine through the whole video (the soundtrack) steps `durationMs - elapsedMs` more.
+   */
+  elapsedMs: number;
   /** Engine time of the first frame that showed the build complete, or null if none did. */
   builtAtMs: number | null;
   /** False when `maxFrames` cut the build short. */
@@ -128,6 +133,7 @@ export async function runFrameSchedule(driver: FrameDriver, o: FrameScheduleOpti
   return {
     frames,
     durationMs: frameTime(frames, o.fps),
+    elapsedMs: frameTime(frames - 1, o.fps),
     builtAtMs: builtAtFrame === null ? null : frameTime(builtAtFrame, o.fps),
     finished: last.done || builtAtFrame !== null,
     last,

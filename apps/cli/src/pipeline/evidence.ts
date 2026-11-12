@@ -93,7 +93,8 @@ export function eventsDocument(
   meta: { fps: number; frames: number; durationMs: number; bpm?: number; beatSync?: true | "all" },
   scrolls: readonly RenderScroll[] = [],
 ): string {
-  const frameOf = (t: number) => Math.round((t * meta.fps) / 1000);
+  // The log runs to the end of the video, past the last frame's time: that frame is the nearest one.
+  const frameOf = (t: number) => Math.min(meta.frames - 1, Math.round((t * meta.fps) / 1000));
   const heard = soundTimes(events, { bpm: meta.bpm, sound: { beatSync: meta.beatSync ?? true } });
   // renderOffline() leaves out every sound at or after the end of the video.
   const heardAt = (i: number) => {

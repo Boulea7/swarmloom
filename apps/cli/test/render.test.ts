@@ -292,6 +292,22 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
     TIMEOUT,
   );
 
+  it(
+    "runs the clock through the last frame's interval before reading the sound log",
+    async () => {
+      // 5 frames at 10 fps: the last shows 400 ms, the video lasts 500. The double logs its chord at
+      // the time its clock reached (up to its 1 s build).
+      const args = ["render", path.join(FIXTURES, "page/index.html"), "-o", "end/end.mp4", "--duration", "0.5"];
+      const extra = ["--fps", "10", "--width", "160", "--height", "90", "--events-out", "end/ev.json", "--quiet"];
+      const run = startCli([...args, ...extra], fakePage);
+      const { code, stderr } = await run.done;
+      expect(code, stderr).toBe(0);
+      const doc = JSON.parse(await readFile(path.join(work, "end/ev.json"), "utf8"));
+      expect(doc.events.at(-1)).toMatchObject({ name: "chord", t: 500, frame: 4 });
+    },
+    TIMEOUT,
+  );
+
   // Windows has no SIGINT delivery to child processes: kill("SIGINT") terminates them outright.
   it.skipIf(process.platform === "win32")(
     "cleans up and exits 130 on Ctrl+C without leaving output",

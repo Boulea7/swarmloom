@@ -27,7 +27,10 @@ export interface FrameLoopResult {
   frames: number;
   /** Video length: frames / fps, in ms. */
   durationMs: number;
-  /** Engine time of the last captured frame, in ms. */
+  /**
+   * Engine time of the last captured frame, in ms. The loop stops there; a caller that needs the
+   * engine through the whole video (the soundtrack) steps `durationMs - elapsedMs` more.
+   */
   elapsedMs: number;
   /** False when the loop stopped at maxFrames before the page reported done. */
   finished: boolean;

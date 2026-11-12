@@ -21,7 +21,10 @@ export interface FrameExportResult {
   frames: number;
   /** Video length: `frames * 1000 / fps`. */
   durationMs: number;
-  /** Sound events of the run, ready for `renderAudioWav(soundLog, durationMs)`. */
+  /**
+   * Sound events of the whole video, the last frame's interval included, ready for
+   * `renderAudioWav(soundLog, durationMs)`.
+   */
   soundLog: readonly SoundEvent[];
   /** Recoverable errors the player reported during the run (skipped layers, failed tasks). */
   warnings: readonly Error[];
@@ -76,9 +79,14 @@ export async function exportFrames(
       await session.step(next - session.elapsed);
     }
     const count = index + 1;
+    const durationMs = (count * 1000) / fps;
+    // The last frame stays up until durationMs. Run the clock through that interval too (nothing is
+    // captured) so the sounds raised in it are logged, and frame rates that divide the tick rate get
+    // one soundtrack.
+    await session.step(durationMs - session.elapsed);
     return {
       frames: count,
-      durationMs: (count * 1000) / fps,
+      durationMs,
       soundLog: [...session.soundLog],
       warnings: [...session.warnings],
     };
