@@ -91,6 +91,8 @@ const INK_MARGIN = 256;
 const HOLLOW_DISPLAYS = new Set(["block", "flow-root", "flex", "grid", "list-item"]);
 /** Of those, the ones that hold their content's margins and floats in (block formatting contexts). */
 const CONTAINED_DISPLAYS = new Set(["flow-root", "flex", "grid"]);
+/** HTML lists: the list items inside one number that list only. */
+const LISTS = new Set(["ol", "ul", "menu"]);
 const SIDES = ["top", "right", "bottom", "left"] as const;
 const RADII = ["top-left", "top-right", "bottom-right", "bottom-left"] as const;
 /** Longest stretch of walking before the page gets the main thread back, ms. */
@@ -404,34 +406,46 @@ function offscreen(walk: Walk, el: Element, view: DocView, floats: boolean, tran
   return true;
 }
 
-function stepsCounter(cs: CSSStyleDeclaration): boolean {
+function isList(el: Element): boolean {
+  return el.namespaceURI === XHTML_NS && LISTS.has(el.localName);
+}
+
+/**
+ * Whether a box with this style steps a counter. A list item steps `list-item` without saying so
+ * in `counter-increment`, and numbers the items after it in the nearest list around it: `listed`
+ * says that list is inside the subtree being checked, so its numbers do not reach out of it.
+ */
+function stepsCounter(cs: CSSStyleDeclaration, listed: boolean): boolean {
+  if (!listed && cs.getPropertyValue("display").includes("list-item")) return true;
   return cs.getPropertyValue("counter-increment") !== "none" || cs.getPropertyValue("counter-set") !== "none";
 }
 
 /**
  * Whether an element of the flattened subtrees of `nodes`, or one of its `::before`/`::after`
- * boxes, increments or sets a counter. Generated content after them may show that counter, and the
- * snapshot's clones count again: leaving them out would change the numbers. Resets are fine, a
- * counter reset inside a subtree is not seen after it.
+ * boxes, increments or sets a counter, a list item outside any list among them included. Generated
+ * content and list markers after them may show that counter, and the snapshot's clones count
+ * again: leaving them out would change the numbers. Resets are fine, a counter reset inside a
+ * subtree is not seen after it.
+ *
+ * @param listed The nodes are the content of a list, which numbers its own items.
  */
-function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boolean {
-  const stack = nodes.filter((node): node is Element => node.nodeType === 1).reverse();
+function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView, listed = false): boolean {
+  const stack: [Element, boolean][] = [];
+  for (const node of nodes) if (node.nodeType === 1) stack.push([node as Element, listed]);
   for (let next = stack.pop(); next; next = stack.pop()) {
-    const cs = view.win.getComputedStyle(next);
+    const [el, inList] = next;
+    const cs = view.win.getComputedStyle(el);
     if (cs.getPropertyValue("display") === "none") continue;
-    if (stepsCounter(cs)) return true;
+    if (stepsCounter(cs, inList)) return true;
     for (const pseudo of ["::before", "::after"] as const) {
-      const ps = view.win.getComputedStyle(next, pseudo);
+      const ps = view.win.getComputedStyle(el, pseudo);
       const content = ps.getPropertyValue("content");
-      if (content && content !== "none" && content !== "normal" && stepsCounter(ps)) return true;
+      if (content && content !== "none" && content !== "normal" && stepsCounter(ps, inList)) return true;
     }
     // A frame's document counts on its own.
-    if (next.localName === "iframe") continue;
-    const children = flatChildren(walk, next);
-    for (let i = children.length - 1; i >= 0; i--) {
-      const child = children[i] as Node;
-      if (child.nodeType === 1) stack.push(child as Element);
-    }
+    if (el.localName === "iframe") continue;
+    const childListed = inList || isList(el);
+    for (const child of flatChildren(walk, el)) if (child.nodeType === 1) stack.push([child as Element, childListed]);
   }
   return false;
 }
@@ -477,7 +491,7 @@ function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocV
   }
   if (el.getBoundingClientRect().height <= 0) return false;
   // The box keeps its own counters and pseudo-elements, its content's would go.
-  return offscreen(walk, el, view, !contained) && !stepsCounters(walk, flatChildren(walk, el), view);
+  return offscreen(walk, el, view, !contained) && !stepsCounters(walk, flatChildren(walk, el), view, isList(el));
 }
 
 /** Whether the children of a box with this style sit in a layout {@link hollowable} accepts. */

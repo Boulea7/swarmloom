@@ -80,16 +80,29 @@ it("writes one href for an SVG element that has both href and xlink:href", async
   expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
 });
 
-it("keeps the counter steps of off-screen content", async () => {
-  const sections = Array.from({ length: 8 }, (_, i) => `<section><h2>S${i + 1}</h2></section>`).join("");
-  const { win, rasterizer } = await frameOf(
+/** An ordered list whose first 30 items sit far above the view in a wrapper, between `open` and `close`. */
+const list = (open = "", close = "") =>
+  "<style>body{margin:0;font:10px/10px monospace}ol,ul{margin:0}div{padding:1px 0}</style>" +
+  `<ol><div>${open}${"<li>i".repeat(30)}${close}</div><div style=height:400px></div><div><li>i<li>i</div></ol>`;
+
+it.each([
+  [
+    "explicit counters",
     "<style>body{margin:0;counter-reset:s}section{display:flow-root;height:200px}" +
-      `h2{counter-increment:s}h2::before{content:counter(s)}</style>${sections}`,
-  );
-  win.scrollTo(0, 1200);
+      "h2{counter-increment:s}h2::before{content:counter(s)}</style>" +
+      Array.from({ length: 8 }, (_, i) => `<section><h2>S${i + 1}</h2></section>`).join(""),
+    /<h2/g,
+    8,
+  ],
+  ["list items of the outer list", list(), /<li/g, 32],
+  // Items of a list of their own number nothing after it: their wrapper still goes empty.
+  ["a list of its own", list("<ul>", "</ul>"), /<li/g, 2],
+])("keeps the counter steps of off-screen content: %s", async (_name, html, tag, count) => {
+  const { win, rasterizer } = await frameOf(html);
+  win.scrollTo(0, win.document.documentElement.scrollHeight);
   const { svg } = await rasterizer.snapshot();
-  // The snapshot counts again: a heading left out would lower every number after it.
-  expect(svg.match(/<h2/g)).toHaveLength(8);
+  // The snapshot counts again: an item left out would lower every number after it.
+  expect(svg.match(tag)).toHaveLength(count);
 });
 
 it("writes live form state without duplicating authored attributes", async () => {
