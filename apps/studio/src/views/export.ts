@@ -12,6 +12,7 @@ import {
 } from "../export/browser";
 import { buildCliCommand, FRAME_PRESETS, VIDEO_FORMATS, type VideoFormat } from "../export/cli";
 import type { BrowserExporter } from "../services";
+import type { StudioSettings } from "../settings";
 import type { OpenedSource } from "../source";
 import { button, nextId, segmented, select, toggle } from "../ui/controls";
 import { createPanel, type Panel } from "../ui/dialog";
@@ -21,6 +22,11 @@ import { icon } from "../ui/icons";
 export interface ExportDeps {
   ctx: AppContext;
   opened: () => OpenedSource | null;
+  /**
+   * Settings the preview plays with (a share link's seed, speed and the like included), so the
+   * video and the command make the same performance. Not `ctx.settings`, the user's saved ones.
+   */
+  settings: () => StudioSettings;
 }
 
 export interface Exporter {
@@ -80,7 +86,7 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
  * without WebCodecs get the command only.
  */
 export function createExporter(deps: ExportDeps): Exporter {
-  const { ctx } = deps;
+  const { ctx, settings } = deps;
   let format: VideoFormat = "mp4";
   let preset = FRAME_PRESETS[0] ?? { id: "720p", width: 1280, height: 720 };
   let fps: ExportFps = 30;
@@ -95,7 +101,7 @@ export function createExporter(deps: ExportDeps): Exporter {
   let exporterModule: Promise<BrowserExporter> | null = null;
 
   const supported = () => Boolean(ctx.services.loadExporter) && canEncodeInBrowser();
-  const soundOn = () => sound ?? ctx.settings.sound;
+  const soundOn = () => sound ?? settings().sound;
 
   /**
    * Loads the exporter once. A failed load (offline) is tried again next time, though Chromium
@@ -246,7 +252,7 @@ export function createExporter(deps: ExportDeps): Exporter {
         target: opened.cliTarget,
         targetIsFile: opened.cliNeedsFile,
         name: opened.name,
-        settings: ctx.settings,
+        settings: settings(),
         format,
         width: preset.width,
         height: preset.height,
@@ -364,6 +370,7 @@ export function createExporter(deps: ExportDeps): Exporter {
     render();
     if (moveFocus) ui.cancel?.focus();
     const { signal } = controller;
+    const played = settings();
     let exporter: BrowserExporter | null = null;
     let result: BrowserExportResult | null = null;
     try {
@@ -377,8 +384,8 @@ export function createExporter(deps: ExportDeps): Exporter {
           height: preset.height,
           fps,
           maxDurationMs: EXPORT_MAX_SECONDS * 1000,
-          settings: exportSettingsOf(ctx.settings, { sound: soundOn(), scheme: ctx.scheme, locale: ctx.i18n.locale }),
-          network: ctx.settings.remoteAssets ? "https" : "none",
+          settings: exportSettingsOf(played, { sound: soundOn(), scheme: ctx.scheme, locale: ctx.i18n.locale }),
+          network: played.remoteAssets ? "https" : "none",
           signal,
           onProgress: (p) => {
             // A cancelled run may still report while it winds down; the dialog has moved on.
@@ -433,7 +440,7 @@ export function createExporter(deps: ExportDeps): Exporter {
       return ui.panel;
     },
     open() {
-      if (sound === null && ui.soundSwitch) ui.soundSwitch.checked = ctx.settings.sound;
+      if (sound === null && ui.soundSwitch) ui.soundSwitch.checked = settings().sound;
       ui.renderCommand();
       render();
       ui.panel.open(true);

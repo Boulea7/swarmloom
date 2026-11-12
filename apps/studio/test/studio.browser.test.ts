@@ -15,6 +15,7 @@ import {
 } from "../src/examples/manifest";
 import { availableFormats } from "../src/formats-meta";
 import type { BrowserExporter } from "../src/services";
+import { encodeShare } from "../src/share";
 import { fakeServices } from "./fakes";
 
 /** Every file of the repository's examples folder, as the build would see it (paths only). */
@@ -204,6 +205,30 @@ describe("Studio in a browser", () => {
         /^Done: 0:02 long, .+\. 1 image or font is missing from the video because it couldn't be read\.$/,
       ),
     ]);
+  });
+
+  it("exports a shared link's performance as the preview plays it, also after a settings change", async () => {
+    const calls: BrowserExportOptions[] = [];
+    const shared = { seed: 42, speed: 2, finale: "halo" } as const;
+    const payload = await encodeShare({ name: "notes.md", text: "# Notes", settings: shared });
+    const { root, log } = await mount(`#d=${payload}`, false, {
+      bytesToBase64: () => "",
+      async exportVideo(options) {
+        calls.push(options);
+        const result: Partial<BrowserExportResult> = { blob: new Blob(["V"]), extension: "mp4", durationMs: 1000 };
+        return { ...result, finished: true, soundUnsupported: false, warnings: [] } as BrowserExportResult;
+      },
+    });
+    await until(() => root.querySelector('.appbar [aria-keyshortcuts="E"]:enabled'));
+    // A setting the link does not carry: the new player keeps the shared seed, speed and finale.
+    app?.context.updateSettings({ soundPack: "soft" });
+    expect(log.players.at(-1)).toMatchObject(shared);
+
+    const { dialog, start, download } = await openExport(root);
+    expect(dialog.querySelector(".cli-code")?.textContent).toContain("--seed 42 --speed 2 --finale halo");
+    start.click();
+    await until(() => !download.hidden);
+    expect(calls[0]?.settings).toMatchObject({ ...shared, pack: "soft" });
   });
 
   it("reports a failed and a cancelled export without a download", async () => {
