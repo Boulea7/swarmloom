@@ -7,6 +7,7 @@
  * in the content script, never here.
  */
 
+import { CATALOGS } from "@swarmloom/core";
 import {
   actionApi,
   type ExtensionApi,
@@ -215,6 +216,7 @@ export function createBackground(api: ExtensionApi, opts: BackgroundOptions = {}
       prefs,
       locale: tr.locale,
       strings: sessionStrings(tr.t),
+      playerMessages: CATALOGS[tr.locale],
     };
     await exec({ target: where, func: setLaunchRequest, args: [launch] });
     await exec({ target: where, files: [CONTENT_FILES.swarm] });

@@ -183,7 +183,8 @@ afterAll(() => {
 async function exportsAsTheCli(host: Host): Promise<void> {
   await host.set();
   try {
-    expect(matchMedia(host.query).matches).toBe(true);
+    // Firefox can apply Playwright's emulation to the page a moment after the command returns.
+    await expect.poll(() => matchMedia(host.query).matches, { timeout: 5_000 }).toBe(true);
     const exported = await exportPage();
     expect(exported.seen).toBe(PINNED);
     if (host.samePixels) expect(exported.hashes).toEqual(plain);

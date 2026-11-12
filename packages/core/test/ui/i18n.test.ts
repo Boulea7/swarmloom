@@ -72,6 +72,23 @@ describe("translation", () => {
     expect(createI18n("zh-CN").t("progress.eta", { time: "12 秒" })).toBe("约剩 12 秒");
   });
 
+  it("prefers host messages, skipping malformed ones, over the locale's catalog", () => {
+    const messages = {
+      "toolbar.play": "Los",
+      "toolbar.pause": 5,
+      "toolbar.close": { one: "x" },
+      "progress.layers": { one: "{built}/{count}", other: "{built} / {count}" },
+    } as never;
+    const de = createI18n("de", messages);
+    expect(["toolbar.play", "toolbar.pause", "toolbar.close"].map((k) => de.t(k))).toEqual([
+      "Los",
+      "Pausieren",
+      "Schließen",
+    ]);
+    expect(de.t("progress.layers", { built: 2, count: 3 })).toBe("2 / 3");
+    expect(createI18n("ja", null as never).t("toolbar.play")).toBe(CATALOGS.ja["toolbar.play"]);
+  });
+
   it("keeps unknown placeholders and returns unknown keys verbatim", () => {
     const en = createI18n("en");
     expect(en.t("error.loadFailed")).toBe("Couldn't load {name}.");

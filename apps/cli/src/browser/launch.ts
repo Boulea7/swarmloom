@@ -3,8 +3,8 @@ import { errorMessage, MissingDependencyError } from "../errors";
 import type { CliIo } from "../io";
 
 /**
- * Flags for stable, repeatable frames: sRGB output, grayscale text antialiasing, no hinting
- * differences, no partial raster, no throttling of the (hidden) page, and SwiftShader as WebGL
+ * Flags for stable, repeatable frames on `platform`: sRGB output, grayscale text antialiasing, no
+ * hinting differences, no partial raster, no throttling of the (hidden) page, and SwiftShader as WebGL
  * fallback on GPU-less hosts. Partial raster redraws only the changed part of a tile, so antialiased
  * edges (rounded corners) came out one level apart depending on how many frames the browser drew
  * between two captures. No frame rate limit and no GPU vsync: the screenshot's own frame then runs at
@@ -15,24 +15,33 @@ import type { CliIo } from "../io";
  * factor it sees when it first lays out that size, and with --scale above 1 that changed from run
  * to run; a heading that grew to a new size then sat one pixel higher or lower for the rest of the
  * video in some takes of the same render.
+ * No GPU on macOS: with it, headless Chrome there sometimes never answered Page.captureScreenshot
+ * (in about one CLI test run out of four on GitHub's macOS runners) while the page kept running its
+ * animation frames. Without it the browser composites in software, as on GPU-less hosts.
  * SwiftShader runs the WebGL of the pages it opens, web pages included, so it relies on the GPU
  * process sandbox that launchBrowser keeps on; see {@link launchBrowser} for when that sandbox is off.
  */
-export const CHROME_ARGS = [
-  "--hide-scrollbars",
-  "--mute-audio",
-  "--force-color-profile=srgb",
-  "--disable-lcd-text",
-  "--font-render-hinting=none",
-  "--disable-font-subpixel-positioning",
-  "--disable-partial-raster",
-  "--disable-background-timer-throttling",
-  "--disable-renderer-backgrounding",
-  "--disable-backgrounding-occluded-windows",
-  "--enable-unsafe-swiftshader",
-  "--disable-frame-rate-limit",
-  "--disable-gpu-vsync",
-];
+export function chromeArgs(platform: NodeJS.Platform): string[] {
+  const args = [
+    "--hide-scrollbars",
+    "--mute-audio",
+    "--force-color-profile=srgb",
+    "--disable-lcd-text",
+    "--font-render-hinting=none",
+    "--disable-font-subpixel-positioning",
+    "--disable-partial-raster",
+    "--disable-background-timer-throttling",
+    "--disable-renderer-backgrounding",
+    "--disable-backgrounding-occluded-windows",
+    "--enable-unsafe-swiftshader",
+    "--disable-frame-rate-limit",
+    "--disable-gpu-vsync",
+  ];
+  return platform === "darwin" ? [...args, "--disable-gpu"] : args;
+}
+
+/** The {@link chromeArgs} of this host. */
+export const CHROME_ARGS = chromeArgs(process.platform);
 
 const LAUNCH_TIMEOUT_MS = 60_000;
 

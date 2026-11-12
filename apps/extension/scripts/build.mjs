@@ -72,6 +72,39 @@ const noFormatAdapters = {
   },
 };
 
+/** Core's i18n module, whose `./messages/<locale>` imports are its catalogs. */
+const CORE_I18N = /[\\/]packages[\\/]core[\\/]src[\\/]i18n[\\/]index\.ts$/;
+
+/**
+ * `swarm.js` only: core's catalogs other than English become empty ones. The background sends the
+ * catalog of the chosen language in the launch request (`LaunchRequest.playerMessages`), so the
+ * content script keeps only the English fallback, about 5 KB gzip of its budget (audit.mjs).
+ * `left` collects the catalogs left out; the build fails when it stays empty (core moved them).
+ */
+function englishOnlyCore() {
+  /** @type {Set<string>} */
+  const left = new Set();
+  /** @type {import("esbuild").Plugin} */
+  const plugin = {
+    name: "swarmloom-english-only-core",
+    setup(b) {
+      b.onResolve({ filter: /^\.\/messages\/[\w-]+$/ }, (args) => {
+        if (args.path === "./messages/en" || !CORE_I18N.test(args.importer)) return undefined;
+        left.add(args.path.slice("./messages/".length));
+        // The path names the module in the metafile; it stays relative so no absolute path leaks.
+        const file = join(args.resolveDir, `${args.path}.ts`);
+        return { path: `core/i18n/${args.path.slice(2)}`, namespace: "swarmloom-core-catalog", pluginData: file };
+      });
+      b.onLoad({ filter: /.*/, namespace: "swarmloom-core-catalog" }, (args) => {
+        const name = /export const (\w+)/.exec(readFileSync(args.pluginData, "utf8"))?.[1];
+        if (!name) throw new Error(`${args.pluginData}: no exported catalog`);
+        return { contents: `export const ${name} = {};`, loader: "js" };
+      });
+    },
+  };
+  return { plugin, left };
+}
+
 /** Chrome Web Store, AMO and Edge limits. */
 const MAX_NAME = 45;
 const MAX_DESCRIPTION = 132;
@@ -187,15 +220,22 @@ async function bundle(target, out, studioEntry) {
       __SWARMLOOM_STUDIO__: JSON.stringify(studioEntry),
     },
   };
+  const content = englishOnlyCore();
   const scripts = [
     // The e2e entry adds the test hook; store builds never contain it.
-    [e2e ? "src/background/e2e.ts" : "src/background/index.ts", "background.js"],
-    ["src/content/main.ts", "swarm.js"],
-    ["src/content/tracker-main.ts", "tracker.js"],
+    { entry: e2e ? "src/background/e2e.ts" : "src/background/index.ts", file: "background.js" },
+    { entry: "src/content/main.ts", file: "swarm.js", plugins: [content.plugin] },
+    { entry: "src/content/tracker-main.ts", file: "tracker.js" },
   ];
   const results = await Promise.all([
-    ...scripts.map(([entry, file]) =>
-      build({ ...common, entryPoints: [join(root, entry ?? "")], outfile: join(out, file ?? ""), format: "iife" }),
+    ...scripts.map(({ entry, file, plugins = [] }) =>
+      build({
+        ...common,
+        plugins: [...(common.plugins ?? []), ...plugins],
+        entryPoints: [join(root, entry)],
+        outfile: join(out, file),
+        format: "iife",
+      }),
     ),
     build({
       ...common,
@@ -206,6 +246,9 @@ async function bundle(target, out, studioEntry) {
       chunkNames: "chunks/[name]-[hash]",
     }),
   ]);
+  if (content.left.size === 0) {
+    throw new Error("swarm.js: found no core catalog to leave out; update englishOnlyCore() in build.mjs");
+  }
   return results.map((result) => /** @type {import("esbuild").Metafile} */ (result.metafile));
 }
 

@@ -19,6 +19,7 @@ import type {
   Layer,
   OverlayLevel,
   Player,
+  PlayerOptions,
   Plugin,
   Point,
   Rect,
@@ -287,8 +288,8 @@ export interface I18n {
 }
 
 /** Supported: "zh-CN" (default fallback order: exact -> language -> en), "zh-TW", "en", "ja", "ko", "es", "fr", "de". */
-/** src/i18n/index.ts exports `LOCALES: readonly string[]`. */
-export type CreateI18nFn = (locale?: string) => I18n;
+/** src/i18n/index.ts exports `LOCALES: readonly string[]`. `messages` is PlayerOptions.messages. */
+export type CreateI18nFn = (locale?: string, messages?: PlayerOptions["messages"]) => I18n;
 
 export interface ControlsOptions {
   /** Mount point (Stage.uiLayer). */

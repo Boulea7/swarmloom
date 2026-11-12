@@ -66,6 +66,8 @@ describe("assemblePlayer", () => {
         clock,
         seed: 5,
         intro: false,
+        locale: "de",
+        messages: { "toolbar.play": "Los" },
         plugins: [
           { name: "a", tasks: tagged("a", ran) },
           { name: "b", tasks: tagged("b", ran) },
@@ -80,6 +82,7 @@ describe("assemblePlayer", () => {
     expect(args?.theme).toBe(theme);
     expect(args?.plugins.map((p) => p.name)).toEqual(["builtin", "a", "b"]);
     expect(zones.createSound.mock.calls.at(-1)?.[0]).toMatchObject({ seed: 5 });
+    expect(zones.createI18n).toHaveBeenCalledWith("de", { "toolbar.play": "Los" });
     expect(controls[0]?.host).toBe(stage.uiLayer);
     expect(controls[0]?.player).toBe(player);
     // Toolbar and stage follow the same resolved reduced-motion setting.

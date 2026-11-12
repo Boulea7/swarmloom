@@ -9,7 +9,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { launchBrowser } from "../src/browser/launch";
+import { chromeArgs, launchBrowser } from "../src/browser/launch";
 import { snapshotCommand } from "../src/commands/snapshot";
 import { findBrowser } from "../src/discovery/browser";
 import { systemHost } from "../src/discovery/host";
@@ -127,4 +127,12 @@ esac
     },
     90_000,
   );
+});
+
+it.each([
+  ["linux", false],
+  ["win32", false],
+  ["darwin", true],
+] as const)("on %s, leaves the GPU out: %s", (platform, noGpu) => {
+  expect(chromeArgs(platform).includes("--disable-gpu")).toBe(noGpu);
 });

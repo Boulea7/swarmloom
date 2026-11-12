@@ -1,6 +1,6 @@
 # src/i18n
 
-Owner: ui zone. `createI18n(locale?)` and `LOCALES` (see `../internal.ts` "ui + i18n").
+Owner: ui zone. `createI18n(locale?, messages?)`, `LOCALES` and `CATALOGS` (see `../internal.ts` "ui + i18n").
 
 - Catalogs: `messages/<locale>.ts` for zh-CN (default), zh-TW, en, ja, ko, es, fr, de. `messages/en.ts` is the
   reference key set; every other catalog is typed against it, so a missing key fails to compile.
@@ -9,3 +9,8 @@ Owner: ui zone. `createI18n(locale?)` and `LOCALES` (see `../internal.ts` "ui + 
 - Messages use `{name}` variables; plural messages are objects keyed by CLDR category and select on `{count}`.
 - Resolution: exact tag, then language (zh-Hant/zh-TW/HK/MO read Traditional), then English. With no
   argument the browser's `navigator.languages` are tried in order; with no locale information at all, zh-CN.
+- Host messages: `createI18n(locale, messages)` (the player's `messages` option) looks a key up in `messages`
+  first, then in the locale's catalog, then in English; malformed entries are skipped.
+- The browser extension's content script build swaps the non-English `./messages/<locale>` imports of `index.ts`
+  for empty catalogs (`apps/extension/scripts/build.mjs`, which fails when it finds none) and receives the
+  page's catalog from `CATALOGS` in its launch request. Keep one module per locale, imported by `index.ts`.
