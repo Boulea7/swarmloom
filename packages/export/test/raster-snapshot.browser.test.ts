@@ -36,6 +36,13 @@ async function pixel(rasterizer: FrameRasterizer, x: number, y: number): Promise
   return Array.from(ctx.getImageData(x, y, 1, 1).data.slice(0, 3));
 }
 
+/** Draws the frame and returns all its pixels. */
+async function pixels(rasterizer: FrameRasterizer): Promise<Uint8ClampedArray> {
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  await rasterizer.draw(ctx);
+  return ctx.getImageData(0, 0, SIZE, SIZE).data;
+}
+
 it("draws a scrolled document at its scroll offset once, fixed boxes in view", async () => {
   const bands = Array.from({ length: 8 }, (_, i) => `<div style="height:100px;background:rgb(${i * 30},0,0)"></div>`);
   const { win, rasterizer } = await frameOf(
@@ -113,43 +120,46 @@ it("writes one href for an SVG element that has both href and xlink:href", async
   expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
 });
 
-/** An ordered list whose first 30 items sit far above the view in a wrapper, between `open` and `close`. */
-const list = (open = "", close = "") =>
-  "<style>body{margin:0;font:10px/10px monospace}ol,ul{margin:0}div{padding:1px 0}</style>" +
-  `<ol><div>${open}${"<li>i".repeat(30)}${close}</div><div style=height:400px></div><div><li>i<li>i</div></ol>`;
-
-/** `box` far above the view, then a paragraph that shows the counter `name` in its scope. */
-const numbered = (box: string, name: string) =>
-  `<style>body{margin:0;font:10px/10px monospace}ol{margin:0}.far{position:absolute;top:-3000px}p::before{content:counter(${name})}</style>` +
+/**
+ * `box` far above the view, then a paragraph that shows the counter `name` in its scope: as the
+ * page counts it, or `shown`, the number the page should show, written out.
+ */
+const numbered = (box: string, name: string, shown?: string) =>
+  "<style>body{margin:0;font:10px/10px monospace}ol,ul{margin:0}.far{position:absolute;top:-3000px}" +
+  `p::before{content:${shown === undefined ? `counter(${name})` : `"${shown}"`}}</style>` +
   `${box}<div style=height:400px></div><p></p>`;
 
+/** An ordered list: 30 items in a wrapper, between `open` and `close`, then two more. */
+const list = (open = "", close = "") =>
+  `<ol><div style="padding:1px 0">${open}${"<li>i".repeat(30)}${close}</div><li>i<li>i</ol>`;
+
+/** Far boxes that reset, step and set a counter: 4, then 7 and 20 (the set comes last), then 24. */
+const section = (h2 = "<h2>") => `<section>${h2}S</h2></section>`;
+const sections =
+  "<style>section{display:flow-root;height:200px}h2{counter-increment:s}h2::before{content:counter(s)}</style>" +
+  `<div style="counter-reset:s 4">i</div>${section().repeat(3)}` +
+  `${section('<h2 style="counter-set:s 20">')}${section().repeat(4)}`;
+
 it.each([
-  [
-    "explicit counters",
-    "<style>body{margin:0;counter-reset:s}section{display:flow-root;height:200px}" +
-      "h2{counter-increment:s}h2::before{content:counter(s)}</style>" +
-      Array.from({ length: 8 }, (_, i) => `<section><h2>S${i + 1}</h2></section>`).join(""),
-    /<h2/g,
-    8,
-  ],
-  ["list items of the outer list", list(), /<li/g, 32],
+  ["explicit counters", sections, "s", /<h2/g, 8, "24"],
+  ["list items of the outer list", list(), "list-item", /<li/g, 32, "32"],
   // Items of a list of their own number nothing after it: their wrapper still goes empty.
-  ["a list of its own", list("<ul>", "</ul>"), /<li/g, 2],
+  ["a list of its own", list("<ul>", "</ul>"), "list-item", /<li/g, 2, "2"],
   // A box's own reset numbers the boxes after it, a list's items step its counter for them too.
-  ["a reset out of flow", numbered('<div class=far style="counter-reset:n 4">i</div>', "n"), />i</g, 1],
-  ["a list out of flow", numbered("<ol class=far start=4><li>i</ol>", "list-item"), /<li/g, 1],
-  [
-    "the items of a far list",
-    numbered(`<ol style=display:flow-root>${"<li>i".repeat(30)}</ol>`, "list-item"),
-    /<li/g,
-    30,
-  ],
-])("keeps the counters of off-screen content: %s", async (_name, html, tag, count) => {
-  const { win, rasterizer } = await frameOf(html);
-  win.scrollTo(0, win.document.documentElement.scrollHeight);
-  const { svg } = await rasterizer.snapshot();
-  // The snapshot counts again: an item left out would lower every number after it.
-  expect(svg.match(tag)).toHaveLength(count);
+  ["a reset out of flow", '<div class=far style="counter-reset:n 4">i</div>', "n", />i</g, 1, "4"],
+  ["a list out of flow", "<ol class=far start=4><li>i</ol>", "list-item", /<li/g, 1, "4"],
+  ["the items of a far list", `<ol style=display:flow-root>${"<li>i".repeat(30)}</ol>`, "list-item", /<li/g, 30, "30"],
+])("keeps the counters of off-screen content: %s", async (_name, box, name, tag, count, shown) => {
+  const drawn = async (html: string) => {
+    const { win, rasterizer } = await frameOf(html);
+    win.scrollTo(0, win.document.documentElement.scrollHeight);
+    return { svg: (await rasterizer.snapshot()).svg, pixels: await pixels(rasterizer) };
+  };
+  const page = await drawn(numbered(box, name));
+  const written = await drawn(numbered(box, name, shown));
+  // The snapshot counts again: a box or a counter left out would change the number in view.
+  expect(page.svg.match(tag)).toHaveLength(count);
+  expect(page.pixels.filter((value, i) => value !== written.pixels[i])).toHaveLength(0);
 });
 
 it("writes live form state without duplicating authored attributes", async () => {
