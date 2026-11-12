@@ -24,6 +24,7 @@ describe("swarmloom entry", () => {
     [["--help"], 0, "Usage: swarmloom <command>", ""],
     [[], 1, "", "Usage: swarmloom <command>"],
     [["render", "--help"], 0, "--max-duration", ""],
+    [["render", "--help"], 0, "fewer with a smaller --agents", ""],
     [["help", "doctor"], 0, "Usage: swarmloom doctor", ""],
     [["bogus"], 1, "", 'Unknown command "bogus"'],
     [["render"], 1, "", "Missing <file|url>"],

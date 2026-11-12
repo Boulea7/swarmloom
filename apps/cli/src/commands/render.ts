@@ -76,8 +76,9 @@ Swarm:
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
       --opening <time>    Show the finished page or document first for <time> (seconds, ms or beats,
                           as for --cue), then fade it into the blank canvas and build. Default: off
-      --intro <style>     warp (cursors circle the file icon, then fan out) | outline (three
-                          cursors draw the largest shapes, then the rest joins) | none. Default: warp
+      --intro <style>     warp (cursors circle the file icon, then fan out) | outline (up to three
+                          cursors, fewer with a smaller --agents, draw the largest shapes, then the
+                          rest joins) | none. Default: warp
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
                           goes live and its own animations play; a go live still under way at the
                           end runs on until the page shows. Default: 2500 (3700 with --live-top)
