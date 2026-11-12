@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import { fakeServices } from "./fakes";
@@ -45,16 +45,16 @@ it("keeps focus inside the watch QR dialog until it closes", async () => {
 });
 
 /**
- * Mounts the watch face at `query`. With `hold`, the build keeps running, so the controls are due
- * to fade; without, it finishes as soon as it starts.
+ * Mounts the watch face at `query`, with one example called `title`. With `hold`, the build keeps
+ * running, so the controls are due to fade; without, it finishes as soon as it starts.
  */
-async function mountWatch(query: string, hold = true): Promise<HTMLElement> {
+async function mountWatch(query: string, hold = true, title = "Notes"): Promise<HTMLElement> {
   history.replaceState(null, "", `${location.pathname}${query}`);
   const root = document.createElement("div");
   document.body.append(root);
   const manifest = {
     version: 1 as const,
-    entries: [{ id: "notes", path: "notes.md", format: "markdown", title: "Notes", size: 64, group: "notes" }],
+    entries: [{ id: "notes", path: "notes.md", format: "markdown", title, size: 64, group: "notes" }],
   };
   const fake = fakeServices({
     manifest,
@@ -102,6 +102,35 @@ it("plays a round face inside its inscribed square and clears the controls soon 
   expect(face?.dataset.controls).toBe("shown");
   await new Promise((resolve) => setTimeout(resolve, 1000)); // well before the 2.6 s fade after a touch
   expect(face?.dataset.controls).toBe("hidden");
+});
+
+it.each([
+  { size: 180, phase: "idle" },
+  { size: 180, phase: "done" },
+  { size: 140, phase: "idle" },
+])("keeps every $phase control of a $size px round face inside its inscribed square", async ({ size, phase }) => {
+  await page.viewport(size, size);
+  try {
+    const root = await mountWatch("?watch=1&round=1", false, "Willkommen bei SwarmLoom: so entsteht eine Seite");
+    const face = root.querySelector<HTMLElement>(".view-watch");
+    if (phase === "done") {
+      root.querySelector<HTMLButtonElement>(".watch-play")?.click();
+      await expect.poll(() => face?.dataset.phase).toBe("done");
+    }
+    const safe = root.querySelector<HTMLElement>(".watch-safe")?.getBoundingClientRect();
+    const title = root.querySelector<HTMLElement>(".watch-title");
+    if (!safe || !title) throw new Error("no watch face");
+    // A long title keeps to one line, or gives way entirely on the smallest faces.
+    const line = parseFloat(getComputedStyle(title).lineHeight);
+    if (title.getClientRects().length > 0) expect(title.getBoundingClientRect().height).toBeLessThan(line * 2);
+    const controls = [...root.querySelectorAll<HTMLElement>(".watch-safe > *, .watch-actions > *")]
+      .filter((el) => el.getClientRects().length > 0)
+      .map((el) => el.getBoundingClientRect());
+    expect(Math.min(...controls.map((r) => r.top))).toBeGreaterThanOrEqual(safe.top - 0.5);
+    expect(Math.max(...controls.map((r) => r.bottom))).toBeLessThanOrEqual(safe.bottom + 0.5);
+  } finally {
+    await page.viewport(414, 896);
+  }
 });
 
 it("keeps the title and small buttons on a dark backing over a finished page", async () => {

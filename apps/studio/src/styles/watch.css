@@ -151,10 +151,11 @@
   pointer-events: none;
 }
 
-.view-watch[data-playing="true"] .watch-title {
+/* Clamped in every phase: an unclamped title on the idle face pushes the buttons out of the safe
+   area. No width: the end card's backing hugs the text (a flex item never grows past the face). */
+.watch-title {
   display: -webkit-box;
   flex-shrink: 0;
-  width: 100%;
   overflow: hidden;
   font-size: clamp(11px, 5.8cqmin, 16px);
   font-weight: 650;
@@ -187,14 +188,23 @@
   -webkit-backdrop-filter: blur(6px);
 }
 
-/* The inscribed square of a round face is short: one title line, smaller controls. */
+/* The inscribed square of a round face is short: one title line, tighter gaps (the end card's
+   backed title is taller still). */
 .view-watch[data-round="true"] .watch-safe {
-  gap: 4cqmin;
+  gap: 3cqmin;
 }
 
 .view-watch[data-round="true"] .watch-title {
   font-size: clamp(11px, 5.2cqmin, 15px);
   -webkit-line-clamp: 1;
+}
+
+/* Below this the inscribed square cannot hold even that line above the play button and the small
+   buttons at their minimum touch sizes: the title gives way, the poster still shows the build. */
+@container (height < 175px) {
+  .view-watch[data-round="true"] .watch-title {
+    display: none;
+  }
 }
 
 /* While a build plays (or is paused), the controls sit small along the bottom so the stage stays in
