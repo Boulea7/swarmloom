@@ -31,7 +31,7 @@ Files are read in the browser and never uploaded. Remote https images and fonts 
 
 ## Keyboard
 
-Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `S` settings, `E` export, `Esc` back. Playback keys (`Space`, `1` to `3`, `M`, `T`, `R`, `L`) belong to the core player toolbar; a speed, sound or tour change made there becomes Studio's setting, so share links and exports use it. On the scrubber, arrows move 2%, `Page Up`/`Page Down` 10%, and `Home`/`End` jump to the ends.
+Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `S` settings, `E` export, `Esc` back. Playback keys (`Space`, `1` to `3`, `M`, `T`, `R`, `L`) belong to the core player toolbar; a speed, sound or tour change made there becomes Studio's setting, so exports and the next player use it. Share links carry the speed and the tour, never the sound: a link always plays with the recipient's own sound setting. On the scrubber, arrows move 2%, `Page Up`/`Page Down` 10%, and `Home`/`End` jump to the ends.
 
 ## Build targets
 
