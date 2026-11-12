@@ -86,7 +86,11 @@ describe("render options", () => {
       settings: { terminalFont: "fill" },
     });
     const opening = parseRenderOptions(["a.md", "--bpm", "120", "--opening", "3b", "--live-top"], cwd);
-    expect(opening).toMatchObject({ settings: { opening: 1500, liveTop: true } });
+    // The default tail makes room for the glide back to the top; a given one stays.
+    expect(opening).toMatchObject({ settings: { opening: 1500, liveTop: true, tail: 3700 } });
+    expect(parseRenderOptions(["a.md", "--live-top", "--tail", "1500"], cwd)).toMatchObject({
+      settings: { tail: 1500 },
+    });
   });
 
   it.each([

@@ -87,9 +87,9 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--follow <mode>` | `tour` | `tour` scrolls the page along with the build; `none` does not scroll |
 | `--opening <time>` | Off | Show the finished page or document first for `<time>` (seconds, milliseconds or beats, as for `--cue`; at most 60 s), then fade it into the blank canvas and start the build. The fade starts on `<time>` exactly and takes 0.52 s |
 | `--intro <style>` | `warp` | `warp`: the cursors circle the file icon, then fan out; `outline`: three cursors first draw the largest shapes in view, then the rest joins to fill in the details; `none`: no intro |
-| `--tail <ms>` | `2500` | Hold time after the build finishes, 0–60000 ms: the finale, then the page goes live, the cursors leave and the page's own animations (CSS, SVG SMIL, Lottie) play on video time; an HTML document swaps in the real page, its animated images held on their first frame |
+| `--tail <ms>` | `2500` (`3700` with `--live-top`) | Hold time after the build finishes, 0–60000 ms: the finale, then the page goes live, the cursors leave and the page's own animations (CSS, SVG SMIL, Lottie) play on video time; an HTML document swaps in the real page, its animated images held on their first frame. A go live still under way when it ends (cursors leaving, the glide back to the top) runs on until the page shows |
 | `--no-live` | Go live | Keep the finale through the whole tail instead of going live |
-| `--live-top` | Off | Going live glides back to the top of the page while the cursors leave, so the live page starts at its first screen |
+| `--live-top` | Off | Going live glides back to the top of the page (up to 1.2 s) while the cursors leave, so the live page starts at its first screen |
 | `--locale <tag>` | `en-US` | Language of the toolbar strings and the page, a BCP 47 tag such as `zh-CN` |
 | `--bpm <n>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid), 40–240 |
 | `--beat-sync <set>` | `notes` | `notes` or `all`. `all` also puts keys, clicks, snaps and pen anchors on the nearest sixteenth note (at most 30 ms early or 60 ms late, one per sound and sixteenth) and leaves out the ones farther off |

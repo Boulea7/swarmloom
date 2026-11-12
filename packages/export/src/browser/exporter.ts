@@ -1,6 +1,6 @@
 import { renderOffline } from "@swarmloom/core";
 import { type ShadowWatch, watchShadowRoots } from "../render/live";
-import type { RenderApi, RenderInfo, RenderInit, RenderInput } from "../render/protocol";
+import { defaultTail, type RenderApi, type RenderInfo, type RenderInit, type RenderInput } from "../render/protocol";
 import { CHANNELS, type CodecProbe, type EncodingPlan, planEncoding, SAMPLE_RATE, VideoFileWriter } from "./encode";
 import { FRAME_ATTRIBUTE } from "./marker";
 import { type ColorScheme, type MediaPin, pinMediaFeatures } from "./media";
@@ -230,7 +230,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     pinPixelRatio(win);
     const pinned = pinMediaFeatures(win, shadows, { scheme, width, height });
     media = pinned;
-    const tail = settings.tail ?? 2500;
+    const tail = settings.tail ?? defaultTail(settings);
     // Loading the input can take long; cancelling removes the frame (below) rather than waiting.
     const info = await unlessAborted(api.init({ ...settings, input: o.input, width, height, fps, tail }), signal);
 

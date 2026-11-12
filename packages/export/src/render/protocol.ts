@@ -40,6 +40,19 @@ export interface RenderCue {
   speed?: number;
 }
 
+/**
+ * Default {@link RenderInit.tail}, ms: the finale settles (1.2 s), the cursors leave and the page
+ * plays a while. `liveTop` adds {@link LIVE_TOP_TAIL_MS}.
+ */
+export const DEFAULT_TAIL_MS = 2500;
+/** Default tail added with `liveTop`: the longest glide back to the top, ms. */
+export const LIVE_TOP_TAIL_MS = 1200;
+
+/** The default tail for these settings (see {@link DEFAULT_TAIL_MS}). */
+export function defaultTail(settings: Pick<RenderInit, "liveTop">): number {
+  return DEFAULT_TAIL_MS + (settings.liveTop ? LIVE_TOP_TAIL_MS : 0);
+}
+
 export const TERMINAL_FONTS = ["fit", "fill"] as const;
 /** How terminal recordings size their font (see {@link RenderInit.terminalFont}). */
 export type TerminalFont = (typeof TERMINAL_FONTS)[number];
@@ -67,7 +80,10 @@ export interface RenderInit {
   sound?: boolean;
   finale?: "flock" | "halo" | "none";
   locale?: string;
-  /** Hold time after the build completes (finale, then the live page), ms. Default 2500. */
+  /**
+   * Hold time after the build completes (finale, then the live page), ms. Default 2500, 3700 with
+   * `liveTop` ({@link defaultTail}). A go live under way when it ends runs on until the page shows.
+   */
   tail?: number;
   /**
    * Opening before the intro, ms: the finished content shows this long, then fades into the blank
@@ -148,7 +164,7 @@ export interface RenderStep {
   state: string;
   built: number;
   total: number;
-  /** True once the build finished AND `tail` ms elapsed. */
+  /** True once the build finished AND `tail` ms elapsed (and a go live under way has shown the page). */
   done: boolean;
 }
 
@@ -328,7 +344,7 @@ export function parseInit(raw: unknown): ParsedInit {
     sound: sound ?? true,
     finale: oneOf(raw, "finale", FINALES),
     locale: optionalString(raw, "locale"),
-    tail: number(raw, "tail", 0, 600_000) ?? 2500,
+    tail: number(raw, "tail", 0, 600_000) ?? defaultTail({ liveTop }),
     opening: number(raw, "opening", 0, 600_000),
     live: live ?? true,
     liveTop,

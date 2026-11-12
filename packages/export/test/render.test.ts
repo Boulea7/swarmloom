@@ -151,6 +151,9 @@ describe("render page protocol", () => {
     await api.init({ ...base, opening: 500, liveTop: true });
     const [player] = players as [ClockPlayer];
     expect(player.options).toMatchObject({ opening: 500, liveTop: true });
+    // The default tail makes room for the glide back to the top.
+    const untimed = { ...base, tail: undefined };
+    expect([parseInit(untimed).tail, parseInit({ ...untimed, liveTop: true }).tail]).toEqual([2500, 3700]);
     // The view after each 40 ms step: still, down 100 px over two steps, still, up 40 px, still.
     for (const y of [0, 0, 40, 100, 100, 100, 60, 60]) {
       player.scrollY = y;
@@ -304,6 +307,34 @@ describe("render page protocol", () => {
     expect(goLive).not.toHaveBeenCalled();
     for (let i = 0; i < 3; i++) await api.step(40);
     expect(goLive).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["600 ms after go live", 600, 1720],
+    ["never", null, 3600],
+  ])("ends a tail that runs out mid go live once the page shows (%s) or at the limit", async (_, shows, end) => {
+    // happy-dom has no Web Animations for the live page's seek.
+    const show = vi.spyOn(LiveStage.prototype, "goLive").mockImplementation(() => {});
+    const { api, players } = setup();
+    // Built at 1000 ms; the 300 ms tail runs out while the go live cued at 1100 ms still glides.
+    await api.init({ ...base, tail: 300, liveTop: true, cues: [{ at: 1100, action: "live" }] });
+    const [player] = players as [ClockPlayer];
+    vi.spyOn(player, "goLive").mockImplementation(() => {
+      if (shows === null) return;
+      let left = shows;
+      const off = player.options.clock?.onTick((dt) => {
+        left -= dt;
+        if (left > 1e-6) return;
+        off?.();
+        player.options.onLive?.();
+      });
+    });
+    let frames = 1;
+    while (!(await api.step(40)).done && frames < 200) frames++;
+    // The page shows at 1700 ms (frame 43); a stage that never shows it ends 2500 ms after go live.
+    expect(frames * 40).toBe(end);
+    expect(show).toHaveBeenCalledTimes(shows === null ? 0 : 1);
+    show.mockRestore();
   });
 
   it.each([

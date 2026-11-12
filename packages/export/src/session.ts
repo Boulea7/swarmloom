@@ -6,7 +6,10 @@ export interface SessionStatus {
   state: PlayerState;
   built: number;
   total: number;
-  /** The build finished and the tail time has elapsed since. */
+  /**
+   * The build finished and the tail time has elapsed since, and a go live under way has shown the
+   * page (see {@link RenderSessionOptions.tailMs}).
+   */
   done: boolean;
 }
 
@@ -40,7 +43,12 @@ export interface SessionScroll {
 export interface RenderSessionOptions {
   /** Player options; the session supplies its own `VirtualClock`. */
   player: Omit<PlayerOptions, "clock">;
-  /** Time to keep running after the build completes (finale), ms. Default 0. */
+  /**
+   * Time to keep running after the build completes (finale), ms. Default 0. A go live (automatic or
+   * cued) still under way when it ends holds the end until the stage shows the page
+   * (`PlayerOptions.onLive`), so a video never stops mid-glide (`liveTop`) or with cursors leaving;
+   * a stage that never reports live is given up on 2.5 s after go live.
+   */
   tailMs?: number;
   /**
    * Go live once the finale settles (player state "done"), as the toolbar's go live does: the
@@ -91,6 +99,12 @@ function tickTime(k: number, rate: number): number {
   return (k * 1000) / rate;
 }
 
+/**
+ * Longest wait, from go live, for the stage to show the page once the tail is over: the glide back
+ * to the top (`liveTop`) takes at most 1.2 s and an overlay stage then fades out for about 0.5 s.
+ */
+const GO_LIVE_LIMIT_MS = 2500;
+
 /** The view counts as moved between two steps when its top edge moved by more than this, px. */
 const SCROLL_EPSILON = 1e-3;
 
@@ -111,7 +125,10 @@ export class RenderSession {
   readonly player: Player;
   readonly tailMs: number;
   readonly #live: boolean;
-  #wentLive = false;
+  /** Session time the session went live (automatically or at a cue), or null. */
+  #liveAt: number | null = null;
+  /** The stage shows the live page (`PlayerOptions.onLive` ran). */
+  #liveShown = false;
   #elapsed = 0;
   #builtAt: number | null = null;
   #error: Error | null = null;
@@ -157,7 +174,15 @@ export class RenderSession {
     }
     this.#tickRate = rate;
     const create = options.createPlayer ?? coreCreatePlayer;
-    this.player = create({ ...options.player, clock: this.clock });
+    const onLive = options.player.onLive;
+    this.player = create({
+      ...options.player,
+      clock: this.clock,
+      onLive: () => {
+        this.#liveShown = true;
+        onLive?.();
+      },
+    });
     this.#unsubscribe = [
       this.player.on("state", (e) => {
         if (BUILT.has(e.state)) this.#markBuilt();
@@ -274,7 +299,7 @@ export class RenderSession {
   status(): SessionStatus {
     const { built, total } = this.player.progress;
     // Tolerate float error from summing 1000 / fps steps.
-    const done = this.#builtAt !== null && this.#elapsed - this.#builtAt >= this.tailMs - 1e-6;
+    const done = this.#builtAt !== null && this.#elapsed - this.#builtAt >= this.tailMs - 1e-6 && !this.#goingLive();
     return { state: this.player.state, built, total, done };
   }
 
@@ -347,9 +372,15 @@ export class RenderSession {
   }
 
   #goLive(): void {
-    if (this.#wentLive) return;
-    this.#wentLive = true;
+    if (this.#liveAt !== null) return;
+    this.#liveAt = this.#elapsed;
     this.player.goLive();
+  }
+
+  /** A go live started but the stage does not show the page yet (and has not run out of time). */
+  #goingLive(): boolean {
+    const at = this.#liveAt;
+    return at !== null && !this.#liveShown && this.#elapsed - at < GO_LIVE_LIMIT_MS - TIME_EPSILON;
   }
 
   #markBuilt(): void {

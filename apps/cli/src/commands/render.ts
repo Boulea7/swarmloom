@@ -77,9 +77,11 @@ Swarm:
       --intro <style>     warp (cursors circle the file icon, then fan out) | outline (three
                           cursors draw the largest shapes, then the rest joins) | none. Default: warp
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
-                          goes live and its own animations play. Default: 2500
+                          goes live and its own animations play; a go live still under way at the
+                          end runs on until the page shows. Default: 2500 (3700 with --live-top)
       --no-live           Keep the finale through the whole tail instead of going live
-      --live-top          Going live glides back to the top of the page while the cursors leave
+      --live-top          Going live glides back to the top of the page (up to 1.2 s) while the
+                          cursors leave
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
       --bpm <n>           Tempo the placement notes, the fan-out and the final chord snap to (eighth
                           notes, 40-240). Default: 112
@@ -136,6 +138,10 @@ Exit codes: 0 ok, 1 usage error, 2 missing Chrome/ffmpeg, 3 render failure, 130 
 
 /** Build speeds --speed and speed cues accept. */
 const SPEED_RANGE = { min: 0.05, max: 16 } as const;
+/** Default --tail, ms, as on the render page (`defaultTail` of @swarmloom/export). */
+const DEFAULT_TAIL_MS = 2500;
+/** --live-top adds the longest glide back to the top to the default tail, ms. */
+const LIVE_TOP_TAIL_MS = 1200;
 
 const OPTIONS = {
   output: { type: "string", short: "o" },
@@ -252,7 +258,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     overlays: readEnum("overlays", values.overlays, ["full", "minimal", "none"], "full"),
     finale: readEnum("finale", values.finale, ["flock", "halo", "none"], "flock"),
     follow: readEnum("follow", values.follow, ["tour", "none"], "tour"),
-    tail: readInt("tail", values.tail, 2500, 0, 60_000),
+    tail: readInt("tail", values.tail, DEFAULT_TAIL_MS + (values["live-top"] ? LIVE_TOP_TAIL_MS : 0), 0, 60_000),
     live: !values["no-live"],
     sound: !values["no-sound"] && formatHasAudio(format),
   };
