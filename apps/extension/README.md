@@ -51,6 +51,10 @@ so `pnpm build` at the root builds the Studio first, and the build stops when th
 a file that is missing (a Studio build running at the same time). Brand icons come from
 `assets/brand/icon-<size>.png`, with generated placeholders until they exist.
 
+`swarm.js` carries only core's English catalog: the background sends the catalog of the chosen
+language in the launch request, with the extension's own strings. That keeps it under the 150 KB
+gzip budget that `check:package` enforces.
+
 Every package carries `LICENSE.txt` (SwarmLoom, MIT) and `THIRD_PARTY_NOTICES.txt`, written by
 `scripts/notices.mjs`: the name, version, declared licence and shipped licence/NOTICE files of each
 third-party package in it. The extension's own scripts contribute what esbuild actually bundled;
@@ -107,8 +111,8 @@ through. Signing and store upload need the owner's Apple Developer account.
 - End-to-end (`test/e2e/extension.e2e.mjs`): loads `dist-e2e/chrome` into Chromium (persistent
   context, `--headless=new`, `--load-extension`), drives the service worker through the test hook
   of the `--e2e` build (`__swarmloomTest`, never in store packages; the audit checks it), checks
-  the restricted-page notice, the toggle, and a full rebuild to `done`, go live and a byte-identical
-  page. Set `SWARMLOOM_CHROME` to Chromium or Chrome for Testing; branded Chrome ignores
-  `--load-extension`.
+  the restricted-page notice, the toggle, the toolbar in the chosen language, and a full rebuild to
+  `done`, go live and a byte-identical page. Set `SWARMLOOM_CHROME` to Chromium or Chrome for
+  Testing; branded Chrome ignores `--load-extension`.
 
 License: MIT.

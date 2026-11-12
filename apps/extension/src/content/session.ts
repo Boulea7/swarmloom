@@ -217,6 +217,7 @@ export function startSession(scope: object, doc: Document, launch: LaunchRequest
         locale: launch.locale,
         seed: seedFrom(doc.location?.href ?? ""),
       }),
+      messages: launch.playerMessages,
       blueprint,
       onLive: stop,
       onClose: stop,
