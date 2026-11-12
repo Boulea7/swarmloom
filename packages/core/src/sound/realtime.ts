@@ -79,8 +79,18 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Time order for admission; ties keep emission order (the sort is stable). */
+function byTime(a: SoundEvent, b: SoundEvent): number {
+  return a.t - b.t;
+}
+
 /**
  * Realtime WebAudio sound engine. See {@link createSound}.
+ *
+ * Admission order: the engine emits a frame's sounds agent by agent, so a later agent can sound
+ * earlier in the frame than one before it. Events played in one task are therefore admitted
+ * together once it ends, in time order (ties in emission order), as offline rendering admits the
+ * whole log, so the order-sensitive policy (beat hit lines, rate windows) makes the same choices.
  *
  * Lock model: `locked` is true while sound is wanted (enabled, or the microphone is on) but the
  * context is not running, typically because of the autoplay policy. Events arriving while locked
@@ -101,6 +111,9 @@ class RealtimeSound implements SoundEngine {
   #selfSuspended = false;
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #pendingChord: SoundEvent | null = null;
+  /** Events of the current task, admitted in time order when it ends (see {@link #flush}). */
+  #batch: SoundEvent[] = [];
+  #flushQueued = false;
   #eventIndex = 0;
   #lastEventMs = Number.NEGATIVE_INFINITY;
   #mic: MicrophoneInput | null = null;
@@ -137,7 +150,14 @@ class RealtimeSound implements SoundEngine {
       else if (ev.name === "sweep") this.#pendingChord = null;
       return;
     }
-    this.#schedule(this.#graph, ev);
+    // A jump back is a new timeline (replay): the old one's events must not sort after it.
+    const last = this.#batch[this.#batch.length - 1];
+    if (last && ev.t < last.t - TIMELINE_RESET_MS) this.#flush();
+    this.#batch.push(ev);
+    if (!this.#flushQueued) {
+      this.#flushQueued = true;
+      queueMicrotask(this.#flush);
+    }
   }
 
   setEnabled(on: boolean): void {
@@ -219,6 +239,7 @@ class RealtimeSound implements SoundEngine {
     this.#stopMicrophone();
     this.#destroyed = true;
     this.#pendingChord = null;
+    this.#batch = [];
     this.#clearIdleTimer();
     this.#setGestures(false);
     this.#lockListeners.clear();
@@ -241,6 +262,17 @@ class RealtimeSound implements SoundEngine {
     const { bpm, beatSync, beatHits, pack } = this.#settings;
     return new EventPolicy({ bpm, beatSync, beatHits, voiced: (name) => pack.voices[name] !== undefined });
   }
+
+  /** Admits the batched events in time order; drops them when sound went off meanwhile. */
+  readonly #flush = (): void => {
+    this.#flushQueued = false;
+    const batch = this.#batch;
+    this.#batch = [];
+    const graph = this.#graph;
+    if (this.#destroyed || !this.#enabled || !graph) return;
+    // Non-finite times are never admitted; leaving them out keeps the comparator consistent.
+    for (const ev of batch.filter((e) => Number.isFinite(e.t)).sort(byTime)) this.#schedule(graph, ev);
+  };
 
   #schedule(graph: Graph, ev: SoundEvent): void {
     if (typeof ev.t === "number" && ev.t < this.#lastEventMs - TIMELINE_RESET_MS) this.#policy = this.#newPolicy();
