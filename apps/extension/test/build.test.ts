@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { addTree } from "../scripts/amo-source.mjs";
 import { auditPackage } from "../scripts/audit.mjs";
 import { placeholderIcon } from "../scripts/icons.mjs";
 import { cspProblems, GECKO_ID, manifestFor, messageKeys, validateManifest } from "../scripts/manifest.mjs";
@@ -145,6 +146,32 @@ describe("packaging helpers", () => {
       new Blob([zlib]).stream().pipeThrough(new DecompressionStream("deflate")),
     ).arrayBuffer();
     expect(raw.byteLength).toBe(32 * (1 + 32 * 4));
+  });
+
+  it("keeps Studio's build/ Vite plugins in the AMO source package, not outputs or tests", () => {
+    const repo = mkdtempSync(join(tmpdir(), "swarmloom-amo-tree-"));
+    try {
+      for (const file of [
+        "apps/extension/src/background.ts",
+        "apps/extension/build/safari/SwarmLoom.xcodeproj/project.pbxproj",
+        "apps/studio/vite.config.ts",
+        "apps/studio/build/pwa.ts",
+        "apps/studio/dist-extension/studio.html",
+        "apps/studio/test/pwa.test.ts",
+      ]) {
+        mkdirSync(dirname(join(repo, file)), { recursive: true });
+        writeFileSync(join(repo, file), "");
+      }
+      const files = new Map<string, Buffer>();
+      addTree(join(repo, "apps"), files, repo);
+      expect([...files.keys()].sort()).toEqual([
+        "apps/extension/src/background.ts",
+        "apps/studio/build/pwa.ts",
+        "apps/studio/vite.config.ts",
+      ]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
 

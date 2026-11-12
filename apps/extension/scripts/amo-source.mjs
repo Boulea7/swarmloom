@@ -16,6 +16,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -49,8 +50,15 @@ const ROOT_FILES = [
 ];
 /** Workspace folders (pnpm-workspace.yaml: packages/*, apps/*). */
 const WORKSPACE_DIRS = ["packages", "apps"];
-/** Never part of a source package: installs, outputs, tests and local state. */
-const SKIP_DIR = /^(node_modules|dist|dist-.*|build|test|tests|coverage|\..*)$/;
+/** Never part of a source package: installs, outputs, tests and local state, at any depth. */
+const SKIP_DIR = /^(node_modules|dist|dist-.*|test|tests|coverage|\..*)$/;
+/**
+ * Output folders skipped by repository path: `build` is a source folder elsewhere (Studio's Vite
+ * config imports its plugins from apps/studio/build), so it cannot be skipped by name.
+ */
+const SKIP_PATH = new Set([
+  "apps/extension/build", // scripts/safari-package.sh: the Xcode project
+]);
 const SKIP_FILE = /\.(test|spec)\.[cm]?[jt]sx?$|\.zip$/;
 
 /**
@@ -100,15 +108,17 @@ function bundledPackages(all, roots, withAdapters) {
 /**
  * Adds every source file below `dir` (skipping outputs, tests and dot folders).
  * @param {string} dir
- * @param {Map<string, Buffer>} files keyed by repository-relative path
+ * @param {Map<string, Buffer>} files keyed by path relative to `base`
+ * @param {string} [base] the repository root
  */
-function addTree(dir, files) {
+export function addTree(dir, files, base = repo) {
   for (const name of readdirSync(dir).sort()) {
     const path = join(dir, name);
+    const rel = relative(base, path).split(sep).join("/");
     if (statSync(path).isDirectory()) {
-      if (!SKIP_DIR.test(name)) addTree(path, files);
+      if (!SKIP_DIR.test(name) && !SKIP_PATH.has(rel)) addTree(path, files, base);
     } else if (!SKIP_FILE.test(name)) {
-      files.set(relative(repo, path).split(sep).join("/"), readFileSync(path));
+      files.set(rel, readFileSync(path));
     }
   }
 }
@@ -231,4 +241,5 @@ function main() {
   if (values.verify) verify(archive, xpiHash);
 }
 
-main();
+// realpath: Node resolves symlinks in import.meta.url but not in argv[1] (e.g. a symlinked home).
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) main();
