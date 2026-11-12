@@ -81,6 +81,18 @@ describe("prepareDocument", () => {
     expect(out.html).toContain("font-src data: blob: http://127.0.0.1:4100;");
   });
 
+  it("treats only a loopback http base as local: a remote http origin stays off", () => {
+    const baseUrl = "http://example.com/input/index.html";
+    const out = prepareDocument('<!DOCTYPE html><img src="/tracker.png">', window, { baseUrl, network: "none" });
+    expect(parse(out.html).images[0]?.getAttribute("src")).toBeNull();
+    expect(contentSecurityPolicy({ network: "none", baseUrl })).toContain("img-src data: blob:;");
+    expect(contentSecurityPolicy({ baseUrl })).toContain("img-src data: blob: https:;");
+    for (const local of ["http://localhost:5173", "http://[::1]:4100"]) {
+      const csp = contentSecurityPolicy({ network: "none", baseUrl: `${local}/a.html` });
+      expect(csp).toContain(`img-src data: blob: ${local};`);
+    }
+  });
+
   it("never takes the local origin from the document's own <base>", () => {
     const html =
       '<!DOCTYPE html><head><base href="http://tracker.example/"></head>' +

@@ -10,16 +10,20 @@
  */
 export type NetworkPolicy = "https" | "none";
 
+/** Loopback host names as the URL parser writes them: `localhost`, 127.0.0.0/8 and `[::1]`. */
+const LOOPBACK_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
+
 /**
- * Origin of a plain `http:` base URL given by the caller: the server the document itself came from,
- * such as the CLI's loopback server, which publishes the images and fonts next to a local input
- * file. Its images and fonts are local, as in the Markdown adapter. Undefined for any other base.
+ * Origin of a plain `http:` base URL given by the caller when its host is loopback: the local
+ * server the document itself came from, such as the CLI's, which publishes the images and fonts
+ * next to a local input file. Its images and fonts never leave the machine. Undefined for any other
+ * base: a remote http origin is not local, so `network: "none"` still refuses it.
  */
 export function localOrigin(base: string | undefined): string | undefined {
   if (!base) return undefined;
   try {
     const u = new URL(base);
-    return u.protocol === "http:" ? u.origin : undefined;
+    return u.protocol === "http:" && LOOPBACK_HOST.test(u.hostname) ? u.origin : undefined;
   } catch {
     return undefined;
   }
