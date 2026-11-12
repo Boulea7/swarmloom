@@ -20,6 +20,17 @@ describe("examples manifest", () => {
     expect(paths).not.toContain("doc/SOURCES.md");
   });
 
+  it("gives every sample of a format its own title", () => {
+    // Cards and their "Play <title>" labels go by title; only language variants of one sample may share it.
+    const { manifest } = scanExamples(resolve(import.meta.dirname, "../../../examples"));
+    const groups = new Map<string, Set<string>>();
+    for (const e of manifest.entries) {
+      const key = `${e.format}: ${e.title}`;
+      groups.set(key, (groups.get(key) ?? new Set()).add(e.group));
+    }
+    expect([...groups].filter(([, g]) => g.size > 1).map(([key]) => key)).toEqual([]);
+  });
+
   it("ships the licence of every library template a sample generator builds on", () => {
     // python-docx, python-pptx and openpyxl copy parts of their default templates into the output.
     const templates = [
