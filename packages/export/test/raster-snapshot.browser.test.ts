@@ -118,3 +118,18 @@ it("keeps the page's SVG style rules out of the snapshot", async () => {
   );
   expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 0]);
 });
+
+it("paints the root's or body's background images over the whole canvas, placed against the root", async () => {
+  const { rasterizer } = await frameOf(
+    '<html style="height:40px"><body style="margin:0;background:linear-gradient(rgb(255,0,0) 50%,rgb(0,0,255) 50%)">',
+  );
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  await rasterizer.draw(ctx);
+  const at = (y: number) => Array.from(ctx.getImageData(50, y, 1, 1).data.slice(0, 3));
+  // The gradient repeats every 40 px (the root's height), below the root's box too.
+  expect([at(10), at(30), at(90)]).toEqual([
+    [255, 0, 0],
+    [0, 0, 255],
+    [255, 0, 0],
+  ]);
+});

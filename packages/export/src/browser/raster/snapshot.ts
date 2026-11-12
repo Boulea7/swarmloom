@@ -246,6 +246,8 @@ interface Walk {
   overlays: OverlayCandidate[];
   /** Ancestors of the element being written, in the frame document only. */
   path: PathEntry[];
+  /** Elements whose background the canvas paints instead (see {@link emitDocument}). */
+  onCanvas: Set<Element>;
   watch: ChangeWatch | null;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
@@ -498,7 +500,7 @@ function frameCover(frame: HTMLIFrameElement, view: DocView): number | null {
   }
   const win = doc?.defaultView;
   if (!doc?.documentElement || !win || frame.offsetWidth <= 0 || frame.offsetHeight <= 0) return null;
-  const bg = canvasBackground(doc, win);
+  const bg = canvasColor(win, backgroundOwner(doc, win));
   if (bg !== "#fff" && !bg.startsWith("rgb(")) return null;
   // The document box (see emitFrame): at the padding edge, clientWidth x clientHeight, clipped to
   // the padding box.
@@ -961,6 +963,10 @@ function* emitElement(
   if (overflowX === "auto" || overflowX === "scroll") override["overflow-x"] = "hidden";
   if (overflowY === "auto" || overflowY === "scroll") override["overflow-y"] = "hidden";
   if (shift) override.translate = shiftedTranslate(cs.getPropertyValue("translate"), shift.x, shift.y);
+  if (walk.onCanvas.has(el)) {
+    override["background-color"] = "transparent";
+    override["background-image"] = "none";
+  }
   if (hollow) {
     // Without content a flex or grid item could shrink below the size it had.
     override["min-width"] = cs.getPropertyValue("width");
@@ -1083,20 +1089,89 @@ function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaratio
   yield* emitDocument(walk, docView(win, width, height, false), width, height, at);
 }
 
-/** Canvas background of a document: the root's, else the body's, else white. */
-function canvasBackground(doc: Document, win: Window): string {
-  const transparent = (c: string) => c === "transparent" || c === "rgba(0, 0, 0, 0)";
-  const root = win.getComputedStyle(doc.documentElement).getPropertyValue("background-color");
-  if (!transparent(root)) return root;
-  const body = doc.body ? win.getComputedStyle(doc.body).getPropertyValue("background-color") : "";
-  return body && !transparent(body) ? body : "#fff";
+function transparentColor(color: string): boolean {
+  return color === "transparent" || color === "rgba(0, 0, 0, 0)";
+}
+
+function hasBackground(cs: CSSStyleDeclaration): boolean {
+  return (
+    !transparentColor(cs.getPropertyValue("background-color")) || cs.getPropertyValue("background-image") !== "none"
+  );
+}
+
+/**
+ * The element whose background is the canvas's: the root when it has one, else the body of an
+ * HTML root, else null. The page paints that background over the whole canvas, not in the box.
+ */
+function backgroundOwner(doc: Document, win: Window): Element | null {
+  const root = doc.documentElement;
+  if (hasBackground(win.getComputedStyle(root))) return root;
+  const body = doc.body;
+  if (!body || root.localName !== "html" || root.namespaceURI !== XHTML_NS) return null;
+  return hasBackground(win.getComputedStyle(body)) ? body : null;
+}
+
+/** Canvas colour of a document: that of its background owner ({@link backgroundOwner}), else white. */
+function canvasColor(win: Window, owner: Element | null): string {
+  const color = owner ? win.getComputedStyle(owner).getPropertyValue("background-color") : "";
+  return color && !transparentColor(color) ? color : "#fff";
+}
+
+/** Background longhands {@link canvasImages} sets itself. */
+const CANVAS_OWN = new Set(["background-color", "background-origin", "background-clip", "background-attachment"]);
+
+/**
+ * The canvas's background images, or "": painted over the whole viewport, but sized and placed
+ * against the root's box (the viewport when fixed), as the page paints them. Its padding box is that
+ * area and transparent borders reach the viewport's edges, so tiles repeat out to them; it sits
+ * under everything else of the document. The first layer's origin and attachment stand for all.
+ */
+function canvasImages(walk: Walk, view: DocView, owner: Element): string {
+  const cs = view.win.getComputedStyle(owner);
+  if (cs.getPropertyValue("background-image") === "none") return "";
+  const first = (name: string) => (cs.getPropertyValue(name).split(",")[0] ?? "").trim();
+  const v = view.viewport;
+  let area: Box = v;
+  if (first("background-attachment") !== "fixed") {
+    const root = view.win.document.documentElement;
+    const rs = view.win.getComputedStyle(root);
+    const origin = first("background-origin");
+    const inset = (side: (typeof SIDES)[number]) =>
+      origin === "border-box"
+        ? 0
+        : px(rs, `border-${side}-width`) + (origin === "content-box" ? px(rs, `padding-${side}`) : 0);
+    const r = root.getBoundingClientRect();
+    area = {
+      left: r.left + inset("left"),
+      top: r.top + inset("top"),
+      right: r.right - inset("right"),
+      bottom: r.bottom - inset("bottom"),
+    };
+  }
+  const edge = {
+    top: Math.max(0, area.top - v.top),
+    right: Math.max(0, v.right - area.right),
+    bottom: Math.max(0, v.bottom - area.bottom),
+    left: Math.max(0, area.left - v.left),
+  };
+  const decls = [
+    "display:block;position:absolute;z-index:-2147483648;box-sizing:content-box",
+    `left:${area.left - edge.left}px;top:${area.top - edge.top}px`,
+    `width:${Math.max(0, area.right - area.left)}px;height:${Math.max(0, area.bottom - area.top)}px`,
+    `border:solid transparent;border-width:${edge.top}px ${edge.right}px ${edge.bottom}px ${edge.left}px`,
+  ];
+  for (const name of walk.baseline.props) {
+    if (name.startsWith("background-") && !CANVAS_OWN.has(name)) decls.push(`${name}:${cs.getPropertyValue(name)}`);
+  }
+  decls.push("background-origin:padding-box;background-clip:border-box;background-attachment:scroll");
+  return `<div style="${escapeAttr(embedCssUrls(walk, decls.join(";"), "c"))}"></div>`;
 }
 
 /**
  * A document's viewport: a clipping box at `at` with the canvas background that holds the
  * document's fixed-position boxes (paint containment), and in it the initial containing block,
  * moved by the scroll offset, with the root inside it. Fixed boxes so stay in view when the
- * document is scrolled.
+ * document is scrolled. The element the canvas took its background from is drawn without it.
  */
 function* emitDocument(
   walk: Walk,
@@ -1106,10 +1181,13 @@ function* emitDocument(
   at: { x: number; y: number } = { x: 0, y: 0 },
 ): Steps {
   const doc = view.win.document;
-  const bg = canvasBackground(doc, view.win);
+  const owner = backgroundOwner(doc, view.win);
+  if (owner) walk.onCanvas.add(owner);
+  const bg = canvasColor(view.win, owner);
   walk.out.push(
     `<div style="display:block;position:absolute;left:${at.x}px;top:${at.y}px;overflow:hidden;contain:paint;` +
       `width:${width}px;height:${height}px;background:${escapeAttr(bg)}">`,
+    owner ? canvasImages(walk, view, owner) : "",
     `<div style="display:block;position:absolute;left:${-view.win.scrollX}px;top:${-view.win.scrollY}px;` +
       `width:${width}px;height:${height}px">`,
   );
@@ -1301,6 +1379,7 @@ async function walkFrame(
     canvases: [],
     overlays: [],
     path: [],
+    onCanvas: new Set(),
     watch,
     deadline: 0,
     stats: { elements: 0, culled: 0, restarts },
@@ -1327,9 +1406,10 @@ async function walkFrame(
 /**
  * Serialises what the frame document shows into one SVG image: the flattened tree (shadow roots,
  * slots, same-origin frames) as XHTML in a `foreignObject`, every clone reset with `all: unset`
- * and given back the computed values that differ, and every resource (images, canvases, fonts)
- * embedded as a data URL, since an SVG image loads nothing else. Resources used more than once
- * are embedded once for images and once for CSS.
+ * and given back the computed values that differ, the root's or body's background painted over
+ * the whole canvas, and every resource (images, canvases, fonts) embedded as a data URL, since an
+ * SVG image loads nothing else. Resources used more than once are embedded once for images and
+ * once for CSS.
  *
  * Only what can show is written: subtrees away from the viewport are left out (out of flow) or
  * written as empty boxes of their size (in flow), and boxes under a frame that covers the viewport
