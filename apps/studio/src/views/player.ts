@@ -214,8 +214,9 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     const messages: string[] = [];
     const truncated = session.loaded?.blueprint.truncated;
     if (truncated && truncated.dropped > 0) messages.push(i18n.t("player.truncated", { count: truncated.dropped }));
-    // Adapters write the notes in English; the ones Studio knows (font substitutions) are reworded
-    // in the UI language, and the lead-in says in that language that they describe changes.
+    // Adapters write the notes in English; the ones Studio knows (font substitutions, Lottie, EPUB,
+    // OpenDocument and DOCX notes) are reworded in the UI language, and the lead-in says in that
+    // language that they describe changes.
     const notes = session.notes.map((note) => localizeNote(note, i18n));
     if (notes.length > 0) messages.push(i18n.t("player.notes", { notes: notes.join(" ") }));
     if (messages.length === 0) {

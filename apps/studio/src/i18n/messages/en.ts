@@ -99,6 +99,38 @@ export const en = {
     one: "{count} expression was ignored; its property keeps its keyframed values.",
     other: "{count} expressions were ignored; their properties keep their keyframed values.",
   },
+  "note.images.missing": {
+    one: "{count} image could not be shown (missing, linked externally or not a supported type).",
+    other: "{count} images could not be shown (missing, linked externally or not a supported type).",
+  },
+  "note.epub.outline": "Outline: {entries}.",
+  "note.epub.outlineMore": "Outline: {entries} (+{count} more).",
+  "note.epub.obfuscatedFonts": "Obfuscated embedded fonts were replaced by fallback fonts.",
+  "note.epub.scripts": "Scripts in the book were not run.",
+  "note.epub.chapters": {
+    one: "{count} chapter could not be read and was skipped.",
+    other: "{count} chapters could not be read and were skipped.",
+  },
+  "note.odf.formulas": "Cells show their saved values; formulas are not recalculated.",
+  "note.odf.objects": {
+    one: "{count} embedded object (chart, formula or OLE) is shown as a placeholder.",
+    other: "{count} embedded objects (charts, formulas, OLE) are shown as placeholders.",
+  },
+  "note.odf.tableCuts": {
+    one: "{count} table was cut to fit the size limits.",
+    other: "{count} tables were cut to fit the size limits.",
+  },
+  "note.odf.shapes": {
+    one: "{count} shape fill or outline was simplified.",
+    other: "{count} shape fills or outlines were simplified.",
+  },
+  "note.docx.pagination":
+    "Pages start at the section and page breaks saved in the document; Word's automatic page flow is not recalculated, so some pages are longer than in Word.",
+  "note.docx.fallback": "The full renderer could not lay out this document ({reason}), so a simplified view is shown.",
+  "note.docx.leftOut": "The simplified view leaves out {items}.",
+  "note.docx.pictures": { one: "{count} picture", other: "{count} pictures" },
+  "note.docx.headersFooters": "headers and footers",
+  "note.docx.footnotes": "footnotes",
   "player.dismiss": "Dismiss",
   "player.retry": "Try again",
   "player.home": "Back to Studio",

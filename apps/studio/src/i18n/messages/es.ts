@@ -92,6 +92,39 @@ export const es: StudioCatalog = {
     one: "Se ignoró {count} expresión; su propiedad conserva los valores de sus fotogramas clave.",
     other: "Se ignoraron {count} expresiones; sus propiedades conservan los valores de sus fotogramas clave.",
   },
+  "note.images.missing": {
+    one: "No se pudo mostrar {count} imagen (falta, está enlazada desde fuera o su tipo no es compatible).",
+    other: "No se pudieron mostrar {count} imágenes (faltan, están enlazadas desde fuera o su tipo no es compatible).",
+  },
+  "note.epub.outline": "Índice: {entries}.",
+  "note.epub.outlineMore": "Índice: {entries} (+{count} más).",
+  "note.epub.obfuscatedFonts": "Las fuentes incrustadas ofuscadas se sustituyeron por fuentes alternativas.",
+  "note.epub.scripts": "No se ejecutaron los scripts del libro.",
+  "note.epub.chapters": {
+    one: "No se pudo leer {count} capítulo y se omitió.",
+    other: "No se pudieron leer {count} capítulos y se omitieron.",
+  },
+  "note.odf.formulas": "Las celdas muestran sus valores guardados; las fórmulas no se recalculan.",
+  "note.odf.objects": {
+    one: "{count} objeto incrustado (gráfico, fórmula u OLE) se muestra como marcador de posición.",
+    other: "{count} objetos incrustados (gráficos, fórmulas, OLE) se muestran como marcadores de posición.",
+  },
+  "note.odf.tableCuts": {
+    one: "Se recortó {count} tabla para ajustarla a los límites de tamaño.",
+    other: "Se recortaron {count} tablas para ajustarlas a los límites de tamaño.",
+  },
+  "note.odf.shapes": {
+    one: "Se simplificó {count} relleno o contorno de forma.",
+    other: "Se simplificaron {count} rellenos o contornos de forma.",
+  },
+  "note.docx.pagination":
+    "Las páginas empiezan en los saltos de sección y de página guardados en el documento; la paginación automática de Word no se recalcula, así que algunas páginas son más largas que en Word.",
+  "note.docx.fallback":
+    "El renderizador completo no pudo maquetar este documento ({reason}), así que se muestra una vista simplificada.",
+  "note.docx.leftOut": "La vista simplificada omite {items}.",
+  "note.docx.pictures": { one: "{count} imagen", other: "{count} imágenes" },
+  "note.docx.headersFooters": "encabezados y pies de página",
+  "note.docx.footnotes": "notas al pie",
   "player.dismiss": "Cerrar",
   "player.retry": "Reintentar",
   "player.home": "Volver a Studio",

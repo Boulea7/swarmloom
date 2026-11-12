@@ -92,6 +92,43 @@ export const fr: StudioCatalog = {
     one: "{count} expression a été ignorée ; sa propriété garde ses valeurs d’images clés.",
     other: "{count} expressions ont été ignorées ; leurs propriétés gardent leurs valeurs d’images clés.",
   },
+  "note.images.missing": {
+    one: "{count} image n’a pas pu être affichée (absente, liée depuis l’extérieur ou d’un type non pris en charge).",
+    other:
+      "{count} images n’ont pas pu être affichées (absentes, liées depuis l’extérieur ou d’un type non pris en charge).",
+  },
+  "note.epub.outline": "Sommaire : {entries}.",
+  "note.epub.outlineMore": {
+    one: "Sommaire : {entries} (+{count} autre).",
+    other: "Sommaire : {entries} (+{count} autres).",
+  },
+  "note.epub.obfuscatedFonts": "Les polices intégrées obscurcies ont été remplacées par des polices de secours.",
+  "note.epub.scripts": "Les scripts du livre n’ont pas été exécutés.",
+  "note.epub.chapters": {
+    one: "{count} chapitre n’a pas pu être lu et a été ignoré.",
+    other: "{count} chapitres n’ont pas pu être lus et ont été ignorés.",
+  },
+  "note.odf.formulas": "Les cellules affichent leurs valeurs enregistrées ; les formules ne sont pas recalculées.",
+  "note.odf.objects": {
+    one: "{count} objet incorporé (graphique, formule ou OLE) est affiché comme espace réservé.",
+    other: "{count} objets incorporés (graphiques, formules, OLE) sont affichés comme espaces réservés.",
+  },
+  "note.odf.tableCuts": {
+    one: "{count} tableau a été coupé pour respecter les limites de taille.",
+    other: "{count} tableaux ont été coupés pour respecter les limites de taille.",
+  },
+  "note.odf.shapes": {
+    one: "{count} remplissage ou contour de forme a été simplifié.",
+    other: "{count} remplissages ou contours de forme ont été simplifiés.",
+  },
+  "note.docx.pagination":
+    "Les pages commencent aux sauts de section et de page enregistrés dans le document ; la pagination automatique de Word n’est pas recalculée, certaines pages sont donc plus longues que dans Word.",
+  "note.docx.fallback":
+    "Le moteur de rendu complet n’a pas pu mettre en page ce document ({reason}) ; une vue simplifiée est affichée.",
+  "note.docx.leftOut": "La vue simplifiée omet {items}.",
+  "note.docx.pictures": { one: "{count} image", other: "{count} images" },
+  "note.docx.headersFooters": "les en-têtes et pieds de page",
+  "note.docx.footnotes": "les notes de bas de page",
   "player.dismiss": "Fermer",
   "player.retry": "Réessayer",
   "player.home": "Retour à Studio",
