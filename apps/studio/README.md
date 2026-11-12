@@ -23,7 +23,7 @@ Files are read in the browser and never uploaded. Remote https images and fonts 
 | `?watch=1` | Watch face. Watch-sized screens (up to 320 x 400) switch to it on their own; a narrow window on a bigger screen and `?import=1` links keep the normal Studio. |
 | `?round=1` | Round watch face: every control stays in the inscribed square. |
 | `?import=1` | Highlight the file picker (sent by the extension). |
-| `?key=<key>` | Read input the extension stored in `chrome.storage` (extension build). |
+| `?key=<key>` | Read input the extension stored in its storage (`browser.storage`, or `chrome.storage` in Chromium; extension build). |
 | `?inbox=<id>` | Read files shared to the installed app (service worker inbox). |
 | `?launch=1` | Wait for files opened with the installed app (`file_handlers`). A file that cannot be read (empty, too large) returns to home with the reason. |
 | `?from=bookmarklet` | Receive a page copy from the bookmarklet (`window.opener`). |
