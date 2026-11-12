@@ -188,32 +188,65 @@ export async function firstFrameUrl(bytes: Uint8Array, type: string, doc: Docume
 }
 
 /**
- * Bytes of a `data:` URL body, or null when it does not decode (binary percent-encoding too). A
- * `prefix` of the body leaves out a percent escape or base64 quantum it ends inside.
+ * Reader of a `data:` URL body from its head on: each call gives the bytes of its first `end`
+ * characters (all of it once `end` reaches its length), or null when it does not decode (binary
+ * percent-encoding too). A call decodes only the characters added since the last one, so reading a
+ * body in growing prefixes costs one pass over it. A prefix leaves out a percent escape or base64
+ * quantum it ends inside, until a later call completes it.
  */
-function dataBytes(body: string, base64: boolean, prefix = false): Uint8Array | null {
-  const partial = !prefix ? 0 : body.endsWith("%") ? 1 : body.at(-2) === "%" ? 2 : 0;
-  let text = body
-    .slice(0, body.length - partial)
-    .replace(/%([0-9a-f]{2})/gi, (_all, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
-  if (base64) {
-    text = text.replace(/\s+/g, "");
-    if (prefix) text = text.slice(0, text.length - (text.length % 4));
+function dataReader(body: string, base64: boolean): (end: number) => Uint8Array | null {
+  let out = new Uint8Array(0);
+  let size = 0;
+  let read = 0;
+  // A percent escape the last call ended inside, and base64 characters short of a whole quantum.
+  let pending = "";
+  let quantum = "";
+  let failed = false;
+  // Where the browser has it, several times faster on megabytes than atob and a loop copying its result.
+  const fromBase64 = (Uint8Array as unknown as { fromBase64?: (text: string) => Uint8Array }).fromBase64;
+  const append = (chunk: Uint8Array | string): void => {
+    if (size + chunk.length > out.length) {
+      const grown = new Uint8Array(size + chunk.length);
+      grown.set(out.subarray(0, size));
+      out = grown;
+    }
+    if (typeof chunk !== "string") out.set(chunk, size);
+    else for (let i = 0; i < chunk.length; i++) out[size + i] = chunk.charCodeAt(i) & 0xff;
+    size += chunk.length;
+  };
+  return (end) => {
+    if (failed) return null;
+    const done = end >= body.length;
+    let text = pending + body.slice(read, done ? body.length : end);
+    read = done ? body.length : end;
+    const partial = done ? 0 : text.endsWith("%") ? 1 : text.at(-2) === "%" ? 2 : 0;
+    pending = text.slice(text.length - partial);
+    text = text.slice(0, text.length - partial);
+    if (text.includes("%")) {
+      text = text.replace(/%([0-9a-f]{2})/gi, (_all, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+    }
+    if (!base64) {
+      append(text);
+      return out.subarray(0, size);
+    }
+    text = quantum + text.replace(/\s+/g, "");
+    const whole = done ? text.length : text.length - (text.length % 4);
+    quantum = text.slice(whole);
     try {
-      text = atob(text);
+      append(fromBase64 ? fromBase64.call(Uint8Array, text.slice(0, whole)) : atob(text.slice(0, whole)));
     } catch {
+      failed = true;
       return null;
     }
-  }
-  const out = new Uint8Array(text.length);
-  for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i) & 0xff;
-  return out;
+    return out.subarray(0, size);
+  };
 }
 
 /**
  * An animated bitmap `data:` URL as its type and the bytes its first frame decodes from (see
- * {@link firstFrame}), or null for anything else. The body is decoded from its head, twice as much
- * at each step, until the header says the image is still or the first frame has ended.
+ * {@link firstFrame}), or null for anything else. The body is read from its head, twice as far at
+ * each step (decoding only what the step adds), until the header says the image is still or the
+ * first frame has ended.
  */
 export function animatedDataUrl(src: string): { type: string; bytes: Uint8Array } | null {
   const comma = src.indexOf(",");
@@ -222,11 +255,11 @@ export function animatedDataUrl(src: string): { type: string; bytes: Uint8Array 
   const hash = src.indexOf("#", comma);
   const body = src.slice(comma + 1, hash < 0 ? undefined : hash);
   const length = base64 ? (body.length * 3) / 4 : body.length / 3;
+  const read = dataReader(body, base64);
   // Whole base64 quanta, so the head decodes on its own.
   for (let chars = base64 ? (HEAD_BYTES / 3) * 4 : HEAD_BYTES; ; chars *= 2) {
-    const done = chars >= body.length;
-    const bytes = dataBytes(done ? body : body.slice(0, chars), base64, !done);
-    const frame = bytes && firstFrame(bytes, done, length);
+    const bytes = read(chars);
+    const frame = bytes && firstFrame(bytes, chars >= body.length, length);
     if (frame !== undefined) return frame;
   }
 }

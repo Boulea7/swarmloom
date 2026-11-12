@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { animatedBitmapType, animatedDataUrl } from "../../src/stage/layers/still-bitmap";
 
 /** 1x1 GIF, red then blue, looping. */
@@ -59,6 +59,30 @@ describe("animated bitmaps", () => {
       // One frame left, a few bytes long.
       expect(animatedBitmapType(still?.bytes ?? new Uint8Array())).toBeNull();
       expect(still?.bytes.length).toBeLessThan(200);
+    }
+  });
+
+  it("decodes each character of a data: URL once while reading longer heads, across split escapes", () => {
+    // An animated WebP header, then 300 KB of frame data: decoded whole, through four longer heads.
+    const webp = new Uint8Array(300 * 1024);
+    webp.set(bytes(WEBP_ANIMATED));
+    for (let i = WEBP_ANIMATED.length; i < webp.length; i++) webp[i] = (i * 7919) % 251;
+    const plain = base64(webp);
+    // Base64 in lines, so heads end inside a quantum; escapes between plain letters, so inside an escape.
+    const percent = Array.from(webp, (b) =>
+      b >= 0x61 && b <= 0x7a ? String.fromCharCode(b) : `%${b.toString(16).padStart(2, "0")}`,
+    );
+    const atob = vi.spyOn(globalThis, "atob");
+    const native = Uint8Array as unknown as { fromBase64?: (text: string) => Uint8Array };
+    const fromBase64 = native.fromBase64 && vi.spyOn(native as Required<typeof native>, "fromBase64");
+    try {
+      expect(animatedDataUrl(`data:image/webp;base64,${plain.replace(/.{76}/g, "$&\n")}`)?.bytes).toEqual(webp);
+      const calls = [...atob.mock.calls, ...(fromBase64 ? fromBase64.mock.calls : [])];
+      expect(calls.reduce((sum, [text]) => sum + text.length, 0)).toBe(plain.length);
+      expect(animatedDataUrl(`data:image/webp,${percent.join("")}`)?.bytes).toEqual(webp);
+    } finally {
+      atob.mockRestore();
+      fromBase64?.mockRestore();
     }
   });
 });
