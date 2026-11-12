@@ -10,7 +10,7 @@ import { InterruptedError } from "../src/errors";
 import { planMux, planVideo } from "../src/pipeline/encode";
 import { type FrameSource, runFrameLoop } from "../src/pipeline/frames";
 import { inputBase, isSiblingAsset, servedInput, toRenderInput } from "../src/pipeline/input";
-import { fitFields, Progress } from "../src/pipeline/progress";
+import { fitFields, Progress, wrapFields } from "../src/pipeline/progress";
 import { resolveRequestPath, startStaticServer } from "../src/server/static";
 import { guard } from "../src/util/async";
 
@@ -95,6 +95,13 @@ describe("progress line", () => {
     expect(draw(30)).toBe("rendering  92%  T left");
     expect(draw(36)).toBe(`rendering ${"█".repeat(8)}░  92%  T left`);
     expect(draw(10)).toBe("92%");
+  });
+
+  it("breaks the start banner between fields on a narrow terminal", () => {
+    const banner = ["Rendering landing.html (html)", "at 1920x1080, 30 fps", "-> take.mp4"];
+    expect(wrapFields(banner, Number.POSITIVE_INFINITY)).toEqual([banner.join(" ")]);
+    expect(wrapFields(banner, 41)).toEqual([banner[0], "  at 1920x1080, 30 fps -> take.mp4"]);
+    expect(wrapFields(banner, 20)).toEqual([banner[0], "  at 1920x1080, 30 fps", "  -> take.mp4"]);
   });
 });
 

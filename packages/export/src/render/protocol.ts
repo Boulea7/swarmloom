@@ -16,20 +16,33 @@ export interface RenderInput {
 }
 
 /** Player actions a render can schedule (see {@link RenderInit.cues}). */
-export const CUE_ACTIONS = ["pause", "resume", "finish", "live"] as const;
+export const CUE_ACTIONS = ["pause", "resume", "finish", "live", "speed"] as const;
 export type CueAction = (typeof CUE_ACTIONS)[number];
+
+/** Build speeds a render accepts: {@link RenderInit.speed} and "speed" cues. */
+export const SPEED_RANGE = { min: 0.05, max: 16 } as const;
 
 /** A player action applied at a fixed video time. */
 export interface RenderCue {
-  /** Video time in ms (frame `n` shows `n * 1000 / fps`); applied on the first frame at or after it. */
+  /**
+   * Video time in ms (frame `n` shows `n * 1000 / fps`); applied at the first engine tick (1/120 s) at
+   * or after it, at any frame rate, so the first frame at or after it shows it.
+   */
   at: number;
   /**
    * "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly,
    * "live" goes live now instead of when the finale settles (the cursors leave and the page plays; an
-   * unfinished build completes at once), also with `live: false`.
+   * unfinished build completes at once), also with `live: false`. "speed" sets the build speed to
+   * {@link speed} from then on, as `Player.setSpeed` does (the intro and finale keep their pace).
    */
   action: CueAction;
+  /** New build speed of a "speed" cue, 0.05..16; required by it and not allowed on the others. */
+  speed?: number;
 }
+
+export const TERMINAL_FONTS = ["fit", "fill"] as const;
+/** How terminal recordings size their font (see {@link RenderInit.terminalFont}). */
+export type TerminalFont = (typeof TERMINAL_FONTS)[number];
 
 /** Options of `window.__swarmloom.init()`. Mirrors the CLI flags. */
 export interface RenderInit {
@@ -57,6 +70,11 @@ export interface RenderInit {
   /** Hold time after the build completes (finale, then the live page), ms. Default 2500. */
   tail?: number;
   /**
+   * Opening before the intro, ms: the finished content shows this long, then fades into the blank
+   * canvas (PlayerOptions.opening). Default 0, none.
+   */
+  opening?: number;
+  /**
    * Go live once the finale settles, as the player's go live does: the cursors leave, the stage
    * becomes the finished page and its own animations (CSS, SMIL, plugin players such as Lottie)
    * play through the rest of the tail on the frame clock. An HTML document shows its live page
@@ -64,16 +82,33 @@ export interface RenderInit {
    * end state.
    */
   live?: boolean;
+  /** Going live glides back to the top first (PlayerOptions.liveTop). Default false. */
+  liveTop?: boolean;
   /** Scroll mode during export: "tour" (default; follows the build) or "none". */
   follow?: "tour" | "none";
+  /**
+   * Intro (`PlayerOptions.intro`): true (default) the warp around the file icon, "outline" a few
+   * cursors drawing the largest shapes before the swarm joins, false none.
+   */
+  intro?: boolean | "outline";
   /** Quick cross-fade build without flocking. Default false: exports never inherit the host preference. */
   reducedMotion?: boolean;
   /** Musical grid tempo of placement notes (beat-synced builds). Default: the sound pack's tempo. */
   bpm?: number;
+  /**
+   * What snaps to that grid in the soundtrack (`SoundOptions.beatSync`): true (default) the notes,
+   * fan-out and final chord; "all" also keys, clicks, snaps and pen anchors, on sixteenth notes.
+   */
+  beatSync?: true | "all";
   /** Sound pack id ("studio", "soft", "8bit", "silent-keys"). Default "studio". */
   pack?: string;
   /** Player actions at fixed video times, e.g. a hold and a quick finish timed to music. Default none. */
   cues?: RenderCue[];
+  /**
+   * Font of terminal recordings: "fit" (default) keeps 14 px and shrinks it to fit the width; "fill"
+   * grows it until the window fills the frame's width or height.
+   */
+  terminalFont?: TerminalFont;
   /**
    * A blueprint the driver already captured (the CLI snapshots live web pages). When set it is played
    * as is and `input` is not loaded; `input` still names the source.
@@ -94,6 +129,17 @@ export interface RenderInfo {
    * same hash every time. Empty without Web Crypto.
    */
   blueprintSha256: string;
+}
+
+/** One stretch of scrolling, on the frames' clock (see {@link RenderApi.scrollLog}). */
+export interface RenderScroll {
+  /** Time of the last frame before the view moved, ms. */
+  t: number;
+  /** Time of the first frame at `to`, ms. */
+  end: number;
+  /** Top edge of the view before and after, stage px (the content's CSS px). */
+  from: number;
+  to: number;
 }
 
 /** Result of one `step()` call. */
@@ -129,6 +175,11 @@ export interface RenderApi {
    * is off, so drivers can record or compare runs.
    */
   soundLog(): Promise<SoundEvent[]>;
+  /**
+   * Every stretch of scrolling so far (the tour, a go-live glide), in time order, on the same clock
+   * as {@link soundLog}. A stretch still moving at the last step ends there.
+   */
+  scrollLog(): Promise<RenderScroll[]>;
   /** Destroys the player and releases the loaded source; `init()` may be called again afterwards. */
   dispose(): void;
 }
@@ -195,7 +246,12 @@ function cueList(raw: unknown): RenderCue[] {
     if (!isRecord(cue)) fail(`cues[${i}] must be an object`);
     const at = number(cue, "at", 0, MAX_CUE_MS) ?? fail(`cues[${i}].at is required`);
     const action = oneOf(cue, "action", CUE_ACTIONS) ?? fail(`cues[${i}].action is required`);
-    return { at, action };
+    if (action !== "speed") {
+      if (cue.speed !== undefined) fail(`cues[${i}].speed is only for a "speed" cue`);
+      return { at, action };
+    }
+    const speed = number(cue, "speed", SPEED_RANGE.min, SPEED_RANGE.max) ?? fail(`cues[${i}].speed is required`);
+    return { at, action, speed };
   });
   // Stable: cues at the same time apply in the order given.
   return cues.sort((a, b) => a.at - b.at);
@@ -214,7 +270,12 @@ function blueprintOf(raw: unknown): Blueprint | undefined {
 
 /** Init options after validation, with defaults filled in. */
 export type ParsedInit = RenderInit &
-  Required<Pick<RenderInit, "seed" | "tail" | "live" | "sound" | "follow" | "reducedMotion" | "theme" | "cues">>;
+  Required<
+    Pick<
+      RenderInit,
+      "seed" | "tail" | "live" | "sound" | "follow" | "intro" | "reducedMotion" | "theme" | "cues" | "beatSync"
+    >
+  >;
 
 /**
  * Validates untrusted init options (they cross a process boundary) and fills defaults.
@@ -244,6 +305,14 @@ export function parseInit(raw: unknown): ParsedInit {
   if (reducedMotion !== undefined && typeof reducedMotion !== "boolean") fail("reducedMotion must be a boolean");
   const live = raw.live;
   if (live !== undefined && typeof live !== "boolean") fail("live must be a boolean");
+  const liveTop = raw.liveTop;
+  if (liveTop !== undefined && typeof liveTop !== "boolean") fail("liveTop must be a boolean");
+  const intro = raw.intro;
+  if (intro !== undefined && typeof intro !== "boolean" && intro !== "outline") {
+    fail('intro must be a boolean or "outline"');
+  }
+  const beatSync = raw.beatSync;
+  if (beatSync !== undefined && beatSync !== true && beatSync !== "all") fail('beatSync must be true or "all"');
   const blueprint = blueprintOf(raw.blueprint);
   return {
     input: source,
@@ -251,7 +320,7 @@ export function parseInit(raw: unknown): ParsedInit {
     height: number(raw, "height", 16, 8192, true) ?? fail("height is required"),
     fps: number(raw, "fps", 1, 240) ?? fail("fps is required"),
     agents,
-    speed: number(raw, "speed", 0.05, 16),
+    speed: number(raw, "speed", SPEED_RANGE.min, SPEED_RANGE.max),
     seed: number(raw, "seed", -(2 ** 31), 2 ** 32, true) ?? 1,
     theme: oneOf(raw, "theme", THEMES) ?? "auto",
     labels: oneOf(raw, "labels", LABELS),
@@ -260,12 +329,17 @@ export function parseInit(raw: unknown): ParsedInit {
     finale: oneOf(raw, "finale", FINALES),
     locale: optionalString(raw, "locale"),
     tail: number(raw, "tail", 0, 600_000) ?? 2500,
+    opening: number(raw, "opening", 0, 600_000),
     live: live ?? true,
+    liveTop,
     follow: oneOf(raw, "follow", FOLLOWS) ?? "tour",
+    intro: intro ?? true,
     reducedMotion: reducedMotion ?? false,
     bpm: number(raw, "bpm", 20, 400),
+    beatSync: beatSync ?? true,
     pack: optionalString(raw, "pack"),
     cues: cueList(raw.cues),
+    terminalFont: oneOf(raw, "terminalFont", TERMINAL_FONTS),
     ...(blueprint ? { blueprint } : {}),
   };
 }

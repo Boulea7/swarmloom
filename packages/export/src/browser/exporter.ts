@@ -285,7 +285,12 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     if (plan.audio) {
       report("sound");
       const events = await api.soundLog();
-      const soundOptions = { enabled: true, pack: settings.pack, bpm: settings.bpm, beatSync: true };
+      const soundOptions = {
+        enabled: true,
+        pack: settings.pack,
+        bpm: settings.bpm,
+        beatSync: settings.beatSync ?? true,
+      };
       const buffer = await renderOffline(events, result.durationMs, {
         sampleRate: SAMPLE_RATE,
         channels: CHANNELS,

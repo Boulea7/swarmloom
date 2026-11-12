@@ -34,8 +34,10 @@ The player uses an inline stage with its own scrolling content. Its settings dra
 
 - Cursor count, speed and labels;
 - Light and dark themes;
-- Sound toggle and sound pack;
+- Sound toggle, sound pack and clicks on the beat;
 - `flock`, `halo` and `none` finales;
+- Intro: the icon, or outline first;
+- Show the original first (1.5 s of the finished content, then the build) and back to the top at the end;
 - Reduced motion;
 - Interface language.
 

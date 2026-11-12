@@ -82,7 +82,9 @@ describe("render page protocol", () => {
     expect(steps.findIndex((s) => s.state === "finale")).toBe(24);
     expect(steps).toHaveLength(30);
     expect(steps.at(-1)).toEqual({ state: "finale", built: 4, total: 4, done: true });
-    expect(player.readyCalls).toBe(31);
+    // start() waits once, then every engine tick: 120 a second, plus a short tick to each 40 ms frame
+    // that ends between two ticks (4 in 5): 1 + 144 + 24.
+    expect(player.readyCalls).toBe(169);
 
     expect(base64ToBytes(await api.audioWav())).toEqual(Uint8Array.from([4, 120]));
     expect(audio.mock.calls[0]?.[2]).toMatchObject({ sampleRate: 48000, channels: 2 });
@@ -114,21 +116,79 @@ describe("render page protocol", () => {
     // Step i reaches (i + 1) * 50 ms: paused from the step that reached 300 ms to the one that reached 500.
     expect(states.slice(4, 10)).toEqual(["building", "paused", "paused", "paused", "paused", "building"]);
     // finish() at 600 ms fans out at once (player time 400) and completes the remaining layers on the
-    // next tick (650 ms, player time 450).
+    // next engine tick (608.3 ms, player time 408.3).
     expect(states.slice(11, 13)).toEqual(["building", "finale"]);
-    expect(player.soundLog.map((e) => e.t)).toEqual([250, 400, 450, 450, 450]);
+    expect(player.soundLog.map((e) => Math.round(e.t))).toEqual([250, 400, 408, 408, 408]);
     // The key at 250 sounded before the hold; the later ones move 200 ms later, onto the frame that shows them.
-    expect((await api.soundLog()).map((e) => e.t)).toEqual([250, 600, 650, 650, 650]);
+    expect((await api.soundLog()).map((e) => Math.round(e.t))).toEqual([250, 600, 608, 608, 608]);
     await api.audioWav();
-    expect(audio.mock.calls[0]?.[0].map((e) => e.t)).toEqual([250, 600, 650, 650, 650]);
+    expect(audio.mock.calls[0]?.[0].map((e) => Math.round(e.t))).toEqual([250, 600, 608, 608, 608]);
 
     api.dispose();
     const bad: [unknown, string][] = [
       [{ ...base, cues: [{ at: 10, action: "rewind" }] }, "action must be one of pause, resume, finish"],
       [{ ...base, cues: [{ at: -1, action: "pause" }] }, "at must be a number within 0..3600000"],
       [{ ...base, cues: "pause" }, "cues must be an array"],
+      [{ ...base, cues: [{ at: 0, action: "speed" }] }, "cues[0].speed is required"],
+      [{ ...base, cues: [{ at: 0, action: "speed", speed: 0 }] }, "speed must be a number within 0.05..16"],
+      [{ ...base, cues: [{ at: 0, action: "pause", speed: 2 }] }, 'cues[0].speed is only for a "speed" cue'],
     ];
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
+  });
+
+  it("passes the opening and liveTop on, and logs each stretch of scrolling on video time", async () => {
+    const { api, players } = setup();
+    await api.init({ ...base, opening: 500, liveTop: true });
+    const [player] = players as [ClockPlayer];
+    expect(player.options).toMatchObject({ opening: 500, liveTop: true });
+    // The view after each 40 ms step: still, down 100 px over two steps, still, up 40 px, still.
+    for (const y of [0, 0, 40, 100, 100, 100, 60, 60]) {
+      player.scrollY = y;
+      await api.step(40);
+    }
+    expect(await api.scrollLog()).toEqual([
+      { t: 80, end: 160, from: 0, to: 100 },
+      { t: 240, end: 280, from: 100, to: 60 },
+    ]);
+  });
+
+  it("passes the intro through to the player", async () => {
+    const { api, players } = setup();
+    await api.init({ ...base, intro: "outline" });
+    expect(players[0]?.options.intro).toBe("outline");
+    api.dispose();
+    const short = { ...base, intro: "short" } as unknown as RenderInit;
+    await expect(api.init(short)).rejects.toThrow('intro must be a boolean or "outline"');
+  });
+
+  it("renders the soundtrack with the beat sync asked for", async () => {
+    const { api, audio } = setup();
+    await api.init({ ...base, bpm: 124, beatSync: "all" });
+    await api.step(40);
+    await api.audioWav();
+    expect(audio.mock.calls[0]?.[2]?.sound).toEqual({ enabled: true, pack: undefined, bpm: 124, beatSync: "all" });
+    api.dispose();
+    await expect(api.init({ ...base, beatSync: false } as unknown as RenderInit)).rejects.toThrow(
+      'beatSync must be true or "all"',
+    );
+  });
+
+  it("changes the build speed at speed cues, on the engine tick that reaches them", async () => {
+    const { api, players } = setup();
+    await api.init({
+      ...base,
+      cues: [
+        { at: 0, action: "speed", speed: 0.6 },
+        { at: 120, action: "speed", speed: 0.45 },
+      ],
+    });
+    for (let i = 0; i < 4; i++) await api.step(50);
+    // 120 ms falls between the 1/120 s ticks at 116.7 and 125 ms; the frame at 150 ms shows it.
+    expect((players[0] as ClockPlayer).speeds).toEqual([
+      [0, 0.6],
+      [125, 0.45],
+    ]);
+    api.dispose();
   });
 
   it("shifts the sounds a cue logs itself when it ends a pause", async () => {
@@ -142,12 +202,12 @@ describe("render page protocol", () => {
       ],
     });
     for (let i = 0; i < 12; i++) await api.step(50);
-    expect((await api.soundLog()).map((e) => [e.name, e.t])).toEqual([
+    expect((await api.soundLog()).map((e) => [e.name, Math.round(e.t)])).toEqual([
       ["key", 250],
       ["fanout", 500],
-      ["key", 550],
-      ["key", 550],
-      ["key", 550],
+      ["key", 508],
+      ["key", 508],
+      ["key", 508],
     ]);
     api.dispose();
   });
@@ -328,6 +388,7 @@ describe("render page protocol", () => {
       [{ ...base, fps: Number.NaN }, "fps must be a number"],
       [{ ...base, theme: "neon" }, "theme must be one of auto, light, dark"],
       [{ ...base, overlays: "some" }, "overlays must be one of full, minimal, none"],
+      [{ ...base, terminalFont: "big" }, "terminalFont must be one of fit, fill"],
       [{ ...base, live: "yes" }, "live must be a boolean"],
       [{ ...base, input: { name: "a", base64: "%%%" } }, "not valid base64"],
       [{ ...base, blueprint: { version: 2, size: { w: 1, h: 1 }, layers: [] } }, "blueprint must be a version 1"],

@@ -29,12 +29,16 @@ export {
   type RenderInfo,
   type RenderInit,
   type RenderInput,
+  type RenderScroll,
   type RenderStep,
+  TERMINAL_FONTS,
+  type TerminalFont,
 } from "./render/protocol";
 export {
   MAX_STEP_MS,
   RenderSession,
   type RenderSessionOptions,
   type SessionCue,
+  type SessionScroll,
   type SessionStatus,
 } from "./session";

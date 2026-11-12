@@ -570,6 +570,9 @@ importers:
       '@swarmloom/adapter-svg':
         specifier: workspace:*
         version: link:../adapter-svg
+      '@swarmloom/adapter-terminal':
+        specifier: workspace:*
+        version: link:../adapter-terminal
       '@swarmloom/core':
         specifier: workspace:*
         version: link:../core

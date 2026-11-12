@@ -153,6 +153,13 @@ export interface Stage extends StageApi {
   prefetch?(id: string): void;
   /** Fade the blank canvas in over the live page (overlay) / show the empty stage (inline). */
   enter(): Promise<void>;
+  /**
+   * Optional, for PlayerOptions.opening: shows the original at opacity `alpha` (0..1) over the blank
+   * canvas, before enter(). Inline, the original is the finished content (the first call finishes
+   * every layer, as finishAll() does); overlay, it is the page under a still transparent stage.
+   * `null` ends the opening and leaves the layers as they are; reset() ends it too.
+   */
+  original?(alpha: number | null): void;
   /** Instantly reveal every layer to its final state (skip, reduced motion end). */
   finishAll(): void;
   /** Back to a blank canvas with nothing revealed (replay). */
@@ -238,8 +245,9 @@ export interface ChoreoHelpers {
  *   pen      pitch: none                                 pen anchor tick
  *   swell / fanout / chord / sweep / pop                 one-shots (see PLAN)
  * pan: -1..1 from the cursor's x within the viewport.
- * Notes are quantized to the eighth-note grid of `bpm` (default 112) when beatSync is true (default true for "note").
- * Quantization is a PURE function of event.t so realtime and offline renders match.
+ * Notes, fan-out and chord are quantized to the eighth-note grid of `bpm` (default 112) when beatSync is on
+ * (the default); with beatSync "all" the other hits move to a nearby sixteenth note or stay silent.
+ * Quantization is a PURE function of the event sequence so realtime and offline renders match.
  */
 export interface SoundEngine {
   play(ev: SoundEvent): void;

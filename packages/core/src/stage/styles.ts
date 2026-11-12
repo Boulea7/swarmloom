@@ -41,7 +41,7 @@ export function hostCss(mode: "overlay" | "inline"): string {
 export const STAGE_CSS = `
 .root{position:absolute;inset:0;overflow:hidden;font:400 13px/1.4 ${UI_FONT_STACK};
   -webkit-text-size-adjust:100%;text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
-.backdrop{position:absolute;inset:0;pointer-events:none}
+.floor,.backdrop{position:absolute;inset:0;pointer-events:none}
 .scroller{position:absolute;inset:0;overflow:auto;overscroll-behavior:contain;
   background-attachment:local!important;outline:none}
 .root[data-mode=inline] .scroller{overflow-x:hidden;scrollbar-gutter:stable;scrollbar-width:thin}

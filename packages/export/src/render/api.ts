@@ -8,7 +8,7 @@ import type {
   SourceInput,
 } from "@swarmloom/core";
 import { base64ToBytes, bytesToBase64 } from "../base64";
-import { RenderSession } from "../session";
+import { ENGINE_TICK_RATE, RenderSession } from "../session";
 import { blueprintSha256 } from "./digest";
 import { LiveStage, livePageOf, watchShadowRoots } from "./live";
 import {
@@ -17,17 +17,23 @@ import {
   type RenderApi,
   type RenderInfo,
   type RenderInit,
+  type RenderScroll,
   type RenderStep,
+  type TerminalFont,
 } from "./protocol";
 
 /** Services the render page needs; injected so the protocol can be tested with fakes. */
 export interface RenderDeps {
   /**
    * Detects and loads the input (normally `load` from `@swarmloom/formats`). `height` is the frame
-   * height, the viewport height for adapters that lay out pages. An HTML adapter that keeps its live
-   * page (`LoadedHtml.live`) gets it shown on go live.
+   * height, the viewport height for adapters that lay out pages; `terminalFont` is the init option of
+   * that name. An HTML adapter that keeps its live page (`LoadedHtml.live`) gets it shown on go live.
    */
-  load(input: SourceInput, ctx: AdapterContext, options: { format?: string; height: number }): Promise<LoadedSource>;
+  load(
+    input: SourceInput,
+    ctx: AdapterContext,
+    options: { format?: string; height: number; terminalFont?: TerminalFont },
+  ): Promise<LoadedSource>;
   createPlayer(options: PlayerOptions): Player;
   renderAudioWav(events: readonly SoundEvent[], durationMs: number, opts?: RenderOfflineOptions): Promise<Uint8Array>;
   /** Document the stage is mounted in. Default `globalThis.document`. */
@@ -147,7 +153,7 @@ function playerOptions(
     follow: init.follow,
     reducedMotion: init.reducedMotion,
     controls: false,
-    intro: true,
+    intro: init.intro,
     // Never realtime audio: the player logs every sound event anyway and audioWav() renders that log
     // offline. An enabled player would open an AudioContext, and in a page with user activation (the
     // Studio export frame after the click on Export) play every note aloud at export speed.
@@ -160,6 +166,8 @@ function playerOptions(
   if (init.overlays !== undefined) options.overlays = init.overlays;
   if (init.finale !== undefined) options.finale = init.finale;
   if (init.locale !== undefined) options.locale = init.locale;
+  if (init.opening !== undefined) options.opening = init.opening;
+  if (init.liveTop !== undefined) options.liveTop = init.liveTop;
   return options;
 }
 
@@ -221,7 +229,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         };
         loaded = init.blueprint
           ? { blueprint: init.blueprint }
-          : await deps.load(source, ctx, { format, height: init.height });
+          : await deps.load(source, ctx, { format, height: init.height, terminalFont: init.terminalFont });
         // Recoverable: the render goes on; the CLI echoes these with --verbose.
         const warn = (message: string) => console.warn(`[swarmloom] ${message}`);
         const view = doc.defaultView as (Window & typeof globalThis) | null;
@@ -244,6 +252,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
           tailMs: init.tail,
           live: goesLive,
           cues: init.cues,
+          tickRate: ENGINE_TICK_RATE,
           createPlayer: deps.createPlayer,
           onWarning: (error) => warn(error.message),
         });
@@ -282,7 +291,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       const { init, session } = activeRender();
       if (session.elapsed <= 0) throw new Error("Nothing rendered yet: call step() before audioWav()");
       const events = init.sound ? session.soundLog : [];
-      const sound = { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: true };
+      const sound = { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: init.beatSync };
       const length = durationMs ?? session.elapsed;
       const wav = await deps.renderAudioWav(events, length, { sampleRate: SAMPLE_RATE, channels: 2, sound });
       return bytesToBase64(wav);
@@ -290,6 +299,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
 
     async soundLog(): Promise<SoundEvent[]> {
       return activeRender().session.soundLog.map((event) => ({ ...event }));
+    },
+
+    async scrollLog(): Promise<RenderScroll[]> {
+      return activeRender().session.scrollLog.map((scroll) => ({ ...scroll }));
     },
 
     dispose,

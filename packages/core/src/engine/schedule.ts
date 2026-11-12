@@ -130,8 +130,9 @@ export class Schedule {
    * intersects the viewport qualify: the swarm never works on what nobody can see (the engine
    * fades such layers in without cursors instead). Guides first, then reading position plus
    * distance; priority tiers order everything.
+   * @param only Optional mask over the nodes: when given, only tasks it marks with 1 qualify.
    */
-  pick(ax: number, ay: number, vp: Rect): number {
+  pick(ax: number, ay: number, vp: Rect, only: Uint8Array | null = null): number {
     const { x, seenY, tier, flags } = this.plan;
     const top = vp.y;
     const bottom = vp.y + vp.h;
@@ -140,7 +141,7 @@ export class Schedule {
     let bestScore = Number.POSITIVE_INFINITY;
     for (let k = 0; k < this.#availCount; k++) {
       const i = this.#avail[k] as number;
-      if (!this.#inSight(i, top, bottom)) continue;
+      if ((only && !only[i]) || !this.#inSight(i, top, bottom)) continue;
       const anchorY = Math.max(seenY[i] as number, top);
       const tx = x[i] as number;
       const dx = tx - ax;
@@ -156,12 +157,13 @@ export class Schedule {
     return best;
   }
 
-  /** True when an available task is in sight of `vp` (what {@link pick} could return). */
-  hasWorkInSight(vp: Rect): boolean {
+  /** True when an available task is in sight of `vp` (what {@link pick} could return with `only`). */
+  hasWorkInSight(vp: Rect, only: Uint8Array | null = null): boolean {
     const top = vp.y;
     const bottom = vp.y + vp.h;
     for (let k = 0; k < this.#availCount; k++) {
-      if (this.#inSight(this.#avail[k] as number, top, bottom)) return true;
+      const i = this.#avail[k] as number;
+      if ((!only || only[i]) && this.#inSight(i, top, bottom)) return true;
     }
     return false;
   }

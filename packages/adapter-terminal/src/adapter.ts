@@ -12,12 +12,19 @@ export const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 export interface TerminalAdapterOptions extends TimelineOptions {
   /** Reject larger inputs. Default {@link DEFAULT_MAX_BYTES}. */
   maxBytes?: number;
-  /** Preferred font size in px. Default 14 (shrinks to fit the layout width). */
+  /** Preferred font size in px. Default 14 (shrinks to fit the layout width; see `fill`). */
   fontSize?: number;
   /** Terminal colours; overrides the recording's theme. */
   theme?: TerminalTheme;
   /** Shrink the window to the rows/columns the session uses. Default true. */
   fit?: boolean;
+  /**
+   * Let the font grow past `fontSize` until the window fills the layout width, or
+   * `viewportHeight` when that comes first. Default false: the font only shrinks to fit the width.
+   */
+  fill?: boolean;
+  /** Height of the stage, px, that `fill` keeps the window within. Default: none (width only). */
+  viewportHeight?: number;
   /** Window title override. */
   title?: string;
 }
@@ -49,6 +56,8 @@ export function createTerminalAdapter(options: TerminalAdapterOptions = {}): Ada
         ...(options.fontSize ? { fontSize: options.fontSize } : {}),
         ...(options.theme ? { theme: options.theme } : {}),
         ...(options.fit === false ? { fit: false } : {}),
+        ...(options.fill ? { fill: true } : {}),
+        ...(options.viewportHeight ? { height: options.viewportHeight } : {}),
         ...(options.title ? { title: options.title } : {}),
         ...(name ? { name } : {}),
       });

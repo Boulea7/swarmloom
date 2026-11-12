@@ -6,6 +6,8 @@ export type StudioLocale = (typeof STUDIO_LOCALES)[number];
 
 export type ThemeChoice = "auto" | "light" | "dark";
 export type FinaleChoice = "flock" | "halo" | "none";
+/** Intro: cursors circle the file icon, or a few draw the largest shapes first. */
+export type IntroChoice = "warp" | "outline";
 export type FollowChoice = "tour" | "scroll" | "none";
 export type MotionChoice = "auto" | "reduce" | "full";
 export type SoundPack = "studio" | "soft" | "8bit" | "silent-keys";
@@ -18,10 +20,17 @@ export interface StudioSettings {
   labels: LabelMode;
   theme: ThemeChoice;
   finale: FinaleChoice;
+  intro: IntroChoice;
   follow: FollowChoice;
+  /** Show the finished original for {@link OPENING_MS} first, then fade into the build. */
+  opening: boolean;
+  /** Going live glides back to the top. */
+  liveTop: boolean;
   reducedMotion: MotionChoice;
   sound: boolean;
   soundPack: SoundPack;
+  /** Keys, clicks and pen anchors on the beat too (`SoundOptions.beatSync: "all"`). */
+  beatHits: boolean;
   volume: number;
   locale: "auto" | StudioLocale;
   /**
@@ -37,9 +46,12 @@ export const SPEED_STEPS = [0.5, 1, 2, 3] as const;
 export const LABEL_MODES: readonly LabelMode[] = ["names", "agents", "roles", "none"];
 export const THEMES: readonly ThemeChoice[] = ["auto", "light", "dark"];
 export const FINALES: readonly FinaleChoice[] = ["flock", "halo", "none"];
+export const INTROS: readonly IntroChoice[] = ["warp", "outline"];
 export const FOLLOWS: readonly FollowChoice[] = ["tour", "scroll", "none"];
 export const MOTIONS: readonly MotionChoice[] = ["auto", "reduce", "full"];
 export const SOUND_PACKS: readonly SoundPack[] = ["studio", "soft", "8bit", "silent-keys"];
+/** How long the opening shows the original before it fades, ms (`--opening 1.5`). */
+export const OPENING_MS = 1500;
 
 export const DEFAULT_SETTINGS: Readonly<StudioSettings> = Object.freeze({
   agents: "auto",
@@ -48,10 +60,14 @@ export const DEFAULT_SETTINGS: Readonly<StudioSettings> = Object.freeze({
   labels: "names",
   theme: "auto",
   finale: "flock",
+  intro: "warp",
   follow: "tour",
+  opening: false,
+  liveTop: false,
   reducedMotion: "auto",
   sound: true,
   soundPack: "studio",
+  beatHits: false,
   volume: 0.8,
   locale: "auto",
   remoteAssets: true,
@@ -107,14 +123,22 @@ export function sanitizeSettings(raw: unknown): Partial<StudioSettings> {
   if (theme) out.theme = theme;
   const finale = oneOf(FINALES, r.finale);
   if (finale) out.finale = finale;
+  const intro = oneOf(INTROS, r.intro);
+  if (intro) out.intro = intro;
   const follow = oneOf(FOLLOWS, r.follow);
   if (follow) out.follow = follow;
+  const opening = parseBool(r.opening);
+  if (opening !== undefined) out.opening = opening;
+  const liveTop = parseBool(r.liveTop);
+  if (liveTop !== undefined) out.liveTop = liveTop;
   const motion = oneOf(MOTIONS, r.reducedMotion);
   if (motion) out.reducedMotion = motion;
   const sound = parseBool(r.sound);
   if (sound !== undefined) out.sound = sound;
   const pack = oneOf(SOUND_PACKS, r.soundPack);
   if (pack) out.soundPack = pack;
+  const beatHits = parseBool(r.beatHits);
+  if (beatHits !== undefined) out.beatHits = beatHits;
   const volume = finiteIn(r.volume, 0, 1);
   if (volume !== undefined) out.volume = volume;
   const locale = r.locale === "auto" ? "auto" : oneOf(STUDIO_LOCALES, r.locale);
@@ -174,7 +198,19 @@ export function playerOptionsFrom(
   locale: string,
 ): Pick<
   PlayerOptions,
-  "agents" | "speed" | "seed" | "labels" | "theme" | "finale" | "follow" | "reducedMotion" | "sound" | "locale"
+  | "agents"
+  | "speed"
+  | "seed"
+  | "labels"
+  | "theme"
+  | "finale"
+  | "intro"
+  | "follow"
+  | "opening"
+  | "liveTop"
+  | "reducedMotion"
+  | "sound"
+  | "locale"
 > {
   return {
     agents: s.agents,
@@ -183,9 +219,14 @@ export function playerOptionsFrom(
     labels: s.labels,
     theme: s.theme,
     finale: s.finale,
+    intro: s.intro === "outline" ? "outline" : true,
     follow: s.follow,
+    opening: s.opening ? OPENING_MS : 0,
+    liveTop: s.liveTop,
     reducedMotion: s.reducedMotion === "auto" ? "auto" : s.reducedMotion === "reduce",
-    sound: s.sound ? { enabled: true, pack: s.soundPack, volume: s.volume } : false,
+    sound: s.sound
+      ? { enabled: true, pack: s.soundPack, volume: s.volume, ...(s.beatHits ? { beatSync: "all" as const } : {}) }
+      : false,
     locale,
   };
 }

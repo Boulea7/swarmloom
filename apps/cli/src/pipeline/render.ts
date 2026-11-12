@@ -19,7 +19,7 @@ import { runFrameLoop } from "./frames";
 import { inputBase, type RenderSource, servedInput, toRenderInput } from "./input";
 import { type FrameWriter, ffmpegWriter, pngSequenceWriter } from "./output";
 import { formatClock, Progress } from "./progress";
-import type { RenderCue, RenderInfo, RenderInit, StepResult } from "./protocol";
+import type { RenderCue, RenderInfo, RenderInit, RenderScroll, StepResult } from "./protocol";
 
 const SNAPSHOT_TIMEOUT_MS = 60_000;
 
@@ -94,6 +94,8 @@ export interface RenderSummary {
     frameSha256: string[];
     wav?: Uint8Array;
     events?: SoundEvent[];
+    /** Stretches of scrolling, read with the events. */
+    scrolls?: RenderScroll[];
     fonts?: PlatformFont[] | null;
   };
 }
@@ -202,6 +204,7 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       }
     }
     const events = evidence?.events ? await driver.soundLog() : undefined;
+    const scrolls = evidence?.events ? await driver.scrollLog() : undefined;
     const browserVersion = browser.version();
     await driver.dispose();
     progress.clear();
@@ -217,7 +220,16 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
       info,
       browserVersion,
       ...(evidence
-        ? { evidence: { imageType, frameSha256, ...(wav ? { wav } : {}), ...(events ? { events } : {}), fonts } }
+        ? {
+            evidence: {
+              imageType,
+              frameSha256,
+              ...(wav ? { wav } : {}),
+              ...(events ? { events } : {}),
+              ...(scrolls ? { scrolls } : {}),
+              fonts,
+            },
+          }
         : {}),
     };
   } finally {

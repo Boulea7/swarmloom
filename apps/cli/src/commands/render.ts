@@ -37,7 +37,7 @@ import {
   writeAtomic,
 } from "../pipeline/evidence";
 import { inputFilePath, isWebUrl, outputStem, type RenderSource, resolveSource } from "../pipeline/input";
-import { formatClock } from "../pipeline/progress";
+import { formatClock, lineWidth, wrapFields } from "../pipeline/progress";
 import { type PlayerSettings, type RenderSummary, renderVideo } from "../pipeline/render";
 import { isMissingOrEmptyDir } from "../util/fs";
 import type { Command, CommandContext } from "./types";
@@ -72,25 +72,40 @@ Swarm:
                           and status bubbles. Default: full
       --finale <finale>   flock | halo | none. Default: flock
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
+      --opening <time>    Show the finished page or document first for <time> (seconds, ms or beats,
+                          as for --cue), then fade it into the blank canvas and build. Default: off
+      --intro <style>     warp (cursors circle the file icon, then fan out) | outline (three
+                          cursors draw the largest shapes, then the rest joins) | none. Default: warp
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
                           goes live and its own animations play. Default: 2500
       --no-live           Keep the finale through the whole tail instead of going live
+      --live-top          Going live glides back to the top of the page while the cursors leave
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
       --bpm <n>           Tempo the placement notes, the fan-out and the final chord snap to (eighth
                           notes, 40-240). Default: 112
+      --beat-sync <set>   notes | all. all also puts keys, clicks, snaps and pen anchors on the
+                          nearest sixteenth note (up to 30 ms early or 60 ms late, one per sound
+                          and sixteenth) and leaves out the ones too far off. Default: notes
       --cue <at>:<action> Player action at a fixed video time; repeatable. <at> is seconds (12.5),
                           milliseconds (12500ms) or beats from the start at --bpm (26b). <action> is
-                          pause (every cursor holds), resume, finish (complete the build quickly) or
-                          live (go live then, not when the finale settles; also with --no-live).
-                          Applied on the first frame at or after <at>; same-time cues in order given
+                          pause (every cursor holds), resume, finish (complete the build quickly),
+                          live (go live then, not when the finale settles; also with --no-live) or
+                          speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=0.6 then
+                          17b:speed=0.45 hurries only the start). Applied at the first 1/120 s
+                          step at or after <at>, at any fps; same-time cues in order given
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
                           and plain-http files from other sites are never loaded
+      --terminal-font <mode>
+                          fit | fill. Font of terminal recordings (.cast): fit keeps 14 px and shrinks
+                          it to fit the width; fill grows it until the window fills the frame.
+                          Default: fit
 
 Capture evidence (for repeatable takes; see the README):
       --audio-out <file>  Also write the soundtrack as WAV (48 kHz stereo, same length as the video)
       --events-out <file> Also write the sound log (every sound event) as JSON, in engine ms on the
-                          frames' clock, with each event's frame number
+                          frames' clock, with each event's frame number and the time the soundtrack
+                          plays it (on the beat grid, or null when it stays silent)
       --manifest-out <file>
                           Write a JSON manifest: arguments, input and blueprint SHA-256, player
                           settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256
@@ -116,6 +131,9 @@ Examples:
 
 Exit codes: 0 ok, 1 usage error, 2 missing Chrome/ffmpeg, 3 render failure, 130 interrupted.`;
 
+/** Build speeds --speed and speed cues accept. */
+const SPEED_RANGE = { min: 0.05, max: 16 } as const;
+
 const OPTIONS = {
   output: { type: "string", short: "o" },
   format: { type: "string", short: "f" },
@@ -126,6 +144,7 @@ const OPTIONS = {
   "max-duration": { type: "string" },
   duration: { type: "string" },
   bpm: { type: "string" },
+  "beat-sync": { type: "string" },
   cue: { type: "string", multiple: true },
   "audio-out": { type: "string" },
   "events-out": { type: "string" },
@@ -138,11 +157,15 @@ const OPTIONS = {
   overlays: { type: "string" },
   finale: { type: "string" },
   follow: { type: "string" },
+  intro: { type: "string" },
   tail: { type: "string" },
   locale: { type: "string" },
   "no-sound": { type: "boolean" },
   "no-remote": { type: "boolean" },
   "no-live": { type: "boolean" },
+  "terminal-font": { type: "string" },
+  opening: { type: "string" },
+  "live-top": { type: "boolean" },
   chrome: { type: "string" },
   ffmpeg: { type: "string" },
   quiet: { type: "boolean", short: "q" },
@@ -217,7 +240,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
 
   const settings: PlayerSettings = {
     agents,
-    speed: readNumber("speed", values.speed, 1, { min: 0.05, max: 16 }),
+    speed: readNumber("speed", values.speed, 1, SPEED_RANGE),
     seed: readInt("seed", values.seed, 1, 0, 0xffffffff),
     theme: readEnum("theme", values.theme, ["auto", "light", "dark"], "auto"),
     labels: readEnum("labels", values.labels, ["names", "agents", "roles", "none"], "names"),
@@ -228,8 +251,20 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
     live: !values["no-live"],
     sound: !values["no-sound"] && formatHasAudio(format),
   };
+  const intro = readEnum("intro", values.intro, ["warp", "outline", "none"], "warp");
+  if (intro !== "warp") settings.intro = intro === "outline" ? "outline" : false;
   if (values.locale !== undefined) settings.locale = readLocale(values.locale);
   if (values.bpm !== undefined) settings.bpm = readNumber("bpm", values.bpm, 120, { min: 40, max: 240 });
+  // Only when given, so the manifests of takes without it stay as they were.
+  if (values["terminal-font"] !== undefined) {
+    settings.terminalFont = readEnum("terminal-font", values["terminal-font"], ["fit", "fill"], "fit");
+  }
+  if (values.opening !== undefined) {
+    const opening = parseOpening(values.opening, settings.bpm);
+    if (opening > 0) settings.opening = opening;
+  }
+  if (values["live-top"]) settings.liveTop = true;
+  if (readEnum("beat-sync", values["beat-sync"], ["notes", "all"], "notes") === "all") settings.beatSync = "all";
 
   if (values.duration !== undefined && values["max-duration"] !== undefined) {
     throw new UsageError("Use either --duration (exact length) or --max-duration (upper limit), not both");
@@ -328,24 +363,57 @@ function trimTrailingDotsAndSpaces(segment: string): string {
   return segment.slice(0, end);
 }
 
-const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish|live)$/;
+/** A time: seconds (12.5), milliseconds (12500ms) or beats at --bpm (26b). */
+const TIME = String.raw`(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?`;
+const CUE_RE = new RegExp(String.raw`^${TIME}:(pause|resume|finish|live|speed=(\d+(?:\.\d+)?|\.\d+))$`);
+const TIME_RE = new RegExp(`^${TIME}$`);
+/** Longest --opening, ms. */
+const MAX_OPENING_MS = 60_000;
+
+/**
+ * A matched time in ms; beats count from the start of the video at `bpm`.
+ * @throws UsageError for beats without --bpm.
+ */
+function timeMs(value: string, unit: string, bpm: number | undefined, what: string): number {
+  if (unit === "b" && bpm === undefined) throw new UsageError(`${what} counts beats, which needs --bpm`);
+  const n = Number(value);
+  return unit === "ms" ? n : unit === "b" ? (n * 60_000) / (bpm as number) : n * 1000;
+}
+
+/**
+ * Parses --opening: a time as --cue takes it, at most a minute; 0 means no opening.
+ * @throws UsageError for bad syntax, beats without --bpm or a longer time.
+ */
+export function parseOpening(spec: string, bpm: number | undefined): number {
+  const match = TIME_RE.exec(spec.trim());
+  if (!match) throw new UsageError(`--opening must be a time such as 1.5, 1500ms or 4b (got "${spec}")`);
+  const [, value = "0", unit = "s"] = match;
+  const ms = timeMs(value, unit, bpm, `--opening ${spec}`);
+  if (ms > MAX_OPENING_MS) throw new UsageError(`--opening must be at most ${MAX_OPENING_MS / 1000} s (got "${spec}")`);
+  return ms;
+}
 
 /**
  * Parses one --cue: "<time>[s|ms|b]:<action>"; beats ("b") count from the start of the video at `bpm`.
- * @throws UsageError for bad syntax or beats without --bpm.
+ * The action "speed=<n>" sets the build speed from then on.
+ * @throws UsageError for bad syntax, a speed outside the --speed range or beats without --bpm.
  */
 export function parseCue(spec: string, bpm: number | undefined, fps: number): ResolvedCue {
   const match = CUE_RE.exec(spec.trim());
   if (!match) {
     throw new UsageError(
-      `--cue must look like <time>:<action>, e.g. 12.5:pause, 12500ms:resume or 26b:finish (got "${spec}")`,
+      `--cue must look like <time>:<action>, e.g. 12.5:pause, 12500ms:resume, 26b:finish or 0:speed=0.6 (got "${spec}")`,
     );
   }
-  const [, value = "0", unit = "s", action] = match;
-  if (unit === "b" && bpm === undefined) throw new UsageError(`--cue ${spec} counts beats, which needs --bpm`);
-  const n = Number(value);
-  const at = unit === "ms" ? n : unit === "b" ? (n * 60_000) / (bpm as number) : n * 1000;
-  return { spec, at, frame: cueFrame(at, fps), action: action as ResolvedCue["action"] };
+  const [, value = "0", unit = "s", action = "", speedText] = match;
+  const at = timeMs(value, unit, bpm, `--cue ${spec}`);
+  const frame = cueFrame(at, fps);
+  if (speedText === undefined) return { spec, at, frame, action: action as ResolvedCue["action"] };
+  const speed = Number(speedText);
+  if (!(speed >= SPEED_RANGE.min && speed <= SPEED_RANGE.max)) {
+    throw new UsageError(`--cue ${spec}: the speed must be ${SPEED_RANGE.min}-${SPEED_RANGE.max}`);
+  }
+  return { spec, at, frame, action: "speed", speed };
 }
 
 function readLocale(raw: string): string {
@@ -507,7 +575,8 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   const pixels = `${Math.round(opts.width * opts.scale)}x${Math.round(opts.height * opts.scale)}`;
   if (!opts.quiet) {
     const kind = source.kind === "page" ? "web page" : source.format;
-    io.err(`Rendering ${source.name} (${kind}) at ${pixels}, ${opts.fps} fps -> ${target}`);
+    const banner = [`Rendering ${source.name} (${kind})`, `at ${pixels}, ${opts.fps} fps`, `-> ${target}`];
+    for (const line of wrapFields(banner, lineWidth(io))) io.err(line);
   }
   const started = performance.now();
   const quietIo = opts.quiet ? { ...io, err: () => {}, tty: undefined } : io;
@@ -523,7 +592,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       settings: opts.settings,
       maxDurationMs: opts.maxDurationMs,
       fixedLength: opts.fixedLength,
-      cues: opts.cues.map(({ at, action }) => ({ at, action })),
+      cues: opts.cues.map(({ at, action, speed }) => (speed === undefined ? { at, action } : { at, action, speed })),
       evidence: wantsEvidence(opts)
         ? { audio: Boolean(opts.audioOut), events: Boolean(opts.eventsOut), manifest: Boolean(opts.manifestOut) }
         : undefined,
@@ -560,9 +629,16 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   }
   const sound = summary.audio ? "with sound" : "no sound";
   const took = formatClock((performance.now() - started) / 1000);
-  io.err(
-    `Wrote ${target}: ${(summary.durationMs / 1000).toFixed(1)} s, ${summary.frames} frames, ${pixels}, ${sound} (took ${took})`,
-  );
+  const seconds = (summary.durationMs / 1000).toFixed(1);
+  const wrote = [
+    `Wrote ${target}:`,
+    `${seconds} s,`,
+    `${summary.frames} frames,`,
+    `${pixels},`,
+    sound,
+    `(took ${took})`,
+  ];
+  for (const line of wrapFields(wrote, lineWidth(io))) io.err(line);
   return 0;
 }
 
@@ -607,8 +683,9 @@ async function writeEvidence(
     await writeAtomic(opts.audioOut, evidence.wav);
   }
   if (opts.eventsOut && evidence.events) {
-    const meta = { fps: opts.fps, frames: summary.frames, durationMs: summary.durationMs, bpm: opts.settings.bpm };
-    await writeAtomic(opts.eventsOut, eventsDocument(evidence.events, meta));
+    const { bpm, beatSync } = opts.settings;
+    const meta = { fps: opts.fps, frames: summary.frames, durationMs: summary.durationMs, bpm, beatSync };
+    await writeAtomic(opts.eventsOut, eventsDocument(evidence.events, meta, evidence.scrolls));
   }
   if (!opts.manifestOut) return;
   const outputs: Record<string, { path: string; sha256: string; bytes: number }> = {};

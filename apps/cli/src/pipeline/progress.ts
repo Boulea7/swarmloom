@@ -48,6 +48,32 @@ function progressLine(ratio: number, eta: string, extras: readonly string[], wid
   return fitFields([`${LABEL} ${bar} ${numbers.slice(LABEL.length + 1)}`, ...extras], width);
 }
 
+/**
+ * Breaks a message made of `fields` into lines of at most `width` columns, joining fields with one
+ * space, so a narrow terminal breaks it between fields instead of inside one. Lines after the first
+ * are indented by two spaces; a field wider than a line stays whole (the terminal wraps it).
+ */
+export function wrapFields(fields: readonly string[], width: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const field of fields) {
+    const next = line ? `${line} ${field}` : field;
+    if (!line || next.length <= width) {
+      line = next;
+      continue;
+    }
+    lines.push(line);
+    line = `  ${field}`;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** Columns a stderr line may use without wrapping: one less than the terminal's, or unlimited off a terminal. */
+export function lineWidth(io: CliIo): number {
+  return io.tty ? Math.max(20, io.tty.columns - 1) : Number.POSITIVE_INFINITY;
+}
+
 export interface ProgressUpdate {
   frame: number;
   built: number;

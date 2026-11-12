@@ -71,6 +71,11 @@ describe("render options", () => {
       },
     });
     expect(parseRenderOptions(["a.md", "--no-live"], cwd)).toMatchObject({ settings: { live: false } });
+    expect(parseRenderOptions(["a.cast", "--terminal-font", "fill"], cwd)).toMatchObject({
+      settings: { terminalFont: "fill" },
+    });
+    const opening = parseRenderOptions(["a.md", "--bpm", "120", "--opening", "3b", "--live-top"], cwd);
+    expect(opening).toMatchObject({ settings: { opening: 1500, liveTop: true } });
   });
 
   it.each([
@@ -93,6 +98,7 @@ describe("render options", () => {
     [["a.md", "-o", "x.mp4", "--format", "gif"], "--output ends in .mp4 but --format is gif"],
     [["a.md", "--format", "avi"], "--format must be one of"],
     [["a.md", "--overlays", "some"], "--overlays must be one of"],
+    [["a.cast", "--terminal-font", "big"], "--terminal-font must be one of"],
     [["a.md", "--speed", "0"], "--speed must be a number at least 0.05"],
     [["a.md", "--speed", "1e3"], "--speed must be a number"],
     [["a.md", "--width", "7680", "--scale", "2"], "larger than 8192 px"],
@@ -103,8 +109,13 @@ describe("render options", () => {
     [["a.md", "--duration", "4", "--cue", "8b:pause"], "counts beats, which needs --bpm"],
     [["a.md", "--duration", "4", "--bpm", "120", "--cue", "8b:pause"], "at or after the end of the video"],
     [["a.md", "--cue", "3:rewind"], "--cue must look like <time>:<action>"],
+    [["a.md", "--opening", "soon"], "--opening must be a time"],
+    [["a.md", "--opening", "61"], "--opening must be at most 60 s"],
+    [["a.md", "--cue", "0:speed=20"], "the speed must be 0.05-16"],
     [["a.md", "--no-sound", "--audio-out", "a.wav"], "--audio-out needs sound"],
     [["a.md", "--bpm", "300"], "--bpm must be a number"],
+    [["a.md", "--beat-sync", "keys"], "--beat-sync must be one of"],
+    [["a.md", "--intro", "short"], "--intro must be one of"],
     [["a.md", "-o", "x.mp4", "--manifest-out", "x.mp4"], "must be different files"],
     [["a.md", "-o", "take.mp4", "--events-out", "TAKE.MP4"], "must be different files"],
     [["a.md", "-o", "takeΣ.mp4", "--manifest-out", "takeς.mp4"], "must be different files"],
@@ -114,18 +125,25 @@ describe("render options", () => {
   });
 
   it("resolves a fixed length, beat cues on exact frames and the evidence paths", () => {
-    const argv = ["a.svg", "-o", "take.mp4", "--duration", "24", "--bpm", "90", "--cue", "26b:pause"];
-    const extra = ["--cue", "18.5:finish", "--cue", "500ms:resume", "--cue", "20:live", "--events-out", "ev/e.json"];
-    const opts = parseRenderOptions([...argv, ...extra, "--manifest-out", "m.json"], cwd);
+    const flags = ["--duration", "24", "--bpm", "90", "--beat-sync", "all", "--intro", "outline"];
+    const cues = ["26b:pause", "18.5:finish", "500ms:resume", "20:live", "0:speed=.6"].flatMap((c) => ["--cue", c]);
+    const evidence = ["--events-out", "ev/e.json", "--manifest-out", "m.json"];
+    const opts = parseRenderOptions(["a.svg", "-o", "take.mp4", ...flags, ...cues, ...evidence], cwd);
     if (opts === "help") throw new Error("unexpected help");
-    expect(opts).toMatchObject({ fixedLength: true, maxDurationMs: 24_000, settings: { bpm: 90 } });
+    expect(opts).toMatchObject({
+      fixedLength: true,
+      maxDurationMs: 24_000,
+      settings: { bpm: 90, beatSync: "all", intro: "outline" },
+    });
     // At 90 bpm and 30 fps a beat is exactly 20 frames, so beat 26 starts frame 520.
     expect(opts.cues.map(({ frame, action }) => [frame, action])).toEqual([
       [520, "pause"],
       [555, "finish"],
       [15, "resume"],
       [600, "live"],
+      [0, "speed"],
     ]);
+    expect(opts.cues[4]?.speed).toBe(0.6);
     expect(opts.cues[0]?.at).toBeCloseTo(17_333.333, 3);
     expect(opts.eventsOut).toBe(path.join(cwd, "ev/e.json"));
     expect(opts.manifestOut).toBe(path.join(cwd, "m.json"));

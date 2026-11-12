@@ -22,6 +22,7 @@ import {
   isFinaleMode,
   isFollowMode,
   resolveLabels,
+  resolveOpening,
   resolveOverlays,
   resolveSound,
 } from "./options";
@@ -91,6 +92,13 @@ function pick<T>(value: unknown, valid: (v: unknown) => v is T, fallback: T, nam
   return value;
 }
 
+/** PlayerOptions.intro: the warp opening unless false, or "outline". */
+function resolveIntro(intro: PlayerOptions["intro"]): EngineSettings["intro"] {
+  if (intro === undefined || intro === true) return true;
+  if (intro === false || intro === "outline") return intro;
+  throw new RangeError(`intro must be a boolean or "outline", got ${String(intro)}`);
+}
+
 function resolveSettings(options: PlayerOptions): EngineSettings {
   const seed = options.seed ?? DEFAULT_SEED;
   if (typeof seed !== "number" || !Number.isFinite(seed))
@@ -98,6 +106,8 @@ function resolveSettings(options: PlayerOptions): EngineSettings {
   const reduced = options.reducedMotion ?? "auto";
   if (reduced !== "auto" && typeof reduced !== "boolean")
     throw new RangeError('reducedMotion must be "auto" or a boolean');
+  const liveTop = options.liveTop ?? false;
+  if (typeof liveTop !== "boolean") throw new TypeError("liveTop must be a boolean");
   return {
     agents: options.agents ?? "auto",
     speed: checkSpeed(options.speed ?? 1),
@@ -105,8 +115,10 @@ function resolveSettings(options: PlayerOptions): EngineSettings {
     labels: resolveLabels(options.labels),
     follow: pick<FollowMode>(options.follow, isFollowMode, "scroll", "follow"),
     finale: pick<FinaleMode>(options.finale, isFinaleMode, "flock", "finale"),
-    intro: options.intro !== false,
+    intro: resolveIntro(options.intro),
     reducedMotion: reduced === "auto" ? matches("(prefers-reduced-motion: reduce)") : reduced,
+    opening: resolveOpening(options.opening),
+    liveTop,
   };
 }
 

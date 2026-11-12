@@ -38,7 +38,7 @@ description: SwarmLoom 的快捷键、设置、巡航、声音、上线、分享
 | 跟随 `follow` | `scroll`、`tour`、`none` | 自由阅读用 `scroll`，视频用 `tour`，固定画面用 `none` |
 | 结尾 `finale` | `flock`、`halo`、`none` | 群聚、声音响应光环，或直接结束 |
 | 减少动态 `reducedMotion` | `auto`、开、关 | 保持 `auto`，尊重系统偏好 |
-| 开场 `intro` | 开、关 | 重复嵌入小组件时可关闭 |
+| 开场 `intro` | 开、关、`outline` | 重复嵌入小组件时可关闭；`outline` 让几个光标先画大轮廓，适合图片和插画 |
 
 JavaScript API 还支持自定义标签数组、调色板、语言、种子和时钟。
 

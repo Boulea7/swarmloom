@@ -21,11 +21,15 @@ import {
   IDLE_RUSH_MS,
   INTRO_MIN_MS,
   INTRO_SPAN_MS,
+  LIVE_TOP_MAX_MS,
+  LIVE_TOP_MIN_MS,
+  LIVE_TOP_PER_PX_MS,
   LOOKAHEAD_SHARE,
   MAX_ERROR_EVENTS,
   MAX_PHYSICS_STEPS,
   MAX_SOUND_LOG,
   MAX_TICK_MS,
+  OPENING_FADE_MS,
   PHYSICS_STEP_MS,
   REDUCED_FADE_MS,
   REDUCED_MAX_STAGGER_MS,
@@ -37,7 +41,7 @@ import {
 } from "./constants";
 import { type RestSpot, restAfterTask, sendAway } from "./crew";
 import { CrossFade, type CrossFadeTiming } from "./crossfade";
-import { clamp } from "./easing";
+import { clamp, minJerk } from "./easing";
 import { Emitter } from "./events";
 import { Finale } from "./finale";
 import type { HaloLevels } from "./halo";
@@ -52,9 +56,10 @@ import {
   isFollowMode,
   resolveAgentCount,
 } from "./options";
+import { OUTLINE_CREW, outlineMask } from "./outline";
 import { buildPlan, type Plan } from "./planner";
 import { Roster } from "./roster";
-import { DONE } from "./schedule";
+import { AVAILABLE, DONE, LOCKED, WAITING } from "./schedule";
 import { streamRng } from "./streams";
 
 /** Normalized playback settings (see PlayerOptions). */
@@ -65,8 +70,13 @@ export interface EngineSettings {
   labels: LabelMode | readonly string[];
   follow: FollowMode;
   finale: FinaleMode;
-  intro: boolean;
+  /** true: the warp opening; "outline": a few cursors draw the largest shapes first; false: none. */
+  intro: boolean | "outline";
   reducedMotion: boolean;
+  /** Opening before the intro, player ms (PlayerOptions.opening); 0 or unset: none. */
+  opening?: number;
+  /** Glide back to the top on go live (PlayerOptions.liveTop). */
+  liveTop?: boolean;
 }
 
 /** Everything the engine drives; created and wired by createPlayer. */
@@ -122,6 +132,23 @@ const DEFER_SCROLL = { defer: true } as const;
 /** Stereo spread of sound events: cursor x weighs 0.7, layer centre 0.3, scaled to +-0.7. */
 const PAN_SPREAD = 0.7;
 const FALLBACK_VIEWPORT: Readonly<Rect> = { x: 0, y: 0, w: 1280, h: 800 };
+
+/** A running opening (PlayerOptions.opening), in player ms. */
+interface Opening {
+  /** The original starts to fade at this time. */
+  fadeAt: number;
+  /** The fade ends and the intro starts at this time. */
+  endsAt: number;
+  /** The swell (the page dissolving) is in the sound log. */
+  swelled: boolean;
+}
+
+/** The go-live glide back to the top (PlayerOptions.liveTop), in player ms and stage px. */
+interface Glide {
+  from: number;
+  at: number;
+  dur: number;
+}
 
 interface Deferred {
   readonly promise: Promise<void>;
@@ -204,6 +231,10 @@ export class Engine implements Player {
   #soundLog: SoundEvent[] = [];
   #done: Deferred = deferred();
   #fade: CrossFade | null = null;
+  #opening: Opening | null = null;
+  #glide: Glide | null = null;
+  /** Outline opening under way: the tasks its few cursors may take (see outline.ts); null otherwise. */
+  #outline: Uint8Array | null = null;
 
   /* Timelines (see class doc). */
   #pt = 0;
@@ -281,6 +312,11 @@ export class Engine implements Player {
   /** Player time since play(), ms: the timeline seek() moves on. */
   get time(): number {
     return this.#pt;
+  }
+
+  /** Top edge of the view, stage px. */
+  get scrollY(): number {
+    return this.#readViewport().y;
   }
 
   /** Pool size (explicit or auto). */
@@ -400,8 +436,14 @@ export class Engine implements Player {
 
   /** Completes the build quickly: running tasks stop and the remaining layers fade in. */
   finish(): void {
-    const s = this.#state === "paused" ? this.#resumeState : this.#state;
+    let s = this.#state === "paused" ? this.#resumeState : this.#state;
     if ((s !== "intro" && s !== "building") || this.#fade) return;
+    if (this.#opening) {
+      // Skips the rest of the opening; reduced motion then already fades everything in.
+      this.#endOpening();
+      if (this.#fade) return;
+      s = this.#state;
+    }
     if (s === "intro") this.#fanOut();
     else if (this.#state === "paused") this.#setState("building");
     for (const a of this.#roster.agents) {
@@ -409,6 +451,7 @@ export class Engine implements Player {
       this.#build.abort(a);
       restAfterTask(a, this.#sim);
     }
+    this.#outline = null;
     this.#fade = this.#fadeRest(RUSH_TIMING);
     this.#rushed = true;
   }
@@ -425,6 +468,12 @@ export class Engine implements Player {
     if (s === "live" || s === "destroyed") return;
     this.#abortAll();
     this.#fade = null;
+    this.#outline = null;
+    if (this.#opening) {
+      // The original already shows the finished content: it stays.
+      this.#opening = null;
+      this.#guard(() => this.#stage.original?.(null));
+    }
     this.#build.schedule.finishAll();
     this.#guard(() => this.#stage.finishAll());
     this.#intro.end();
@@ -438,9 +487,26 @@ export class Engine implements Player {
     this.#emitProgress();
     this.#liveAt = this.#pt;
     this.#dissolving = false;
+    const instant = s === "idle" || this.#deps.settings.reducedMotion;
+    if (this.#deps.settings.liveTop) this.#glideToTop(vp.y, instant);
     this.#setState("live");
     this.#done.resolve();
-    if (s === "idle" || this.#deps.settings.reducedMotion) this.#dissolve();
+    if (instant) this.#dissolve();
+  }
+
+  /**
+   * Going live with `liveTop`: back to the top, instantly or in a glide the live frames drive
+   * (the stage dissolves once it ends, so a live page swapped in then lines up with the top).
+   */
+  #glideToTop(from: number, instant: boolean): void {
+    this.#glide = null;
+    if (from <= 0) return;
+    if (instant) {
+      this.#guard(() => this.#stage.scrollTo(0));
+      return;
+    }
+    const dur = Math.min(LIVE_TOP_MAX_MS, LIVE_TOP_MIN_MS + from * LIVE_TOP_PER_PX_MS);
+    this.#glide = { from, at: this.#pt, dur };
   }
 
   destroy(): void {
@@ -467,6 +533,18 @@ export class Engine implements Player {
   eta(): number {
     const s = this.#state === "paused" ? this.#resumeState : this.#state;
     if (s !== "idle" && s !== "intro" && s !== "building") return 0;
+    return this.#openingLeft(s) + this.#buildEta(s);
+  }
+
+  /** Player ms of the opening still to come. */
+  #openingLeft(s: PlayerState): number {
+    if (this.#opening) return Math.max(0, this.#opening.endsAt - this.#pt);
+    const opening = this.#deps.settings.opening ?? 0;
+    return s === "idle" && opening > 0 ? opening + this.#openingFadeMs() : 0;
+  }
+
+  /** eta() from the end of the opening on. */
+  #buildEta(s: PlayerState): number {
     const speed = this.#speed;
     if (this.#fade) return Math.max(0, this.#fade.endsAt - this.#tt) / speed;
     const schedule = this.#build.schedule;
@@ -492,9 +570,9 @@ export class Engine implements Player {
     const crew = Math.max(1, Math.min(left, Math.max(this.#roster.activeCount(), this.#base)));
     const { settings } = this.#deps;
     const intro =
-      s === "intro"
+      s === "intro" && !this.#opening
         ? Math.max(0, this.#intro.endsAt - this.#pt)
-        : s === "idle" && settings.intro && !settings.reducedMotion
+        : s !== "building" && settings.intro === true && !settings.reducedMotion
           ? INTRO_MIN_MS + INTRO_SPAN_MS / 2
           : 0;
     return intro + Math.max(0, remaining) / (speed * crew) + tail / speed;
@@ -605,6 +683,9 @@ export class Engine implements Player {
     this.#camera.reset();
     this.#soundLog = [];
     this.#fade = null;
+    this.#opening = null;
+    this.#glide = null;
+    this.#outline = null;
     this.#rushed = false;
     this.#pt = 0;
     this.#tt = 0;
@@ -631,24 +712,81 @@ export class Engine implements Player {
       for (const note of this.#plan.diagnostics) this.#report(new Error(`blueprint: ${note}`));
     }
     if (!this.#clock.running) this.#guard(() => this.#clock.start());
+    const opening = this.#deps.settings.opening ?? 0;
+    if (opening > 0) {
+      // The original shows (state "intro") until the opening ends; #start() then runs at its end.
+      this.#opening = { fadeAt: opening, endsAt: opening + this.#openingFadeMs(), swelled: false };
+      this.#guard(() => this.#stage.original?.(1));
+      // Plugin scenes (WebGL) draw in their frame hook: the first frame shows them finished too.
+      this.#framePluginsTick(0);
+      this.#setState("intro");
+      this.#emitProgress();
+      return;
+    }
+    this.#engineSound("swell", 0);
+    this.#start(0);
+  }
+
+  /** The intro (or the build) starts at player time `at`, on the blank canvas. */
+  #start(at: number): void {
     Promise.resolve()
       .then(() => this.#stage.enter())
       .catch((error: unknown) => this.#report(error));
     const vp = this.#readViewport();
     if (this.#follow === "none") this.#build.schedule.setBoundary(Number.POSITIVE_INFINITY);
     else this.#unlockTo(vp);
-    this.#engineSound("swell", 0);
     const { settings } = this.#deps;
     if (settings.reducedMotion) {
-      this.#fade = new CrossFade(this.#plan.order, this.#plan.layers, 0, REDUCED_TIMING);
+      this.#fade = new CrossFade(this.#plan.order, this.#plan.layers, this.#tt, REDUCED_TIMING);
+      this.#setState("building");
+    } else if (settings.intro === "outline") {
+      this.#outline = outlineMask(this.#plan, vp, this.#outlineCrew());
       this.#setState("building");
     } else if (settings.intro) {
-      this.#intro.begin(this.#stage, this.#stage.blueprint.icon, vp, 0, streamRng(settings.seed, "intro"));
+      this.#intro.begin(this.#stage, this.#stage.blueprint.icon, vp, at, streamRng(settings.seed, "intro"));
       this.#setState("intro");
     } else {
       this.#setState("building");
     }
     this.#emitProgress();
+  }
+
+  #openingFadeMs(): number {
+    return this.#deps.settings.reducedMotion ? REDUCED_FADE_MS : OPENING_FADE_MS;
+  }
+
+  /**
+   * One frame of the opening: the original holds, then fades into the blank canvas (the "swell"
+   * sounds as it starts, at its exact time); at its end the stage is blank and the intro starts.
+   */
+  #stepOpening(opening: Opening): void {
+    const pt = this.#pt;
+    if (pt < opening.fadeAt) return;
+    const dur = opening.endsAt - opening.fadeAt;
+    this.#swell(opening, opening.fadeAt);
+    const k = dur > 0 ? clamp((pt - opening.fadeAt) / dur, 0, 1) : 1;
+    if (k >= 1) {
+      this.#endOpening();
+      return;
+    }
+    this.#guard(() => this.#stage.original?.(1 - minJerk(k)));
+  }
+
+  /** Logs the opening's swell once, at player time `t`. */
+  #swell(opening: Opening, t: number): void {
+    if (opening.swelled) return;
+    opening.swelled = true;
+    this.#emitSound(t, "swell", 0, undefined, undefined);
+  }
+
+  /** Ends the opening now (or at its end): a blank stage, and the intro or build starts. */
+  #endOpening(): void {
+    const opening = this.#opening;
+    if (!opening) return;
+    this.#swell(opening, Math.min(opening.fadeAt, this.#pt));
+    this.#opening = null;
+    this.#guard(() => this.#stage.reset());
+    this.#start(Math.min(opening.endsAt, this.#pt));
   }
 
   #fanOut(): void {
@@ -757,7 +895,8 @@ export class Engine implements Player {
       this.#intro.frame(vp, this.#pt);
       switch (this.#state) {
         case "intro":
-          this.#stepIntro(dt, vp);
+          if (this.#opening) this.#stepOpening(this.#opening);
+          else this.#stepIntro(dt, vp);
           break;
         case "building":
           // The intro icon shrinks away after the fan-out, which already switched to building.
@@ -821,6 +960,10 @@ export class Engine implements Player {
 
     if (this.#fade) {
       this.#fade.step(tt, this.#stage, schedule, (error, layer) => this.#report(layerError(error, layer)));
+    } else if (this.#outline) {
+      this.#runAgents(tt, vp);
+      this.#roster.balance(this.#outlineCrew(), vp, this.#sim);
+      if (this.#outlineTaken(vp)) this.#callSwarm();
     } else {
       this.#runAgents(tt, vp);
       this.#fadeOutOfSight(dtt, vp);
@@ -864,9 +1007,38 @@ export class Engine implements Player {
   #pick(a: Agent, vp: Rect): number {
     const schedule = this.#build.schedule;
     if (this.#nothingInSight || schedule.available === 0) return -1;
-    const i = schedule.pick(a.x, a.y, vp);
+    const i = schedule.pick(a.x, a.y, vp, this.#outline);
     if (i < 0) this.#nothingInSight = true;
     return i;
+  }
+
+  /** Cursors of the outline opening: {@link OUTLINE_CREW}, or the whole pool when it is smaller. */
+  #outlineCrew(): number {
+    return Math.min(OUTLINE_CREW, this.#count);
+  }
+
+  /**
+   * True once every outline task has been taken (or completed), or when the outline cursors can
+   * take none of the rest: nobody works and none of it is available in sight.
+   */
+  #outlineTaken(vp: Rect): boolean {
+    const mask = this.#outline;
+    if (!mask) return true;
+    const { status } = this.#build.schedule;
+    let open = false;
+    for (let i = 0; i < this.#plan.taskCount && !open; i++) {
+      const s = status[i];
+      open = mask[i] === 1 && (s === WAITING || s === LOCKED || s === AVAILABLE);
+    }
+    if (!open) return true;
+    return this.#roster.workingCount() === 0 && !this.#build.schedule.hasWorkInSight(vp, mask);
+  }
+
+  /** Ends the outline opening: the rest of the swarm walks in to fill in the details. */
+  #callSwarm(): void {
+    this.#outline = null;
+    this.#nothingInSight = false;
+    this.#engineSound("fanout", 0);
   }
 
   /**
@@ -930,6 +1102,12 @@ export class Engine implements Player {
   }
 
   #stepLive(dt: number, vp: Rect): void {
+    const glide = this.#glide;
+    if (glide) {
+      const k = clamp((this.#pt - glide.at) / glide.dur, 0, 1);
+      if (k >= 1) this.#glide = null;
+      this.#guard(() => this.#stage.scrollTo(glide.from * (1 - minJerk(k))));
+    }
     this.#finale.fadeFrame(vp, this.#pt, this.#haloLevels());
     const steps = this.#takeSteps(dt);
     for (let k = 0; k < steps; k++) {
@@ -937,7 +1115,7 @@ export class Engine implements Player {
       this.#roster.stepFree(vp, this.#sim, STEP_S);
     }
     const left = this.#finale.fading || this.#roster.agents.some((a) => a.mode === EXITING);
-    if (this.#pt - this.#liveAt >= EXIT_MS || !left) {
+    if ((this.#pt - this.#liveAt >= EXIT_MS || !left) && !this.#glide) {
       this.#dissolve();
     }
   }

@@ -7,11 +7,13 @@ import { guard } from "../util/async";
 import type { FrameSource } from "./frames";
 import {
   asRenderInfo,
+  asScrolls,
   asSoundEvents,
   asStepResult,
   type RenderApi,
   type RenderInfo,
   type RenderInit,
+  type RenderScroll,
   type StepResult,
 } from "./protocol";
 
@@ -147,6 +149,14 @@ export class RenderPageDriver implements FrameSource {
       this.page.evaluate(() => (globalThis as unknown as SwarmWindow).__swarmloom.soundLog?.() ?? []),
     );
     return asSoundEvents(result);
+  }
+
+  /** The run's stretches of scrolling in video ms; empty from a render page too old to report them. */
+  async scrollLog(): Promise<RenderScroll[]> {
+    const result = await this.call("Reading the scroll log", AUDIO_MS, () =>
+      this.page.evaluate(() => (globalThis as unknown as SwarmWindow).__swarmloom.scrollLog?.() ?? []),
+    );
+    return asScrolls(result);
   }
 
   /**

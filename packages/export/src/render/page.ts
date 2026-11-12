@@ -3,15 +3,25 @@ import { createPlayer } from "@swarmloom/core";
 import { type FormatEntry, formats, load } from "@swarmloom/formats";
 import { renderAudioWav } from "../audio";
 import { createRenderApi } from "./api";
-import type { RenderApi } from "./protocol";
+import type { RenderApi, TerminalFont } from "./protocol";
 
 /**
  * The formats registry with the render page's go-live settings: HTML documents keep their live page
  * (laid out at the frame's height, so it lines up with the woven one); SVG SMIL replays and Lottie
- * players stay on player time after go live, since the export clock keeps ticking.
+ * players stay on player time after go live, since the export clock keeps ticking. With
+ * `terminalFont: "fill"` terminal recordings grow their font to fill the frame.
  */
-export function renderFormats(height: number): FormatEntry[] {
+export function renderFormats(height: number, terminalFont: TerminalFont = "fit"): FormatEntry[] {
   return formats.map((entry): FormatEntry => {
+    if (entry.id === "terminal" && terminalFont === "fill") {
+      return {
+        ...entry,
+        loader: () =>
+          import("@swarmloom/adapter-terminal").then((m) =>
+            m.createTerminalAdapter({ fill: true, viewportHeight: height }),
+          ),
+      };
+    }
     if (entry.id === "html") {
       return {
         ...entry,
@@ -58,9 +68,9 @@ export function createPageRenderApi(options: PageRenderOptions = {}): RenderApi 
   const { network, awaitPaint = false } = options;
   return createRenderApi({
     awaitPaint,
-    load: (input, ctx, { format, height }) => {
+    load: (input, ctx, { format, height, terminalFont }) => {
       const context: AdapterContext = network ? ({ ...ctx, network } as AdapterContext) : ctx;
-      return load(input, context, { format, registry: renderFormats(height) });
+      return load(input, context, { format, registry: renderFormats(height, terminalFont) });
     },
     createPlayer,
     renderAudioWav,

@@ -55,3 +55,22 @@ export function gridSlot(tMs: number, bpm: number): number {
 export function quantize(tMs: number, bpm: number): number {
   return gridSlot(tMs, bpm) * eighthMs(bpm);
 }
+
+/**
+ * The sixteenth-note line of `bpm` a hit at `tMs` may sound on instead: the nearer of the lines just
+ * before and just after it, as long as it is at most `earlyMs` before or `lateMs` after `tMs` (an
+ * exact tie takes the later line). Line `k` is at `k * eighthMs(bpm) / 2`; times before 0 count as 0.
+ *
+ * @returns The line index, or -1 when neither neighbouring line is close enough.
+ * @throws TypeError when `tMs` is not finite; RangeError when `bpm` is invalid.
+ */
+export function hitSlot(tMs: number, bpm: number, earlyMs: number, lateMs: number): number {
+  if (!Number.isFinite(tMs)) throw new TypeError(`time must be a finite number of ms, got ${tMs}`);
+  const step = eighthMs(bpm) / 2;
+  const t = Math.max(0, tMs);
+  const below = Math.floor((t + ON_GRID_MS) / step);
+  const early = t - below * step;
+  const late = (below + 1) * step - t;
+  if (early <= earlyMs && (early < late || late > lateMs)) return below;
+  return late <= lateMs ? below + 1 : -1;
+}

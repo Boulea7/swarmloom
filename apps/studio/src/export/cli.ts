@@ -1,5 +1,5 @@
 import { extensionOf } from "../formats-meta";
-import { DEFAULT_SETTINGS, type StudioSettings } from "../settings";
+import { DEFAULT_SETTINGS, OPENING_MS, type StudioSettings } from "../settings";
 
 export type VideoFormat = "mp4" | "webm" | "gif" | "webp";
 export const VIDEO_FORMATS: readonly VideoFormat[] = ["mp4", "webm", "gif", "webp"];
@@ -162,10 +162,14 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
   if (theme !== d.theme) args.push("--theme", theme);
   if (s.labels !== d.labels) args.push("--labels", s.labels);
   if (s.finale !== d.finale) args.push("--finale", s.finale);
+  if (s.intro !== d.intro) args.push("--intro", s.intro);
   if (s.follow === "none") args.push("--follow", "none");
+  if (s.opening) args.push("--opening", String(OPENING_MS / 1000));
+  if (s.liveTop) args.push("--live-top");
   const locale = o.locale && !/^en(?:-|$)/i.test(o.locale) ? shellArg(o.locale) : null;
   if (locale) args.push("--locale", locale);
   if (!(o.sound ?? s.sound)) args.push("--no-sound");
+  else if (s.beatHits) args.push("--beat-sync", "all");
   if (!s.remoteAssets) args.push("--no-remote");
   return saveAs === undefined ? { text: args.join(" ") } : { text: args.join(" "), saveAs };
 }
