@@ -84,6 +84,11 @@ export function elementScrolls(el: Element): boolean {
   return scrollsY(viewOf(el).getComputedStyle(el));
 }
 
+/**
+ * Resolves once the next frame has been rendered at the current scroll position. Intersection
+ * observers and lazy loading look at the page after the animation frame callbacks, so resolving in
+ * the callback let the next step scroll away first and the page never saw some positions.
+ */
 function nextFrame(view: Window, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve) => {
     let done = false;
@@ -92,7 +97,7 @@ function nextFrame(view: Window, signal: AbortSignal | undefined): Promise<void>
       done = true;
       resolve();
     };
-    if (typeof view.requestAnimationFrame === "function") view.requestAnimationFrame(() => finish());
+    if (typeof view.requestAnimationFrame === "function") view.requestAnimationFrame(() => view.setTimeout(finish, 0));
     // Background tabs throttle animation frames: never wait more than a short delay.
     void delay(80, signal).then(finish, finish);
   });
