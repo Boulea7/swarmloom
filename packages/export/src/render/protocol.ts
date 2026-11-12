@@ -24,7 +24,10 @@ export const SPEED_RANGE = { min: 0.05, max: 16 } as const;
 
 /** A player action applied at a fixed video time. */
 export interface RenderCue {
-  /** Video time in ms (frame `n` shows `n * 1000 / fps`); applied on the first frame at or after it. */
+  /**
+   * Video time in ms (frame `n` shows `n * 1000 / fps`); applied at the first engine tick (1/120 s) at
+   * or after it, at any frame rate, so the first frame at or after it shows it.
+   */
   at: number;
   /**
    * "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly,
