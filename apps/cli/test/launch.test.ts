@@ -11,9 +11,11 @@ import { launchBrowser } from "../src/browser/launch";
 import { findBrowser } from "../src/discovery/browser";
 import { systemHost } from "../src/discovery/host";
 import { MissingDependencyError } from "../src/errors";
-import { findOptional } from "./real-deps";
+import { findOptional, skipReason } from "./real-deps";
 
 const chrome = (await findOptional("SWARMLOOM_CHROME", () => findBrowser(systemHost())))?.path;
+// Under CI a missing browser fails the file instead of skipping the fallback test (see skipReason).
+const missing = skipReason(chrome ? undefined : "no Chrome/Chromium found (set SWARMLOOM_CHROME)");
 
 describe.skipIf(process.platform === "win32")("launchBrowser", () => {
   let dir = "";
@@ -39,8 +41,8 @@ esac
 
   const noSandbox = "echo '[FATAL:zygote_host_impl_linux.cc(132)] No usable sandbox!' >&2; exit 1";
 
-  it.skipIf(!chrome)(
-    "starts sandboxed, and falls back with a warning when the sandbox cannot start",
+  it.skipIf(missing)(
+    `starts sandboxed, and falls back with a warning when the sandbox cannot start${missing ? ` (skipped: ${missing})` : ""}`,
     async () => {
       const { exe, launches } = standIn(noSandbox, `exec '${chrome}' "$@"`);
       const warnings: string[] = [];
