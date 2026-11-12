@@ -70,15 +70,17 @@ describe("CLI command", () => {
     });
   });
 
-  // Windows opens these as devices even with an extension, so the video would be thrown away.
+  // Windows opens these as devices even with an extension: the source could not be saved under its
+  // name and the video would be thrown away.
   it.each([
-    ["NUL.md", "NUL_.mp4"],
-    ["con.final.md", "con_.final.mp4"],
-    ["COM1.md", "COM1_.mp4"],
-    ["console.md", "console.mp4"],
-    ["COM10.md", "COM10.mp4"],
-  ])("writes the output of %j as %s", (name, output) => {
-    expect(command(name, true).text).toBe(`npx swarmloom render ${name} -o ${output} --seed 1`);
+    ["NUL.md", "NUL_.md", "NUL_.mp4"],
+    ["con.final.md", "con_.final.md", "con_.final.mp4"],
+    ["COM1.md", "COM1_.md", "COM1_.mp4"],
+    ["NUL .md", "NUL_.md", "NUL_.mp4"],
+    ["console.md", "console.md", "console.mp4"],
+    ["COM10.md", "COM10.md", "COM10.mp4"],
+  ])("reads %j as %s and writes %s", (name, input, output) => {
+    expect(command(name, true)).toEqual({ text: `npx swarmloom render ${input} -o ${output} --seed 1`, saveAs: input });
   });
 
   it("writes the export dialog's choices, and the in-page export uses the same settings", () => {

@@ -81,10 +81,10 @@ export function shellArg(arg: string): string | null {
 }
 
 /**
- * Names Windows opens as a device even with an extension: "NUL.mp4" and "nul.final.mp4" are the null
- * device, not files. The superscript digits are reserved too.
+ * Names Windows opens as a device even with an extension or spaces before it: "NUL.mp4",
+ * "nul.final.mp4" and "NUL .md" are the null device, not files. The superscript digits are reserved too.
  */
-const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?=\.|$)/i;
+const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?= *(?:\.|$))/i;
 
 /** "report.final.pdf" -> "report.final"; "NUL.md" -> "NUL_" so the output is a file on Windows too. */
 export function stem(name: string): string {
@@ -136,6 +136,9 @@ export function buildCliCommand(o: CliCommandOptions): CliCommand {
   const d = DEFAULT_SETTINGS;
   // A file name is literal: "%C3%A4.md" is that file, not "ä.md".
   let target = shellArg(o.targetIsFile ? o.target : unescapeLetters(o.target));
+  // Windows cannot hold a file named "NUL.md" (shared text can carry that name), so it is saved under
+  // a safe name like any other name a shell cannot hold.
+  if (o.targetIsFile && WINDOWS_DEVICE.test(o.target)) target = null;
   let saveAs = o.targetIsFile && target !== null ? o.target : undefined;
   if (target === null) {
     saveAs = safeFileName(o.targetIsFile ? o.target : o.name);
