@@ -513,7 +513,7 @@ export interface PlayerOptions {
   /** "auto" follows prefers-reduced-motion: quick cross-fade build, no flocking. */
   reducedMotion?: "auto" | boolean;
   /**
-   * Opening of the build. true (default): the cursors shuttle behind the file icon for 1.5 to 2.5 s,
+   * Intro of the build. true (default): the cursors shuttle behind the file icon for 1.5 to 2.5 s,
    * then fan out. "outline": no icon; three cursors walk in and draw the largest shapes in view
    * (paths and boxes, two each), and the rest of the swarm joins once all of them are taken. false:
    * the swarm walks in and starts at once.

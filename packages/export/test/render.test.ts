@@ -133,7 +133,7 @@ describe("render page protocol", () => {
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
   });
 
-  it("passes the opening through to the player", async () => {
+  it("passes the intro through to the player", async () => {
     const { api, players } = setup();
     await api.init({ ...base, intro: "outline" });
     expect(players[0]?.options.intro).toBe("outline");

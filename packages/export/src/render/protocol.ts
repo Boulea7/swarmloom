@@ -73,7 +73,7 @@ export interface RenderInit {
   /** Scroll mode during export: "tour" (default; follows the build) or "none". */
   follow?: "tour" | "none";
   /**
-   * Opening (`PlayerOptions.intro`): true (default) the warp around the file icon, "outline" a few
+   * Intro (`PlayerOptions.intro`): true (default) the warp around the file icon, "outline" a few
    * cursors drawing the largest shapes before the swarm joins, false none.
    */
   intro?: boolean | "outline";

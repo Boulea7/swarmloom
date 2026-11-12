@@ -72,7 +72,7 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `labels` | `LabelMode` / `string[]` | `names`, `agents`, `roles`, `none` or custom labels; `none` also hides status bubbles |
 | `follow` | `scroll` / `tour` / `none` | Follow the user, tour automatically, or keep a fixed viewport |
 | `reducedMotion` | `auto` / `boolean` | Defaults to the system reduced-motion preference |
-| `intro` | `boolean \| "outline"` | Opening: `true` (default) is the icon orbit and fan-out; `"outline"` shows no icon, three cursors first draw the largest shapes in view (paths and boxes, two each) and the rest joins once all of them are taken; `false` has no opening |
+| `intro` | `boolean \| "outline"` | Intro: `true` (default) is the icon orbit and fan-out; `"outline"` shows no icon, three cursors first draw the largest shapes in view (paths and boxes, two each) and the rest joins once all of them are taken; `false` has no intro |
 | `finale` | `flock` / `halo` / `none` | Flock, audio-reactive halo, or no finale |
 | `controls` | `boolean` | Show the built-in toolbar |
 | `locale` | BCP 47 string | Toolbar language; defaults to `navigator.language` |

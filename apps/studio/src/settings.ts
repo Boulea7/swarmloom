@@ -6,7 +6,7 @@ export type StudioLocale = (typeof STUDIO_LOCALES)[number];
 
 export type ThemeChoice = "auto" | "light" | "dark";
 export type FinaleChoice = "flock" | "halo" | "none";
-/** Opening: cursors circle the file icon, or a few draw the largest shapes first. */
+/** Intro: cursors circle the file icon, or a few draw the largest shapes first. */
 export type IntroChoice = "warp" | "outline";
 export type FollowChoice = "tour" | "scroll" | "none";
 export type MotionChoice = "auto" | "reduce" | "full";

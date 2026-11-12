@@ -150,7 +150,7 @@ export const en = {
   "settings.finale.flock": "Flock",
   "settings.finale.halo": "Halo",
   "settings.finale.none": "None",
-  "settings.intro": "Opening",
+  "settings.intro": "Intro",
   "settings.intro.warp": "Icon",
   "settings.intro.outline": "Outline",
   "settings.follow": "Camera",

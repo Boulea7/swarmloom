@@ -85,7 +85,7 @@ swarmloom render <file|url> [options]
 | `--overlays <level>` | `full` | 构建时画出的编辑标记。`minimal` 不画尺寸角标、间距标注、参考线和标尺；`none` 再去掉选框、占位框、钢笔线、插入符和状态气泡，只留光标、名牌和内容 |
 | `--finale <finale>` | `flock` | `flock`、`halo` 或 `none` |
 | `--follow <mode>` | `tour` | `tour` 随构建滚动页面；`none` 不滚动 |
-| `--intro <opening>` | `warp` | `warp`：光标围着文件图标穿梭后散开；`outline`：三个光标先画视野内最大的形状，其余光标随后加入补细节；`none`：不要开场 |
+| `--intro <style>` | `warp` | `warp`：光标围着文件图标穿梭后散开；`outline`：三个光标先画视野内最大的形状，其余光标随后加入补细节；`none`：不要开场 |
 | `--tail <ms>` | `2500` | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面，页面里的动图停在第一帧 |
 | `--no-live` | go live | 整个停留时间都保持收尾动画，不 go live |
 | `--locale <tag>` | `en-US` | 工具栏文字和页面的语言，BCP 47 标签，例如 `zh-CN` |

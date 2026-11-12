@@ -72,7 +72,7 @@ Swarm:
                           and status bubbles. Default: full
       --finale <finale>   flock | halo | none. Default: flock
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
-      --intro <opening>   warp (cursors circle the file icon, then fan out) | outline (three
+      --intro <style>     warp (cursors circle the file icon, then fan out) | outline (three
                           cursors draw the largest shapes, then the rest joins) | none. Default: warp
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
                           goes live and its own animations play. Default: 2500

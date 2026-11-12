@@ -36,7 +36,7 @@ The player uses an inline stage with its own scrolling content. Its settings dra
 - Light and dark themes;
 - Sound toggle, sound pack and clicks on the beat;
 - `flock`, `halo` and `none` finales;
-- Opening: the icon, or outline first;
+- Intro: the icon, or outline first;
 - Reduced motion;
 - Interface language.
 
