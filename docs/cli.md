@@ -86,7 +86,7 @@ swarmloom render <file|url> [options]
 | `--finale <finale>` | `flock` | `flock`、`halo` 或 `none` |
 | `--follow <mode>` | `tour` | `tour` 随构建滚动页面；`none` 不滚动 |
 | `--opening <time>` | 关闭 | 先显示完成后的页面或文档 `<time>`（秒、毫秒或拍数，写法同 `--cue`；最长 60 秒），再淡出到空白画布并开始构建。淡出正好从 `<time>` 开始，历时 0.52 秒 |
-| `--intro <style>` | `warp` | `warp`：光标围着文件图标穿梭后散开；`outline`：三个光标先画视野内最大的形状，其余光标随后加入补细节；`none`：不要开场 |
+| `--intro <style>` | `warp` | `warp`：光标围着文件图标穿梭后散开；`outline`：最多三个光标（`--agents` 更少时按其数量）先画视野内最大的形状，每个光标两个，其余光标随后加入补细节；`none`：不要开场 |
 | `--tail <ms>` | `2500`（加 `--live-top` 时 `3700`） | 构建完成后的停留时间，范围 0–60000 毫秒：先是收尾动画，随后页面 go live，光标离场，页面自己的动画（CSS、SVG SMIL、Lottie）按视频时间继续播放；HTML 文档换成真实页面，页面里的动图停在第一帧。停留时间结束时 go live 还没完成（光标还在离场或仍在滑回顶部）的，视频延续到页面出现为止 |
 | `--no-live` | go live | 整个停留时间都保持收尾动画，不 go live |
 | `--live-top` | 关闭 | go live 时一边让光标离开，一边滑回页面顶部（最长 1.2 秒），live 页面从首屏开始 |

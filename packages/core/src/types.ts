@@ -527,9 +527,9 @@ export interface PlayerOptions {
   reducedMotion?: "auto" | boolean;
   /**
    * Intro of the build. true (default): the cursors shuttle behind the file icon for 1.5 to 2.5 s,
-   * then fan out. "outline": no icon; three cursors walk in and draw the largest shapes in view
-   * (paths and boxes, two each), and the rest of the swarm joins once all of them are taken. false:
-   * the swarm walks in and starts at once.
+   * then fan out. "outline": no icon; up to three cursors (fewer when `agents` is smaller) walk in
+   * and draw the largest shapes in view (paths and boxes, two per cursor), and the rest of the swarm
+   * joins once all of them are taken. false: the swarm walks in and starts at once.
    */
   intro?: boolean | "outline";
   /**

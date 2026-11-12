@@ -73,7 +73,7 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `overlays` | `full` / `minimal` / `none`, default `full` | Editing marks while building: `minimal` leaves out size badges, distance labels, guide lines and rulers; `none` also leaves out selections, empty frames, pen lines and anchors, carets and status bubbles, so only the cursors, their name tags and the content remain. The intro icon and the halo finale are always drawn |
 | `follow` | `scroll` / `tour` / `none` | Follow the user, tour automatically, or keep a fixed viewport |
 | `reducedMotion` | `auto` / `boolean` | Defaults to the system reduced-motion preference |
-| `intro` | `boolean \| "outline"` | Intro: `true` (default) is the icon orbit and fan-out; `"outline"` shows no icon, three cursors first draw the largest shapes in view (paths and boxes, two each) and the rest joins once all of them are taken; `false` has no intro |
+| `intro` | `boolean \| "outline"` | Intro: `true` (default) is the icon orbit and fan-out; `"outline"` shows no icon, up to three cursors (fewer when `agents` is smaller) first draw the largest shapes in view (paths and boxes, two per cursor) and the rest joins once all of them are taken; `false` has no intro |
 | `finale` | `flock` / `halo` / `none` | Flock, audio-reactive halo, or no finale |
 | `opening` | `number`, default 0 | Ms to show the original first (inline: the finished content; overlay: the page), then fade into the blank canvas and start the intro |
 | `liveTop` | `boolean`, default false | Going live glides back to the top while the cursors leave |

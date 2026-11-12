@@ -73,7 +73,7 @@ const dispose = () => {
 | `overlays` | `full` / `minimal` / `none`，默认 `full` | 构建时的编辑标记：`minimal` 不画尺寸角标、间距标注、参考线和标尺；`none` 再去掉选框、占位框、钢笔线和锚点、插入符和状态气泡，只留光标、名牌和内容。开场图标和 halo 结尾始终绘制 |
 | `follow` | `scroll` / `tour` / `none` | 跟随用户、自动巡航或固定视口 |
 | `reducedMotion` | `auto` / `boolean` | 默认尊重系统减少动态偏好 |
-| `intro` | `boolean \| "outline"` | 开场：`true`（默认）为图标环绕与扇出；`"outline"` 不显示图标，三个光标先画视野内最大的形状（路径和方框，每个光标两个），全部被领取后其余光标加入；`false` 不要开场 |
+| `intro` | `boolean \| "outline"` | 开场：`true`（默认）为图标环绕与扇出；`"outline"` 不显示图标，最多三个光标（`agents` 更少时按其数量）先画视野内最大的形状（路径和方框，每个光标两个），全部被领取后其余光标加入；`false` 不要开场 |
 | `finale` | `flock` / `halo` / `none` | 群聚、音频响应光环或无结尾 |
 | `opening` | `number`，默认 0 | 先显示原内容的毫秒数（inline 显示完成后的内容，overlay 显示页面），再淡出到空白画布并开始开场 |
 | `liveTop` | `boolean`，默认 false | go live 时一边让光标离开，一边滑回顶部 |

@@ -86,7 +86,7 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--finale <finale>` | `flock` | `flock`, `halo` or `none` |
 | `--follow <mode>` | `tour` | `tour` scrolls the page along with the build; `none` does not scroll |
 | `--opening <time>` | Off | Show the finished page or document first for `<time>` (seconds, milliseconds or beats, as for `--cue`; at most 60 s), then fade it into the blank canvas and start the build. The fade starts on `<time>` exactly and takes 0.52 s |
-| `--intro <style>` | `warp` | `warp`: the cursors circle the file icon, then fan out; `outline`: three cursors first draw the largest shapes in view, then the rest joins to fill in the details; `none`: no intro |
+| `--intro <style>` | `warp` | `warp`: the cursors circle the file icon, then fan out; `outline`: up to three cursors (fewer with a smaller `--agents`) first draw the largest shapes in view, two each, then the rest joins to fill in the details; `none`: no intro |
 | `--tail <ms>` | `2500` (`3700` with `--live-top`) | Hold time after the build finishes, 0–60000 ms: the finale, then the page goes live, the cursors leave and the page's own animations (CSS, SVG SMIL, Lottie) play on video time; an HTML document swaps in the real page, its animated images held on their first frame. A go live still under way when it ends (cursors leaving, the glide back to the top) runs on until the page shows |
 | `--no-live` | Go live | Keep the finale through the whole tail instead of going live |
 | `--live-top` | Off | Going live glides back to the top of the page (up to 1.2 s) while the cursors leave, so the live page starts at its first screen |
