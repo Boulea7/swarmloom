@@ -112,7 +112,7 @@ CSV/TSV 的编码和分隔符需要可解释的探测；无法确定时提供选
 | 格式 | 扩展名 | 重建方式 |
 | --- | --- | --- |
 | EPUB | `.epub` | 封面与章节转为安全页面，按书脊顺序重建 |
-| OpenDocument | `.odt`、`.ods`、`.odp`、`.odg` 及对应 Flat XML | 文本、表格、演示和绘图转为页面或幻灯片，公式不重算 |
+| OpenDocument | `.odt`、`.ods`、`.odp`、`.odg`；模板 `.ott`、`.ots`、`.otp`；Flat XML `.fodt`、`.fods`、`.fodp`、`.fodg` | 文本、表格、演示和绘图转为页面或幻灯片，公式不重算 |
 | RTF | `.rtf` | 段落、字符样式、表格和图片转为分页 |
 | OFD | `.ofd` | 文字、路径和图片按固定版式逐页重建，不验证签名 |
 | Jupyter notebook | `.ipynb` | 依次重建 Markdown、代码和输出单元格，不连接真实内核；Markdown 单元格使用 Markdown 适配器的渲染器，公式保留 TeX 源码 |

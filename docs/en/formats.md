@@ -112,7 +112,7 @@ Source code is treated as text and never executed. Plain text has no reliable fo
 | Format | Extensions | Rebuild |
 | --- | --- | --- |
 | EPUB | `.epub` | Turns the cover and chapters into safe pages in spine order |
-| OpenDocument | `.odt`, `.ods`, `.odp`, `.odg` and corresponding Flat XML | Rebuilds text, sheets, slides and drawings without recalculating formulas |
+| OpenDocument | `.odt`, `.ods`, `.odp`, `.odg`; templates `.ott`, `.ots`, `.otp`; Flat XML `.fodt`, `.fods`, `.fodp`, `.fodg` | Rebuilds text, sheets, slides and drawings without recalculating formulas |
 | RTF | `.rtf` | Lays out paragraphs, character styles, tables and pictures as pages |
 | OFD | `.ofd` | Rebuilds fixed-layout text, paths and images page by page without verifying signatures |
 | Jupyter notebook | `.ipynb` | Rebuilds Markdown, code and output cells in order without a live kernel; Markdown cells use the Markdown adapter's renderer, formulas stay as TeX source |
