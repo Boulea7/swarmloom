@@ -161,6 +161,16 @@ export function settingsForm(o: SettingsFormOptions): HTMLElement {
       value: settings.finale,
       onChange: (finale) => o.onChange({ finale }),
     }),
+    toggle({
+      label: i18n.t("settings.opening"),
+      checked: settings.opening,
+      onChange: (opening) => o.onChange({ opening }),
+    }),
+    toggle({
+      label: i18n.t("settings.liveTop"),
+      checked: settings.liveTop,
+      onChange: (liveTop) => o.onChange({ liveTop }),
+    }),
   );
 
   const look = group(

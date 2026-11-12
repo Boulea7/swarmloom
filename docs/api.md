@@ -74,6 +74,8 @@ const dispose = () => {
 | `reducedMotion` | `auto` / `boolean` | 默认尊重系统减少动态偏好 |
 | `intro` | `boolean` | 是否播放图标环绕与扇出开场 |
 | `finale` | `flock` / `halo` / `none` | 群聚、音频响应光环或无结尾 |
+| `opening` | `number`，默认 0 | 先显示原内容的毫秒数（inline 显示完成后的内容，overlay 显示页面），再淡出到空白画布并开始开场 |
+| `liveTop` | `boolean`，默认 false | go live 时一边让光标离开，一边滑回顶部 |
 | `controls` | `boolean` | 是否显示内置工具栏 |
 | `locale` | BCP 47 字符串 | 工具栏语言；默认 `navigator.language` |
 | `plugins` | `Plugin[]` | 自定义编排、渲染器或舞台插件 |
@@ -99,7 +101,8 @@ const dispose = () => {
 | `state` | `idle`、`intro`、`building`、`paused`、`finale`、`done`、`live` 或 `destroyed` |
 | `progress` | `{ built, total }` 图层进度 |
 | `soundLog` | 到目前为止的只读声音事件日志 |
-| `play()` | 开始开场与构建；Promise 在构建完成时解决，不等待结尾结束 |
+| `scrollY` | 可选：视图上沿，舞台像素；导出器把它的变化记成滚动段 |
+| `play()` | 开始原内容开场（如有）、开场与构建；Promise 在构建完成时解决，不等待结尾结束 |
 | `pause()` / `resume()` | 暂停或继续 |
 | `setSpeed(speed)` | 修改速度 |
 | `setSound(enabled)` | 开关声音 |

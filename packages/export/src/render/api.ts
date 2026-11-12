@@ -17,6 +17,7 @@ import {
   type RenderApi,
   type RenderInfo,
   type RenderInit,
+  type RenderScroll,
   type RenderStep,
   type TerminalFont,
 } from "./protocol";
@@ -160,6 +161,8 @@ function playerOptions(
   if (init.overlays !== undefined) options.overlays = init.overlays;
   if (init.finale !== undefined) options.finale = init.finale;
   if (init.locale !== undefined) options.locale = init.locale;
+  if (init.opening !== undefined) options.opening = init.opening;
+  if (init.liveTop !== undefined) options.liveTop = init.liveTop;
   return options;
 }
 
@@ -288,6 +291,10 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
 
     async soundLog(): Promise<SoundEvent[]> {
       return activeRender().session.soundLog.map((event) => ({ ...event }));
+    },
+
+    async scrollLog(): Promise<RenderScroll[]> {
+      return activeRender().session.scrollLog.map((scroll) => ({ ...scroll }));
     },
 
     dispose,

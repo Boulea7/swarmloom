@@ -82,19 +82,27 @@ describe("CLI command", () => {
   });
 
   it("writes the export dialog's choices, and the in-page export uses the same settings", () => {
-    const settings = { ...DEFAULT_SETTINGS, follow: "scroll" as const, remoteAssets: false };
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      follow: "scroll" as const,
+      remoteAssets: false,
+      opening: true,
+      liveTop: true,
+    };
     const choices = { sound: false, scheme: "dark" as const, locale: "zh-CN" };
     const base = { target: "a.md", targetIsFile: false, name: "a.md", settings, format: "mp4" as const };
     // The dialog's length limit is not the CLI default, so long builds stop at the same frame.
     const dialog = { width: 1080, height: 1920, fps: 60, maxDuration: EXPORT_MAX_SECONDS, ...choices };
     expect(buildCliCommand({ ...base, ...dialog }).text).toBe(
-      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --locale zh-CN --no-sound --no-remote",
+      "npx swarmloom render a.md -o a.mp4 --width 1080 --height 1920 --fps 60 --max-duration 600 --seed 1 --theme dark --opening 1.5 --live-top --locale zh-CN --no-sound --no-remote",
     );
     expect(exportSettingsOf(settings, choices)).toMatchObject({
       theme: "dark",
       follow: "tour",
       sound: false,
       locale: "zh-CN",
+      opening: 1500,
+      liveTop: true,
     });
     // English, the light scheme and 30 fps are the CLI defaults.
     const plain = { ...base, settings: DEFAULT_SETTINGS, width: 1280, height: 720, fps: 30, scheme: "light" as const };

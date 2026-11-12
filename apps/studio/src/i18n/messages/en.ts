@@ -150,6 +150,8 @@ export const en = {
   "settings.finale.flock": "Flock",
   "settings.finale.halo": "Halo",
   "settings.finale.none": "None",
+  "settings.opening": "Show the original first",
+  "settings.liveTop": "Back to the top at the end",
   "settings.follow": "Camera",
   "settings.follow.tour": "Tour",
   "settings.follow.scroll": "My scroll",

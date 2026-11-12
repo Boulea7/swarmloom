@@ -50,10 +50,12 @@ describe("capture evidence", () => {
     ]);
   });
 
-  it("writes events with their nearest frame and a hash of the sound log alone", () => {
-    const doc = JSON.parse(eventsDocument(events, { fps: 30, frames: 60, durationMs: 2000, bpm: 90 }));
+  it("writes events and scrolls with their frames and a hash of the sound log alone", () => {
+    const scroll = { t: 100, end: 400, from: 0, to: 330 };
+    const doc = JSON.parse(eventsDocument(events, { fps: 30, frames: 60, durationMs: 2000, bpm: 90 }, [scroll]));
     expect(doc).toMatchObject({ version: 1, fps: 30, frames: 60, bpm: 90, count: 2 });
     expect(doc.events.map((e: { frame: number }) => e.frame)).toEqual([10, 30]);
+    expect(doc.scrolls).toEqual([{ ...scroll, frame: 3, endFrame: 12 }]);
     expect(doc.soundLogSha256).toBe(sha256Hex(JSON.stringify(events)));
   });
 

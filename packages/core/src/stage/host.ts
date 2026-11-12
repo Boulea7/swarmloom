@@ -16,7 +16,10 @@ export interface StageDom {
   readonly root: ShadowRoot;
   /** Fade target for enter()/goLive() (the host itself carries !important resets). */
   readonly rootEl: HTMLElement;
-  /** Viewport-sized element behind the content for plugin backdrops (WebGL scenes). */
+  /**
+   * Viewport-sized element behind the content for plugin backdrops (WebGL scenes). It holds only
+   * what plugins mount: a Blueprint.background painted behind them goes on an element below it.
+   */
   readonly backdrop: HTMLElement;
   readonly scroller: HTMLElement;
   /** Scroll extent: the world size times the view scale. */
@@ -53,7 +56,7 @@ export interface DomOptions {
   base: string;
   background: string;
   /**
-   * Paint Blueprint.background on the backdrop instead of the scroller, so plugin backdrops
+   * Paint Blueprint.background behind the backdrop instead of on the scroller, so plugin backdrops
    * (WebGL scenes mounted into it) show through the content layer.
    */
   backgroundOnBackdrop: boolean;
@@ -85,6 +88,7 @@ export function buildDom(o: DomOptions): StageDom {
   rootEl.setAttribute("data-mode", o.mode);
   rootEl.style.background = o.base;
   if (isSafeDeclaration("color", o.focusColor)) rootEl.style.setProperty("--sl-focus", o.focusColor);
+  const floor = div(doc, "floor");
   const backdrop = div(doc, "backdrop");
   const scroller = div(doc, "scroller");
   // Inline stages are scrollable regions inside a page: keyboard users must be able to focus them.
@@ -93,7 +97,8 @@ export function buildDom(o: DomOptions): StageDom {
   scroller.setAttribute("aria-label", "SwarmLoom stage");
   let backgroundHeld: Promise<void> | null = null;
   if (isSafeDeclaration("background", o.background)) {
-    const painted = o.backgroundOnBackdrop ? backdrop : scroller;
+    // Below the backdrop, not on it: the opening fades plugin scenes without the background.
+    const painted = o.backgroundOnBackdrop ? floor : scroller;
     painted.style.setProperty("background", o.background);
     backgroundHeld = holdCssImages(painted, doc);
   }
@@ -109,7 +114,7 @@ export function buildDom(o: DomOptions): StageDom {
 
   sizer.append(world);
   scroller.append(sizer);
-  rootEl.append(backdrop, scroller, canvas, ui);
+  rootEl.append(floor, backdrop, scroller, canvas, ui);
   root.append(rootEl);
 
   // Chromium ignores @font-face inside shadow trees: mirror them at document level.

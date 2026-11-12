@@ -153,6 +153,8 @@ export class SwarmStage implements Stage {
   #lastPassTop = Number.NaN;
   #lastPassFrame = 0;
   #autoHeight = false;
+  /** Opacity of the original while an opening shows it (see original()), or null. */
+  #original: number | null = null;
   #pointerIn = false;
   #pointerX = 0;
   #pointerY = 0;
@@ -502,6 +504,35 @@ export class SwarmStage implements Stage {
     return this.#fade.start(1, this.#reduced ? REDUCED_FADE_MS : ENTER_MS);
   }
 
+  original(alpha: number | null): void {
+    if (this.#destroyed) return;
+    if (alpha === null || typeof alpha !== "number" || Number.isNaN(alpha)) {
+      this.#endOriginal();
+      return;
+    }
+    const a = clamp01(alpha);
+    if (this.#mode === "overlay") {
+      // The page under the stage is the original: the blank canvas covers it as it fades.
+      this.#fade.set(1 - a);
+      this.#original = a;
+      return;
+    }
+    if (this.#original === null) this.finishAll();
+    this.#original = a;
+    // Content and plugin scenes fade; the background below them stays: the blank canvas.
+    const value = a >= 1 ? "" : String(Math.round(a * 1000) / 1000);
+    this.#dom.world.style.opacity = value;
+    this.#dom.backdrop.style.opacity = value;
+  }
+
+  #endOriginal(): void {
+    if (this.#original === null) return;
+    this.#original = null;
+    if (this.#mode === "overlay") return;
+    this.#dom.world.style.opacity = "";
+    this.#dom.backdrop.style.opacity = "";
+  }
+
   finishAll(): void {
     if (this.#destroyed) return;
     for (const slot of this.#registry.slots) {
@@ -520,6 +551,7 @@ export class SwarmStage implements Stage {
   reset(): void {
     if (this.#destroyed) return;
     this.#phase++;
+    this.#endOriginal();
     // Before the views go: focus on a link of the live content moves to the stage, not to <body>.
     this.#dom.setLive(false);
     this.#scroll.cancel();
@@ -538,7 +570,9 @@ export class SwarmStage implements Stage {
     overlay.setHidden(false);
     overlay.setRulers(false, true);
     if (this.#fade.active) this.#fade.set(this.#fade.value);
-    this.#passDirty = true;
+    // Mount the blank layers now: plugin scenes (WebGL) learn of it before their next frame hook
+    // draws, so they never show the finished scene for a frame after a reset.
+    this.#pass();
   }
 
   async goLive(): Promise<void> {

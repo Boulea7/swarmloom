@@ -117,6 +117,8 @@ export const zhCN: StudioCatalog = {
   "settings.finale.flock": "群聚",
   "settings.finale.halo": "光环",
   "settings.finale.none": "无",
+  "settings.opening": "先显示原内容",
+  "settings.liveTop": "结束时回到顶部",
   "settings.follow": "镜头",
   "settings.follow.tour": "巡航",
   "settings.follow.scroll": "跟随滚动",

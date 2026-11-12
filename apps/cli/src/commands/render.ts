@@ -72,9 +72,12 @@ Swarm:
                           and status bubbles. Default: full
       --finale <finale>   flock | halo | none. Default: flock
       --follow <mode>     tour (scroll along with the build) | none. Default: tour
+      --opening <time>    Show the finished page or document first for <time> (seconds, ms or beats,
+                          as for --cue), then fade it into the blank canvas and build. Default: off
       --tail <ms>         Hold after the build finishes, ms (0-60000): the finale, then the page
                           goes live and its own animations play. Default: 2500
       --no-live           Keep the finale through the whole tail instead of going live
+      --live-top          Going live glides back to the top of the page while the cursors leave
       --locale <tag>      Language of the toolbar strings and the page (BCP 47). Default: en-US
       --bpm <n>           Tempo the placement notes, the fan-out and the final chord snap to (eighth
                           notes, 40-240). Default: 112
@@ -148,6 +151,8 @@ const OPTIONS = {
   "no-remote": { type: "boolean" },
   "no-live": { type: "boolean" },
   "terminal-font": { type: "string" },
+  opening: { type: "string" },
+  "live-top": { type: "boolean" },
   chrome: { type: "string" },
   ffmpeg: { type: "string" },
   quiet: { type: "boolean", short: "q" },
@@ -239,6 +244,11 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   if (values["terminal-font"] !== undefined) {
     settings.terminalFont = readEnum("terminal-font", values["terminal-font"], ["fit", "fill"], "fit");
   }
+  if (values.opening !== undefined) {
+    const opening = parseOpening(values.opening, settings.bpm);
+    if (opening > 0) settings.opening = opening;
+  }
+  if (values["live-top"]) settings.liveTop = true;
 
   if (values.duration !== undefined && values["max-duration"] !== undefined) {
     throw new UsageError("Use either --duration (exact length) or --max-duration (upper limit), not both");
@@ -323,7 +333,35 @@ function trimTrailingDotsAndSpaces(segment: string): string {
   return segment.slice(0, end);
 }
 
-const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish|live)$/;
+/** A time: seconds (12.5), milliseconds (12500ms) or beats at --bpm (26b). */
+const TIME = String.raw`(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?`;
+const CUE_RE = new RegExp(`^${TIME}:(pause|resume|finish|live)$`);
+const TIME_RE = new RegExp(`^${TIME}$`);
+/** Longest --opening, ms. */
+const MAX_OPENING_MS = 60_000;
+
+/**
+ * A matched time in ms; beats count from the start of the video at `bpm`.
+ * @throws UsageError for beats without --bpm.
+ */
+function timeMs(value: string, unit: string, bpm: number | undefined, what: string): number {
+  if (unit === "b" && bpm === undefined) throw new UsageError(`${what} counts beats, which needs --bpm`);
+  const n = Number(value);
+  return unit === "ms" ? n : unit === "b" ? (n * 60_000) / (bpm as number) : n * 1000;
+}
+
+/**
+ * Parses --opening: a time as --cue takes it, at most a minute; 0 means no opening.
+ * @throws UsageError for bad syntax, beats without --bpm or a longer time.
+ */
+export function parseOpening(spec: string, bpm: number | undefined): number {
+  const match = TIME_RE.exec(spec.trim());
+  if (!match) throw new UsageError(`--opening must be a time such as 1.5, 1500ms or 4b (got "${spec}")`);
+  const [, value = "0", unit = "s"] = match;
+  const ms = timeMs(value, unit, bpm, `--opening ${spec}`);
+  if (ms > MAX_OPENING_MS) throw new UsageError(`--opening must be at most ${MAX_OPENING_MS / 1000} s (got "${spec}")`);
+  return ms;
+}
 
 /**
  * Parses one --cue: "<time>[s|ms|b]:<action>"; beats ("b") count from the start of the video at `bpm`.
@@ -337,9 +375,7 @@ export function parseCue(spec: string, bpm: number | undefined, fps: number): Re
     );
   }
   const [, value = "0", unit = "s", action] = match;
-  if (unit === "b" && bpm === undefined) throw new UsageError(`--cue ${spec} counts beats, which needs --bpm`);
-  const n = Number(value);
-  const at = unit === "ms" ? n : unit === "b" ? (n * 60_000) / (bpm as number) : n * 1000;
+  const at = timeMs(value, unit, bpm, `--cue ${spec}`);
   return { spec, at, frame: cueFrame(at, fps), action: action as ResolvedCue["action"] };
 }
 
@@ -611,7 +647,7 @@ async function writeEvidence(
   }
   if (opts.eventsOut && evidence.events) {
     const meta = { fps: opts.fps, frames: summary.frames, durationMs: summary.durationMs, bpm: opts.settings.bpm };
-    await writeAtomic(opts.eventsOut, eventsDocument(evidence.events, meta));
+    await writeAtomic(opts.eventsOut, eventsDocument(evidence.events, meta, evidence.scrolls));
   }
   if (!opts.manifestOut) return;
   const outputs: Record<string, { path: string; sha256: string; bytes: number }> = {};

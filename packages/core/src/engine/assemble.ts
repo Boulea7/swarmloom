@@ -22,6 +22,7 @@ import {
   isFinaleMode,
   isFollowMode,
   resolveLabels,
+  resolveOpening,
   resolveOverlays,
   resolveSound,
 } from "./options";
@@ -98,6 +99,8 @@ function resolveSettings(options: PlayerOptions): EngineSettings {
   const reduced = options.reducedMotion ?? "auto";
   if (reduced !== "auto" && typeof reduced !== "boolean")
     throw new RangeError('reducedMotion must be "auto" or a boolean');
+  const liveTop = options.liveTop ?? false;
+  if (typeof liveTop !== "boolean") throw new TypeError("liveTop must be a boolean");
   return {
     agents: options.agents ?? "auto",
     speed: checkSpeed(options.speed ?? 1),
@@ -107,6 +110,8 @@ function resolveSettings(options: PlayerOptions): EngineSettings {
     finale: pick<FinaleMode>(options.finale, isFinaleMode, "flock", "finale"),
     intro: options.intro !== false,
     reducedMotion: reduced === "auto" ? matches("(prefers-reduced-motion: reduce)") : reduced,
+    opening: resolveOpening(options.opening),
+    liveTop,
   };
 }
 

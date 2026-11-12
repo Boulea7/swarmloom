@@ -122,6 +122,8 @@ export const ja: StudioCatalog = {
   "settings.finale.flock": "群れ",
   "settings.finale.halo": "ハロー",
   "settings.finale.none": "なし",
+  "settings.opening": "最初に元の内容を表示",
+  "settings.liveTop": "最後に先頭へ戻る",
   "settings.follow": "カメラ",
   "settings.follow.tour": "ツアー",
   "settings.follow.scroll": "スクロールに追従",
