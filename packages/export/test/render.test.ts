@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   Blueprint,
   LoadedSource,
@@ -7,7 +10,14 @@ import type {
   SourceInput,
 } from "@swarmloom/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { base64ToBytes, bytesToBase64, createRenderApi, type RenderDeps, type RenderInit } from "../src/index";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  createRenderApi,
+  parseInit,
+  type RenderDeps,
+  type RenderInit,
+} from "../src/index";
 import { LiveStage } from "../src/render/live";
 import { ClockPlayer } from "./fake-player";
 
@@ -400,5 +410,15 @@ describe("render page protocol", () => {
     await api.init(base);
     await expect(api.step(-1)).rejects.toThrow(RangeError);
     await expect(api.step(60_000)).rejects.toThrow("step() needs 0 <= ms <= 10000");
+  });
+
+  it("lists every init option in the README's init() signature", () => {
+    const readme = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../README.md"), "utf8");
+    const listed = /`init\(\{ ([^}]+) \}\)`/
+      .exec(readme)?.[1]
+      .split(", ")
+      .map((field) => field.replace(/\?$/, ""));
+    // parseInit fills every field but `blueprint`, which it adds only when one is given.
+    expect(listed?.sort()).toEqual([...Object.keys(parseInit(base)), "blueprint"].sort());
   });
 });
