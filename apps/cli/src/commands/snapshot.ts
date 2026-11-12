@@ -183,7 +183,12 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       watch,
       source: file ? { name: path.basename(file) } : undefined,
     });
-    const json = JSON.stringify(blueprint);
+    // JSON.stringify escapes C0 but leaves DEL and C1 raw (only inside strings); \u escapes keep the same
+    // JSON and keep page text from sending terminal sequences when it is printed with -o -.
+    const json = JSON.stringify(blueprint).replace(
+      /\p{Cc}/gu,
+      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
     if (opts.output === "-") io.out(json);
     else await writeFile(opts.output, `${json}\n`);
     if (!opts.quiet) {

@@ -2,7 +2,10 @@
 export interface CliIo {
   /** Writes one line of program output to stdout. */
   out(line: string): void;
-  /** Writes one line of diagnostics (info, warnings, errors) to stderr. */
+  /**
+   * Writes one line of diagnostics (info, warnings, errors) to stderr. `run()` passes every line
+   * through {@link printable} first, as they quote text from web pages and downloaded files.
+   */
   err(line: string): void;
   /**
    * Interactive stderr for redrawn progress bars; absent when stderr is not a terminal,
@@ -20,6 +23,32 @@ export interface TerminalLike {
 }
 
 const ANSI = { red: 31, green: 32, yellow: 33, dim: 2, bold: 1 } as const;
+/** The sequences {@link paint} writes (styles and the reset): the only ones {@link printable} may keep. */
+const STYLES = new Set([0, ...Object.values(ANSI)].map((code) => `\u001b[${code}m`));
+/** A control character other than newline and tab, with what follows it when that may end a style sequence. */
+const CONTROL = /[^\P{Cc}\n\t](?:\[\d{1,2}m)?/gu;
+
+/**
+ * Makes text safe to print on a terminal: control characters (C0, DEL, C1) other than newline and tab
+ * become visible `\xHH` escapes, so a web page or a downloaded file quoted in a message cannot send
+ * terminal sequences such as OSC 52 (overwrite the clipboard) or OSC 0 (set the window title).
+ * @param keepStyles Keep the colour codes of {@link paint} (they only change colour and weight).
+ */
+export function printable(text: string, keepStyles = false): string {
+  return text.replace(CONTROL, (match) =>
+    keepStyles && STYLES.has(match)
+      ? match
+      : `\\x${match.charCodeAt(0).toString(16).padStart(2, "0")}${match.slice(1)}`,
+  );
+}
+
+/**
+ * `io` with every stderr line passed through {@link printable}, keeping colour codes only when colour
+ * is on; stdout carries data and is left as is.
+ */
+export function printableIo(io: CliIo): CliIo {
+  return { ...io, err: (line) => io.err(printable(line, io.color === true)) };
+}
 
 /** Wraps `text` in an ANSI style when colour output is enabled. */
 export function paint(io: CliIo, style: keyof typeof ANSI, text: string): string {

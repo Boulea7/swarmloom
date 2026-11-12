@@ -39,6 +39,16 @@ describe("swarmloom entry", () => {
     expect(result.err).toContain(err);
   });
 
+  it("escapes control characters on stderr, where page errors are quoted, and keeps its colours", async () => {
+    const err: string[] = [];
+    const io = { out: () => {}, err: (l: string) => err.push(l), color: true };
+    const code = await run(["\u001b]52;c;cHduZWQ=\u0007\u009b2J"], { io, cwd, env: {} });
+    expect(code).toBe(1);
+    expect(err[0]).toContain(
+      '\u001b[31merror:\u001b[0m Unknown command "\\x1b]52;c;cHduZWQ=\\x07\\x9b2J"\n\nSwarmLoom ',
+    );
+  });
+
   it("lists formats with the web page row", async () => {
     const result = await capture(["formats"]);
     expect(result.code).toBe(0);
