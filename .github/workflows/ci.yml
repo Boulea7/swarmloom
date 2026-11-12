@@ -118,6 +118,7 @@ jobs:
 
   # The same CLI tests on Windows and macOS, whose paths, file names and output checks differ from Linux's.
   # The runner images carry Google Chrome, which the CLI finds in its default install location; ffmpeg is installed here.
+  # On Windows launch.test.ts runs only its cases that keep the sandbox: the fallback cases need a /bin/sh stand-in.
   cli-render:
     name: cli render (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

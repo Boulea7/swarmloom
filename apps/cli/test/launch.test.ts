@@ -1,13 +1,14 @@
 // @vitest-environment node
 /**
  * launchBrowser keeps Chromium's sandbox on and drops it, with a warning, only when the sandbox
- * itself cannot start and the command does not require it. A shell stand-in for the browser logs
- * how it was started.
+ * itself cannot start and the command does not require it. The cases that keep the sandbox stub
+ * Playwright's launch, so they run on every OS; the fallback cases put a shell stand-in that logs
+ * how it was started in front of a real browser, so they need /bin/sh and skip on Windows.
  */
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { launchBrowser } from "../src/browser/launch";
 import { snapshotCommand } from "../src/commands/snapshot";
 import { findBrowser } from "../src/discovery/browser";
@@ -21,7 +22,35 @@ const missing = skipReason(chrome ? undefined : "no Chrome/Chromium found (set S
 const skipped = missing ? ` (skipped: ${missing})` : "";
 const SNAPSHOT_DOUBLE = path.join(import.meta.dirname, "fixtures/snapshot.js");
 
-describe.skipIf(process.platform === "win32")("launchBrowser", () => {
+const NO_USABLE_SANDBOX = "[FATAL:zygote_host_impl_linux.cc(132)] No usable sandbox!";
+
+describe("launchBrowser", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    {
+      why: "other start failures",
+      stderr: "error while loading shared libraries: libnss3.so",
+      requireSandbox: false,
+      error: /Could not start the browser/,
+    },
+    { why: "--require-sandbox", stderr: NO_USABLE_SANDBOX, requireSandbox: true, error: /sandbox does not start/ },
+  ])("does not drop the sandbox for $why", async ({ stderr, requireSandbox, error }) => {
+    const { chromium } = await import("playwright-core");
+    const launch = vi
+      .spyOn(chromium, "launch")
+      .mockRejectedValue(new Error(`browserType.launch: Browser closed.\n[pid=1][err] ${stderr}`));
+    const warnings: string[] = [];
+    const onUnsandboxed = (warning: string) => warnings.push(warning);
+    const launched = launchBrowser("chrome", { webPages: true, requireSandbox, onUnsandboxed });
+    await expect(launched).rejects.toThrow(MissingDependencyError);
+    await expect(launched).rejects.toThrow(error);
+    expect(launch.mock.calls.map(([options]) => options?.chromiumSandbox)).toEqual([true]);
+    expect(warnings).toEqual([]);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("launchBrowser behind a shell stand-in", () => {
   let dir = "";
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -53,7 +82,7 @@ esac
     };
   }
 
-  const noSandbox = "echo '[FATAL:zygote_host_impl_linux.cc(132)] No usable sandbox!' >&2; exit 1";
+  const noSandbox = `echo '${NO_USABLE_SANDBOX}' >&2; exit 1`;
 
   it.skipIf(missing).each([
     { webPages: true, webgl: false },
@@ -76,27 +105,6 @@ esac
       expect([first?.[0], second[0]]).toEqual(["sandboxed", "unsandboxed"]);
       expect(second.includes("--enable-unsafe-swiftshader")).toBe(webgl);
       expect(warnings).toEqual([expect.stringContaining("only open pages you trust")]);
-    },
-    90_000,
-  );
-
-  it.each([
-    {
-      why: "other start failures",
-      sandboxed: "echo 'error while loading shared libraries' >&2; exit 127",
-      requireSandbox: false,
-    },
-    { why: "--require-sandbox", sandboxed: noSandbox, requireSandbox: true },
-  ])(
-    "does not drop the sandbox for $why",
-    async ({ sandboxed, requireSandbox }) => {
-      const { exe, launches } = standIn(sandboxed, "exit 0");
-      const warnings: string[] = [];
-      const onUnsandboxed = (warning: string) => warnings.push(warning);
-      const launched = launchBrowser(exe, { webPages: true, requireSandbox, onUnsandboxed });
-      await expect(launched).rejects.toThrow(MissingDependencyError);
-      expect(launches().map(([how]) => how)).toEqual(["sandboxed"]);
-      expect(warnings).toEqual([]);
     },
     90_000,
   );
