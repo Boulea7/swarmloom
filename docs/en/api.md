@@ -80,6 +80,7 @@ In an application, keep `dispose()` in the host component's unmount path rather 
 | `controls` | `boolean` | Show the built-in toolbar |
 | `scrubber` | `boolean`, default false | Add a seek bar to the toolbar (drag or arrow keys); only with `controls` on. Seeking back replays the build from the start |
 | `locale` | BCP 47 string | Toolbar language; defaults to `navigator.language` |
+| `messages` | `Record<string, string \| plural forms>` | Toolbar strings for `locale`, keyed like the built-in catalogs (`toolbar.play`). They come first; missing or malformed ones fall back to the built-in catalog, then English. Core exports the catalogs as `CATALOGS` |
 | `plugins` | `Plugin[]` | Custom choreographies, renderers or stage plugins |
 | `onLive` | `() => void` | Callback after restoring live/final content |
 | `onClose` | `() => void` | Player close callback |

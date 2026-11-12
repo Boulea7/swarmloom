@@ -80,6 +80,7 @@ const dispose = () => {
 | `controls` | `boolean` | 是否显示内置工具栏 |
 | `scrubber` | `boolean`，默认 false | 在工具栏加进度条（拖动或方向键跳转）；仅在开启 `controls` 时显示。跳回较早的时间会从头重放构建 |
 | `locale` | BCP 47 字符串 | 工具栏语言；默认 `navigator.language` |
+| `messages` | `Record<string, 文本 \| 复数形式>` | `locale` 的工具栏文字，键名与内置目录相同（如 `toolbar.play`），优先使用；缺失或格式不对的条目先回退到内置目录，再回退到英文。内置目录由 core 以 `CATALOGS` 导出 |
 | `plugins` | `Plugin[]` | 自定义编排、渲染器或舞台插件 |
 | `onLive` | `() => void` | 上线或关闭后恢复内容的回调 |
 | `onClose` | `() => void` | 播放器关闭回调 |

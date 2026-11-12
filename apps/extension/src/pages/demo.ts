@@ -4,6 +4,7 @@
  * shortcut (`swarmloom:demo-toggle` for this tab).
  */
 
+import { CATALOGS } from "@swarmloom/core";
 import { contentDeps } from "../content/deps";
 import { toggleSession } from "../content/session";
 import type { MessageListener } from "../shared/api";
@@ -29,6 +30,7 @@ onReady(async () => {
       prefs,
       locale: ctx.tr.locale,
       strings: sessionStrings(ctx.tr.t),
+      playerMessages: CATALOGS[ctx.tr.locale],
     };
     toggleSession(globalThis, document, launch, deps);
   };

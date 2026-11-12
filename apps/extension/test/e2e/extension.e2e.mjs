@@ -201,6 +201,41 @@ test("a second toggle stops the swarm and leaves the page exactly as it was", as
   await page.close();
 });
 
+test("shows core's toolbar in the chosen language, though swarm.js bundles only the English catalog", async () => {
+  await inWorker(
+    () => chrome.storage.local.set({ prefs: { prefs: { locale: "de" }, savedAt: Date.now() } }),
+    undefined,
+  );
+  const { page, tabId } = await openTab(`${origin}/page?locale`);
+  // The toolbar sits in the stage's closed shadow root; the DevTools DOM search reaches into it.
+  const cdp = await context.newCDPSession(page);
+  /** @param {string} text */
+  const found = async (text) => {
+    await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
+    const { searchId, resultCount } = await cdp.send("DOM.performSearch", { query: text });
+    await cdp.send("DOM.discardSearchResults", { searchId });
+    return resultCount > 0;
+  };
+  try {
+    await toggle(tabId);
+    // Core's German `toolbar.label` (packages/core/src/i18n/messages/de.ts); English is "Build controls".
+    const deadline = performance.now() + STEP_TIMEOUT_MS;
+    while (!(await found("Aufbau-Steuerung"))) {
+      assert.ok(
+        performance.now() < deadline,
+        `no German toolbar; session ${JSON.stringify(await sessionState(tabId))}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    }
+    assert.equal(await found("Build controls"), false);
+    await toggle(tabId);
+  } finally {
+    await inWorker(() => chrome.storage.local.remove("prefs"), undefined);
+    await cdp.detach();
+    await page.close();
+  }
+});
+
 test("rebuilds a page to done, goes live and restores the real page", async () => {
   const { page, tabId } = await openTab(`${origin}/page?full`);
   const before = await pageHtml(page);

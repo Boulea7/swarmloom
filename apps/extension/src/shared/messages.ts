@@ -4,6 +4,7 @@
  * Everything arriving over a channel is parsed here; unknown shapes are dropped.
  */
 
+import type { PlayerOptions } from "@swarmloom/core";
 // Named imports: the bundler keeps only these strings, not the whole catalog, in `swarm.js`.
 import {
   errorClose,
@@ -103,6 +104,9 @@ export function sessionStrings(t: Translator["t"]): SessionStrings {
   return out as SessionStrings;
 }
 
+/** Core player strings (toolbar, progress, announcements), keyed like core's catalogs. */
+export type PlayerMessages = NonNullable<PlayerOptions["messages"]>;
+
 /**
  * What to rebuild, left by the background in the isolated world before `swarm.js` runs. It carries
  * the resolved preferences and strings so the content bundle needs no storage read and no catalogs.
@@ -116,9 +120,17 @@ export interface LaunchRequest {
   /** Resolved UI locale. */
   locale: Locale;
   strings: SessionStrings;
+  /**
+   * Core's catalog for `locale` (`CATALOGS[locale]`): `swarm.js` bundles only the English one
+   * (scripts/build.mjs). The player skips malformed entries and falls back to English.
+   */
+  playerMessages: PlayerMessages;
 }
 
-/** Validates a launch request; every field falls back independently (strings fall back to English). */
+/**
+ * Validates a launch request; every field falls back independently (strings fall back to English;
+ * the player checks each of `playerMessages` itself).
+ */
 export function parseLaunch(value: unknown): LaunchRequest {
   const r = record(value);
   const strings = record(r?.strings);
@@ -133,6 +145,7 @@ export function parseLaunch(value: unknown): LaunchRequest {
     prefs: sanitizePrefs(r?.prefs),
     locale: (typeof r?.locale === "string" && matchLocale(r.locale)) || "en",
     strings: out as SessionStrings,
+    playerMessages: (record(r?.playerMessages) ?? {}) as PlayerMessages,
   };
 }
 

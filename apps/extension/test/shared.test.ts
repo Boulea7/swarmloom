@@ -112,9 +112,19 @@ describe("messages, links and locales", () => {
     expect(parseMessage({ type: "swarmloom:demo-toggle", tabId: "7" })).toBeNull();
     expect(parseMessage({ type: "other" })).toBeNull();
     expect(parseCaptureReply({ ok: true, dataUrl: "javascript:alert(1)" })).toMatchObject({ ok: false });
-    const launch = parseLaunch({ kind: "evil", prefs: null, locale: "xx", strings: { errorTitle: 5 } });
+    const launch = parseLaunch({
+      kind: "evil",
+      prefs: null,
+      locale: "xx",
+      strings: { errorTitle: 5 },
+      playerMessages: "x",
+    });
     expect(launch).toMatchObject({ kind: "page", capture: false, locale: "en", prefs: DEFAULT_PREFS });
     expect(launch.strings.errorTitle).not.toBe("");
+    expect(launch.playerMessages).toEqual({});
+    expect(parseLaunch({ playerMessages: { "toolbar.play": "Los" } }).playerMessages).toEqual({
+      "toolbar.play": "Los",
+    });
   });
 
   it("keeps the catalogs out of the content script, apart from the English session strings", async () => {

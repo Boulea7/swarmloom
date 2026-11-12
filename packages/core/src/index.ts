@@ -10,7 +10,7 @@ export { missingFonts } from "./font-probe";
 export type { FontFallback, GenericFontFamily, ResolvedFontFamily } from "./fonts";
 export { cleanFontFamily, FONT_FALLBACKS, formatFontFamily, resolveFontFamily } from "./fonts";
 export type { Locale } from "./i18n/index";
-export { createI18n, LOCALES } from "./i18n/index";
+export { CATALOGS, createI18n, LOCALES } from "./i18n/index";
 export type { I18n } from "./internal";
 export { createPlayer } from "./player";
 export { definePlugin } from "./plugin";
