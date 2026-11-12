@@ -16,8 +16,11 @@ export interface RenderInput {
 }
 
 /** Player actions a render can schedule (see {@link RenderInit.cues}). */
-export const CUE_ACTIONS = ["pause", "resume", "finish", "live"] as const;
+export const CUE_ACTIONS = ["pause", "resume", "finish", "live", "speed"] as const;
 export type CueAction = (typeof CUE_ACTIONS)[number];
+
+/** Build speeds a render accepts: {@link RenderInit.speed} and "speed" cues. */
+export const SPEED_RANGE = { min: 0.05, max: 16 } as const;
 
 /** A player action applied at a fixed video time. */
 export interface RenderCue {
@@ -26,9 +29,12 @@ export interface RenderCue {
   /**
    * "pause" holds every cursor where it is, "resume" continues, "finish" completes the build quickly,
    * "live" goes live now instead of when the finale settles (the cursors leave and the page plays; an
-   * unfinished build completes at once), also with `live: false`.
+   * unfinished build completes at once), also with `live: false`. "speed" sets the build speed to
+   * {@link speed} from then on, as `Player.setSpeed` does (the intro and finale keep their pace).
    */
   action: CueAction;
+  /** New build speed of a "speed" cue, 0.05..16; required by it and not allowed on the others. */
+  speed?: number;
 }
 
 /** Options of `window.__swarmloom.init()`. Mirrors the CLI flags. */
@@ -195,7 +201,12 @@ function cueList(raw: unknown): RenderCue[] {
     if (!isRecord(cue)) fail(`cues[${i}] must be an object`);
     const at = number(cue, "at", 0, MAX_CUE_MS) ?? fail(`cues[${i}].at is required`);
     const action = oneOf(cue, "action", CUE_ACTIONS) ?? fail(`cues[${i}].action is required`);
-    return { at, action };
+    if (action !== "speed") {
+      if (cue.speed !== undefined) fail(`cues[${i}].speed is only for a "speed" cue`);
+      return { at, action };
+    }
+    const speed = number(cue, "speed", SPEED_RANGE.min, SPEED_RANGE.max) ?? fail(`cues[${i}].speed is required`);
+    return { at, action, speed };
   });
   // Stable: cues at the same time apply in the order given.
   return cues.sort((a, b) => a.at - b.at);
@@ -251,7 +262,7 @@ export function parseInit(raw: unknown): ParsedInit {
     height: number(raw, "height", 16, 8192, true) ?? fail("height is required"),
     fps: number(raw, "fps", 1, 240) ?? fail("fps is required"),
     agents,
-    speed: number(raw, "speed", 0.05, 16),
+    speed: number(raw, "speed", SPEED_RANGE.min, SPEED_RANGE.max),
     seed: number(raw, "seed", -(2 ** 31), 2 ** 32, true) ?? 1,
     theme: oneOf(raw, "theme", THEMES) ?? "auto",
     labels: oneOf(raw, "labels", LABELS),

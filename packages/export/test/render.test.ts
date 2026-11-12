@@ -126,8 +126,28 @@ describe("render page protocol", () => {
       [{ ...base, cues: [{ at: 10, action: "rewind" }] }, "action must be one of pause, resume, finish"],
       [{ ...base, cues: [{ at: -1, action: "pause" }] }, "at must be a number within 0..3600000"],
       [{ ...base, cues: "pause" }, "cues must be an array"],
+      [{ ...base, cues: [{ at: 0, action: "speed" }] }, "cues[0].speed is required"],
+      [{ ...base, cues: [{ at: 0, action: "speed", speed: 0 }] }, "speed must be a number within 0.05..16"],
+      [{ ...base, cues: [{ at: 0, action: "pause", speed: 2 }] }, 'cues[0].speed is only for a "speed" cue'],
     ];
     for (const [options, message] of bad) await expect(api.init(options as RenderInit)).rejects.toThrow(message);
+  });
+
+  it("changes the build speed at speed cues, on the frame that reaches them", async () => {
+    const { api, players } = setup();
+    await api.init({
+      ...base,
+      cues: [
+        { at: 0, action: "speed", speed: 0.6 },
+        { at: 120, action: "speed", speed: 0.45 },
+      ],
+    });
+    for (let i = 0; i < 4; i++) await api.step(50);
+    expect((players[0] as ClockPlayer).speeds).toEqual([
+      [0, 0.6],
+      [150, 0.45],
+    ]);
+    api.dispose();
   });
 
   it("shifts the sounds a cue logs itself when it ends a pause", async () => {

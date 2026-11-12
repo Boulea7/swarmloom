@@ -186,7 +186,9 @@ export function buildManifest(m: ManifestInput): Record<string, unknown> {
       reducedMotion: settings.reducedMotion ?? false,
       beatSync: true,
     },
-    cues: m.cues.map(({ spec, at, frame, action }) => ({ spec, atMs: at, frame, action })),
+    cues: m.cues.map(({ spec, at, frame, action, speed }) =>
+      speed === undefined ? { spec, atMs: at, frame, action } : { spec, atMs: at, frame, action, speed },
+    ),
     programs: {
       ...m.programs,
       browser: programName(m.programs.browser),

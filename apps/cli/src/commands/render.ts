@@ -80,9 +80,11 @@ Swarm:
                           notes, 40-240). Default: 112
       --cue <at>:<action> Player action at a fixed video time; repeatable. <at> is seconds (12.5),
                           milliseconds (12500ms) or beats from the start at --bpm (26b). <action> is
-                          pause (every cursor holds), resume, finish (complete the build quickly) or
-                          live (go live then, not when the finale settles; also with --no-live).
-                          Applied on the first frame at or after <at>; same-time cues in order given
+                          pause (every cursor holds), resume, finish (complete the build quickly),
+                          live (go live then, not when the finale settles; also with --no-live) or
+                          speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=0.6 then
+                          17b:speed=0.45 hurries only the start). Applied on the first frame at or
+                          after <at>; same-time cues in order given
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
                           and plain-http files from other sites are never loaded
@@ -115,6 +117,9 @@ Examples:
     --cue 28b:finish --audio-out take.wav --events-out events.json --manifest-out manifest.json
 
 Exit codes: 0 ok, 1 usage error, 2 missing Chrome/ffmpeg, 3 render failure, 130 interrupted.`;
+
+/** Build speeds --speed and speed cues accept. */
+const SPEED_RANGE = { min: 0.05, max: 16 } as const;
 
 const OPTIONS = {
   output: { type: "string", short: "o" },
@@ -217,7 +222,7 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
 
   const settings: PlayerSettings = {
     agents,
-    speed: readNumber("speed", values.speed, 1, { min: 0.05, max: 16 }),
+    speed: readNumber("speed", values.speed, 1, SPEED_RANGE),
     seed: readInt("seed", values.seed, 1, 0, 0xffffffff),
     theme: readEnum("theme", values.theme, ["auto", "light", "dark"], "auto"),
     labels: readEnum("labels", values.labels, ["names", "agents", "roles", "none"], "names"),
@@ -314,24 +319,31 @@ function trimTrailingDotsAndSpaces(segment: string): string {
   return segment.slice(0, end);
 }
 
-const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish|live)$/;
+const CUE_RE = /^(\d+(?:\.\d+)?|\.\d+)(s|ms|b)?:(pause|resume|finish|live|speed=(\d+(?:\.\d+)?|\.\d+))$/;
 
 /**
  * Parses one --cue: "<time>[s|ms|b]:<action>"; beats ("b") count from the start of the video at `bpm`.
- * @throws UsageError for bad syntax or beats without --bpm.
+ * The action "speed=<n>" sets the build speed from then on.
+ * @throws UsageError for bad syntax, a speed outside the --speed range or beats without --bpm.
  */
 export function parseCue(spec: string, bpm: number | undefined, fps: number): ResolvedCue {
   const match = CUE_RE.exec(spec.trim());
   if (!match) {
     throw new UsageError(
-      `--cue must look like <time>:<action>, e.g. 12.5:pause, 12500ms:resume or 26b:finish (got "${spec}")`,
+      `--cue must look like <time>:<action>, e.g. 12.5:pause, 12500ms:resume, 26b:finish or 0:speed=0.6 (got "${spec}")`,
     );
   }
-  const [, value = "0", unit = "s", action] = match;
+  const [, value = "0", unit = "s", action = "", speedText] = match;
   if (unit === "b" && bpm === undefined) throw new UsageError(`--cue ${spec} counts beats, which needs --bpm`);
   const n = Number(value);
   const at = unit === "ms" ? n : unit === "b" ? (n * 60_000) / (bpm as number) : n * 1000;
-  return { spec, at, frame: cueFrame(at, fps), action: action as ResolvedCue["action"] };
+  const frame = cueFrame(at, fps);
+  if (speedText === undefined) return { spec, at, frame, action: action as ResolvedCue["action"] };
+  const speed = Number(speedText);
+  if (!(speed >= SPEED_RANGE.min && speed <= SPEED_RANGE.max)) {
+    throw new UsageError(`--cue ${spec}: the speed must be ${SPEED_RANGE.min}-${SPEED_RANGE.max}`);
+  }
+  return { spec, at, frame, action: "speed", speed };
 }
 
 function readLocale(raw: string): string {
@@ -509,7 +521,7 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
       settings: opts.settings,
       maxDurationMs: opts.maxDurationMs,
       fixedLength: opts.fixedLength,
-      cues: opts.cues.map(({ at, action }) => ({ at, action })),
+      cues: opts.cues.map(({ at, action, speed }) => (speed === undefined ? { at, action } : { at, action, speed })),
       evidence: wantsEvidence(opts)
         ? { audio: Boolean(opts.audioOut), events: Boolean(opts.eventsOut), manifest: Boolean(opts.manifestOut) }
         : undefined,
