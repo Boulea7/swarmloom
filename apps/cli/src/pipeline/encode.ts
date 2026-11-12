@@ -44,6 +44,11 @@ const COMMON = ["-hide_banner", "-loglevel", "error", "-y"];
 /** Even dimensions for 4:2:0, BT.709 limited range like every player expects, tagged accordingly. */
 const YUV420_FILTER = "pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p";
 const BT709_TAGS = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"];
+/**
+ * Matroska/WebM output flags: bitexact drops the random SegmentUID/TrackUIDs and the wall-clock DateUTC
+ * the muxer writes otherwise, so the same frames and sound give the same file bytes (MP4 already does).
+ */
+const WEBM_CONTAINER = ["-fflags", "+bitexact"];
 
 function need(caps: FfmpegCaps, kind: "encoders" | "filters", name: string, why: string): void {
   if (!caps[kind].has(name)) {
@@ -105,7 +110,19 @@ export function planVideo(
       const output = path.join(tmpDir, "video.webm");
       const encode = ["-c:v", "libvpx-vp9", "-crf", "31", "-b:v", "0", "-deadline", "good", "-cpu-used", "4"];
       return {
-        stream: [...input, "-vf", YUV420_FILTER, ...encode, "-row-mt", "1", "-g", gop, ...BT709_TAGS, output],
+        stream: [
+          ...input,
+          "-vf",
+          YUV420_FILTER,
+          ...encode,
+          "-row-mt",
+          "1",
+          "-g",
+          gop,
+          ...BT709_TAGS,
+          ...WEBM_CONTAINER,
+          output,
+        ],
         passes: [],
         output,
       };
@@ -188,7 +205,7 @@ export function planMux(format: "mp4" | "webm", files: MuxFiles, caps: FfmpegCap
     audio = ["-c:a", encoder ?? "libopus", "-b:a", "128k"];
     if (encoder === "opus") audio.push("-strict", "experimental");
   }
-  const container = format === "mp4" ? ["-movflags", "+faststart"] : [];
+  const container = format === "mp4" ? ["-movflags", "+faststart"] : WEBM_CONTAINER;
   return [
     ...COMMON,
     "-i",

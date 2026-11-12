@@ -150,6 +150,12 @@ describe("encoder plans", () => {
     expect(args).not.toContain("-shortest");
   });
 
+  it("writes WebM without random UIDs or a wall-clock date, so equal takes give equal bytes", () => {
+    const stream = planVideo("webm", 30, "/tmp/x", FULL).stream;
+    const muxed = planMux("webm", { video: "v.webm", wav: "a.wav", output: "o.webm", durationMs: 1000 }, FULL);
+    for (const args of [stream, muxed]) expect(args.slice(-3, -1)).toEqual(["-fflags", "+bitexact"]);
+  });
+
   it("reports a missing encoder as a missing dependency", () => {
     const caps = { encoders: new Set(["aac"]), filters: new Set<string>() };
     expect(() => planVideo("mp4", 30, "/tmp", caps)).toThrow("no libx264 encoder");
