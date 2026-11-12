@@ -419,3 +419,34 @@ it("decodes the image again only once the snapshot changed, reusing the encoding
     encode.mockRestore();
   }
 });
+
+it("walks the frame again only after a mutation, a scroll or an animation seek, or always over canvas pixels", async () => {
+  const { win, rasterizer } = await frameOf(
+    '<body style="margin:0"><div id=s style="height:100px;overflow:hidden">' +
+      '<div style="height:100px;background:rgb(255,0,0)"></div><div style="height:100px;background:rgb(0,0,255)"></div>' +
+      "</div></body>",
+  );
+  const box = win.document.getElementById("s") as HTMLElement;
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  // Nothing changed: no walk.
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  // Neither a scroll nor a seek of a paused animation mutates the DOM.
+  box.scrollTop = 100;
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  const fade = box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1000, fill: "forwards" });
+  fade.pause();
+  expect((await frame())[0]).toBe(3);
+  fade.currentTime = 1000;
+  expect(await frame()).toEqual([4, [255, 255, 255]]);
+  fade.cancel();
+  // A canvas painted over is drawn into the image: its pixels change unseen, so every frame walks.
+  box.innerHTML = '<canvas width=10 height=10></canvas><p style="margin:0;height:10px;background:#fff"></p>';
+  expect((await frame())[0]).toBe(5);
+  expect((await frame())[0]).toBe(6);
+});

@@ -215,6 +215,13 @@ export interface CanvasOverlay {
   clip: Box;
 }
 
+/** A scroll container or document viewport the walk read, with its scroll offsets then. */
+export interface ScrollMark {
+  el: Element;
+  left: number;
+  top: number;
+}
+
 /** One serialised frame. */
 export interface FrameSnapshot {
   /** The image's markup (`parts` joined when read). */
@@ -229,6 +236,13 @@ export interface FrameSnapshot {
   stats: SnapshotStats;
   /** Canvases to draw over the image, in paint order (a WebGL model, then the cursor layer). */
   overlays: CanvasOverlay[];
+  /**
+   * The scroll offsets the image depends on: each scroll container written and each document
+   * viewport, as the walk read them. Null when the image shows what can change without a DOM
+   * mutation or a scroll: pixels of a canvas or video, a frame's document, SMIL animations, an
+   * image still loading.
+   */
+  settled: readonly ScrollMark[] | null;
 }
 
 export interface Box {
@@ -337,6 +351,10 @@ interface Walk {
   /** What {@link contentEdge} found for each box read, at its top and bottom edges. */
   edges: { start: Map<Element, Edge | null>; end: Map<Element, Edge | null> };
   watch: ChangeWatch | null;
+  /** See {@link FrameSnapshot.settled}. */
+  scrolls: ScrollMark[];
+  /** Something written can change without a DOM mutation or a scroll (see {@link FrameSnapshot.settled}). */
+  unsettled: boolean;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
   stats: SnapshotStats;
@@ -1882,6 +1900,9 @@ function* emitElement(
   const override: Record<string, string> = {};
   const overflowX = cs.getPropertyValue("overflow-x");
   const overflowY = cs.getPropertyValue("overflow-y");
+  if ((overflowX !== "visible" && overflowX !== "clip") || (overflowY !== "visible" && overflowY !== "clip")) {
+    walk.scrolls.push({ el, left: el.scrollLeft, top: el.scrollTop });
+  }
   // No scrollbars in a still frame; scroll offsets become a shift of the children.
   if (overflowX === "auto" || overflowX === "scroll") override["overflow-x"] = "hidden";
   if (overflowY === "auto" || overflowY === "scroll") override["overflow-y"] = "hidden";
@@ -1914,6 +1935,8 @@ function* emitElement(
     override["transform-box"] = "view-box";
   }
   const frame = local === "iframe" && !svg;
+  // A video's picture and controls, and a frame's document, change without a mutation in this one.
+  if (frame || (local === "video" && !svg)) walk.unsettled = true;
   // A video shows its controls while paused (playing, they hide once the pointer is away).
   const player = local === "video" && !svg && (el as HTMLVideoElement).controls && (el as HTMLVideoElement).paused;
   if (frame || player) {
@@ -1958,6 +1981,8 @@ function* emitElement(
   let attrs = attributes(walk, el);
   if (!svg && local === "img") {
     const img = el as HTMLImageElement;
+    // Its size may change once it has loaded.
+    if (!img.complete) walk.unsettled = true;
     const src = img.currentSrc || img.src;
     attrs +=
       src && !src.startsWith("#")
@@ -2290,6 +2315,8 @@ function* emitDocument(
   at: { x: number; y: number } = { x: 0, y: 0 },
 ): Steps {
   const doc = view.win.document;
+  const viewport = doc.scrollingElement ?? doc.documentElement;
+  walk.scrolls.push({ el: viewport, left: viewport.scrollLeft, top: viewport.scrollTop });
   const owner = backgroundOwner(doc, view.win);
   if (owner) walk.onCanvas.add(owner);
   const bg = canvasBackground(view.win, owner, canvasBackdrop(doc, frame));
@@ -2554,6 +2581,8 @@ async function walkFrame(
     kept: [],
     edges: { start: new Map(), end: new Map() },
     watch,
+    scrolls: [],
+    unsettled: false,
     deadline: 0,
     stats: { elements: 0, culled: 0, restarts },
     nextClass: 0,
@@ -2632,6 +2661,10 @@ export async function snapshotFrame(
     }
   }
   const fonts = await fontCss(walk, source, docs, faces);
+  // Pixels in the image: every canvas entry but those of the overlays.
+  const pixels = walk.canvases.length > walk.overlays.length;
+  const smil = walk.smil.attributes.size > 0 || walk.smil.moving.size > 0;
+  const settled = walk.unsettled || pixels || smil ? null : walk.scrolls;
   for (const { index } of walk.overlays) walk.canvases[index] = BLANK_IMAGE;
   const data = await Promise.all(walk.urls.map(({ url, fallback }) => resources.resolve(url, fallback)));
   // What `<img>` clones show: large photos only as large as their boxes need.
@@ -2678,5 +2711,6 @@ export async function snapshotFrame(
     parts,
     stats: walk.stats,
     overlays,
+    settled,
   };
 }

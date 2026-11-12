@@ -2,6 +2,7 @@ import type { ShadowWatch } from "../../render/live";
 import { FontFaceCache, type FontWatch } from "./fonts";
 import { LONG_PIECE, networkGate, ResourceCache, type ResourcePolicy } from "./resources";
 import { type CanvasOverlay, type FrameSnapshot, type SnapshotStats, snapshotFrame } from "./snapshot";
+import { StillWatch } from "./still";
 import { readBaseline, type StyleBaseline } from "./styles";
 
 /** What {@link FrameRasterizer} reads and where it reports. */
@@ -29,6 +30,18 @@ async function decoded(img: HTMLImageElement): Promise<void> {
     img.onload = () => resolve();
     img.onerror = () => reject(new Error("the frame image could not be decoded"));
   });
+}
+
+/** The last frame drawn: its decoded image and what to draw over it. */
+interface DrawnFrame {
+  parts: readonly string[];
+  img: HTMLImageElement;
+  overlays: CanvasOverlay[];
+  stats: SnapshotStats;
+  /** Device px per CSS px it was serialised for. */
+  scale: number;
+  /** Watches the document since its snapshot; null when it may change unseen (see {@link StillWatch}). */
+  watch: StillWatch | null;
 }
 
 /** Whether two snapshots are made of the same pieces. */
@@ -80,8 +93,7 @@ export class FrameRasterizer {
    * next frames mostly use the same, and encoding megabytes again took tens of milliseconds.
    */
   #encoded = new Map<string, string>();
-  /** The last image drawn and the parts it was made of. */
-  #last: { parts: readonly string[]; img: HTMLImageElement } | null = null;
+  #last: DrawnFrame | null = null;
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -118,9 +130,12 @@ export class FrameRasterizer {
   }
 
   /**
-   * Draws the current frame into `ctx` at its origin, scaled to `ctx.canvas`, over white. A frame
-   * whose snapshot is the same as the last one's (the page held still while only the overlays,
-   * such as the cursors, moved) reuses its decoded image.
+   * Draws the current frame into `ctx` at its origin, scaled to `ctx.canvas`, over white. While
+   * the document shows what the last snapshot read (no mutation, load, scroll, focus or animation
+   * change since; see {@link StillWatch}), the frame skips the snapshot and draws the last image
+   * again with the overlays, such as the cursors, over it: an opening that holds the page, or an
+   * intro whose cursors move over a still stage. A frame whose snapshot comes out the same as the
+   * last one's also reuses its decoded image.
    *
    * @throws The signal's reason when it aborts while the snapshot walk pauses.
    */
@@ -129,24 +144,49 @@ export class FrameRasterizer {
     signal?: AbortSignal,
   ): Promise<SnapshotStats> {
     const { width, height } = ctx.canvas;
-    const { parts, stats, overlays } = await this.snapshot(
-      signal,
-      Math.max(width / this.#o.width, height / this.#o.height),
-    );
-    let img = this.#last?.img;
-    if (!img || !sameParts(parts, this.#last?.parts ?? [])) {
-      img = new Image();
-      // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
-      // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
-      img.src = this.#uri(parts);
-      await decoded(img);
-      this.#last = { parts, img };
-    }
+    const scale = Math.max(width / this.#o.width, height / this.#o.height);
+    const { img, overlays, stats } = this.#still(scale) ?? (await this.#capture(scale, signal));
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
     for (const overlay of overlays) drawOverlay(ctx, overlay, width / this.#o.width, height / this.#o.height);
     return stats;
+  }
+
+  /** The last frame, when the document still shows it at this scale; else null, and its watch stops. */
+  #still(scale: number): DrawnFrame | null {
+    const last = this.#last;
+    if (!last?.watch) return null;
+    if (last.scale === scale && last.watch.still()) return last;
+    last.watch.stop();
+    last.watch = null;
+    return null;
+  }
+
+  /** Snapshots the frame and decodes its image, unless it is the same as the last one's. */
+  async #capture(scale: number, signal?: AbortSignal): Promise<DrawnFrame> {
+    const { document, shadows, fonts } = this.#o;
+    // Its probe elements would count as a change.
+    this.#baseline ??= readBaseline(document);
+    const watch = new StillWatch({ document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() });
+    try {
+      const { parts, stats, overlays, settled } = await this.snapshot(signal, scale);
+      let img = this.#last?.img;
+      if (!img || !sameParts(parts, this.#last?.parts ?? [])) {
+        img = new Image();
+        // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
+        // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
+        img.src = this.#uri(parts);
+        await decoded(img);
+      }
+      if (settled) watch.settle(settled);
+      else watch.stop();
+      this.#last = { parts, img, overlays, stats, scale, watch: settled ? watch : null };
+      return this.#last;
+    } catch (error) {
+      watch.stop();
+      throw error;
+    }
   }
 
   /** The image's data URL, with the encodings of long parts the last image had reused. */
