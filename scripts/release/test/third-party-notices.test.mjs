@@ -12,7 +12,7 @@ import {
   runtimeImports,
   synthesizedMitLicense,
 } from "../lib/notices.mjs";
-import { expectedLicenseFiles, pagesLicenseFiles } from "../third-party-notices.mjs";
+import { appLicenseFile, expectedLicenseFiles, pagesLicenseFiles } from "../third-party-notices.mjs";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -103,4 +103,18 @@ test("every app deployed to Pages gets the licences of what it bundles or inline
   assert.match(docs?.contents ?? "", inter);
   const workflow = readFileSync(join(root, ".github/workflows/pages.yml"), "utf8");
   assert.match(workflow, /third-party-notices\.mjs --pages _site\b/);
+});
+
+test("the bookmarklet's Pages folder and Release ZIP carry SwarmLoom's licence", () => {
+  // The report: it bundles no third-party code, so neither got a LICENSE.md and the ZIP had no licence at all.
+  const license = readFileSync(join(root, "LICENSE"), "utf8").trim();
+  const pages = pagesLicenseFiles(root, "_site").find((item) => item.pkg.dir === "apps/bookmarklet");
+  assert.ok(pages?.contents?.includes(license));
+  const zip = appLicenseFile(root, "@swarmloom/bookmarklet", "apps/bookmarklet/dist");
+  assert.equal(zip.path, join(root, "apps/bookmarklet/dist/LICENSE.md"));
+  assert.equal(zip.contents, pages?.contents);
+  const workflow = readFileSync(join(root, ".github/workflows/release.yml"), "utf8");
+  const packed =
+    /--app @swarmloom\/bookmarklet apps\/bookmarklet\/dist\n\s*node scripts\/release\/pack-folder\.mjs apps\/bookmarklet\/dist /;
+  assert.match(workflow, packed);
 });
