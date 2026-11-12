@@ -32,14 +32,14 @@ const base: RenderInit = { input: { name: "a.md", text: "# Hi" }, width: 320, he
 
 function setup(make: (input: SourceInput) => Blueprint = () => blueprint, deps: Pick<RenderDeps, "awaitPaint"> = {}) {
   const players: ClockPlayer[] = [];
-  const loads: { input: SourceInput; format?: string; width: number }[] = [];
+  const loads: { input: SourceInput; format?: string; width: number; terminalFont?: string }[] = [];
   const dispose = vi.fn();
   const audio = vi.fn(async (events: readonly SoundEvent[], durationMs: number, _opts?: RenderOfflineOptions) =>
     Uint8Array.from([events.length, Math.round(durationMs / 10)]),
   );
   const api = createRenderApi({
-    async load(input, ctx, { format }): Promise<LoadedSource> {
-      loads.push({ input, format, width: ctx.width });
+    async load(input, ctx, { format, terminalFont }): Promise<LoadedSource> {
+      loads.push({ input, format, width: ctx.width, terminalFont });
       return { blueprint: make(input), dispose };
     },
     createPlayer(options: PlayerOptions) {
@@ -165,10 +165,11 @@ describe("render page protocol", () => {
     ]);
   });
 
-  it("passes the intro through to the player", async () => {
-    const { api, players } = setup();
-    await api.init({ ...base, intro: "outline" });
-    expect(players[0]?.options.intro).toBe("outline");
+  it("passes the intro and overlays to the player and the terminal font to the loader", async () => {
+    const { api, players, loads } = setup();
+    await api.init({ ...base, intro: "outline", overlays: "none", terminalFont: "fill" });
+    expect(players[0]?.options).toMatchObject({ intro: "outline", overlays: "none" });
+    expect(loads[0]?.terminalFont).toBe("fill");
     api.dispose();
     const short = { ...base, intro: "short" } as unknown as RenderInit;
     await expect(api.init(short)).rejects.toThrow('intro must be a boolean or "outline"');
