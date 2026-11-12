@@ -1,6 +1,9 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { detectBackgroundCapabilities, detectPageCapabilities, fileAccessState } from "../src/shared/capabilities";
-import { createTranslator, matchLocale, resolveLocale } from "../src/shared/i18n";
+import { catalogFor, createTranslator, matchLocale, resolveLocale } from "../src/shared/i18n";
 import { noticeUrl, studioLinkPatterns, studioUrl } from "../src/shared/links";
 import { parseCaptureReply, parseLaunch, parseMessage } from "../src/shared/messages";
 import { DEFAULT_PREFS, loadPrefs, PREFS_KEY, sanitizePrefs, savePrefs, toPlayerOptions } from "../src/shared/prefs";
@@ -112,6 +115,26 @@ describe("messages, links and locales", () => {
     const launch = parseLaunch({ kind: "evil", prefs: null, locale: "xx", strings: { errorTitle: 5 } });
     expect(launch).toMatchObject({ kind: "page", capture: false, locale: "en", prefs: DEFAULT_PREFS });
     expect(launch.strings.errorTitle).not.toBe("");
+  });
+
+  it("keeps the catalogs out of the content script, apart from the English session strings", async () => {
+    // swarm.js gets its strings in the launch request and must stay within its size budget (scripts/audit.mjs).
+    const result = await build({
+      stdin: {
+        contents: 'import { parseLaunch } from "./src/shared/messages"; console.log(parseLaunch(null));',
+        resolveDir: join(dirname(fileURLToPath(import.meta.url)), ".."),
+        loader: "ts",
+      },
+      bundle: true,
+      write: false,
+      charset: "utf8",
+      logLevel: "silent",
+    });
+    const code = result.outputFiles[0]?.text ?? "";
+    const fallback = new Set(Object.values(parseLaunch(null).strings));
+    const leaked = Object.values(catalogFor("en")).filter((s) => !fallback.has(s) && code.includes(JSON.stringify(s)));
+    expect(fallback.size).toBeGreaterThan(1);
+    expect(leaked).toEqual([]);
   });
 
   it("builds Studio and notice links that only carry web or file sources", () => {

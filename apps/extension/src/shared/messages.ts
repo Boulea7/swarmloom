@@ -4,7 +4,16 @@
  * Everything arriving over a channel is parsed here; unknown shapes are dropped.
  */
 
-import enCatalog from "../locales/en.json";
+// Named imports: the bundler keeps only these strings, not the whole catalog, in `swarm.js`.
+import {
+  errorClose,
+  errorEmpty,
+  errorFailed,
+  errorRetry,
+  errorStudio,
+  errorTitle,
+  statusScanning,
+} from "../locales/en.json";
 import { type Locale, type MessageKey, matchLocale, type Translator } from "./i18n";
 import { type Prefs, sanitizePrefs } from "./prefs";
 
@@ -76,6 +85,17 @@ export const SESSION_STRING_KEYS = [
 
 export type SessionStrings = Readonly<Record<(typeof SESSION_STRING_KEYS)[number], string>>;
 
+/** English session strings: the fallback when a launch request lacks one. */
+const SESSION_FALLBACK: SessionStrings = {
+  statusScanning,
+  errorTitle,
+  errorEmpty,
+  errorFailed,
+  errorRetry,
+  errorStudio,
+  errorClose,
+};
+
 /** Builds the session strings from a translator. */
 export function sessionStrings(t: Translator["t"]): SessionStrings {
   const out: Record<string, string> = {};
@@ -102,11 +122,10 @@ export interface LaunchRequest {
 export function parseLaunch(value: unknown): LaunchRequest {
   const r = record(value);
   const strings = record(r?.strings);
-  const fallback = enCatalog as Record<string, string>;
   const out: Record<string, string> = {};
   for (const key of SESSION_STRING_KEYS) {
     const text = strings?.[key];
-    out[key] = typeof text === "string" && text.length <= 500 ? text : (fallback[key] ?? key);
+    out[key] = typeof text === "string" && text.length <= 500 ? text : SESSION_FALLBACK[key];
   }
   return {
     kind: r?.kind === "element" ? "element" : "page",
