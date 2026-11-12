@@ -19,6 +19,10 @@ async function frameOf(html: string): Promise<{ win: Window; rasterizer: FrameRa
   frames.push(frame);
   await loaded;
   const win = frame.contentWindow as Window;
+  // The export's render API resolves each step through player.ready(), which waits for this too.
+  // Firefox dispatches the initial loadingdone after srcdoc's load event; starting the still watch
+  // before it would invalidate the first captured frame even though nothing in the test changed.
+  await win.document.fonts.ready;
   const rasterizer = new FrameRasterizer({
     document: win.document,
     width: SIZE,
@@ -461,6 +465,8 @@ it("watches a same-origin frame's document rather than walking it every frame, u
       "<div style='height:100px;background:rgb(0,0,255)'></div></div></body>\"></iframe></body>",
   );
   const inner = (win.document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document;
+  // srcdoc's own initial font notification can arrive after the outer document is ready.
+  await inner.fonts.ready;
   const box = inner.getElementById("s") as HTMLElement;
   const walk = vi.spyOn(rasterizer, "snapshot");
   const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
