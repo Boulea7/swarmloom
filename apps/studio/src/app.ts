@@ -3,7 +3,7 @@ import { describeError } from "./errors";
 import { availableFormats } from "./formats-meta";
 import { createStudioI18n, loadCatalog, negotiateLocale, type StudioI18n } from "./i18n";
 import { watchViewport } from "./layout/viewport";
-import { parseRoute, type Route, routeToUrl } from "./route";
+import { parseRoute, type Route, routeToUrl, withoutOverrides } from "./route";
 import type { StudioServices } from "./services";
 import {
   DEFAULT_SETTINGS,
@@ -285,21 +285,8 @@ export async function mountStudio(
     renderView();
   }
 
-  function updateSettings(patch: Partial<StudioSettings>): void {
-    const clean = sanitizeSettings(patch);
-    const keys = Object.keys(clean) as (keyof StudioSettings)[];
-    if (keys.every((key) => settings[key] === clean[key])) return;
-    const prev = settings;
-    stored = { ...stored, ...clean };
-    saveSettings(services.storage, stored);
-    // A setting the user changes stops being a per-visit URL or source override.
-    const overrides = { ...route.overrides };
-    for (const key of keys) {
-      delete overrides[key];
-      delete replaced[key];
-    }
-    route = { ...route, overrides };
-    settings = { ...prev, ...clean };
+  /** Puts the page (network policy, theme, motion, theme buttons) in line with settings changed from `prev`. */
+  function settingsApplied(prev: StudioSettings): void {
     syncAssetPolicy();
     if (settings.remoteAssets && !prev.remoteAssets && assetsBlocked) {
       toast.show(i18n.t("settings.remote.reload"), {
@@ -312,7 +299,10 @@ export async function mountStudio(
     scheme = nextScheme;
     if (documentChanged) applyDocument();
     for (const el of doc.querySelectorAll<HTMLButtonElement>(".theme-button")) syncThemeButton(ctx, el);
-    view?.settingsChanged?.(prev, settings);
+  }
+
+  /** Loads the strings of a language changed from `prev`'s; only the latest request applies. */
+  function localeApplied(prev: StudioSettings): void {
     const locale = resolveLocale(settings.locale, win);
     if (locale === resolveLocale(prev.locale, win)) return;
     const request = ++localeRequest;
@@ -321,6 +311,35 @@ export async function mountStudio(
       i18n = next;
       relocalize();
     });
+  }
+
+  function updateSettings(patch: Partial<StudioSettings>): void {
+    const clean = sanitizeSettings(patch);
+    const keys = Object.keys(clean) as (keyof StudioSettings)[];
+    if (keys.every((key) => settings[key] === clean[key])) return;
+    const prev = settings;
+    stored = { ...stored, ...clean };
+    saveSettings(services.storage, stored);
+    // A setting the user changes stops being a per-visit URL or source override. The entry's URL
+    // drops it too, so Back and Forward to this entry keep the user's value.
+    const overrides = { ...route.overrides };
+    for (const key of keys) {
+      delete overrides[key];
+      delete replaced[key];
+    }
+    route = { ...route, overrides };
+    const href = withoutOverrides(win.location.href, keys);
+    if (href !== win.location.href) {
+      try {
+        win.history.replaceState(win.history.state, "", href);
+      } catch (error) {
+        console.warn("[studio] history update failed", error);
+      }
+    }
+    settings = { ...prev, ...clean };
+    settingsApplied(prev);
+    view?.settingsChanged?.(prev, settings);
+    localeApplied(prev);
   }
 
   function sourceSettings(patch: Partial<StudioSettings>): void {
@@ -427,7 +446,15 @@ export async function mountStudio(
     route = parseRoute(win.location.href, routeOptions);
     local = localOf(event.state);
     navigated = true;
+    // The entry's own URL settings apply again over the saved ones, and none of the left entry's
+    // linger; the left view's source settings go with it.
+    const prev = settings;
+    replaced = {};
+    settings = { ...stored, ...route.overrides };
+    settingsApplied(prev);
     renderView();
+    if (panels().settings.isOpen) renderSettingsForm();
+    localeApplied(prev);
   };
   const onSystemScheme = () => {
     if (settings.theme !== "auto") return;

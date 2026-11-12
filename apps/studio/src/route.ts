@@ -171,6 +171,15 @@ const OVERRIDE_PARAMS: ReadonlyArray<[keyof StudioSettings, string]> = [
   ["locale", "lang"],
 ];
 
+/** `href` without the URL parameters of `fields`; unchanged (not re-encoded) when it has none of them. */
+export function withoutOverrides(href: string, fields: readonly (keyof StudioSettings)[]): string {
+  const url = new URL(href);
+  const params = OVERRIDE_PARAMS.filter(([field, param]) => fields.includes(field) && url.searchParams.has(param));
+  if (params.length === 0) return href;
+  for (const [, param] of params) url.searchParams.delete(param);
+  return url.href;
+}
+
 /**
  * Builds the URL for a route relative to the app base (`base` is the absolute app URL ending in `/`).
  * `#d=` payloads go into the hash so they never reach a server log.
