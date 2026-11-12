@@ -259,14 +259,15 @@ describe("Studio in a browser", () => {
 
   it("hands focus to the result only from Cancel, never from where the user moved on to", async () => {
     let finish: ((result: BrowserExportResult) => void) | null = null;
-    const done = {
+    const fields: Partial<BrowserExportResult> = {
       blob: new Blob(["V"]),
       extension: "webm",
       durationMs: 1000,
       finished: true,
       soundUnsupported: false,
       warnings: [],
-    } as BrowserExportResult;
+    };
+    const done = fields as BrowserExportResult;
     const { root } = await mount("?example=svg-chart", false, {
       bytesToBase64: () => "",
       exportVideo: () => new Promise((resolve) => (finish = resolve)),
