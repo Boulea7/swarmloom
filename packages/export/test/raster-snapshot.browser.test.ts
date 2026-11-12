@@ -66,6 +66,18 @@ it.each([
     '<html style="color:rgb(0,128,0)"><div style="border:10px solid;width:40px;height:40px">',
     [0, 128, 0],
   ],
+  // A reset clone moves both origins back to the centre, where these boxes shrink away from (2, 2).
+  ["a transform about the top left corner", '<div style="transform-origin:0 0;scale:0.5;height:100px">', [0, 0, 255]],
+  [
+    "a perspective from the top left corner",
+    '<section style="perspective:100px;perspective-origin:0 0"><div style="transform:translateZ(-100px);height:100px">',
+    [0, 0, 255],
+  ],
+  [
+    "an SVG transform about the user space origin",
+    '<svg width=100 height=100 style="display:block"><rect width=100 height=100 transform="scale(0.5)" fill="rgb(0,0,255)"/></svg>',
+    [0, 0, 255],
+  ],
 ])("draws %s", async (_name, html, expected) => {
   const { rasterizer } = await frameOf(`<style>body{margin:0}div{background:rgb(0,0,255)}</style>${html}`);
   expect(await pixel(rasterizer, 2, 2)).toEqual(expected);

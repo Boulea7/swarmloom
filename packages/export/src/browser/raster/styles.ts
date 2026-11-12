@@ -1,9 +1,10 @@
 /**
  * Computed-style diffing for the frame snapshot. The snapshot resets every element with
  * `all: unset` and writes back only what differs: inherited properties when they differ from the
- * parent's value, the others when they differ from what a reset clone computes for them. Native
- * form controls start from the UA's styles instead ({@link nativeControl}). Properties not listed
- * in {@link INHERITED} are treated as not inherited, which is always safe (only more verbose).
+ * parent's value, the others when they differ from what a reset clone computes for them (origins
+ * whenever something uses them, {@link ORIGINS}). Native form controls start from the UA's styles
+ * instead ({@link nativeControl}). Properties not listed in {@link INHERITED} are treated as not
+ * inherited, which is always safe (only more verbose).
  */
 
 /** Properties known to inherit. Only list a property when sure: a wrong entry loses styles. */
@@ -262,6 +263,18 @@ const CURRENT_COLOR_INHERITED = new Set([
 ]);
 const CURRENT_COLOR = "currentcolor";
 
+/**
+ * Origins, by the properties they act on. Each resolves against the element's own box, so the empty
+ * inline probe reads `0px 0px` for it while a reset clone starts at the centre: compared with the
+ * probe, an origin at the top left corner (OFD and EPUB layers, the stage's world, any SVG child)
+ * would be left out and the clone would turn and scale about its centre. An origin is written
+ * whenever one of its properties applies, and never otherwise (it then changes nothing).
+ */
+const ORIGINS: ReadonlyMap<string, readonly string[]> = new Map([
+  ["transform-origin", ["transform", "rotate", "scale", "offset-path"]],
+  ["perspective-origin", ["perspective"]],
+]);
+
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 /** Input types drawn as native controls; a type not listed reads as "text" or draws nothing. */
 const CONTROL_INPUTS = [
@@ -479,7 +492,7 @@ export type InheritedValues = ReadonlyMap<string, string>;
 /**
  * Whether a reset clone already shows `value` of `name` without a declaration: it inherits it from
  * the parent's clone, or computes it from the clone's own colour or reset style (or from the UA's
- * styles, `ua`, for a native control).
+ * styles, `ua`, for a native control). An origin counts as shown when nothing uses it ({@link ORIGINS}).
  */
 function unchanged(
   baseline: StyleBaseline,
@@ -491,6 +504,9 @@ function unchanged(
 ): boolean {
   // A root clone inherits from the snapshot's wrapper, not from the document it was read from.
   if (INHERITED.has(name)) return parent !== null && parent.get(name) === value;
+  const users = ORIGINS.get(name);
+  // An engine without one of them reads "" for it.
+  if (users) return users.every((user) => ["", "none"].includes(cs.getPropertyValue(user)));
   if (ua) return sameAsUa(baseline, cs, ua, name, value);
   if (baseline.currentColor.has(name)) return value === cs.getPropertyValue("color");
   const style = baseline.widthStyle.get(name);
