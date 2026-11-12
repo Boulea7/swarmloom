@@ -33,17 +33,18 @@ export interface RenderDeps {
   /** Document the stage is mounted in. Default `globalThis.document`. */
   document?: Document;
   /**
-   * Resolve `init()` and each `step()` only after the page's next few animation frames, so the
-   * browser has painted, rastered and shown the new state before the driver takes a screenshot (the
-   * CLI). Default false: a driver that draws the frames itself (Studio's in-page export) needs no paint.
+   * Resolve `init()` and each `step()` only after the page's next animation frame (two at a device
+   * scale factor other than 1, 2 or 4), so the browser paints the new state in its regular frame
+   * before the driver takes a screenshot (the CLI); see {@link paintFrames}. Default false: a driver
+   * that draws the frames itself (Studio's in-page export) needs no paint.
    */
   awaitPaint?: boolean;
 }
 
 const SAMPLE_RATE = 48_000;
 const HOST_ID = "swarmloom-render";
-/** Animation frames init() and step() wait for with `awaitPaint` (see {@link paintFrames}). */
-const PAINT_FRAMES = 3;
+/** Device scale factors at which one animation frame is enough (see {@link paintFrames}). */
+const EXACT_SCALES: ReadonlySet<number> = new Set([1, 2, 4]);
 /** Longest wait for those frames (a hidden page gets none). */
 const FRAME_WAIT_MS = 1000;
 
@@ -102,13 +103,17 @@ function mountHost(doc: Document, width: number, height: number): HTMLElement {
 }
 
 /**
- * Resolves after the page's next PAINT_FRAMES animation frames, after FRAME_WAIT_MS at the latest.
+ * Resolves after the page's next animation frame, or the next two at a device scale factor other
+ * than 1, 2 or 4; after FRAME_WAIT_MS at the latest.
  *
- * The first frame paints the state a step left. Chromium rasters and activates that commit before
- * it starts another main frame, so by the later frames the regular raster workers have drawn it.
- * A screenshot requested before that forces the commit through a different raster path, and only
- * sometimes, by timing: rounded corners and other anti-aliased edges then came out a shade apart
- * between two runs of the same render (one frame in a few hundred at --scale 0.5, 2.5 or 3).
+ * The first frame paints the state a step left. A screenshot the driver requests as soon as that
+ * frame's callbacks resolve can reach the browser before its raster workers have drawn the commit,
+ * and then forces it through another raster path. At scale 1, 2 or 4 both paths give the same
+ * pixels; at other scales rounded corners and other anti-aliased edges came out a shade apart
+ * between two runs of the same render (at 0.5, 2.5, 3 and 3.5). There the page also waits for the
+ * second frame: Chromium starts that main frame only once it has rastered and activated the first
+ * one. Every frame after the first waits for the browser's next 60 Hz tick (headless keeps it even
+ * with --disable-frame-rate-limit), about 17 ms per video frame, so no more frames are waited for.
  */
 function paintFrames(view: Window | null): Promise<void> {
   if (!view || typeof view.requestAnimationFrame !== "function") return Promise.resolve();
@@ -122,7 +127,7 @@ function paintFrames(view: Window | null): Promise<void> {
       view.clearTimeout(timer);
       resolve();
     };
-    frame(PAINT_FRAMES);
+    frame(EXACT_SCALES.has(view.devicePixelRatio) ? 1 : 2);
   });
 }
 
