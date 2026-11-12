@@ -9,6 +9,10 @@ import type { CliIo } from "../io";
  * edges (rounded corners) came out one level apart depending on how many frames the browser drew
  * between two captures. Frames are not paced to a 60 Hz display, so the few animation frames the
  * render page waits for per video frame (until the browser has rastered it) cost no more than their work.
+ * No font subpixel positioning: Chromium on Linux turns it on per font size from the device scale
+ * factor it sees when it first lays out that size, and with --scale above 1 that changed from run
+ * to run; a heading that grew to a new size then sat one pixel higher or lower for the rest of the
+ * video in some takes of the same render.
  */
 export const CHROME_ARGS = [
   "--hide-scrollbars",
@@ -16,6 +20,7 @@ export const CHROME_ARGS = [
   "--force-color-profile=srgb",
   "--disable-lcd-text",
   "--font-render-hinting=none",
+  "--disable-font-subpixel-positioning",
   "--disable-partial-raster",
   "--disable-background-timer-throttling",
   "--disable-renderer-backgrounding",
