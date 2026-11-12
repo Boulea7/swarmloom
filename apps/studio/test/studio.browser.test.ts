@@ -515,6 +515,34 @@ describe("Studio in a browser", () => {
     }
   });
 
+  it("wraps a long file name inside an action toast and the export CLI hint on a 320px phone", async () => {
+    await page.viewport(320, 568);
+    try {
+      const { root } = await mount();
+      const { i18n, navigate } = app?.context ?? {};
+      const name = `${"b".repeat(180)}.md`;
+      app?.toast.show(i18n?.t("launch.ready", { name }) ?? "", {
+        icon: "open",
+        action: { label: i18n?.t("home.open") ?? "", run: () => undefined },
+      });
+      const width = document.documentElement.clientWidth;
+      for (const el of root.querySelectorAll<HTMLElement>(".toast, .toast-action")) {
+        const r = el.getBoundingClientRect();
+        expect([r.left >= 0, r.right <= width], el.className).toEqual([true, true]);
+      }
+
+      navigate?.({ source: { kind: "file", name } }, { local: { name, text: "# A" } });
+      (await until(() => root.querySelector<HTMLButtonElement>('.appbar [aria-keyshortcuts="E"]:enabled'))).click();
+      const dialog = await until(() => root.querySelector<HTMLDialogElement>("dialog.panel-export[open]"));
+      const hint = dialog.querySelector<HTMLElement>(".cli-save");
+      const body = dialog.querySelector<HTMLElement>(".panel-body");
+      expect([hint?.hidden, hint?.textContent?.includes(name)]).toEqual([false, true]);
+      expect(body && body.scrollWidth <= body.clientWidth).toBe(true);
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
   it("keeps the drop zone's cursors clear of a long German title on a 320px phone", async () => {
     await page.viewport(320, 568);
     try {
