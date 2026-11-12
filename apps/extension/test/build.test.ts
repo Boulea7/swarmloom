@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ import {
   NOTICES_FILE,
   renderNotices,
 } from "../scripts/notices.mjs";
+import { copyStudio } from "../scripts/studio.mjs";
 import { parseTargets, TARGET_IDS } from "../scripts/targets.mjs";
 import { directoryEntries, sourceDateEpoch, unzipEntries, zipEntries } from "../scripts/zip.mjs";
 import { BUILD_CAPABILITIES } from "../src/shared/capabilities";
@@ -171,6 +172,39 @@ describe("packaging helpers", () => {
       ]);
     } finally {
       rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("bundled Studio", () => {
+  it("is built before the extension and refuses a copy taken while the Studio is being rebuilt", () => {
+    // pnpm -r orders builds by workspace dependencies; without this one the root build runs both at once.
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8"));
+    expect(pkg.devDependencies["@swarmloom/studio"]).toBe("workspace:*");
+
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-studio-test-"));
+    try {
+      const studio = { dir: join(dir, "src"), entry: "studio.html" };
+      mkdirSync(join(studio.dir, "assets"), { recursive: true });
+      writeFileSync(
+        join(studio.dir, "studio.html"),
+        '<!-- src="./gone.js" --><script type="module" src="./assets/index.js"></script>' +
+          '<link rel="stylesheet" href="./assets/index.css?v=1"><link rel="icon" href="https://example.com/x.svg">',
+      );
+      writeFileSync(join(studio.dir, "assets", "index.js"), "");
+      writeFileSync(join(studio.dir, "assets", "index.css"), "");
+      copyStudio(studio, join(dir, "whole"));
+      expect(existsSync(join(dir, "whole", "assets", "index.css"))).toBe(true);
+
+      // Vite empties the folder first: the page may still be there while its chunks are not, or the reverse.
+      rmSync(join(studio.dir, "assets", "index.css"));
+      expect(() => copyStudio(studio, join(dir, "half"))).toThrow(
+        /incomplete \(studio\.html links missing assets\/index\.css\)/,
+      );
+      rmSync(join(studio.dir, "studio.html"));
+      expect(() => copyStudio(studio, join(dir, "empty"))).toThrow(/incomplete \(no studio\.html\)/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

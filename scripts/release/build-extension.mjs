@@ -44,12 +44,13 @@ function main() {
   const { values } = parseArgs({ options: { "without-studio": { type: "boolean", default: false } } });
   const env = { ...process.env };
   if (values["without-studio"]) {
-    pnpm(["--filter", "@swarmloom/extension...", "build"], env);
+    // --filter-prod skips devDependencies, so the Studio (a devDependency that orders root builds) is not built.
+    pnpm(["--filter-prod", "@swarmloom/extension...", "build"], env);
     return;
   }
   const studioDir = resolve(STUDIO_EXTENSION_DIR);
-  // The Studio and the extension's dependencies first; the extension does not depend on the Studio, so a single
-  // pnpm run could build them in either order.
+  // The Studio (in extension mode) and the extension's other dependencies first, then the extension with the
+  // Studio directory named explicitly.
   pnpm(["--filter", "@swarmloom/studio...", "--filter", "@swarmloom/extension^...", "build"], {
     ...env,
     STUDIO_TARGET: "extension",

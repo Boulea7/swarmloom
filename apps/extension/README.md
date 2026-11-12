@@ -46,7 +46,9 @@ toolbar). The user agent is never sniffed.
 The content script (`swarm.js`) is snapshot-dom plus core, injected on demand. Format adapters are
 not bundled: documents open in Studio. When a Studio build made with `STUDIO_TARGET=extension`
 exists (`apps/studio/dist-extension`, `--studio <dir>` or `SWARMLOOM_STUDIO_DIR`), it is copied in
-as `studio/`; otherwise Studio links go to the hosted Studio. Brand icons come from
+as `studio/`; otherwise Studio links go to the hosted Studio. `@swarmloom/studio` is a devDependency,
+so `pnpm build` at the root builds the Studio first, and the build stops when the Studio's page links
+a file that is missing (a Studio build running at the same time). Brand icons come from
 `assets/brand/icon-<size>.png`, with generated placeholders until they exist.
 
 Every package carries `LICENSE.txt` (SwarmLoom, MIT) and `THIRD_PARTY_NOTICES.txt`, written by

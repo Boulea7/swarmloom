@@ -262,6 +262,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/snapshot-dom
     devDependencies:
+      '@swarmloom/studio':
+        specifier: workspace:*
+        version: link:../studio
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
