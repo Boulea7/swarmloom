@@ -28,9 +28,68 @@
 
 <!-- VIDEO:main -->
 
-メイン動画は現在制作中です。完成後、ここで再生できます。
+https://github.com/user-attachments/assets/47a365d6-58af-49b0-9c03-dda84e5e3d16
+
+高画質版と字幕：[promo-v1](https://github.com/Boulea7/swarmloom/releases/tag/promo-v1)
 
 <!-- /VIDEO:main -->
+
+<!-- VIDEO:more -->
+
+<details>
+<summary>形式別の動画をもっと見る（12 本）</summary>
+
+**Web ページ**
+
+https://github.com/user-attachments/assets/2b4a75f4-a835-4ae0-92d8-b267ddb6a49c
+
+**HTML**
+
+https://github.com/user-attachments/assets/829b9dc8-3ba0-46ed-855e-01cd19fba3a6
+
+**SVG**
+
+https://github.com/user-attachments/assets/31ff1e7f-9bd9-4236-91a0-494bf3961c08
+
+**Markdown**
+
+https://github.com/user-attachments/assets/819d135b-2c05-448e-ab5a-1b2e933476ac
+
+**Word**
+
+https://github.com/user-attachments/assets/4e82522b-71e5-493d-b704-829e70fa74fc
+
+**PDF**
+
+https://github.com/user-attachments/assets/e02a07c0-317e-451b-b5ad-8387f7637e7a
+
+**Office**
+
+https://github.com/user-attachments/assets/3a5871dd-edac-45e1-932b-9e0dae34befd
+
+**コード**
+
+https://github.com/user-attachments/assets/211ba630-d195-4947-ba40-882dfb8eef4f
+
+**画像**
+
+https://github.com/user-attachments/assets/c9b6dc50-55ba-4b1e-b235-7b220fdff8e4
+
+**3D モデル**
+
+https://github.com/user-attachments/assets/e525ae40-dd06-4986-bb0e-899f82900aaf
+
+**プラットフォーム**
+
+https://github.com/user-attachments/assets/cf9eaea2-e9b3-436b-a40a-2daf376bd8f8
+
+**CLI**
+
+https://github.com/user-attachments/assets/c989168a-deba-4bee-ab15-5f287bbddb43
+
+</details>
+
+<!-- /VIDEO:more -->
 
 インストール不要で、同じサンプルを[オンライン Studio](https://boulea7.github.io/swarmloom/studio/)で開けます。先に[図解ガイド](https://boulea7.github.io/swarmloom/docs/en/getting-started.html)を読むこともできます。
 
