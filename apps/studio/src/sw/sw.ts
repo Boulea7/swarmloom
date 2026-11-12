@@ -2,13 +2,15 @@
 /**
  * Studio service worker, hand-written and small:
  *  - precaches the app shell (HTML, entry chunks, CSS, icons, manifest) per release;
- *  - warms the lazy adapter and locale chunks with what they load (pdf.js and its worker in the
- *    one build this engine runs) at install (best effort), and caches every other hashed asset
- *    (the other pdf.js build, three's Draco decoders) on first use, cache-first;
+ *  - warms the lazy adapter, locale and video exporter chunks with what they load (pdf.js and its
+ *    worker in the one build this engine runs) at install (best effort), and caches every other
+ *    hashed asset (the other pdf.js build, three's Draco decoders) on first use, cache-first;
  *  - serves examples stale-while-revalidate;
  *  - answers navigations from the cached shell, so Studio opens offline;
  *  - receives the PWA share target (POST) into a short-lived inbox the page reads (`?inbox=`).
  *
+ * The worker installs on the first visit to the hosted Studio, not only when the app is installed,
+ * so every visitor gets the warm-up (the Studio docs' "Offline use" section says so).
  * Updates wait until the page asks (`MSG_SKIP_WAITING`), so a running build is never cut off.
  * Remote files (other origins) are never cached.
  */
@@ -29,7 +31,10 @@ declare const self: ServiceWorkerGlobalScope;
 declare const __PRECACHE__: readonly string[];
 /** Every hashed asset of this release, relative to the scope (to drop stale runtime entries). */
 declare const __ASSETS__: readonly string[];
-/** Lazy chunks and the files they load, fetched ahead at install (adapters, locales), relative to the scope. */
+/**
+ * Lazy chunks and the files they load, fetched ahead at install (adapters, locales, the video
+ * exporter), relative to the scope.
+ */
 declare const __WARM__: readonly string[];
 /** pdf.js's files of each build, relative to the scope; only the build this engine runs is fetched ahead. */
 declare const __WARM_PDF__: Readonly<Record<PdfBuild, readonly string[]>>;
