@@ -4,15 +4,17 @@ import { cdp } from "vitest/browser";
 import { exportVideo } from "../src/browser/index";
 
 /**
- * A blue and a grey box; black in a dark color scheme, red with reduced motion, green on a
- * high-density screen, recoloured in forced colors (the CLI emulates a light scheme for
- * `theme: "auto"`, no motion preference, no forced colors and one device pixel per CSS px).
+ * A blue and a grey box; black in a dark color scheme, red with reduced motion, on a wide-gamut or
+ * touch screen or on a screen wider than the export, green on a high-density screen, recoloured in
+ * forced colors (the CLI emulates a light scheme for `theme: "auto"`, no motion preference, no forced
+ * colors, one device pixel per CSS px, an sRGB screen the size of the viewport and a mouse).
  */
 const PAGE =
   "<!doctype html><html><head><style>body{margin:0;background:#fff}" +
   ".box{width:100px;height:40px;background:rgb(0,0,255)}.dense{background:rgb(128,128,128)}" +
   "@media (prefers-color-scheme: dark){.box{background:rgb(0,0,0)}}" +
-  "@media (prefers-reduced-motion: reduce){.box{background:rgb(255,0,0)}}" +
+  "@media (prefers-reduced-motion: reduce), (color-gamut: p3), (pointer: coarse), (hover: none), " +
+  "(min-device-width: 161px){.box{background:rgb(255,0,0)}}" +
   "@media (min-resolution: 2dppx){.dense{background:rgb(0,160,0)}}" +
   '</style></head><body><div class="box"></div><div class="box dense"></div></body></html>';
 
@@ -59,6 +61,19 @@ const HOSTS = [
     samePixels: true,
   },
   {
+    name: "a wide-gamut touch screen",
+    query: "(color-gamut: p3) and (pointer: coarse)",
+    set: async () => {
+      await cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "color-gamut", value: "p3" }] });
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    },
+    reset: async () => {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+    },
+    samePixels: true,
+  },
+  {
     name: "a 2x screen",
     query: "(min-resolution: 2dppx)",
     set: () => metrics(2),
@@ -91,7 +106,8 @@ async function exportPage(): Promise<{ hashes: string[]; seen: string | null }> 
       if (seen !== null || !win || !page?.defaultView || !box || !dense) return;
       const color = (el: Element) => page.defaultView?.getComputedStyle(el).backgroundColor;
       const pinned =
-        "(prefers-color-scheme: dark), (prefers-reduced-motion: reduce), (forced-colors: active), (min-resolution: 2dppx)";
+        "(prefers-color-scheme: dark), (prefers-reduced-motion: reduce), (forced-colors: active), (min-resolution: 2dppx), " +
+        "(color-gamut: p3), (pointer: coarse), (hover: none), (min-device-width: 161px)";
       const text = win.getComputedStyle(win.document.body).color;
       seen = `${win.matchMedia(pinned).matches} ${text} ${color(box)} ${color(dense)}`;
     },

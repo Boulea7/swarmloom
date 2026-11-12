@@ -222,7 +222,7 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
     shadows = watchShadowRoots(win);
     fonts = watchFontFaces(win);
     pinPixelRatio(win);
-    const pinned = pinMediaFeatures(win, shadows, scheme);
+    const pinned = pinMediaFeatures(win, shadows, { scheme, width, height });
     media = pinned;
     const tail = settings.tail ?? 2500;
     // Loading the input can take long; cancelling removes the frame (below) rather than waiting.
