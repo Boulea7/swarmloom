@@ -258,6 +258,24 @@ describe("stage: reveal semantics per kind", () => {
     expect(path.style.strokeDasharray).toBe("");
   });
 
+  it("path: the viewBox maps 1:1 onto the laid-out svg, whatever the box's fraction", () => {
+    // 431.17 px lays out as 431.15625 px; a 431.17 viewBox scaled by 0.99997, which Chromium
+    // computed one float ulp apart between paints (line ends differed between identical renders).
+    const { stage } = mount([
+      {
+        id: "p",
+        kind: "path",
+        box: { x: 535.83, y: 235.8, w: 431.17, h: 1 },
+        d: "M535.83 236.3H967",
+        stroke: "rgba(11, 11, 18, 0.1)",
+      },
+    ]);
+    const svg = stage.el("p") as SVGSVGElement;
+    expect(svg.viewBox.baseVal.width).toBe(431.171875);
+    // Firefox lays out in 1/60 px, so only 1/64 px layout units map a 1/64 px size exactly.
+    if (!navigator.userAgent.includes("Firefox")) expect(svg.getCTM()?.a).toBe(1);
+  });
+
   it("path: accepts local url(#id) references and refuses external ones", () => {
     const { stage } = mount([
       {

@@ -64,6 +64,12 @@ function validPaint(v: string | undefined): v is string {
   );
 }
 
+/** `v` CSS px rounded to Blink's and WebKit's layout unit (1/64 px), at least one unit. */
+function layoutUnits(v: number): number {
+  const units = Number.isFinite(v) ? Math.round(v * 64) : 1;
+  return Math.max(units, 1) / 64;
+}
+
 /**
  * Vector path in stage coordinates. Reveal "pen"/"trace" draws the stroke along its length
  * (stroke-dasharray/offset, or a mask when the stroke is dashed itself) and fades the fill in at
@@ -75,7 +81,15 @@ export function mountPath(env: MountEnv, layer: PathLayer, z: number): LayerView
   const b = layer.box;
   const svg = svgEl(doc, "svg");
   svg.setAttribute("class", "sl-c");
-  svg.setAttribute("viewBox", `${b.x} ${b.y} ${Math.max(b.w, 0.001)} ${Math.max(b.h, 0.001)}`);
+  // The svg and its viewBox get the same size in whole layout units, so the viewBox scale is
+  // exactly 1. A box of 431.17 px lays out as 431.15625 px; the resulting 0.99997 scale came out one
+  // float ulp apart from one Chromium paint to the next, which moved antialiased path ends by one
+  // colour level between two renders of the same frame (seen at --scale 1.5).
+  const vw = layoutUnits(b.w);
+  const vh = layoutUnits(b.h);
+  svg.setAttribute("viewBox", `${b.x} ${b.y} ${vw} ${vh}`);
+  svg.style.width = `${vw}px`;
+  svg.style.height = `${vh}px`;
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("overflow", "visible");
   svg.style.overflow = "visible";
