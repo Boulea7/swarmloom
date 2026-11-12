@@ -62,34 +62,51 @@ export function launchHandler(win: Window): StudioServices["onLaunch"] {
 
 /**
  * Registers the service worker and keeps the user in charge of updates: a new version waits until
- * the user picks "Reload" in a toast, so a running build is never interrupted.
+ * the user picks "Reload" in a toast, so a running build is never interrupted. Only that tab
+ * reloads. Other open tabs switch to the new worker at the same moment but keep running (a build
+ * or an export there goes on) and offer the reload in their own toast.
  */
 export function registerServiceWorker(win: Window, toast: Toaster, i18n: () => StudioI18n, url = "./sw.js"): void {
   const container = win.navigator.serviceWorker;
   if (!container) return;
-  const hadController = Boolean(container.controller);
+  // Kept current: the first worker claims the page, and versions after it are updates to offer.
+  let controlled = Boolean(container.controller);
+  // The user picked Reload in this tab; the switch of worker that follows reloads it.
+  let accepted = false;
   let reloading = false;
-  container.addEventListener("controllerchange", () => {
-    if (!hadController || reloading) return;
+  const reload = () => {
+    if (reloading) return;
     reloading = true;
     win.location.reload();
+  };
+  const offer = (run: () => void) => {
+    toast.show(i18n().t("update.ready"), { icon: "refresh", action: { label: i18n().t("update.reload"), run } });
+  };
+  container.addEventListener("controllerchange", () => {
+    // A worker controlled the page before, so this is a new version, not the first worker's claim.
+    const updated = controlled;
+    controlled = Boolean(container.controller);
+    if (accepted) reload();
+    else if (updated) offer(reload);
   });
   const offerUpdate = (worker: ServiceWorker) => {
-    toast.show(i18n().t("update.ready"), {
-      icon: "refresh",
-      action: { label: i18n().t("update.reload"), run: () => worker.postMessage(MSG_SKIP_WAITING) },
+    offer(() => {
+      accepted = true;
+      // Still waiting: ask it to take over. Otherwise another tab already let it in, so reload now.
+      if (worker.state === "installed") worker.postMessage(MSG_SKIP_WAITING);
+      else reload();
     });
   };
   container.register(url, { scope: "./" }).then(
     (registration: ServiceWorkerRegistration | undefined) => {
       // A host that blocks service workers (automation, some embedded browsers) resolves without one.
       if (!registration) return;
-      if (registration.waiting && hadController) offerUpdate(registration.waiting);
+      if (registration.waiting && container.controller) offerUpdate(registration.waiting);
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;
         worker?.addEventListener("statechange", () => {
           if (worker.state !== "installed") return;
-          if (hadController) offerUpdate(worker);
+          if (container.controller) offerUpdate(worker);
           else toast.show(i18n().t("offline.ready"), { icon: "check" });
         });
       });
