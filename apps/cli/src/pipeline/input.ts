@@ -125,7 +125,11 @@ function mib(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-/** File name for a downloaded resource: the URL's last path segment, or one derived from its MIME type. */
+/**
+ * File name for a downloaded resource: the URL's last path segment, or one derived from its MIME type.
+ * The server picks that segment (redirects included) and the CLI prints the name, so path separators,
+ * characters Windows rejects and control characters (C0, DEL, C1: terminal escape sequences) become "_".
+ */
 export function nameForUrl(url: URL, mime: string | undefined): string {
   let last = "";
   try {
@@ -133,7 +137,7 @@ export function nameForUrl(url: URL, mime: string | undefined): string {
   } catch {
     last = "";
   }
-  last = last.replace(/[\\/:*?"<>|\0]/g, "_");
+  last = last.replace(/[\\/:*?"<>|\p{Cc}]/gu, "_");
   if (path.extname(last)) return last;
   if (mime && HTML_MIME.has(mime)) return `${last || "index"}.html`;
   const ext = formats.find((f) => mime && f.mime.includes(mime))?.extensions[0];

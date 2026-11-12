@@ -9,7 +9,7 @@ import { parseEncoders } from "../src/discovery/ffmpeg";
 import { InterruptedError } from "../src/errors";
 import { planMux, planVideo } from "../src/pipeline/encode";
 import { type FrameSource, runFrameLoop } from "../src/pipeline/frames";
-import { inputBase, isSiblingAsset, servedInput, toRenderInput } from "../src/pipeline/input";
+import { inputBase, isSiblingAsset, nameForUrl, servedInput, toRenderInput } from "../src/pipeline/input";
 import { fitFields, Progress, wrapFields } from "../src/pipeline/progress";
 import { resolveRequestPath, startStaticServer } from "../src/server/static";
 import { guard } from "../src/util/async";
@@ -193,6 +193,12 @@ describe("render input", () => {
       url: "http://127.0.0.1:4000/input/tok/my%20deck.pptx",
     });
     expect([...servedInput(deck, base).files]).toEqual([["/input/tok/my%20deck.pptx", "/in/my deck.pptx"]]);
+  });
+
+  it("names a download without the server's terminal escape sequences", () => {
+    // OSC 0 (title) and OSC 52 (clipboard) ended by BEL, plus a C1 CSI, as a redirect target could carry them.
+    const url = new URL("https://x.example/%1B%5D0%3BPWNED%07%1B%5D52%3Bc%3BZWNobw%3D%3D%07%C2%9B2Jx.md");
+    expect(nameForUrl(url, undefined)).toBe("_]0;PWNED__]52;c;ZWNobw==__2Jx.md");
   });
 });
 
