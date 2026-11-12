@@ -108,3 +108,29 @@ export function stillImageSource(src: string, doc: Document): string | Promise<s
   }
   return still.then((copy) => copy ?? src);
 }
+
+/**
+ * Points `img` at `src` through {@link stillImageSource}: a copy known at once is set right away;
+ * otherwise `src` shows until the copy is ready, then the copy, unless `gone()` says the view was
+ * dropped meanwhile. Returns that pending swap (it never rejects), or null when there is none.
+ */
+export function showStill(
+  img: HTMLImageElement,
+  src: string,
+  doc: Document,
+  gone: () => boolean,
+): Promise<void> | null {
+  const set = (value: string): void => {
+    // Assigning the value it already has would start the load again.
+    if (img.getAttribute("src") !== value) img.src = value;
+  };
+  const source = stillImageSource(src, doc);
+  if (typeof source === "string") {
+    set(source);
+    return null;
+  }
+  set(src);
+  return source.then((copy) => {
+    if (!gone()) set(copy);
+  });
+}

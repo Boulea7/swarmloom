@@ -387,6 +387,30 @@ describe("stage: reveal semantics per kind", () => {
     expect(Array.from(g?.getImageData(0, 0, 1, 1).data ?? [])).toEqual([255, 0, 0, 255]);
   });
 
+  it.each<{ name: string; layer: Layer }>([
+    {
+      name: "an icon in a line of text",
+      layer: {
+        id: "g",
+        kind: "text",
+        box: { x: 0, y: 0, w: 200, h: 20 },
+        html: `Status <img src="${GIF_RED_BLUE}" width="18" height="18"> online`,
+        text: "Status online",
+        style: {},
+      },
+    },
+    {
+      name: "a media snapshot",
+      layer: { id: "g", kind: "media", box: { x: 0, y: 0, w: 40, h: 40 }, label: "", src: GIF_RED_BLUE },
+    },
+  ])("$name: an animated GIF shows its first frame as a still copy", async ({ layer }) => {
+    const { stage } = mount([layer]);
+    stage.reveal("g", 1);
+    await stage.ready();
+    const img = (stage.el("g") as HTMLElement).querySelector("img") as HTMLImageElement;
+    expect(animatedBitmapType(new Uint8Array(await (await fetch(img.src)).arrayBuffer()))).toBeNull();
+  });
+
   it("media: labelled placeholder that fades in", () => {
     const { stage } = mount([{ id: "m", kind: "media", box: { x: 0, y: 0, w: 320, h: 180 }, label: "Video" }]);
     const el = stage.el("m") as HTMLElement;

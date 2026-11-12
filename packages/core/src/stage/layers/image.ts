@@ -2,7 +2,7 @@ import { createRng } from "../../rng";
 import type { ImageLayer, Rect, Size } from "../../types";
 import { applyLayerStyle, isSafeUrl } from "../sanitize";
 import { clamp01, contentDiv, hashString, type LayerView, type MountEnv, Shell, Transient } from "./common";
-import { stillImageSource } from "./still-image";
+import { showStill } from "./still-image";
 
 /*
  * Reveal geometry mirrors the image choreography (choreo/timing.ts) so the reveal follows the
@@ -102,22 +102,11 @@ export function mountImage(env: MountEnv, layer: ImageLayer, z: number): LayerVi
     s.maxWidth = "none";
     s.objectFit = layer.fit === "contain" || layer.fit === "cover" ? layer.fit : "fill";
   }
-  let still: Promise<void> | null = null;
   let gone = false;
-  if (typeof layer.src === "string" && isSafeUrl(layer.src)) {
-    const src = layer.src;
-    const source = stillImageSource(src, doc);
-    if (typeof source === "string") {
-      img.src = source;
-    } else {
-      // An animated bitmap data: URL, a same-origin file or a blob: URL: shown at once, swapped for
-      // its still copy once decoded or fetched.
-      img.src = src;
-      still = source.then((copy) => {
-        if (!gone && copy !== src) img.src = copy;
-      });
-    }
-  }
+  // An animated bitmap data: URL, a same-origin file or a blob: URL shows at once and is swapped for
+  // its still copy once decoded or fetched.
+  const still =
+    typeof layer.src === "string" && isSafeUrl(layer.src) ? showStill(img, layer.src, doc, () => gone) : null;
   content.append(img);
   shell.shell.append(content);
 

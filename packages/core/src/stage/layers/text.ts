@@ -1,6 +1,7 @@
 import type { CSSMap, Point, TextLayer } from "../../types";
 import { applyLayerStyle } from "../sanitize";
 import { clamp01, contentDiv, type LayerView, type MountEnv, Shell, Transient } from "./common";
+import { showStill } from "./still-image";
 import { TextIndex, type TextRun } from "./typing";
 
 const BLOCK = 64;
@@ -131,6 +132,31 @@ function measureBlock(index: TextIndex, root: HTMLElement, from: number, scale: 
 }
 
 /**
+ * Inline images of a text layer (icons kept in a line of text) show still copies, as image layers
+ * do (see still-image.ts). Returns the layer's decode(): settles once every swap is done and every
+ * image decoded (once: the images do not change after that), or null when the text has no images.
+ */
+function holdInlineImages(root: HTMLElement, doc: Document, gone: () => boolean): (() => Promise<void>) | null {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  if (imgs.length === 0) return null;
+  const stills = imgs.map((img) => {
+    const src = img.getAttribute("src");
+    return src ? showStill(img, src, doc, gone) : null;
+  });
+  let settled: Promise<void> | null = null;
+  return () => {
+    settled ??= Promise.all(
+      imgs.map((img, i) =>
+        Promise.resolve(stills[i])
+          .then(() => img.decode())
+          .catch(() => undefined),
+      ),
+    ).then(() => undefined);
+    return settled;
+  };
+}
+
+/**
  * Text block. Reveal kinds: "type" (default; characters appear in place without reflow), "fade",
  * "stamp" (quick scale-in), "none" (appears at once). A typed text measures its carets in the
  * stage's read phase ({@link LayerView.measure}): the block at the typed position, and the next
@@ -142,6 +168,8 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
   applyLayerStyle(content, layer.style);
   content.append(env.html(layer.id, layer.html));
   env.inlineStyles(content);
+  let gone = false;
+  const decode = holdInlineImages(content, env.doc, () => gone);
   shell.shell.append(content);
   const mode = layer.reveal === "fade" || layer.reveal === "stamp" || layer.reveal === "none" ? layer.reveal : "type";
   const transient = new Transient();
@@ -220,7 +248,9 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
       const ix = getIndex();
       carets.prefetch(ix, content, Math.round(progress * ix.total), env.geometryGen(), env.scale());
     },
+    ...(decode ? { decode } : {}),
     destroy() {
+      gone = true;
       index = null;
     },
   };

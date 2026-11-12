@@ -21,7 +21,7 @@ The snapshot reads geometry, computed styles, text, images and open shadow roots
 
 Video, WebGL canvases, cross-origin iframes and other regions that cannot be decomposed reliably use screenshots or labelled media placeholders. Complex scripts are not executed as part of the rebuild.
 
-Animated images hold still in the rebuild. An animated SVG (an `<img>`, or an inline `<svg>` with SMIL) loses its SMIL animation and its CSS animations stay on their first frame; an animated GIF, APNG, WebP or AVIF shows its first frame. An image runs its animation on the browser's own clock, so a video could not repeat it frame for frame. This covers `data:` URLs, and image files and `blob:` URLs from the page's own origin; once a CLI render goes live, animated `<img>` elements on the real page also hold their first frame. Cross-origin image files, icons inside a line of text and CSS backgrounds keep playing on their own.
+Animated images hold still in the rebuild. An animated SVG (an `<img>`, or an inline `<svg>` with SMIL) loses its SMIL animation and its CSS animations stay on their first frame; an animated GIF, APNG, WebP or AVIF shows its first frame. An image runs its animation on the browser's own clock, so a video could not repeat it frame for frame. This covers `data:` URLs, and image files and `blob:` URLs from the page's own origin, including icons inside a line of text and video posters; once a CLI render goes live, animated `<img>` elements on the real page also hold their first frame. Cross-origin image files and CSS backgrounds keep playing on their own.
 
 This is a visual snapshot at one point in time, not a clone of application state. Form state, network state and event logic are not replayed. **Go live** returns to the original page.
 
