@@ -85,8 +85,10 @@ Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are sile
 | `--overlays <level>` | `full` | Editing marks drawn while building. `minimal` hides size badges, distance labels, guide lines and rulers; `none` also hides selections, frames, pen lines, carets and status bubbles, leaving the cursors, their name tags and the content |
 | `--finale <finale>` | `flock` | `flock`, `halo` or `none` |
 | `--follow <mode>` | `tour` | `tour` scrolls the page along with the build; `none` does not scroll |
+| `--opening <time>` | Off | Show the finished page or document first for `<time>` (seconds, milliseconds or beats, as for `--cue`; at most 60 s), then fade it into the blank canvas and start the build. The fade starts on `<time>` exactly and takes 0.52 s |
 | `--tail <ms>` | `2500` | Hold time after the build finishes, 0–60000 ms: the finale, then the page goes live, the cursors leave and the page's own animations (CSS, SVG SMIL, Lottie) play on video time; an HTML document swaps in the real page, its animated images held on their first frame |
 | `--no-live` | Go live | Keep the finale through the whole tail instead of going live |
+| `--live-top` | Off | Going live glides back to the top of the page while the cursors leave, so the live page starts at its first screen |
 | `--locale <tag>` | `en-US` | Language of the toolbar strings and the page, a BCP 47 tag such as `zh-CN` |
 | `--bpm <n>` | `112` | Tempo the placement notes, the fan-out and the final chord snap to (eighth-note grid), 40–240 |
 | `--cue <at>:<action>` | None | Player action at a fixed video time; repeatable. `<at>` is seconds (`12.5`), milliseconds (`12500ms`) or beats at `--bpm` (`26b`, needs an explicit `--bpm`); `<action>` is `pause` (every cursor holds), `resume`, `finish` (complete the build quickly) or `live` (go live then instead of when the finale settles, also with `--no-live`; an unfinished build completes at once). Applied on the first frame at or after `<at>`; same-time cues run in the order given; `<at>` must be before the end of the video |
@@ -100,7 +102,7 @@ For takes that can be checked and repeated. These files and `--output` must all 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--audio-out <file>` | Off | Also write the soundtrack as WAV (48 kHz stereo, same length as the video); needs sound, so not with `--no-sound`, GIF or WebP |
-| `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number |
+| `--events-out <file>` | Off | Also write the sound log as JSON: engine ms on the frames' clock, with each event's frame number. `scrolls` lists each stretch of scrolling (the tour, a `--live-top` glide) on the same clock: `t` and `end` with their frames `frame` and `endFrame`, and the view's top edge `from` and `to` in the page's CSS px |
 | `--manifest-out <file>` | Off | Write a capture manifest: arguments, input and blueprint SHA-256 (the blueprint's addresses that change per run, such as the served input path, links resolved against the render page and `blob:` URLs, are normalized first), player settings, cues, browser/ffmpeg/Node versions, fonts used, and the SHA-256 of every frame and of the sound log; frames are then captured as PNG so the hashes describe exact pixels. It is meant to be shared: file paths, in the arguments and the outputs, are relative to the manifest (a file neither in its folder nor in a folder above it appears by name only), programs appear by file name, the working directory is left out, and URL user info, query and fragment read `redacted` |
 
 ### Programs and logging
