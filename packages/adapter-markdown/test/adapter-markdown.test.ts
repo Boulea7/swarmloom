@@ -171,6 +171,22 @@ describe("markdownToHtml: safety", () => {
     ]);
   });
 
+  it("applies the image policy to every resource in raw HTML and takes plain http only from loopback", async () => {
+    const md = [
+      '<div style="background:url(https://t.dev/style.png)">s</div>',
+      '<video poster="https://t.dev/poster.png" src="https://t.dev/v.mp4"></video>',
+      '<svg width="9" height="9"><image href="https://t.dev/svg.png" width="9" height="9"/></svg>',
+      '<table background="https://t.dev/table.png"><tr><td>a</td></tr></table>',
+      '<img src="/tracker.png">',
+    ].join("\n");
+    const off = await render(md, { remoteImages: false, baseUrl: "http://t.dev/doc.md" });
+    expect(off.html).not.toContain("t.dev");
+    // Remote images on: images stay, media files never load.
+    const on = await render(md, { baseUrl: "https://t.dev/doc.md" });
+    expect(on.dom.querySelector("video")?.getAttribute("poster")).toBe("https://t.dev/poster.png");
+    expect(on.html).not.toContain("v.mp4");
+  });
+
   it("maps relative images through the asset resolver (dropped folders)", async () => {
     const resolveAsset = (path: string) => (path === "img/shot.png" ? "blob:https://studio.dev/1" : undefined);
     const { dom } = await render('![s](./img/shot.png) <img src="img/shot.png?v=2">', {

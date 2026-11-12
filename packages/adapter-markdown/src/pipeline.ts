@@ -1,4 +1,5 @@
 import { expandTabs, type Highlighted, highlight, languageForFence } from "@swarmloom/adapter-code";
+import { localOrigin, type NetworkPolicy, rewriteCssUrls } from "@swarmloom/adapter-html";
 import type { Code, Root } from "mdast";
 import { type FontFaceSpec, loadMath, type MathEngine } from "./math/index";
 import { parseMarkdown, splitFrontMatter } from "./parse";
@@ -26,7 +27,11 @@ export interface MarkdownToHtmlOptions {
    * ({@link loadMath}). Hosts with their own asset pipeline (or tests) pass {@link createMathEngine}.
    */
   loadMath?: () => Promise<MathEngine>;
-  /** Allow `https:` images (loaded without a referrer). Default true; false keeps only data:, blob: and local files. */
+  /**
+   * Allow `https:` images (loaded without a referrer), in `<img>` as well as in posters, SVG images,
+   * `background` attributes and CSS `url()`. Default true; false keeps only data:, blob: and local
+   * (file:, loopback http:) images. Video and audio files are never loaded.
+   */
   remoteImages?: boolean;
   /** Maps relative image paths to URLs, e.g. blob: URLs of files dropped together with the document. */
   resolveAsset?: AssetResolver;
@@ -119,29 +124,47 @@ async function renderDiagrams(
   return out;
 }
 
+/** Attributes the browser reads as CSS, where a `url()` loads an image or another document (as in adapter-html). */
+const CSS_ATTRIBUTES = [
+  "style",
+  "fill",
+  "stroke",
+  "filter",
+  "mask",
+  "clip-path",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+];
+
 /**
- * Final pass over the sanitized markup: splices the separately sanitized diagram SVGs into their
- * placeholders and applies the image policy to images written as raw HTML (`<img src>` in a
- * README), which the Markdown builder never saw: relative paths are resolved, `srcset` is dropped
- * so the capture does not depend on the device pixel ratio, and disallowed sources are removed.
+ * Applies the image policy to everything in the markup that can make a request. The markup is laid
+ * out in the host document without a CSP of its own, so this is the only guard for raw HTML, which
+ * the Markdown builder never saw. `<img>` sources are resolved (blocked ones become a labelled
+ * placeholder) and lose `srcset`, so the capture does not depend on the device pixel ratio; posters,
+ * SVG `<image>` and `<feImage>` and `background` attributes follow {@link imageSource} too; video and
+ * audio sources, `<source>` and `<track>` are removed; and CSS in style and SVG presentation
+ * attributes and diagram `<style>` goes through adapter-html's `rewriteCssUrls`.
  */
-function finalize(
-  html: string,
-  diagrams: string[],
-  win: Window,
-  opts: MarkdownToHtmlOptions,
-  warnings: string[],
-): string {
-  if (diagrams.length === 0 && !/<(?:img|source)\b/i.test(html)) return html;
-  const tpl = win.document.createElement("template");
-  tpl.innerHTML = html;
-  for (const el of Array.from(tpl.content.querySelectorAll<HTMLElement>("figure.loom-diagram[data-diagram]"))) {
-    const svg = diagrams[Number(el.dataset.diagram)];
-    el.removeAttribute("data-diagram");
-    if (svg) el.innerHTML = sanitizeSvg(svg, win);
-  }
-  for (const el of Array.from(tpl.content.querySelectorAll("source"))) el.remove();
-  for (const img of Array.from(tpl.content.querySelectorAll("img"))) {
+function applyImagePolicy(root: DocumentFragment, win: Window, opts: MarkdownToHtmlOptions, warnings: string[]): void {
+  // Images the Markdown builder emitted itself were already reported.
+  const warn = (warning: string | undefined) => {
+    if (warning && !warnings.includes(warning)) warnings.push(warning);
+  };
+  /** Keeps an image reference that the policy allows (resolved), else removes it. */
+  const checkAttribute = (el: Element, attr: string) => {
+    const value = el.getAttribute(attr);
+    if (value === null || value.trim().startsWith("#")) return;
+    const checked = value.trim() ? imageSource(value, opts) : undefined;
+    if (checked?.src) {
+      if (checked.src !== value) el.setAttribute(attr, checked.src);
+    } else {
+      el.removeAttribute(attr);
+      warn(checked?.warning);
+    }
+  };
+  for (const el of Array.from(root.querySelectorAll("source, track"))) el.remove();
+  for (const img of Array.from(root.querySelectorAll("img"))) {
     img.removeAttribute("srcset");
     img.removeAttribute("sizes");
     img.setAttribute("referrerpolicy", "no-referrer");
@@ -151,8 +174,7 @@ function finalize(
       if (src !== raw) img.setAttribute("src", src);
       continue;
     }
-    // Already reported when the Markdown builder emitted the image itself.
-    if (warning && !warnings.includes(warning)) warnings.push(warning);
+    warn(warning);
     const alt = img.getAttribute("alt") ?? "";
     const blocked = win.document.createElement("span");
     blocked.className = "loom-blocked";
@@ -161,6 +183,53 @@ function finalize(
     blocked.textContent = `[${alt || "image"}]`;
     img.replaceWith(blocked);
   }
+  for (const el of Array.from(root.querySelectorAll("video, audio"))) {
+    const media = el.getAttribute("src")?.trim();
+    el.removeAttribute("src");
+    if (media) warn(`media removed: video and audio are not loaded ${JSON.stringify(media.slice(0, 80))}`);
+    checkAttribute(el, "poster");
+  }
+  for (const el of Array.from(root.querySelectorAll("image, feImage"))) {
+    checkAttribute(el, "href");
+    checkAttribute(el, "xlink:href");
+  }
+  // The legacy `background` attribute of tables and cells loads an image too.
+  for (const el of Array.from(root.querySelectorAll("[background]"))) checkAttribute(el, "background");
+  const policy: NetworkPolicy = opts.remoteImages === false ? "none" : "https";
+  const local = localOrigin(opts.baseUrl);
+  for (const name of CSS_ATTRIBUTES) {
+    for (const el of Array.from(root.querySelectorAll(`[${name}]`))) {
+      const value = el.getAttribute(name) ?? "";
+      const next = rewriteCssUrls(value, policy, opts.baseUrl, local);
+      if (next !== value) el.setAttribute(name, next);
+    }
+  }
+  for (const el of Array.from(root.querySelectorAll("style"))) {
+    const css = el.textContent ?? "";
+    const next = rewriteCssUrls(css, policy, opts.baseUrl, local);
+    if (next !== css) el.textContent = next;
+  }
+}
+
+/**
+ * Final pass over the sanitized markup: splices the separately sanitized diagram SVGs into their
+ * placeholders, then applies the image policy to the whole tree ({@link applyImagePolicy}).
+ */
+function finalize(
+  html: string,
+  diagrams: string[],
+  win: Window,
+  opts: MarkdownToHtmlOptions,
+  warnings: string[],
+): string {
+  const tpl = win.document.createElement("template");
+  tpl.innerHTML = html;
+  for (const el of Array.from(tpl.content.querySelectorAll<HTMLElement>("figure.loom-diagram[data-diagram]"))) {
+    const svg = diagrams[Number(el.dataset.diagram)];
+    el.removeAttribute("data-diagram");
+    if (svg) el.innerHTML = sanitizeSvg(svg, win);
+  }
+  applyImagePolicy(tpl.content, win, opts, warnings);
   return tpl.innerHTML;
 }
 

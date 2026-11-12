@@ -14,7 +14,7 @@ export { decodeHtml, isFullDocument, sniffMetaCharset } from "./detect";
 export type { FrameDocument, FrameOptions, FrozenAnimations } from "./frame";
 export { freezeAnimations, renderInFrame } from "./frame";
 export type { NetworkPolicy } from "./policy";
-export { allowedResource, applyNetworkPolicy, rewriteCssUrls } from "./policy";
+export { allowedResource, applyNetworkPolicy, localOrigin, rewriteCssUrls } from "./policy";
 export type { PreparedDocument, PrepareOptions } from "./prepare";
 export { contentSecurityPolicy, prepareDocument } from "./prepare";
 export { sanitizeDocument, sanitizeFragment } from "./sanitize";

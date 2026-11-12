@@ -15,7 +15,8 @@ Supported: tables, task lists, strikethrough, autolinks, footnotes, heading anch
 Safe defaults:
 
 - Raw HTML is always sanitized (no scripts, handlers, forms or frames).
-- Images: `data:`, `blob:` and `https:` are kept and fetched without a referrer; `http:` is refused unless it is the document's own origin (such as the CLI's local server for the input folder). `remoteImages: false` turns remote images off, and so does `network: "none"` in the load context (`MarkdownLoadContext`). `srcset` is dropped so only the checked `src` loads.
+- Images: `data:`, `blob:` and `https:` are kept and fetched without a referrer; `http:` is refused unless it is the loopback origin of a plain-http `baseUrl` (the CLI's local server for the input folder). `remoteImages: false` turns remote images off, and so does `network: "none"` in the load context (`MarkdownLoadContext`). `srcset` is dropped so only the checked `src` loads.
+- The same rules cover every other image reference in raw HTML (`poster`, SVG `<image>` and `<feImage>`, `background` attributes, CSS `url()` in style attributes, through adapter-html's `rewriteCssUrls`); video and audio files, `<source>` and `<track>` are never loaded.
 - Relative images resolve against `baseUrl` (default: the input URL) or through `resolveAsset(path)`, for files dropped together with the document (folder or zip).
 - Sources over 4 MiB are rejected (`maxBytes`).
 
