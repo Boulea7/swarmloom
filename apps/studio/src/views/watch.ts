@@ -7,6 +7,7 @@ import { Session, type SessionPhase } from "../session";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { qrCode } from "./qr";
+import { shareableSettings } from "./share-link";
 import { thumbnail } from "./thumb";
 
 /**
@@ -321,7 +322,10 @@ export function createWatch(ctx: AppContext): View {
     const item = items[index];
     const ref = item?.ref;
     if (!ref || !portable(ref)) return ctx.shareUrl;
-    return routeToUrl({ source: ref, autoplay: true }, ctx.shareUrl);
+    // The phone plays the same show: every performance setting in effect here (saved or from this
+    // link), not the wrist-only WATCH_OVERRIDES. A `#d=` payload's own settings win there as here.
+    const overrides = shareableSettings(ctx.settings);
+    return routeToUrl({ source: ref, autoplay: true, overrides }, ctx.shareUrl);
   }
 
   function showQr(): void {

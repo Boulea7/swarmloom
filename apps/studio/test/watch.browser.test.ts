@@ -2,6 +2,8 @@ import { afterEach, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
+import { routeToUrl } from "../src/route";
+import { qrCode } from "../src/views/qr";
 import { fakeServices } from "./fakes";
 
 let app: StudioApp | null = null;
@@ -42,6 +44,31 @@ it("keeps focus inside the watch QR dialog until it closes", async () => {
   expect(qr?.matches(":modal")).toBe(false);
   expect(root.querySelector(".view-watch")?.getAttribute("data-qr")).toBe("false");
   expect(document.activeElement).toBe(phone);
+});
+
+it("hands the phone the settings the watch plays with, not the wrist-only ones", async () => {
+  history.replaceState(
+    null,
+    "",
+    `${location.pathname}?watch=1&example=notes&opening=1&live-top=1&intro=outline&speed=3`,
+  );
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = {
+    version: 1 as const,
+    entries: [{ id: "notes", path: "notes.md", format: "markdown", title: "Notes", size: 64, group: "notes" }],
+  };
+  app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
+
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+  const overrides = { speed: 3, intro: "outline", opening: true, liveTop: true } as const;
+  const url = routeToUrl(
+    { source: { kind: "example", id: "notes" }, autoplay: true, overrides },
+    `${location.origin}${location.pathname}`,
+  );
+  // The QR code is drawn from the link alone: the same modules mean the same link.
+  const modules = (svg: Element | null | undefined) => svg?.querySelector("path")?.getAttribute("d");
+  expect(modules(root.querySelector(".watch-qr svg"))).toBe(modules(qrCode(url, "")));
 });
 
 /**
