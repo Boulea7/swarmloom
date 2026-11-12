@@ -423,6 +423,30 @@ describe("stage: reveal semantics per kind", () => {
     expect(fetches).not.toHaveBeenCalled();
   });
 
+  it("image: a replay decodes no animated image again, however many; the copies go with the last stage", async () => {
+    // More than a count-bounded cache of 32 held: mounted in the same order, every one missed.
+    const layers: Layer[] = Array.from({ length: 40 }, (_, i) => ({
+      id: `g${i}`,
+      kind: "image",
+      box: { x: 0, y: 0, w: 10, h: 10 },
+      src: `${GIF_RED_BLUE}#replay-${i}`,
+    }));
+    const decodes = vi.spyOn(window, "createImageBitmap");
+    cleanups.push(() => decodes.mockRestore());
+    const { stage } = mount(layers);
+    await stage.ready();
+    expect(decodes).toHaveBeenCalledTimes(40);
+    decodes.mockClear();
+    stage.reset();
+    await stage.ready();
+    expect(decodes).not.toHaveBeenCalled();
+    stage.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The last image mounted, which any cache would hold, is decoded again by a stage made later.
+    await mount(layers.slice(-1)).stage.ready();
+    expect(decodes).toHaveBeenCalledTimes(1);
+  });
+
   it.each<{ name: string; layer: Layer }>([
     {
       name: "an icon in a line of text",

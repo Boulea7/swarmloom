@@ -21,32 +21,93 @@ import {
 const FETCH_TIMEOUT_MS = 5000;
 /** Same-origin paths that may hold an animated image. */
 const FILE_PATH = /\.(?:svg|gif|png|apng|webp|avif)$/i;
-/** Still copies kept by URL (least recently used out), so re-mounts do not fetch or decode again. */
-const CACHE_LIMIT = 32;
-const stills = new Map<string, Promise<string | null>>();
+/**
+ * Still copies made through a promise (animated bitmaps, SVGs that embed one, fetched files), kept
+ * by URL (least recently used out), so re-mounts, replays and seeks back neither fetch nor decode
+ * again. Bounded by the characters of the keys and copies (a `data:` URL is its own key), not by
+ * count: a replay mounts a page's images in the same order every time, so a cache holding fewer
+ * than the page shows misses every one of them.
+ */
+const STILL_CHARS = 64 * 1024 * 1024;
+interface Still {
+  readonly copy: Promise<string | null>;
+  chars: number;
+}
+const stills = new Map<string, Still>();
+let stillChars = 0;
 /**
  * Answers known at once, kept by URL (least recently used out), so re-mounts, replays and seeks back
  * neither fetch nor decode again, nor hold the copies' slots: null for a fetched file found still or
  * a `data:` URL with no still copy (most images show as they are), or the copy of an SVG `data:` URL
  * made without waiting. A `data:` URL is its own key, the blueprint's string, which may run to
- * megabytes and outlive the blueprint here, so the characters kept are bounded too: about all the
- * images an HTML capture inlines (48 MiB, as base64).
+ * megabytes, so the characters kept are bounded too: about all the images an HTML capture inlines
+ * (48 MiB, as base64).
  */
 const KNOWN_LIMIT = 4096;
 const KNOWN_CHARS = 64 * 1024 * 1024;
 const known = new Map<string, string | null>();
 let knownChars = 0;
+/**
+ * Stages alive. Both memories hold the blueprint's `data:` URLs and the copies made from them, so
+ * they are dropped once the last stage is destroyed (see {@link retainStills}).
+ */
+let holders = 0;
+
+function dropStill(key: string): void {
+  const still = stills.get(key);
+  if (!still) return;
+  stills.delete(key);
+  stillChars -= still.chars;
+}
+
+/** Counts `chars` more for `still`, then lets the least recently used copies go past the bound. */
+function growStill(still: Still, chars: number): void {
+  still.chars += chars;
+  stillChars += chars;
+  // The newest copy stays, however large.
+  while (stillChars > STILL_CHARS && stills.size > 1) dropStill(stills.keys().next().value as string);
+}
 
 function cached(key: string, make: () => Promise<string | null>): Promise<string | null> {
-  let still = stills.get(key);
-  if (still) {
+  const hit = stills.get(key);
+  if (hit) {
     stills.delete(key);
-  } else {
-    still = make();
-    if (stills.size >= CACHE_LIMIT) stills.delete(stills.keys().next().value as string);
+    stills.set(key, hit);
+    return hit.copy;
   }
+  const still: Still = { copy: make(), chars: 0 };
   stills.set(key, still);
-  return still;
+  growStill(still, key.length);
+  void still.copy.then(
+    (copy) => {
+      if (copy && stills.get(key) === still) growStill(still, copy.length);
+    },
+    () => undefined,
+  );
+  return still.copy;
+}
+
+/**
+ * Keeps the still copies while the caller (a stage) lives. Returns its release: once every holder
+ * released and none came back by the next task (a player rebuilt in place takes over the copies),
+ * the copies and answers are dropped, so a destroyed player leaves neither its `data:` URLs nor
+ * their copies behind.
+ */
+export function retainStills(): () => void {
+  holders++;
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    if (--holders > 0) return;
+    setTimeout(() => {
+      if (holders > 0) return;
+      stills.clear();
+      stillChars = 0;
+      known.clear();
+      knownChars = 0;
+    }, 0);
+  };
 }
 
 /** What `key` answered at once before (keeping that memory fresh), or undefined when it is not known. */
@@ -68,7 +129,7 @@ function forget(key: string): void {
 
 /** Keeps `answer` for `key` (see {@link known}) and returns it. */
 function remember(key: string, answer: string | null): string | null {
-  stills.delete(key);
+  dropStill(key);
   forget(key);
   const chars = key.length + (answer?.length ?? 0);
   if (chars > KNOWN_CHARS) return answer;

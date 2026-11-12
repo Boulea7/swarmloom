@@ -8,6 +8,7 @@ import { GuideLines } from "./guides";
 import { buildDom, type StageDom } from "./host";
 import { countTypingUnits, type GraphemeSegmenter, type MountEnv } from "./layers";
 import { clamp01, reapplyStyleAttributes } from "./layers/common";
+import { retainStills } from "./layers/still-image";
 import { Mounter, type MountStats } from "./mounter";
 import { PageGuard } from "./page";
 import { LayerRegistry, type Slot } from "./registry";
@@ -136,6 +137,8 @@ export class SwarmStage implements Stage {
   readonly #fade: Fade;
   readonly #guard: PageGuard;
   readonly #segmenter: GraphemeSegmenter | null;
+  /** Lets the still copies of animated images go once no stage is left (see retainStills). */
+  readonly #releaseStills: () => void;
   readonly #resizeListeners = new Set<(vp: Rect) => void>();
   readonly #offs: (() => void)[] = [];
   readonly #cleanups: (() => void)[] = [];
@@ -203,6 +206,7 @@ export class SwarmStage implements Stage {
     }
     this.#fade = new Fade(this.#opacity);
     this.#guard = new PageGuard(doc);
+    this.#releaseStills = retainStills();
     try {
       this.#overlay = new OverlayLayer(dom.canvas, o.theme, this.#reduced);
       this.#guides = new GuideLines(this.#registry, this.#overlay.guides, this.#reduced);
@@ -240,6 +244,7 @@ export class SwarmStage implements Stage {
         }
       }
       dom.dispose();
+      this.#releaseStills();
       throw error;
     }
   }
@@ -622,6 +627,7 @@ export class SwarmStage implements Stage {
     this.#resizeListeners.clear();
     this.#textUnits.clear();
     this.#reads.clear();
+    this.#releaseStills();
   }
 
   /* ----------------------------------------------------------- internals */
