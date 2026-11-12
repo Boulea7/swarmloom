@@ -12,9 +12,7 @@ import type { CoreI18n } from "./i18n";
 import { launchHandler, readInbox, registerServiceWorker } from "./pwa";
 import type { StudioServices } from "./services";
 import { readStored } from "./stored";
-
-/** Hosted Studio, linked from builds without examples (the extension). */
-const HOSTED_STUDIO = "https://boulea7.github.io/swarmloom/studio/";
+import { HOSTED_STUDIO } from "./views/share-link";
 
 /**
  * Core's translator, when the core package exports it (`createI18n`, core-ui seam). Read through

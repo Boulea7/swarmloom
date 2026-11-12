@@ -297,7 +297,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     const opened = session.opened;
     if (!opened) return;
     // What the preview plays, so the recipient sees the same performance.
-    const link = await buildShareLink(opened, session.playSettings, ctx.appUrl);
+    const link = await buildShareLink(opened, session.playSettings, ctx.shareUrl);
     if (!link.ok) {
       ctx.toast.show(
         i18n.t(

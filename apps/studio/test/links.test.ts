@@ -50,6 +50,14 @@ describe("share links", () => {
     expect(carried).toEqual({ opening: true, liveTop: true });
   });
 
+  // The extension's Studio opens file: URLs; anywhere else such a link would open nothing.
+  it("carries a local file: URL's text in the hash, not the URL", async () => {
+    const opened = { ref: { kind: "url", url: "file:///home/me/notes.md" }, name: "notes.md", text: "# N" };
+    const link = await buildShareLink(opened as OpenedSource, DEFAULT_SETTINGS, BASE);
+    if (!link.ok) throw new Error(link.reason);
+    expect(parseRoute(link.url).source?.kind).toBe("shared");
+  });
+
   it.each([
     ["binary format", { name: "photo.png", text: "x" }],
     ["path traversal only", { name: "../", text: "x" }],

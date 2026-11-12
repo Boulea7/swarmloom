@@ -2,7 +2,7 @@ import type { PlayerOptions, PlayerState } from "@swarmloom/core";
 import type { AppContext, View } from "../context";
 import { type ExampleEntry, entriesForLocale } from "../examples/manifest";
 import { formatById } from "../formats-meta";
-import { restorable, routeToUrl, type SourceRef } from "../route";
+import { portable, routeToUrl, type SourceRef } from "../route";
 import { Session, type SessionPhase } from "../session";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -320,8 +320,8 @@ export function createWatch(ctx: AppContext): View {
   function phoneUrl(): string {
     const item = items[index];
     const ref = item?.ref;
-    if (!ref || !restorable(ref)) return ctx.appUrl;
-    return routeToUrl({ source: ref, autoplay: true }, ctx.appUrl);
+    if (!ref || !portable(ref)) return ctx.shareUrl;
+    return routeToUrl({ source: ref, autoplay: true }, ctx.shareUrl);
   }
 
   function showQr(): void {

@@ -115,7 +115,7 @@ Limits of the in-page export:
 - Like the CLI, the export ignores the system's reduced-motion, reduced-transparency, high-contrast (Windows forced colours) and increased-contrast settings, the screen's pixel density, size, colour gamut and HDR, a touch screen, and Studio running as an installed app: pages and 3D models build with full motion and their own colours, at one device pixel per CSS pixel, as on an sRGB desktop screen with a mouse. Images a page picks with `srcset` or `<picture>` still follow the screen, with high contrast on, system colour keywords such as `Canvas` still take the system's palette, and on a high-density screen the browser can anti-alias text edges a little differently, so frames can differ slightly from the CLI's and from exports made on other screens.
 - Two exports of the same input and seed on the same screen draw the same pixels in every frame, but the browser's encoder does not write the same bytes each time. The difference is too small to see.
 
-**Share** can put small text into `#d=`. Export a video or share the original file for large content. Check for sensitive material before sharing.
+**Share** can put small text into `#d=`. The extension's Studio opens only in the browser that has the extension, so its links point at the hosted Studio, and the text of a local file (a `file://` address) goes into `#d=` as well. Export a video or share the original file for large content. Check for sensitive material before sharing.
 
 ## Studio inside the extension
 

@@ -231,3 +231,11 @@ export function routeToUrl(route: Partial<Route>, base: string): string {
 export function restorable(source: SourceRef): boolean {
   return source.kind === "example" || source.kind === "url" || source.kind === "shared";
 }
+
+/**
+ * True when a link can reopen the source in another browser or on another device. A `file:` URL
+ * (accepted in the extension's Studio) only opens on this machine, so it is not portable.
+ */
+export function portable(source: SourceRef): boolean {
+  return source.kind === "url" ? /^https?:/i.test(source.url) : restorable(source);
+}

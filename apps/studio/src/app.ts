@@ -21,6 +21,7 @@ import { syncThemeButton } from "./views/chrome";
 import { createHome, formatLabel } from "./views/home";
 import { createPlayerView } from "./views/player";
 import { settingsForm } from "./views/settings";
+import { shareBase } from "./views/share-link";
 import { createShortcuts } from "./views/shortcuts";
 import { createWatch } from "./views/watch";
 
@@ -395,6 +396,7 @@ export async function mountStudio(
       return local;
     },
     appUrl,
+    shareUrl: shareBase(services.target, appUrl),
     // A view's change (the theme button, the player's toolbar) also shows in an open settings panel.
     updateSettings: (patch) => {
       const before = settings;
