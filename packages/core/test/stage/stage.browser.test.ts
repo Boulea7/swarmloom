@@ -387,6 +387,24 @@ describe("stage: reveal semantics per kind", () => {
     expect(Array.from(g?.getImageData(0, 0, 1, 1).data ?? [])).toEqual([255, 0, 0, 255]);
   });
 
+  it("image: a still same-origin file is read once, however many images a page has", async () => {
+    // More files than the still-copy cache holds; blob: URLs are same-origin and read like files.
+    const png = await (await fetch(PNG_1PX)).blob();
+    const layers: Layer[] = Array.from({ length: 40 }, (_, i) => {
+      const src = URL.createObjectURL(png);
+      cleanups.push(() => URL.revokeObjectURL(src));
+      return { id: `p${i}`, kind: "image", box: { x: 0, y: 0, w: 10, h: 10 }, src };
+    });
+    const fetches = vi.spyOn(window, "fetch");
+    cleanups.push(() => fetches.mockRestore());
+    await mount(layers).stage.ready();
+    expect(fetches).toHaveBeenCalled();
+    fetches.mockClear();
+    // A replay mounts the same layers again.
+    await mount(layers).stage.ready();
+    expect(fetches).not.toHaveBeenCalled();
+  });
+
   it.each<{ name: string; layer: Layer }>([
     {
       name: "an icon in a line of text",
