@@ -37,7 +37,7 @@ import {
   writeAtomic,
 } from "../pipeline/evidence";
 import { inputFilePath, isWebUrl, outputStem, type RenderSource, resolveSource } from "../pipeline/input";
-import { formatClock } from "../pipeline/progress";
+import { formatClock, lineWidth, wrapFields } from "../pipeline/progress";
 import { type PlayerSettings, type RenderSummary, renderVideo } from "../pipeline/render";
 import { isMissingOrEmptyDir } from "../util/fs";
 import type { Command, CommandContext } from "./types";
@@ -493,7 +493,8 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   const pixels = `${Math.round(opts.width * opts.scale)}x${Math.round(opts.height * opts.scale)}`;
   if (!opts.quiet) {
     const kind = source.kind === "page" ? "web page" : source.format;
-    io.err(`Rendering ${source.name} (${kind}) at ${pixels}, ${opts.fps} fps -> ${target}`);
+    const banner = [`Rendering ${source.name} (${kind})`, `at ${pixels}, ${opts.fps} fps`, `-> ${target}`];
+    for (const line of wrapFields(banner, lineWidth(io))) io.err(line);
   }
   const started = performance.now();
   const quietIo = opts.quiet ? { ...io, err: () => {}, tty: undefined } : io;
@@ -546,9 +547,16 @@ async function run(argv: string[], ctx: CommandContext): Promise<number> {
   }
   const sound = summary.audio ? "with sound" : "no sound";
   const took = formatClock((performance.now() - started) / 1000);
-  io.err(
-    `Wrote ${target}: ${(summary.durationMs / 1000).toFixed(1)} s, ${summary.frames} frames, ${pixels}, ${sound} (took ${took})`,
-  );
+  const seconds = (summary.durationMs / 1000).toFixed(1);
+  const wrote = [
+    `Wrote ${target}:`,
+    `${seconds} s,`,
+    `${summary.frames} frames,`,
+    `${pixels},`,
+    sound,
+    `(took ${took})`,
+  ];
+  for (const line of wrapFields(wrote, lineWidth(io))) io.err(line);
   return 0;
 }
 
