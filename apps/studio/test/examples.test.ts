@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -55,6 +56,40 @@ describe("examples manifest", () => {
       }
     }
     expect(checked).toEqual(expect.arrayContaining(["docx", "sheet", "slides"]));
+  });
+
+  it("ships the licence and NOTICE of the project that first published a copied sample", () => {
+    // word-extractor's test04.doc is Apache POI's HeaderFooterUnicode.doc byte for byte (in POI since 2009):
+    // Apache-2.0 material with POI's NOTICE, not word-extractor's MIT. Found by hash, wherever it is copied.
+    const upstream = [
+      [
+        "8bd7fc9552bccb7b71a0dc34ffd801e7d3547d1317fd75d0c35fca3572f6fa4b",
+        [
+          "test-data/document/HeaderFooterUnicode.doc",
+          "Version 2.0, January 2004",
+          "The Apache Software Foundation (https://www.apache.org/)",
+        ],
+      ],
+    ] as const;
+    const root = resolve(import.meta.dirname, "../../../examples");
+    const { files } = scanExamples(root);
+    const sha256 = (file: string) =>
+      createHash("sha256")
+        .update(readFileSync(join(root, file)))
+        .digest("hex");
+    for (const [hash, needles] of upstream) {
+      const copies = files.filter((file) => sha256(file) === hash);
+      expect(copies, hash).not.toEqual([]);
+      for (const copy of copies) {
+        const notice = `${dirname(copy)}/SOURCES.md`;
+        expect(files, copy).toContain(notice);
+        const text = readFileSync(join(root, notice), "utf8");
+        expect(
+          needles.filter((needle) => !text.includes(needle)),
+          `${notice} for ${copy}`,
+        ).toEqual([]);
+      }
+    }
   });
 
   it("names every font embedded in a sample PDF in the folder's SOURCES.md", () => {
