@@ -143,7 +143,10 @@ function playerOptions(
     reducedMotion: init.reducedMotion,
     controls: false,
     intro: true,
-    sound: init.sound ? { enabled: true, pack: init.pack, bpm: init.bpm, beatSync: true } : false,
+    // Never realtime audio: the player logs every sound event anyway and audioWav() renders that log
+    // offline. An enabled player would open an AudioContext, and in a page with user activation (the
+    // Studio export frame after the click on Export) play every note aloud at export speed.
+    sound: false,
     onLive,
   };
   if (init.agents !== undefined) options.agents = init.agents;
@@ -226,10 +229,12 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
           onWarning: warn,
         });
         live = stage;
+        const goesLive = init.live && !init.reducedMotion;
+        if (goesLive) await stage.holdImages();
         const started = new RenderSession({
           player: playerOptions(init, loaded, host, () => stage.goLive(started.elapsed)),
           tailMs: init.tail,
-          live: init.live && !init.reducedMotion,
+          live: goesLive,
           cues: init.cues,
           createPlayer: deps.createPlayer,
           onWarning: (error) => warn(error.message),

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Audits built store packages: manifest and permission allowlist, CSP, no remote code, no test hook,
 // content script size budget, licence notices present (including code that dependencies ship
-// pre-bundled, such as core-js inside pdf.js), and that each zip is exactly (and
-// reproducibly) its folder.
+// pre-bundled, such as core-js inside pdf.js or the Draco decoders inside three), and that each zip
+// is exactly (and reproducibly) its folder.
 //
 // Usage: node scripts/audit.mjs [--target all|chrome,edge,firefox,safari] [--dist <dir>]
 // Exits 1 and lists every problem when a package fails. Runs on existing output; build first.
@@ -87,7 +87,8 @@ export function auditPackage(dir, target, zipPath) {
   const noticesFile = files.find((f) => f.name === NOTICES_FILE);
   const notices = noticesFile ? Buffer.from(noticesFile.data).toString("utf8") : "";
   for (const embedded of EMBEDDED_PACKAGES) {
-    if (new RegExp(`^${embedded.name} \\S+$`, "m").test(notices)) continue;
+    // The entry heading: name, then the version (or "as shipped in <host> <version>"), then its licence.
+    if (new RegExp(`^${embedded.name} \\S.*\\nLicense: `, "m").test(notices)) continue;
     const holder = files.find((f) => /\.m?js$/.test(f.name) && Buffer.from(f.data).includes(embedded.marker));
     if (holder) problems.push(`${holder.name}: bundles ${embedded.name}, which ${NOTICES_FILE} does not list`);
   }

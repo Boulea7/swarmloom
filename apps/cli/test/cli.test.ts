@@ -107,6 +107,7 @@ describe("render options", () => {
     [["a.md", "--bpm", "300"], "--bpm must be a number"],
     [["a.md", "-o", "x.mp4", "--manifest-out", "x.mp4"], "must be different files"],
     [["a.md", "-o", "take.mp4", "--events-out", "TAKE.MP4"], "must be different files"],
+    [["a.md", "-o", "takeΣ.mp4", "--manifest-out", "takeς.mp4"], "must be different files"],
     [["a.md", "-o", "out/take.mp4", "--events-out", "out./take.mp4. "], "must be different files"],
   ])("rejects %j", (argv, message) => {
     expect(() => parseRenderOptions(argv, cwd)).toThrow(message);
@@ -148,6 +149,23 @@ describe("render input", () => {
       expect(err.join("\n")).toContain(`${flag} would overwrite the input`);
       expect(code).toBe(1);
       expect(await readFile(path.join(dir, "take.svg"), "utf8")).toBe(svg);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an evidence path that the ffmpeg-less fallback picks for its PNG frames", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "swarmloom-cli-"));
+    try {
+      await writeFile(path.join(dir, "take.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
+      const err: string[] = [];
+      // Any executable passes the browser lookup; the check must stop the run before a browser starts.
+      const tools = ["--ffmpeg", path.join(dir, "no-ffmpeg"), "--chrome", process.execPath];
+      const argv = ["render", "take.svg", "--events-out", "take-frames", ...tools];
+      const code = await run(argv, { io: { out: () => {}, err: (l) => err.push(l) }, cwd: dir, env: {} });
+      expect(err.join("\n")).toContain("which an evidence output also names");
+      expect(code).toBe(1);
+      expect(existsSync(path.join(dir, "take-frames"))).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -5,8 +5,8 @@ description: SwarmLoom shortcuts, settings, touring, sound, go-live, sharing and
 
 # Usage
 
-::: warning Current status
-The player and toolbar are still being implemented. This page describes v1 interactions already fixed in the contracts. Refer to release notes for final availability.
+::: info Current status
+These controls work in Studio today, and in the extensions and the `<swarm-loom>` element when built from source. Store listings and npm packages are not published yet.
 :::
 
 ## Keyboard shortcuts
@@ -52,7 +52,7 @@ Long pages mount only nearby layers. A fast manual scroll prioritises newly visi
 
 ## Sound
 
-Effects are synthesised with Web Audio rather than downloaded recordings. Four sound packs are planned:
+Effects are synthesised with Web Audio rather than downloaded recordings. There are four sound packs:
 
 | Pack | Character |
 | --- | --- |
@@ -82,19 +82,19 @@ Reduced motion does not imply muted sound. The two preferences remain independen
 
 `replay()` resets reveal progress without fetching the input again. `destroy()` releases DOM, audio, listeners and plugin resources; call it when leaving the host view.
 
-## Record in the browser <Badge type="warning" text="Planned" />
+## Export in the browser
 
-Where Region Capture and MediaRecorder are available, Studio's **Export** records WebM in real time with the Web Audio track:
+Studio's **Export** (<kbd>E</kbd>) makes the video inside the page, frame by frame. There is no screen-sharing prompt and nothing is recorded in real time:
 
-1. Put the content in the layout and theme you want to capture.
-2. Choose **Export**, then select the current tab and recording region when the browser prompts.
-3. Start playback, stop at the end, and save the WebM.
+1. Put the content in the layout and theme you want.
+2. Choose **Export**, pick the size, frame rate and whether to include sound, then choose **Export in this browser**.
+3. When the progress bar finishes, choose **Download**. Keep the tab open until then.
 
-This is wall-clock recording and can vary with machine load. Unsupported browsers show the equivalent CLI command rather than pretending to produce an equivalent file.
+A hidden frame runs the same render page as the [CLI](./cli). Its virtual clock advances by `1000 / fps` milliseconds per frame and the sound log is rendered offline, so machine load does not change the frames. The file is an H.264 MP4, or a VP9 WebM when the browser cannot encode H.264. Browsers without WebCodecs show the equivalent CLI command instead. [Studio](./studio#export-and-sharing) lists where the in-page export can differ from the CLI.
 
-For deterministic output, use the [CLI](./cli). A virtual clock advances by `1000 / fps` milliseconds per capture, and the same sound-event log is rendered offline to WAV before muxing.
+Use the CLI for WebM, GIF, animated WebP or a PNG sequence, or when those differences matter. It screenshots each frame in headless Chrome and renders the same sound-event log offline to WAV before muxing.
 
-## Share <Badge type="warning" text="Planned" />
+## Share
 
 Small Markdown, SVG and code inputs can be compressed into the `#d=` URL hash. Large files and remote URLs use file import or `?src=` instead.
 

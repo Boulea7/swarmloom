@@ -65,7 +65,8 @@ jobs:
           cp -R apps/studio/dist/. _site/studio/
           cp -R apps/bookmarklet/dist/. _site/bm/
       # LICENSE.md next to the site, docs, Studio and bookmarklet pages: SwarmLoom's licence, then the full
-      # licence of every third-party package each one bundles or inlines (Phosphor icons, Vue, lottie-web ...).
+      # licence of every third-party package each one bundles or inlines (Phosphor icons, Vue, lottie-web ...),
+      # if any (the bookmarklet bundles none).
       - name: Write the third-party licences of the deployed apps
         run: node scripts/release/third-party-notices.mjs --pages _site
       - uses: actions/upload-pages-artifact@v5

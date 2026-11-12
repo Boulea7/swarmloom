@@ -4,6 +4,13 @@ import type { StudioSettings } from "../settings";
 import type { OpenedSource } from "../source";
 import { stem } from "./cli";
 
+/**
+ * Longest video the export dialog makes, in seconds: the in-page export stops there, and the
+ * command line gets it as `--max-duration` (the CLI's own default is 120 s). The `export.web.partial`
+ * message names this limit.
+ */
+export const EXPORT_MAX_SECONDS = 600;
+
 /** Frame rates the export dialog offers. */
 export const EXPORT_FPS = [30, 60] as const;
 export type ExportFps = (typeof EXPORT_FPS)[number];

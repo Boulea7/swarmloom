@@ -92,9 +92,9 @@ Use `auto` or fewer cursors, disable the halo finale, reduce viewport and DPR, a
 
 Higher speed shortens the run but does not necessarily reduce frame cost.
 
-### Why is Export absent or recording unsuccessful?
+### Why does Export show only a command, or fail?
 
-The browser may lack Region Capture or the required MediaRecorder capabilities. Use the CLI command shown by Studio instead of trying to assemble video from screenshots.
+**Export in this browser** needs WebCodecs (`VideoEncoder` and `VideoFrame`). Without it, the dialog shows only the equivalent CLI command. A browser that has WebCodecs but cannot encode H.264 or VP9 at the chosen size says so; pick a smaller size or use the command. If the browser cannot encode AAC or Opus, the video is made without sound and the dialog says so. For other failures, run the CLI command shown in the same dialog.
 
 ### Why can't the CLI find Chrome or ffmpeg?
 

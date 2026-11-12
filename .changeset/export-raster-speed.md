@@ -1,0 +1,5 @@
+---
+"@swarmloom/export": minor
+---
+
+Exporting in the browser is faster and keeps the page responsive. The frame rasteriser leaves out subtrees more than 256 px away from the viewport (absolutely positioned layers the stage keeps mounted off screen; sections of a long live page, written as empty boxes of their size) and boxes hidden under the live page once it covers the stage, embeds an image used by many layers once (a rendered PDF page cropped into its text regions), and draws the cursor canvas over the frame instead of encoding it as a PNG every frame. The snapshot walk pauses every few milliseconds and starts over when the page changed meanwhile, and cancelling takes effect at those pauses. Frames go to the encoder straight from the canvas; `exportVideo` hashes frames into `frameSha256` only with the new `hashFrames: true` option. On a 5,000-element page a 41 s export took 209 s instead of 529 s, the longest main-thread task fell from 1.9 s to under 0.1 s, and a PDF frame's SVG shrank from 4.7 MB to 0.3 MB.

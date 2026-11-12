@@ -277,18 +277,23 @@
   background: var(--surface-3);
 }
 
+/* --accent-text, not --accent: the brand pink reads only 2.6:1 on the track in the light theme,
+   under the 3:1 floor for a progress indicator. */
 .export-progress-fill {
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--accent-text);
   transition: width 160ms linear;
 }
 
+/* `anywhere`, not `break-word`: an error naming a long URL must also shrink the grid track,
+   or it widens the dialog past a phone screen. */
 .export-status {
   color: var(--ink-2);
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .export-status:empty {

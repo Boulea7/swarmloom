@@ -116,9 +116,6 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     foot,
   );
 
-  const exporter = createExporter({ ctx, opened: () => session.opened });
-  root.append(exporter.panel.root);
-
   const renderOverlay = (error?: unknown) => {
     const { i18n } = ctx;
     frame.dataset.phase = phase;
@@ -270,6 +267,10 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     },
     onClose: () => ctx.navigate({ source: null }),
   });
+
+  // After the session: the dialog reads the settings its preview plays with as it builds.
+  const exporter = createExporter({ ctx, opened: () => session.opened, settings: () => session.playSettings });
+  root.append(exporter.panel.root);
 
   renderOverlay();
   void session.open();

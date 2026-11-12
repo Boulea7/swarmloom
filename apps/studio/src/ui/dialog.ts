@@ -27,6 +27,17 @@ export interface Panel {
   destroy(): void;
 }
 
+/** The topmost open modal dialog, or null. Everything outside it is inert and covered. */
+export function topModal(doc: Document): HTMLDialogElement | null {
+  try {
+    const open = doc.querySelectorAll<HTMLDialogElement>("dialog:modal");
+    return open[open.length - 1] ?? null;
+  } catch {
+    // `:modal` is unknown to the selector engine: there is nothing to route around.
+    return null;
+  }
+}
+
 let panelIds = 0;
 
 /** Creates a closed panel; append `root` anywhere in the document. */

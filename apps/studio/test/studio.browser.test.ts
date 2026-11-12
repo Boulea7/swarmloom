@@ -1,6 +1,8 @@
+/// <reference types="@vitest/browser-playwright" />
+import type { BrowserExportOptions, BrowserExportResult } from "@swarmloom/export/browser";
 import { FORMAT_META as REGISTRY } from "@swarmloom/formats/meta";
 import { afterEach, describe, expect, it } from "vitest";
-import { page } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import {
@@ -12,6 +14,8 @@ import {
   sortEntries,
 } from "../src/examples/manifest";
 import { availableFormats } from "../src/formats-meta";
+import type { BrowserExporter } from "../src/services";
+import { encodeShare } from "../src/share";
 import { fakeServices } from "./fakes";
 
 /** Every file of the repository's examples folder, as the build would see it (paths only). */
@@ -36,12 +40,13 @@ const REGISTRY_IDS = REGISTRY.map((meta) => meta.id);
 
 let app: StudioApp | null = null;
 
-async function mount(search = "", seekable = false) {
+async function mount(search = "", seekable = false, exporter?: BrowserExporter) {
   history.replaceState(null, "", `${location.pathname}${search}`);
   const root = document.createElement("div");
   document.body.append(root);
   const fake = fakeServices({ manifest: MANIFEST, examplesBase: EXAMPLES_BASE, seekable });
   fake.services.formats = REGISTRY_IDS;
+  if (exporter) fake.services.loadExporter = async () => exporter;
   app = await mountStudio(root, fake.services);
   return { root, ...fake };
 }
@@ -54,6 +59,16 @@ async function until<T>(probe: () => T | null | undefined, timeoutMs = 4000): Pr
     if (performance.now() - start > timeoutMs) throw new Error("timed out");
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+}
+
+/** Opens the export dialog of a loaded example and returns its in-page export controls. */
+async function openExport(root: HTMLElement) {
+  (await until(() => root.querySelector<HTMLButtonElement>('.appbar [aria-keyshortcuts="E"]:enabled'))).click();
+  const dialog = await until(() => root.querySelector<HTMLDialogElement>("dialog.panel-export[open]"));
+  const [start, cancel, download] = dialog.querySelectorAll<HTMLElement>(".export-actions > *");
+  const status = dialog.querySelector<HTMLElement>(".export-status");
+  if (!start || !cancel || !download || !status) throw new Error("no in-page export");
+  return { dialog, start, cancel, download: download as HTMLAnchorElement, status };
 }
 
 afterEach(() => {
@@ -135,6 +150,209 @@ describe("Studio in a browser", () => {
     expect(seeker?.disabled).toBe(false);
     seeker?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
     await until(() => log.calls.includes("seek:12000"));
+  });
+
+  it("exports in the page with the dialog's choices and offers the file for download", async () => {
+    const calls: BrowserExportOptions[] = [];
+    const { root } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      async exportVideo(options) {
+        calls.push(options);
+        options.onProgress?.({
+          phase: "frames",
+          frames: 3,
+          totalFrames: 6,
+          built: 1,
+          layers: 2,
+          elapsedMs: 50,
+          etaMs: null,
+        });
+        const blob = new Blob(["VIDEO"], { type: "video/webm" });
+        return {
+          blob,
+          extension: "webm",
+          durationMs: 2000,
+          finished: true,
+          soundUnsupported: false,
+          warnings: ["https://img.test/a.png could not be embedded in the frame (Failed to fetch); it is left blank"],
+        } as BrowserExportResult;
+      },
+    });
+    const { dialog, start, download, status } = await openExport(root);
+    const size = dialog.querySelector<HTMLSelectElement>("select");
+    if (size) size.value = "square";
+    size?.dispatchEvent(new Event("change"));
+    dialog.querySelector<HTMLInputElement>('input[type="radio"][value="60"]')?.click();
+    dialog.querySelector<HTMLInputElement>("input.switch")?.click();
+    start.click();
+
+    await until(() => !download.hidden);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      input: { name: "chart.svg" },
+      width: 1080,
+      height: 1080,
+      fps: 60,
+      network: "https",
+      settings: { seed: app?.context.settings.seed, sound: false, locale: "en" },
+    });
+    expect(calls[0]?.input.text).toContain("<svg");
+    expect(download.download).toBe("chart.webm");
+    expect(await (await fetch(download.href)).text()).toBe("VIDEO");
+    expect([start.hidden, status.textContent]).toEqual([
+      false,
+      expect.stringMatching(
+        /^Done: 0:02 long, .+\. 1 image or font is missing from the video because it couldn't be read\.$/,
+      ),
+    ]);
+  });
+
+  it("exports a shared link's performance as the preview plays it, also after a settings change", async () => {
+    const calls: BrowserExportOptions[] = [];
+    const shared = { seed: 42, speed: 2, finale: "halo" } as const;
+    const payload = await encodeShare({ name: "notes.md", text: "# Notes", settings: shared });
+    const { root, log } = await mount(`#d=${payload}`, false, {
+      bytesToBase64: () => "",
+      async exportVideo(options) {
+        calls.push(options);
+        const result: Partial<BrowserExportResult> = { blob: new Blob(["V"]), extension: "mp4", durationMs: 1000 };
+        return { ...result, finished: true, soundUnsupported: false, warnings: [] } as BrowserExportResult;
+      },
+    });
+    await until(() => root.querySelector('.appbar [aria-keyshortcuts="E"]:enabled'));
+    // A setting the link does not carry: the new player keeps the shared seed, speed and finale.
+    app?.context.updateSettings({ soundPack: "soft" });
+    expect(log.players.at(-1)).toMatchObject(shared);
+
+    const { dialog, start, download } = await openExport(root);
+    expect(dialog.querySelector(".cli-code")?.textContent).toContain("--seed 42 --speed 2 --finale halo");
+    start.click();
+    await until(() => !download.hidden);
+    expect(calls[0]?.settings).toMatchObject({ ...shared, pack: "soft" });
+  });
+
+  it("reports a failed and a cancelled export without a download", async () => {
+    let runs = 0;
+    let signal: AbortSignal | undefined;
+    const { root } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      exportVideo(options) {
+        runs += 1;
+        signal = options.signal;
+        if (runs === 1) return Promise.reject(new Error("encoder broke"));
+        return new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal?.reason)));
+      },
+    });
+    const { start, cancel, download, status } = await openExport(root);
+    const shown = () => [start.hidden, cancel.hidden, download.hidden];
+    start.click();
+    await until(() => status.textContent === "Export failed: encoder broke");
+    expect(shown()).toEqual([false, true, true]);
+
+    start.click();
+    expect(shown()).toEqual([true, false, true]);
+    await until(() => runs === 2);
+    cancel.click();
+    await until(() => status.textContent === "Export cancelled.");
+    expect([signal?.aborted, ...shown()]).toEqual([true, false, true, true]);
+  });
+
+  it("hands focus to the result only from Cancel, never from where the user moved on to", async () => {
+    let finish: ((result: BrowserExportResult) => void) | null = null;
+    const fields: Partial<BrowserExportResult> = {
+      blob: new Blob(["V"]),
+      extension: "webm",
+      durationMs: 1000,
+      finished: true,
+      soundUnsupported: false,
+      warnings: [],
+    };
+    const done = fields as BrowserExportResult;
+    const { root } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      exportVideo: () => new Promise((resolve) => (finish = resolve)),
+    });
+    const { dialog, start, cancel, download } = await openExport(root);
+    const settle = async () => {
+      (await until(() => finish))(done);
+      finish = null;
+      await until(() => !download.hidden);
+    };
+    start.click();
+    expect(document.activeElement).toBe(cancel);
+    await settle();
+    expect(document.activeElement).toBe(download);
+
+    start.click();
+    const copy = dialog.querySelector<HTMLButtonElement>(".cli-copy");
+    copy?.focus();
+    await settle();
+    expect(document.activeElement).toBe(copy);
+  });
+
+  it("cancels at once while the exporter is still loading", async () => {
+    const unused = () => Promise.reject(new Error("not loaded yet"));
+    const { root, services } = await mount("?example=svg-chart", false, {
+      bytesToBase64: () => "",
+      exportVideo: unused,
+    });
+    // A stalled network: the exporter's download never ends.
+    services.loadExporter = () => new Promise(() => undefined);
+    const { start, cancel, status } = await openExport(root);
+    start.click();
+    cancel.click();
+    await until(() => status.textContent === "Export cancelled.");
+    expect([start.hidden, cancel.hidden]).toEqual([false, true]);
+  });
+
+  it("explains an exporter that cannot load and keeps a long error on a phone screen", async () => {
+    await page.viewport(390, 844);
+    try {
+      const url = `${location.origin}/assets/${"exporterchunk".repeat(8)}.js`;
+      const { root, services } = await mount("?example=svg-chart&lang=zh-CN", false, {
+        bytesToBase64: () => "",
+        exportVideo: () => Promise.reject(new Error(`could not read ${url}`)),
+      });
+      const online = services.loadExporter;
+      // Offline before the first export: the browser's own message names the chunk in English.
+      services.loadExporter = () =>
+        Promise.reject(new TypeError(`Failed to fetch dynamically imported module: ${url}`));
+      const { dialog, start, status } = await openExport(root);
+      start.click();
+      await until(() => !start.hidden);
+      expect(status.textContent).toBe("导出工具加载失败。请检查网络，刷新页面后重试。");
+
+      // Back online, a failure the exporter reports keeps its URL, wrapped inside the dialog.
+      services.loadExporter = online;
+      start.click();
+      await until(() => !start.hidden);
+      const body = dialog.querySelector<HTMLElement>(".panel-body");
+      expect([status.textContent?.startsWith("导出失败："), body && body.scrollWidth <= body.clientWidth]).toEqual([
+        true,
+        true,
+      ]);
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
+  it("leaves Esc to an open export dialog and opens no panel behind it", async () => {
+    await page.viewport(1280, 800);
+    try {
+      const unused = () => Promise.reject(new Error("unused"));
+      const { root } = await mount("?example=svg-chart", false, { bytesToBase64: () => "", exportVideo: unused });
+      // The desktop settings drawer stays open beside the stage; the export dialog opens over it.
+      app?.context.toggleSettings();
+      const { dialog, start } = await openExport(root);
+      start.focus();
+      await userEvent.keyboard("s?");
+      expect([app?.context.settingsOpen(), document.querySelectorAll("dialog:modal").length]).toEqual([true, 1]);
+      await userEvent.keyboard("{Escape}");
+      await until(() => !dialog.open);
+      expect(app?.context.settingsOpen()).toBe(true);
+    } finally {
+      await page.viewport(414, 896);
+    }
   });
 
   it("explains an unknown example instead of mounting a player", async () => {
@@ -236,6 +454,32 @@ describe("Studio in a browser", () => {
     } finally {
       delete (screen as { width?: number }).width;
       delete (screen as { height?: number }).height;
+      await page.viewport(414, 896);
+    }
+  });
+
+  it("keeps every player app bar button a full touch target, side by side, on a narrow touch screen", async () => {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    try {
+      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
+      for (const width of [240, 320]) {
+        await page.viewport(width, 600);
+        const { root } = await mount("?example=svg-chart");
+        const buttons = [...root.querySelectorAll<HTMLElement>(".appbar-player .btn")]
+          .filter((el) => el.getClientRects().length > 0)
+          .map((el) => el.getBoundingClientRect())
+          .sort((a, b) => a.left - b.left);
+        expect(buttons.length, `${width}px`).toBeGreaterThanOrEqual(4);
+        for (const [i, r] of buttons.entries()) {
+          expect(Math.min(r.width, r.height), `${width}px button ${i}`).toBeGreaterThanOrEqual(44);
+          expect(r.left, `${width}px button ${i}`).toBeGreaterThanOrEqual(buttons[i - 1]?.right ?? 0);
+        }
+        expect(buttons.at(-1)?.right, `${width}px`).toBeLessThanOrEqual(document.documentElement.clientWidth);
+        app?.destroy();
+        app = null;
+      }
+    } finally {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
       await page.viewport(414, 896);
     }
   });

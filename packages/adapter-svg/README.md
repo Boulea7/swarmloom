@@ -22,6 +22,6 @@ How it works:
 
 Options (`createSvgAdapter`): `maxLayers` (4000), `maxBytes` (16 MiB), `maxElements` (50 000), `anchorsPerPath` (32), `assetTimeout` (1500 ms for fonts and image sizes), `liveClock` (`"own"`), `fit` (`"frame"`).
 
-Limits: CSS animations inside the SVG are not replayed (the first frame is used); SMIL animations that begin on events only start once the stage is live. CSS basic-shape `clip-path` values are ignored. Filters under non-uniform scaling are approximated.
+Limits: an SVG animated only with CSS (no SMIL, so no `svg:smil` layer) is not replayed (the first frame is used); SMIL animations that begin on events only start once the stage is live. CSS basic-shape `clip-path` values are ignored. Filters under non-uniform scaling are approximated.
 
 License: MIT.

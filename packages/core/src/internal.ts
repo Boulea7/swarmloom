@@ -141,6 +141,8 @@ export interface Stage extends StageApi {
    * Optional read phase: the engine calls it at the start of every clock tick, before tasks write
    * to the DOM. The stage takes the layout reads it can do ahead of time (caret geometry of typed
    * text), so a task asking for them mid-frame does not force a layout after other agents' writes.
+   * Seek frames skip it (no frame renders between them, so the layout is never clean): a caret
+   * read that misses takes every pending read at once instead.
    */
   measure?(): void;
   /**

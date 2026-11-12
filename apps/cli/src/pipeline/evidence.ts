@@ -7,8 +7,9 @@
  * machine produce the same events file and the same manifest apart from output paths.
  *
  * The manifest is meant to travel with the take, so it leaves out where things live on this machine:
- * no working directory, programs by file name only, outputs relative to the manifest, and http(s)
- * URLs without user info, query or fragment (see {@link redactUrl}).
+ * no working directory, programs by file name only, files relative to the manifest (see
+ * {@link shareablePath}), in the arguments as well as the outputs, and http(s) URLs without user
+ * info, query or fragment (see {@link redactUrl}).
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -17,7 +18,7 @@ import path from "node:path";
 import type { SoundEvent } from "@swarmloom/core";
 import type { PlatformFont } from "./driver";
 import type { FrameImageType, OutputFormat } from "./encode";
-import { isWebUrl, type RenderSource } from "./input";
+import { inputFilePath, isWebUrl, type RenderSource } from "./input";
 import type { RenderCue, RenderInfo } from "./protocol";
 import type { PlayerSettings } from "./render";
 
@@ -100,11 +101,28 @@ export function eventsDocument(
   return `${JSON.stringify(doc, null, 1)}\n`;
 }
 
+/**
+ * An argument value that names the input, a file the render writes, or a program it runs. The value
+ * ends `argv[index]`, which is the value itself or an option with it inline (--output=take.mp4, -otake.mp4).
+ */
+export interface PathArg {
+  index: number;
+  value: string;
+  kind: "input" | "file" | "program";
+}
+
 export interface ManifestInput {
   tool: { name: string; version: string };
-  /** Arguments after `swarmloom`, as given (URLs are redacted in the manifest). */
+  /**
+   * Arguments after `swarmloom`, as given. The manifest records the values at {@link pathArgs} as
+   * {@link shareableArg} does and redacts http(s) URLs in the rest.
+   */
   argv: readonly string[];
-  /** Absolute path the manifest is written to; output paths are recorded relative to its folder. */
+  /** Where `argv` names the input, output files and programs (from the argument parser). */
+  pathArgs: readonly PathArg[];
+  /** Folder relative paths in `argv` are resolved against; not recorded. */
+  cwd: string;
+  /** Absolute path the manifest is written to; file paths are recorded relative to its folder. */
   manifestFile: string;
   input: { arg: string; kind: RenderSource["kind"]; name: string; format: string; sha256: string; bytes: number };
   info: RenderInfo;
@@ -137,13 +155,20 @@ export interface ManifestInput {
 /** Builds the --manifest-out document (pure; see {@link MANIFEST_VERSION}). */
 export function buildManifest(m: ManifestInput): Record<string, unknown> {
   const { settings, result } = m;
+  const dir = path.dirname(m.manifestFile);
+  const argv = [...m.argv];
+  for (const { index, value, kind } of m.pathArgs) {
+    const arg = argv[index];
+    if (!value || !arg?.endsWith(value)) continue;
+    argv[index] = arg.slice(0, arg.length - value.length) + shareableArg(value, kind, m.cwd, dir);
+  }
   return {
     manifestVersion: MANIFEST_VERSION,
     tool: m.tool,
-    argv: m.argv.map(redactUrl),
+    argv: argv.map(redactUrl),
     input: {
       ...m.input,
-      arg: redactUrl(m.input.arg),
+      arg: shareableArg(m.input.arg, "input", m.cwd, dir),
       blueprintSha256: m.info.blueprintSha256 ?? null,
       layers: m.info.layers ?? null,
     },
@@ -186,10 +211,7 @@ export function buildManifest(m: ManifestInput): Record<string, unknown> {
         }
       : null,
     outputs: Object.fromEntries(
-      Object.entries(m.outputs).map(([name, out]) => [
-        name,
-        { ...out, path: relativePath(path.dirname(m.manifestFile), out.path) },
-      ]),
+      Object.entries(m.outputs).map(([name, out]) => [name, { ...out, path: shareablePath(dir, out.path) }]),
     ),
   };
 }
@@ -211,14 +233,33 @@ export function redactUrl(arg: string): string {
   return url.href;
 }
 
+/**
+ * A path argument as the manifest records it, given the folder `cwd` it was typed in and the
+ * manifest's folder `dir`: programs by file name, http(s) URLs redacted, files (including the input as
+ * a path or file: URL) by {@link shareablePath}.
+ */
+function shareableArg(value: string, kind: PathArg["kind"], cwd: string, dir: string): string {
+  if (kind === "program") return path.basename(value);
+  if (isWebUrl(value)) return redactUrl(value);
+  return shareablePath(dir, kind === "input" ? inputFilePath(value, cwd) : path.resolve(cwd, value));
+}
+
 function programName(program: { path: string; version: string }): { name: string; version: string } {
   return { name: path.basename(program.path), version: program.version };
 }
 
-/** `file` relative to `dir` with "/" separators; the bare file name when there is none (another drive). */
-function relativePath(dir: string, file: string): string {
+/**
+ * `file` relative to the folder `dir` with "/" separators while that names no folder outside `dir`
+ * (the file is inside it, or in a folder above it: "../take.mp4"). Otherwise the bare file name, so a
+ * manifest in /tmp does not spell out "../home/<user>/<project>/take.mp4" (nor a path on another drive).
+ */
+function shareablePath(dir: string, file: string): string {
   const relative = path.relative(dir, file);
-  return path.isAbsolute(relative) ? path.basename(file) : relative.split(path.sep).join("/");
+  if (relative === "") return ".";
+  const parts = relative.split(path.sep);
+  const firstName = parts.findIndex((part) => part !== "..");
+  const leavesDir = firstName > 0 && firstName < parts.length - 1;
+  return path.isAbsolute(relative) || leavesDir ? path.basename(file) : parts.join("/");
 }
 
 /** Writes `text` next to its destination first, then renames it into place. */

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentView, Stage, StageOptions } from "../../src/internal";
 import { createRng } from "../../src/rng";
 import { createStage, stageStats } from "../../src/stage";
+import { animatedBitmapType } from "../../src/stage/layers/still-bitmap";
 import { resolveTheme } from "../../src/theme";
 import type { Blueprint, CursorShape, Layer, Plugin, Size } from "../../src/types";
 import { harness } from "../engine/fakes";
@@ -9,6 +10,10 @@ import { harness } from "../engine/fakes";
 const SHAPES: CursorShape[] = ["arrow", "crosshair", "ibeam", "pen", "hand", "grab", "move", "copy", "resize"];
 const PNG_1PX =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+
+/** 1x1 GIF, red then blue, looping: shown as is, it flips on the browser clock. */
+const GIF_RED_BLUE =
+  "data:image/gif;base64,R0lGODlhAQABAIABAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAQABAAACAkQBACH5BAAKAAAALAAAAAABAAEAAAICTAEAOw==";
 
 /**
  * Same-origin SVG whose SMIL animation runs on the browser clock when shown as is. A served path:
@@ -28,11 +33,12 @@ function blueprint(layers: Layer[], size: Size = { w: 800, h: 600 }): Blueprint 
 
 function mount(
   layers: Layer[],
-  extra: Partial<StageOptions> & { size?: Size; hostCss?: string } = {},
+  extra: Partial<StageOptions> & { size?: Size; hostCss?: string; parent?: HTMLElement } = {},
 ): { stage: Stage; host: HTMLElement } {
-  const host = document.createElement("div");
+  const parent = extra.parent ?? document.body;
+  const host = parent.ownerDocument.createElement("div");
   host.style.cssText = extra.hostCss ?? "width:800px;height:600px;position:relative";
-  document.body.append(host);
+  parent.append(host);
   const bp = blueprint(layers, extra.size);
   const stage = createStage({
     blueprint: bp,
@@ -49,6 +55,18 @@ function mount(
     host.remove();
   });
   return { stage, host };
+}
+
+/** Body of a srcdoc frame, as the Studio exports in: same origin as the page, location about:srcdoc. */
+async function srcdocBody(): Promise<HTMLElement> {
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "width:400px;height:200px;border:0";
+  frame.srcdoc = "<!doctype html><body style=margin:0></body>";
+  const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+  document.body.append(frame);
+  cleanups.push(() => frame.remove());
+  await loaded;
+  return (frame.contentDocument as Document).body;
 }
 
 /** Renders frames at 16 ms steps until `promise` settles (fades are driven by engine time). */
@@ -291,19 +309,35 @@ describe("stage: reveal semantics per kind", () => {
     );
   });
 
+  const spinFile = (): string => new URL(SPIN_SVG, location.href).href;
   it.each([
     // Served from the page's own origin, as the CLI serves the files next to a document.
-    { name: "SMIL in a same-origin .svg file", src: new URL(SPIN_SVG, location.href).href, x: 19.5 },
+    { name: "SMIL in a same-origin .svg file", src: spinFile, x: 19.5 },
     {
       name: "CSS keyframes in a data: URL",
-      src: `data:image/svg+xml,${encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>@keyframes m{to{transform:translateX(150px)}}' +
-          'rect{animation:m .83s linear infinite}</style><rect x="10" y="35" width="30" height="30" fill="#e33"/></svg>',
-      )}`,
+      src: () =>
+        `data:image/svg+xml,${encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>@keyframes m{to{transform:translateX(150px)}}' +
+            'rect{animation:m .83s linear infinite}</style><rect x="10" y="35" width="30" height="30" fill="#e33"/></svg>',
+        )}`,
       x: 24.5,
     },
-  ])("image: an animated SVG ($name) holds still once decoded, whatever the wall time", async ({ src, x }) => {
-    const { stage } = mount([{ id: "a", kind: "image", box: { x: 0, y: 0, w: 200, h: 100 }, src }]);
+    // The Studio's export frame: its location (about:srcdoc) has no origin, the document has the page's.
+    { name: "SMIL in a same-origin .svg file, staged in a srcdoc frame", src: spinFile, x: 19.5, srcdoc: true },
+    {
+      // A file opened in the Studio.
+      name: "SMIL in a blob: URL",
+      src: async () => {
+        const url = URL.createObjectURL(await (await fetch(SPIN_SVG)).blob());
+        cleanups.push(() => URL.revokeObjectURL(url));
+        return url;
+      },
+      x: 19.5,
+    },
+  ])("image: an animated SVG ($name) holds still once decoded, whatever the wall time", async ({ src, x, srcdoc }) => {
+    const parent = srcdoc ? await srcdocBody() : undefined;
+    const layer: Layer = { id: "a", kind: "image", box: { x: 0, y: 0, w: 200, h: 100 }, src: await src() };
+    const { stage } = mount([layer], { parent });
     // Shown, since an image nobody paints does not advance its animation.
     stage.reveal("a", 1);
     await stage.ready();
@@ -331,6 +365,52 @@ describe("stage: reveal semantics per kind", () => {
     expect(redX()).toBeCloseTo(x, 0);
   });
 
+  it.each([
+    { name: "data:", src: async () => GIF_RED_BLUE },
+    {
+      name: "blob:",
+      src: async () => {
+        const url = URL.createObjectURL(await (await fetch(GIF_RED_BLUE)).blob());
+        cleanups.push(() => URL.revokeObjectURL(url));
+        return url;
+      },
+    },
+  ])("image: an animated GIF ($name URL) shows its first frame as a still copy", async ({ src }) => {
+    const { stage } = mount([{ id: "g", kind: "image", box: { x: 0, y: 0, w: 40, h: 40 }, src: await src() }]);
+    stage.reveal("g", 1);
+    await stage.ready();
+    const img = (stage.el("g") as HTMLElement).querySelector("img") as HTMLImageElement;
+    // One frame: nothing left for the wall clock to play.
+    expect(animatedBitmapType(new Uint8Array(await (await fetch(img.src)).arrayBuffer()))).toBeNull();
+    const g = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    g?.drawImage(img, 0, 0);
+    expect(Array.from(g?.getImageData(0, 0, 1, 1).data ?? [])).toEqual([255, 0, 0, 255]);
+  });
+
+  it.each<{ name: string; layer: Layer }>([
+    {
+      name: "an icon in a line of text",
+      layer: {
+        id: "g",
+        kind: "text",
+        box: { x: 0, y: 0, w: 200, h: 20 },
+        html: `Status <img src="${GIF_RED_BLUE}" width="18" height="18"> online`,
+        text: "Status online",
+        style: {},
+      },
+    },
+    {
+      name: "a media snapshot",
+      layer: { id: "g", kind: "media", box: { x: 0, y: 0, w: 40, h: 40 }, label: "", src: GIF_RED_BLUE },
+    },
+  ])("$name: an animated GIF shows its first frame as a still copy", async ({ layer }) => {
+    const { stage } = mount([layer]);
+    stage.reveal("g", 1);
+    await stage.ready();
+    const img = (stage.el("g") as HTMLElement).querySelector("img") as HTMLImageElement;
+    expect(animatedBitmapType(new Uint8Array(await (await fetch(img.src)).arrayBuffer()))).toBeNull();
+  });
+
   it("media: labelled placeholder that fades in", () => {
     const { stage } = mount([{ id: "m", kind: "media", box: { x: 0, y: 0, w: 320, h: 180 }, label: "Video" }]);
     const el = stage.el("m") as HTMLElement;
@@ -339,6 +419,38 @@ describe("stage: reveal semantics per kind", () => {
     expect(ph.textContent).toBe("Video");
     stage.reveal("m", 0.5);
     expect(Number(css(el.parentElement as HTMLElement).opacity)).toBeCloseTo(0.5, 2);
+  });
+
+  it("CSS images: an animated GIF background (box, inline text style, page) shows its first frame", async () => {
+    const bg = `url(${GIF_RED_BLUE}) 0 0/100% 100%`;
+    const layers: Layer[] = [
+      { id: "b", kind: "box", box: { x: 0, y: 0, w: 40, h: 40 }, style: { background: bg } },
+      {
+        id: "t",
+        kind: "text",
+        box: { x: 0, y: 60, w: 200, h: 20 },
+        html: `<span style="background:${bg}">GIF</span>`,
+        text: "GIF",
+        style: {},
+      },
+    ];
+    const { stage } = mount(layers, { blueprint: { ...blueprint(layers), background: bg } });
+    stage.reveal("b", 1);
+    stage.reveal("t", 1);
+    await stage.ready();
+    const painted = [
+      stage.el("b") as HTMLElement,
+      (stage.el("t") as HTMLElement).querySelector("span") as HTMLElement,
+      stage.root.querySelector(".scroller") as HTMLElement,
+    ];
+    const seen = await Promise.all(
+      painted.map(async (el) => {
+        const url = /^url\("(.+)"\)$/.exec(el.style.backgroundImage)?.[1] ?? "";
+        // One frame: nothing left for the wall clock to play.
+        return [url.slice(0, 22), animatedBitmapType(new Uint8Array(await (await fetch(url)).arrayBuffer()))];
+      }),
+    );
+    expect(seen).toEqual(Array(3).fill(["data:image/png;base64,", null]));
   });
 
   it("custom: plugin renderer and setup/cleanup lifecycle", () => {
@@ -431,6 +543,34 @@ describe("stage: reveal semantics per kind", () => {
     });
   });
 
+  it("text: a caret read without a read phase takes every pending text along (seek frames)", () => {
+    const text = "Typed while another agent starts on the next line.";
+    const layer = (id: string, y: number): Layer => ({
+      id,
+      kind: "text",
+      box: { x: 40, y, w: 400, h: 40 },
+      html: `<span>${text}</span>`,
+      text,
+      style: { "font-size": "16px", "line-height": "20px" },
+    });
+    const { stage } = mount([layer("a", 40), layer("b", 120)]);
+    stage.prefetch?.("a");
+    stage.prefetch?.("b");
+    stage.reveal("a", 0.5);
+    // No read phase ran: this read forces a layout, and b's first block is read under it.
+    stage.caretAt("a", 25);
+    stage.reveal("a", 0.6);
+    const range = vi.spyOn(Range.prototype, "getClientRects");
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    const caret = stage.caretAt("b", 0);
+    const reads = range.mock.calls.length + rect.mock.calls.length;
+    range.mockRestore();
+    rect.mockRestore();
+    // Another read here would force a second layout after a's write.
+    expect(reads).toBe(0);
+    expect(caret.y).toBeGreaterThanOrEqual(120);
+  });
+
   it("transient styles apply and finish() clears them", () => {
     const { stage } = mount([
       { id: "t", kind: "text", box: { x: 0, y: 0, w: 200, h: 30 }, html: "Title", text: "Title", style: {} },
@@ -509,15 +649,19 @@ describe("stage: virtualization", () => {
     h.engine.destroy();
   });
 
-  it("reports user scrolls but not programmatic ones", async () => {
+  it("reports user scrolls but not programmatic ones, whose exact offset it keeps", async () => {
     const layers: Layer[] = [{ id: "b", kind: "box", box: { x: 0, y: 0, w: 100, h: 100 }, style: {} }];
     const { stage } = mount(layers, { size: { w: 800, h: 5000 } });
     const seen: number[] = [];
     stage.onUserScroll((y) => seen.push(y));
     const scroller = stage.root.querySelector(".scroller") as HTMLElement;
-    stage.scrollTo(400);
+    stage.scrollTo(400.37);
+    const y = stage.scrollY;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     expect(seen).toEqual([]);
+    // The browser snaps the offset it was given; whether its scroll event comes before the next
+    // frame must not move what the overlay draws, or a render depends on wall-clock timing.
+    expect(stage.scrollY).toBe(y);
     scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 100 }));
     scroller.scrollTop = 900;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));

@@ -1,6 +1,8 @@
 import type { CSSMap, Point, TextLayer } from "../../types";
 import { applyLayerStyle } from "../sanitize";
 import { clamp01, contentDiv, type LayerView, type MountEnv, Shell, Transient } from "./common";
+import { holdAllCssImages } from "./still-css";
+import { showStill } from "./still-image";
 import { TextIndex, type TextRun } from "./typing";
 
 const BLOCK = 64;
@@ -31,6 +33,11 @@ class CaretCache {
 
   invalidate(): void {
     this.#blocks.clear();
+  }
+
+  /** True when the block of boundary `u` is measured for geometry `gen`: get() reads no layout. */
+  has(u: number, gen: number): boolean {
+    return gen === this.#gen && this.#blocks.has(Math.floor(u / BLOCK));
   }
 
   get(index: TextIndex, root: HTMLElement, u: number, gen: number, scale: number): Point | null {
@@ -126,10 +133,35 @@ function measureBlock(index: TextIndex, root: HTMLElement, from: number, scale: 
 }
 
 /**
+ * Inline images of a text layer (icons kept in a line of text) show still copies, as image layers
+ * do (see still-image.ts). Returns the layer's decode(): settles once every swap is done and every
+ * image decoded (once: the images do not change after that), or null when the text has no images.
+ */
+function holdInlineImages(root: HTMLElement, doc: Document, gone: () => boolean): (() => Promise<void>) | null {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  if (imgs.length === 0) return null;
+  const stills = imgs.map((img) => {
+    const src = img.getAttribute("src");
+    return src ? showStill(img, src, doc, gone) : null;
+  });
+  let settled: Promise<void> | null = null;
+  return () => {
+    settled ??= Promise.all(
+      imgs.map((img, i) =>
+        Promise.resolve(stills[i])
+          .then(() => img.decode())
+          .catch(() => undefined),
+      ),
+    ).then(() => undefined);
+    return settled;
+  };
+}
+
+/**
  * Text block. Reveal kinds: "type" (default; characters appear in place without reflow), "fade",
  * "stamp" (quick scale-in), "none" (appears at once). A typed text measures its carets in the
  * stage's read phase ({@link LayerView.measure}): the block at the typed position, and the next
- * one near its end.
+ * one near its end. Animated CSS images (backgrounds, list markers) show still copies (see still-css.ts).
  */
 export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView {
   const shell = new Shell(env, layer, z);
@@ -137,6 +169,11 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
   applyLayerStyle(content, layer.style);
   content.append(env.html(layer.id, layer.html));
   env.inlineStyles(content);
+  let gone = false;
+  const decode = holdInlineImages(content, env.doc, () => gone);
+  // Inline elements carry their own backgrounds (style attributes) only when the markup names a url().
+  const styled = layer.html.includes("url(") ? content.querySelectorAll<HTMLElement>("[style]") : [];
+  const held = holdAllCssImages([content, ...styled], env.doc);
   shell.shell.append(content);
   const mode = layer.reveal === "fade" || layer.reveal === "stamp" || layer.reveal === "none" ? layer.reveal : "type";
   const transient = new Transient();
@@ -148,8 +185,10 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
   };
   /** Last reveal progress: where typing is, and so which caret block comes next. */
   let progress = 0;
+  /** Typing boundary of `units`, clamped to the text. */
+  const boundary = (units: number): number => Math.max(0, Math.min(getIndex().total, Math.round(units)));
 
-  return {
+  const view: LayerView = {
     outer: shell.outer,
     el: content,
     reveal(p) {
@@ -201,19 +240,24 @@ export function mountText(env: MountEnv, layer: TextLayer, z: number): LayerView
       return getIndex().total;
     },
     caret(units) {
-      const ix = getIndex();
-      const u = Math.max(0, Math.min(ix.total, Math.round(units)));
-      const local = carets.get(ix, content, u, env.geometryGen(), env.scale());
+      const local = carets.get(getIndex(), content, boundary(units), env.geometryGen(), env.scale());
       if (!local) return null;
       return { x: layer.box.x + local.x, y: layer.box.y + local.y };
+    },
+    caretReady(units) {
+      return carets.has(boundary(units), env.geometryGen());
     },
     measure() {
       if (mode !== "type" || !content.isConnected) return;
       const ix = getIndex();
       carets.prefetch(ix, content, Math.round(progress * ix.total), env.geometryGen(), env.scale());
     },
+    ...(decode ? { decode } : {}),
     destroy() {
+      gone = true;
       index = null;
     },
   };
+  if (held) view.decode = () => Promise.all([held, decode?.()]).then(() => undefined);
+  return view;
 }

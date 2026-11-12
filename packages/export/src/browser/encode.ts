@@ -1,18 +1,22 @@
 import {
   AudioBufferSource,
   type AudioCodec,
-  BufferTarget,
   canEncodeAudio,
   canEncodeVideo,
+  EncodedAudioPacketSource,
+  EncodedVideoPacketSource,
   Mp4OutputFormat,
+  NullTarget,
   Output,
   QUALITY_HIGH,
+  StreamTarget,
   type VideoCodec,
   VideoSample,
   VideoSampleSource,
   WebMOutputFormat,
 } from "mediabunny";
 import { frameMicros } from "./schedule";
+import { BlobSink, PART_BYTES, PacketSpool } from "./spool";
 
 /** Sample rate of the soundtrack (the CLI's WAV uses the same). */
 export const SAMPLE_RATE = 48_000;
@@ -90,16 +94,42 @@ export async function planEncoding(
 /** Fixed container date, so files carry no wall-clock metadata. */
 const CREATION_TIME = new Date(Date.UTC(2001, 0, 1));
 
+type Container = Mp4OutputFormat | WebMOutputFormat;
+
+/**
+ * The container of a plan. The file's MP4 reserves room for its index ahead of the media (fast start,
+ * like the CLI's `-movflags +faststart`) so the media can stream in behind it; the room is an upper
+ * bound from the packet counts (about 35 bytes per frame, 45 per audio packet) and what the index
+ * leaves over stays as a `free` box. The encoding passes write nowhere and only hand packets on.
+ */
+function containerFormat(plan: EncodingPlan, file: boolean): Container {
+  if (plan.container === "webm") return new WebMOutputFormat();
+  return new Mp4OutputFormat({ fastStart: file ? "reserve" : false });
+}
+
+async function cancelOutput(output: Output | null): Promise<void> {
+  if (!output || output.state === "canceled" || output.state === "finalized") return;
+  await output.cancel();
+}
+
 /**
  * One output file: raw RGBA frames in, an encoded MP4 or WebM out. Frames get exact timestamps
  * from their index (`round(n * 1e6 / fps)` microseconds); the soundtrack is one AudioBuffer added
  * after the frames, starting at 0.
+ *
+ * The video does not pile up in script memory however long it is: encoded frames wait in Blob parts
+ * ({@link PacketSpool}) rather than in the muxer, which would hold them until the soundtrack arrives
+ * to interleave it, and the file is written into Blob parts as it is muxed ({@link BlobSink}).
  */
 export class VideoFileWriter {
   readonly plan: EncodingPlan;
-  readonly #output: Output<Mp4OutputFormat | WebMOutputFormat, BufferTarget>;
+  /** Encodes the frames; its muxer writes nowhere, the packets go to {@link #frames}. */
+  readonly #encoder: Output<Container, NullTarget>;
   readonly #video: VideoSampleSource;
-  readonly #audio: AudioBufferSource | null;
+  readonly #frames = new PacketSpool<EncodedVideoChunkMetadata>();
+  #sound: PacketSpool<EncodedAudioChunkMetadata> | null = null;
+  #soundOutput: Output | null = null;
+  #muxer: Output | null = null;
   readonly #fps: number;
   readonly #width: number;
   readonly #height: number;
@@ -110,32 +140,39 @@ export class VideoFileWriter {
     this.#fps = fps;
     this.#width = width;
     this.#height = height;
-    const format = plan.container === "mp4" ? new Mp4OutputFormat({ fastStart: "in-memory" }) : new WebMOutputFormat();
-    this.#output = new Output({ format, target: new BufferTarget() });
-    this.#output.setMetadataTags({ creationTime: CREATION_TIME });
-    this.#video = new VideoSampleSource({ codec: plan.video, quality: QUALITY_HIGH, sizeChangeBehavior: "deny" });
-    this.#output.addVideoTrack(this.#video, { frameRate: fps });
-    this.#audio = plan.audio ? new AudioBufferSource({ codec: plan.audio, quality: QUALITY_HIGH }) : null;
-    if (this.#audio) this.#output.addAudioTrack(this.#audio);
+    this.#encoder = new Output({ format: containerFormat(plan, false), target: new NullTarget() });
+    this.#video = new VideoSampleSource({
+      codec: plan.video,
+      quality: QUALITY_HIGH,
+      sizeChangeBehavior: "deny",
+      onEncodedPacket: (packet, meta) => this.#frames.add(packet, meta),
+    });
+    this.#encoder.addVideoTrack(this.#video, { frameRate: fps });
   }
 
   async start(): Promise<void> {
     if (this.#started) return;
     this.#started = true;
-    await this.#output.start();
+    await this.#encoder.start();
   }
 
-  /** Encodes frame `index` from tightly packed RGBA pixels; resolves when the encoder can take more. */
-  async addFrame(index: number, rgba: Uint8ClampedArray): Promise<void> {
-    const timestamp = frameMicros(index, this.#fps);
-    const duration = frameMicros(index + 1, this.#fps) - timestamp;
-    const sample = new VideoSample(rgba, {
-      format: "RGBA",
-      codedWidth: this.#width,
-      codedHeight: this.#height,
-      timestamp: timestamp / 1e6,
-      duration: duration / 1e6,
-    });
+  /**
+   * Encodes frame `index` from tightly packed RGBA pixels or straight from a canvas of the video's
+   * size (no readback into script); resolves when the encoder can take more.
+   */
+  async addFrame(index: number, frame: Uint8ClampedArray | HTMLCanvasElement | OffscreenCanvas): Promise<void> {
+    const micros = frameMicros(index, this.#fps);
+    const timestamp = micros / 1e6;
+    const duration = (frameMicros(index + 1, this.#fps) - micros) / 1e6;
+    const sample = ArrayBuffer.isView(frame)
+      ? new VideoSample(frame, {
+          format: "RGBA",
+          codedWidth: this.#width,
+          codedHeight: this.#height,
+          timestamp,
+          duration,
+        })
+      : new VideoSample(frame, { timestamp, duration });
     try {
       await this.#video.add(sample);
     } finally {
@@ -143,24 +180,71 @@ export class VideoFileWriter {
     }
   }
 
-  /** Adds the soundtrack; only when the plan has an audio codec. */
+  /** Encodes the soundtrack; only when the plan has an audio codec. The buffer can go afterwards. */
   async addAudio(buffer: AudioBuffer): Promise<void> {
-    if (!this.#audio) return;
-    await this.#audio.add(buffer);
+    if (!this.plan.audio) return;
+    const sound = new PacketSpool<EncodedAudioChunkMetadata>();
+    const output = new Output({ format: containerFormat(this.plan, false), target: new NullTarget() });
+    this.#soundOutput = output;
+    const source = new AudioBufferSource({
+      codec: this.plan.audio,
+      quality: QUALITY_HIGH,
+      onEncodedPacket: (packet, meta) => sound.add(packet, meta),
+    });
+    output.addAudioTrack(source);
+    await output.start();
+    await source.add(buffer);
+    await output.finalize();
+    this.#sound = sound;
   }
 
   async finish(): Promise<Blob> {
     this.#video.close();
-    this.#audio?.close();
-    await this.#output.finalize();
-    const bytes = this.#output.target.buffer;
-    if (!bytes) throw new Error("The video file is empty");
-    return new Blob([bytes], { type: this.plan.mimeType });
+    await this.#encoder.finalize();
+    const sink = new BlobSink();
+    await this.#mux(new StreamTarget(sink.writable, { chunked: true, chunkSize: PART_BYTES }));
+    if (sink.size === 0) throw new Error("The video file is empty");
+    return sink.blob(this.plan.mimeType);
+  }
+
+  /** Writes the spooled packets into the file, by time, so the muxer's interleaving queue stays short. */
+  async #mux(target: StreamTarget): Promise<void> {
+    const output = new Output({ format: containerFormat(this.plan, true), target });
+    this.#muxer = output;
+    output.setMetadataTags({ creationTime: CREATION_TIME });
+    const video = new EncodedVideoPacketSource(this.plan.video);
+    output.addVideoTrack(video, { frameRate: this.#fps, maximumPacketCount: this.#frames.count });
+    const sound = this.#sound;
+    const audio = sound && this.plan.audio ? new EncodedAudioPacketSource(this.plan.audio) : null;
+    if (sound && audio) output.addAudioTrack(audio, { maximumPacketCount: sound.count });
+    await output.start();
+
+    const sounds = audio ? sound?.packets() : undefined;
+    let pending = await sounds?.next();
+    let firstSound = true;
+    const addSoundUntil = async (time: number) => {
+      while (audio && pending && !pending.done && pending.value.timestamp <= time) {
+        await audio.add(pending.value, firstSound ? sound?.meta : undefined);
+        firstSound = false;
+        pending = await sounds?.next();
+      }
+    };
+    let firstFrame = true;
+    for await (const packet of this.#frames.packets()) {
+      await addSoundUntil(packet.timestamp);
+      await video.add(packet, firstFrame ? this.#frames.meta : undefined);
+      firstFrame = false;
+    }
+    await addSoundUntil(Number.POSITIVE_INFINITY);
+    video.close();
+    audio?.close();
+    await output.finalize();
   }
 
   /** Stops encoding and drops what was written. */
   async cancel(): Promise<void> {
-    if (this.#output.state === "canceled" || this.#output.state === "finalized") return;
-    await this.#output.cancel();
+    await cancelOutput(this.#encoder);
+    await cancelOutput(this.#soundOutput);
+    await cancelOutput(this.#muxer);
   }
 }

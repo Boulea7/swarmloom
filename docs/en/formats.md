@@ -21,7 +21,7 @@ The snapshot reads geometry, computed styles, text, images and open shadow roots
 
 Video, WebGL canvases, cross-origin iframes and other regions that cannot be decomposed reliably use screenshots or labelled media placeholders. Complex scripts are not executed as part of the rebuild.
 
-An animated SVG image (an `<img>`, or an inline `<svg>` with SMIL) holds still in the rebuild: its SMIL animation is removed and its CSS animations stay on their first frame. An image runs them on the browser's own clock, so a video could not repeat them frame for frame. This covers SVG `data:` URLs and `.svg` files from the page's own origin. Cross-origin SVG files, icons inside a line of text and CSS backgrounds keep playing on their own.
+Animated images hold still in the rebuild. An animated SVG (an `<img>`, or an inline `<svg>` with SMIL) loses its SMIL animation and its CSS animations stay on their first frame; an animated GIF, APNG, WebP or AVIF shows its first frame. An image runs its animation on the browser's own clock, so a video could not repeat it frame for frame. This covers `data:` URLs, and image files and `blob:` URLs from the page's own origin, including icons inside a line of text, video posters and CSS background images (masks and list markers too); once a CLI render goes live, animated `<img>` elements and the CSS background images of elements on the real page also hold their first frame (not those of pseudo-elements). Cross-origin image files keep playing on their own.
 
 This is a visual snapshot at one point in time, not a clone of application state. Form state, network state and event logic are not replayed. **Go live** returns to the original page.
 
@@ -77,13 +77,13 @@ Scanned pages and outlined text have no text items, so they reveal by region or 
 
 A pen cursor places anchors, pulls curves and traces strokes, followed by fills, gradients and text. `<use>` instances can appear as duplicates. Groups and paint order are preserved in the Blueprint. A drawing that would be taller than a 16:9 frame at full width is fitted whole into the frame, so logos, badges and square charts finish fully in view; clearly portrait drawings (a long flow chart) keep the full width and scroll along with the build.
 
-SMIL-animated SVG (`animate`, `animateTransform`, `animateMotion`, `set`, `mpath`) is first rebuilt as a static drawing. Once the weave is done, the animated drawing fades in and plays from 0 s; it follows player time while building, so exported videos stay frame-exact, and runs on its own clock after go live. CSS animation inside an SVG is not replayed yet (the first frame is shown). When the host registers the keyframe timeline plugin (`anim:timeline`), a timeline bar with the keyframes is built under the drawing before the animation plays. `href` may only point to `#fragment` targets inside the document. Scripts, external resources and interaction handlers are never executed.
+SMIL-animated SVG (`animate`, `animateTransform`, `animateMotion`, `set`, `mpath`) is first rebuilt as a static drawing. Once the weave is done, the animated drawing fades in and plays from 0 s; it follows player time while building, so exported videos stay frame-exact, and runs on its own clock after go live. CSS animations and transitions inside such a drawing follow the same timeline: they hold at 0 s until the replay starts and are seeked with it. An SVG animated only with CSS (no SMIL) is not replayed yet and shows its first frame. When the host registers the keyframe timeline plugin (`anim:timeline`), a timeline bar with the keyframes is built under the drawing before the animation plays. `href` may only point to `#fragment` targets inside the document. Scripts, external resources and interaction handlers are never executed.
 
 ## Slides
 
 **Extension:** `.pptx` (`.odp` opens with the OpenDocument reader)
 
-Each slide becomes a 16:9 page on the stage. The reader takes the slide, its layout and master, and the theme into account: backgrounds, preset and custom shapes with fills, outlines and shadows, text with bullets, numbering and placeholder inheritance, cropped pictures and simple tables.
+Each slide becomes a page on the stage with the presentation's own slide size, so 16:9, 4:3 and custom sizes keep their proportions. The reader takes the slide, its layout and master, and the theme into account: backgrounds, preset and custom shapes with fills, outlines and shadows, text with bullets, numbering and placeholder inheritance, cropped pictures and simple tables.
 
 PPTX is the main parsing target. Legacy `.ppt` is not supported yet: opening one asks you to save it as `.pptx` or PDF. Charts, SmartArt, video and other embedded objects appear as labelled placeholders, and original PowerPoint animation is not replayed.
 
@@ -112,7 +112,7 @@ Source code is treated as text and never executed. Plain text has no reliable fo
 | Format | Extensions | Rebuild |
 | --- | --- | --- |
 | EPUB | `.epub` | Turns the cover and chapters into safe pages in spine order |
-| OpenDocument | `.odt`, `.ods`, `.odp`, `.odg` and corresponding Flat XML | Rebuilds text, sheets, slides and drawings without recalculating formulas |
+| OpenDocument | `.odt`, `.ods`, `.odp`, `.odg`; templates `.ott`, `.ots`, `.otp`; Flat XML `.fodt`, `.fods`, `.fodp`, `.fodg` | Rebuilds text, sheets, slides and drawings without recalculating formulas |
 | RTF | `.rtf` | Lays out paragraphs, character styles, tables and pictures as pages |
 | OFD | `.ofd` | Rebuilds fixed-layout text, paths and images page by page without verifying signatures |
 | Jupyter notebook | `.ipynb` | Rebuilds Markdown, code and output cells in order without a live kernel; Markdown cells use the Markdown adapter's renderer, formulas stay as TeX source |
@@ -151,4 +151,4 @@ The CLI's `render` command writes these formats (`swarmloom doctor` shows which 
 | Animated WebP | Smaller web animation | No |
 | PNG sequence | Editing, compositing and frame validation | Separate WAV |
 
-Studio live recording and CLI frame-by-frame export are different pipelines. Use the CLI for reproducible output and fix the seed, viewport, frame rate, theme and dependency versions.
+Studio's in-browser export runs the same render page and virtual clock as the CLI and writes MP4 (or WebM when the browser has no H.264 encoder). It draws frames from an SVG snapshot instead of a screenshot, so a few styles can differ; see [Studio](./studio#export-and-sharing). Use the CLI for the other formats and for reference output, and fix the seed, viewport, frame rate, theme and dependency versions.

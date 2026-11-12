@@ -4,7 +4,7 @@ import { extractAnchors } from "../src/path/anchors";
 import { pathBounds, serializePath, transformSegments } from "../src/path/geometry";
 import { parsePathData } from "../src/path/parse";
 import { parsePoints, rectSegments } from "../src/path/shapes";
-import { sanitizeCss, sanitizeSvgTree } from "../src/sanitize";
+import { decodeCssEscapes, sanitizeCss, sanitizeSvgTree } from "../src/sanitize";
 import { looksLikeSvg } from "../src/source";
 import { stageSize } from "../src/units";
 
@@ -111,6 +111,14 @@ describe("sanitizing helpers", () => {
     expect(css).toContain("c{x:none}");
     expect(css).toContain("url(#g)");
     expect(css).toContain('url("data:image/png;base64,AA")');
+  });
+
+  it("writes CSS that stays safe when the browser decodes its escapes again", () => {
+    // An escaped backslash survives one decode as `\75rl(`, which the browser then reads as url(.
+    const css = sanitizeCss(
+      "a{fill:\\\\75rl(https://evil.test/a.svg#p)} b{fill:\\5c 75rl(//evil.test/b)} @\\\\69mport 'x.css'; c{mask:\\\\69mage-set('d.png' 1x)}",
+    );
+    expect(decodeCssEscapes(css)).not.toMatch(/url\(|@import|image-set\(/i);
   });
 
   it("drops href animations whatever prefix binds the xlink namespace", () => {

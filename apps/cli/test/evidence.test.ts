@@ -1,5 +1,7 @@
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import { renderPathArgs } from "../src/commands/render";
 import { buildManifest, cueFrame, eventsDocument, type ManifestInput, sha256Hex } from "../src/pipeline/evidence";
 
 const events = [
@@ -10,6 +12,8 @@ const events = [
 const manifestInput: ManifestInput = {
   tool: { name: "swarmloom", version: "0.1.0" },
   argv: ["render", "a.svg", "--seed", "7"],
+  pathArgs: [],
+  cwd: path.resolve("/w"),
   manifestFile: path.resolve("/w/takes/m.json"),
   input: { arg: "a.svg", kind: "file", name: "a.svg", format: "svg", sha256: "ab", bytes: 2 },
   info: { estimatedMs: 900, layers: 3, blueprintSha256: "c".repeat(64) },
@@ -87,5 +91,27 @@ describe("capture evidence", () => {
       outputs: { video: { path: "../take.mp4", sha256: "cd" } },
     });
     expect(JSON.stringify(m)).not.toMatch(/alice|s3cret|Signature/);
+  });
+
+  it("records file arguments relative to the manifest and programs by name, absolute paths included", () => {
+    const work = path.resolve("/home/alice/work");
+    const at = (file: string) => path.join(work, file);
+    const argv = [at("take.svg"), "-f", "png-seq", `-o${at("frames")}`, "--events-out", "ev/e.json"];
+    argv.push(`--manifest-out=${at("takes/m.json")}`, "--chrome", path.resolve("/home/alice/bin/chromium"));
+    const m = buildManifest({
+      ...manifestInput,
+      argv: ["render", ...argv, "--seed", "7"],
+      pathArgs: renderPathArgs([...argv, "--seed", "7"]),
+      cwd: work,
+      manifestFile: at("takes/m.json"),
+      input: { ...manifestInput.input, arg: pathToFileURL(at("take.svg")).href },
+    });
+    // Inside the manifest's folder or above it: relative; elsewhere (ev/, bin/): the name alone.
+    const shared = ["../take.svg", "-f", "png-seq", "-o../frames", "--events-out", "e.json", "--manifest-out=m.json"];
+    expect(m).toMatchObject({
+      argv: ["render", ...shared, "--chrome", "chromium", "--seed", "7"],
+      input: { arg: "../take.svg" },
+    });
+    expect(JSON.stringify(m)).not.toMatch(/alice/);
   });
 });

@@ -1,7 +1,8 @@
 /**
- * Live recording of an element in the browser (Studio's Export button): Element Capture or Region
- * Capture crops a capture of the current tab to the element, MediaRecorder encodes it, and WebAudio
- * is mixed in. This is a real-time recording, not the frame-exact CLI export.
+ * Live recording of an element in the browser: Element Capture or Region Capture crops a capture of
+ * the current tab to the element, MediaRecorder encodes it, and WebAudio is mixed in. This is a
+ * real-time recording, not the frame-exact export of the CLI or of `@swarmloom/export/browser`
+ * (which Studio's Export dialog uses).
  */
 
 export interface RecordOptions {

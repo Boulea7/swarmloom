@@ -22,10 +22,11 @@ Common commands:
 | `pnpm dev:studio`   | Start the Studio development server |
 | `pnpm test`         | Run unit tests                      |
 | `pnpm test:browser` | Run browser tests                   |
+| `pnpm test:firefox` | Run export tests in Firefox         |
 | `pnpm test:e2e`     | Run end-to-end tests (extension)    |
 | `pnpm lint`         | Run lint checks                     |
 
-Browser tests require a working Chromium installation. Follow the repository test configuration to install or select the browser. Before submitting, run at least the tests directly related to your change and `pnpm lint`.
+Browser tests require a working Chromium installation. Follow the repository test configuration to install or select the browser. `pnpm test:firefox` runs the tests of the in-browser exporter and its frame rasteriser in Firefox; it needs Playwright's Firefox (`pnpm exec playwright install firefox`) or one set with `SWARMLOOM_FIREFOX`. Before submitting, run at least the tests directly related to your change and `pnpm lint`.
 
 The CLI's real render tests (`apps/cli/test/render.test.ts`, `snapshot.test.ts`) also need Chrome, ffmpeg and the render page from `pnpm build`. Without them they skip and say why; under CI they fail instead (a job that does not provide them sets `SWARMLOOM_TEST_DEPS=optional`). A `SWARMLOOM_CHROME` or `SWARMLOOM_FFMPEG` that points at a wrong path always fails them.
 

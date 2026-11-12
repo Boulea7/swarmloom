@@ -269,8 +269,8 @@ Für faltbare Geräte ist nichts zusätzlich erforderlich: Unterstützt der Brow
 
 ## Roadmap
 
-- **Jetzt**: Studio online, Webseiten plus 20 Dateiformate, CLI-Export Bild für Bild sowie aus dem Quellcode erstellbare Erweiterungen für Chrome / Edge / Firefox / Safari.
-- **Als Nächstes**: das erste GitHub Release und npm-Pakete, Store-Einträge und signierte Erweiterungen, Videoexport direkt in Studio sowie Tests auf Smartphones und Safari-Geräten.
+- **Jetzt**: Studio online, Webseiten plus 20 Dateiformate, Videoexport Bild für Bild per CLI oder direkt in Studio sowie aus dem Quellcode erstellbare Erweiterungen für Chrome / Edge / Firefox / Safari.
+- **Als Nächstes**: das erste GitHub Release und npm-Pakete, Store-Einträge und signierte Erweiterungen sowie Tests auf Smartphones und Safari-Geräten.
 - **Später**: weitere Formate und Plattformen, ohne feste Terminzusagen. Teile deine Ideen in [Ideas](https://github.com/Boulea7/swarmloom/discussions/categories/ideas).
 
 ## Mitwirken und Support

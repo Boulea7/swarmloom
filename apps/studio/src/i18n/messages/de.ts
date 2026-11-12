@@ -58,6 +58,40 @@ export const de: StudioCatalog = {
   "player.notes": "Mit einigen Änderungen dargestellt: {notes}",
   "player.fonts": "Auf diesem Gerät fehlende Schriften werden durch ähnliche ersetzt: {fonts}.",
   "player.fonts.more": "{count} weitere",
+  "note.lottie.noManifest": "Die .lottie-Datei hat kein Manifest, daher wird ihre erste Animation gezeigt.",
+  "note.lottie.animations": "Diese .lottie-Datei enthält {count} Animationen; „{name}“ wird gezeigt.",
+  "note.lottie.imageFormat": {
+    one: "{count} Bild in einem nicht unterstützten Format wurde ausgelassen.",
+    other: "{count} Bilder in einem nicht unterstützten Format wurden ausgelassen.",
+  },
+  "note.lottie.imageExternal": {
+    one: "{count} Bild ist nicht in die Datei eingebettet und wurde ausgelassen.",
+    other: "{count} Bilder sind nicht in die Datei eingebettet und wurden ausgelassen.",
+  },
+  "note.lottie.footage": {
+    one: "{count} Audio- oder Daten-Asset wurde entfernt.",
+    other: "{count} Audio- oder Daten-Assets wurden entfernt.",
+  },
+  "note.lottie.duplicate": {
+    one: "{count} Asset mit der ID eines früheren Assets wurde entfernt.",
+    other: "{count} Assets mit der ID eines früheren Assets wurden entfernt.",
+  },
+  "note.lottie.slots": {
+    one: "{count} Bild-Slot wurde entfernt; die Bilder der Datei werden gezeigt.",
+    other: "{count} Bild-Slots wurden entfernt; die Bilder der Datei werden gezeigt.",
+  },
+  "note.lottie.fontList": "Eine beschädigte Schriftliste wurde entfernt.",
+  "note.lottie.webFonts": {
+    one: "{count} Webschrift wurde durch eine installierte Schrift ersetzt.",
+    other: "{count} Webschriften wurden durch installierte Schriften ersetzt.",
+  },
+  "note.lottie.textOrder": "Text-Animatoren mit zufälliger Buchstabenreihenfolge laufen in fester Reihenfolge.",
+  "note.lottie.audioLayers": "Audioebenen werden nicht abgespielt.",
+  "note.lottie.dataLayers": "Datenebenen werden nicht abgespielt.",
+  "note.lottie.expressions": {
+    one: "{count} Expression wurde ignoriert; ihre Eigenschaft behält die Keyframe-Werte.",
+    other: "{count} Expressions wurden ignoriert; ihre Eigenschaften behalten die Keyframe-Werte.",
+  },
   "player.dismiss": "Schließen",
   "player.retry": "Erneut versuchen",
   "player.home": "Zurück zu Studio",
@@ -158,10 +192,16 @@ export const de: StudioCatalog = {
   "export.web.sound": "Ton wird hinzugefügt …",
   "export.web.finishing": "Datei wird fertiggestellt …",
   "export.web.ready": "Fertig: {time} lang, {size}.",
+  "export.web.blanks": {
+    one: "{count} Bild oder Schrift konnte nicht gelesen werden und fehlt im Video.",
+    other: "{count} Bilder oder Schriften konnten nicht gelesen werden und fehlen im Video.",
+  },
   "export.web.silent": "Dieser Browser kann keinen Ton kodieren, daher ist das Video stumm.",
   "export.web.partial": "Das Video endet nach 10 Minuten.",
   "export.web.cancelled": "Export abgebrochen.",
   "export.web.failed": "Export fehlgeschlagen: {message}",
+  "export.web.loadFailed":
+    "Der Exporter konnte nicht geladen werden. Prüfe die Verbindung, lade die Seite neu und versuche es erneut.",
   "export.web.noCodec":
     "Dieser Browser kann Video in dieser Größe nicht kodieren. Wähle eine kleinere Größe oder die Kommandozeile.",
   "export.cli.title": "Mit der Kommandozeile rendern",
@@ -170,7 +210,9 @@ export const de: StudioCatalog = {
   "export.cli.format": "Format",
   "export.cli.copy": "Befehl kopieren",
   "export.cli.copied": "Kopiert",
-  "export.cli.save": "Speichere den eingefügten Inhalt zuerst als {name}.",
+  "export.cli.save": "Speichere diesen Inhalt als {name} und führe den Befehl in diesem Ordner aus.",
+  "export.cli.folder": "Führe den Befehl in dem Ordner aus, in dem {name} liegt.",
+  "export.cli.rename": "Speichere eine Kopie von {file} als {name} und führe den Befehl in diesem Ordner aus.",
   "export.cli.download":
     "Dieser Link lässt sich nicht sicher in ein Terminal einfügen. Lade ihn zuerst als {name} herunter.",
 
@@ -215,5 +257,6 @@ export const de: StudioCatalog = {
   "theme.label": "Design: {theme}",
   "update.ready": "Eine neue Version von Studio ist bereit.",
   "update.reload": "Neu laden",
+  "launch.ready": "{name} kann jetzt geöffnet werden.",
   "offline.ready": "Studio funktioniert jetzt auch offline.",
 };

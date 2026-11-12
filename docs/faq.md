@@ -92,9 +92,9 @@ SwarmLoom 只读取这一个文件，不加载配套文件：引用外部 `.bin`
 
 提高速度只缩短时长，不一定降低每帧开销。
 
-### 浏览器里没有导出按钮或录制失败？
+### 导出只给出命令，或者导出失败？
 
-浏览器可能不支持 Region Capture 或所需的 MediaRecorder 能力。使用 Studio 给出的 CLI 命令，不要依赖截图拼视频。
+“在浏览器里导出”需要 WebCodecs（`VideoEncoder` 和 `VideoFrame`）。没有时，对话框只显示等价的 CLI 命令。有 WebCodecs 但在所选尺寸下不能编码 H.264 或 VP9 时，对话框会说明；换小一点的尺寸，或使用命令。浏览器不能编码 AAC 或 Opus 时，视频不带声音，对话框也会说明。其他失败请运行同一对话框里给出的 CLI 命令。
 
 ### CLI 找不到 Chrome 或 ffmpeg？
 

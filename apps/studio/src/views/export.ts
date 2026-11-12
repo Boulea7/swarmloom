@@ -4,13 +4,15 @@ import {
   canEncodeInBrowser,
   clockOf,
   EXPORT_FPS,
+  EXPORT_MAX_SECONDS,
   type ExportFps,
   exportFileName,
   exportSettingsOf,
   renderInputOf,
 } from "../export/browser";
-import { buildCliCommand, FRAME_PRESETS, VIDEO_FORMATS, type VideoFormat } from "../export/cli";
+import { buildCliCommand, cliHint, FRAME_PRESETS, VIDEO_FORMATS, type VideoFormat } from "../export/cli";
 import type { BrowserExporter } from "../services";
+import type { StudioSettings } from "../settings";
 import type { OpenedSource } from "../source";
 import { button, nextId, segmented, select, toggle } from "../ui/controls";
 import { createPanel, type Panel } from "../ui/dialog";
@@ -20,6 +22,11 @@ import { icon } from "../ui/icons";
 export interface ExportDeps {
   ctx: AppContext;
   opened: () => OpenedSource | null;
+  /**
+   * Settings the preview plays with (a share link's seed, speed and the like included), so the
+   * video and the command make the same performance. Not `ctx.settings`, the user's saved ones.
+   */
+  settings: () => StudioSettings;
 }
 
 export interface Exporter {
@@ -40,6 +47,8 @@ interface ExportFile {
   durationMs: number;
   /** Sound was asked for but the browser could not encode it. */
   silent: boolean;
+  /** Images or fonts the frame could not read (another site without CORS): blank in the video. */
+  blanks: number;
   /** The build ran longer than the export allows; the video stops there. */
   partial: boolean;
 }
@@ -61,13 +70,23 @@ interface ExportUi {
 /** Shortest gap between two status line updates, so screen readers are not flooded. */
 const STATUS_INTERVAL = 1000;
 
+/** Settles as `work` does, or rejects with the signal's reason as soon as it aborts. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 /**
  * Export dialog: a frame-exact export in this page (WebCodecs and Mediabunny, loaded when the
  * dialog first opens) and the `npx swarmloom render` command that makes the same file. Browsers
  * without WebCodecs get the command only.
  */
 export function createExporter(deps: ExportDeps): Exporter {
-  const { ctx } = deps;
+  const { ctx, settings } = deps;
   let format: VideoFormat = "mp4";
   let preset = FRAME_PRESETS[0] ?? { id: "720p", width: 1280, height: 720 };
   let fps: ExportFps = 30;
@@ -82,9 +101,12 @@ export function createExporter(deps: ExportDeps): Exporter {
   let exporterModule: Promise<BrowserExporter> | null = null;
 
   const supported = () => Boolean(ctx.services.loadExporter) && canEncodeInBrowser();
-  const soundOn = () => sound ?? ctx.settings.sound;
+  const soundOn = () => sound ?? settings().sound;
 
-  /** Loads the exporter once; a failed load (offline) is tried again next time. */
+  /**
+   * Loads the exporter once. A failed load (offline) is tried again next time, though Chromium
+   * keeps failing a module it could not fetch until the page reloads, hence `export.web.loadFailed`.
+   */
   const loadExporter = (): Promise<BrowserExporter> => {
     const load = ctx.services.loadExporter;
     if (!load) return Promise.reject(new Error("The exporter is not available"));
@@ -119,6 +141,7 @@ export function createExporter(deps: ExportDeps): Exporter {
     // Whole seconds, rounded: clockOf rounds up, which suits a countdown but not a length.
     const time = clockOf(Math.round(f.durationMs / 1000) * 1000);
     const parts = [i18n.t("export.web.ready", { time, size: formatSize(f.size, i18n.locale) })];
+    if (f.blanks > 0) parts.push(i18n.t("export.web.blanks", { count: f.blanks }));
     if (f.silent) parts.push(i18n.t("export.web.silent"));
     if (f.partial) parts.push(i18n.t("export.web.partial"));
     return parts.join(" ");
@@ -227,22 +250,22 @@ export function createExporter(deps: ExportDeps): Exporter {
       if (!opened) return;
       const cli = buildCliCommand({
         target: opened.cliTarget,
-        targetIsFile: opened.cliNeedsFile,
+        targetIsFile: opened.cliTargetKind !== "url",
         name: opened.name,
-        settings: ctx.settings,
+        settings: settings(),
         format,
         width: preset.width,
         height: preset.height,
         fps,
+        maxDuration: EXPORT_MAX_SECONDS,
         sound: soundOn(),
         scheme: ctx.scheme,
         locale: ctx.i18n.locale,
       });
       command.textContent = cli.text;
-      saveHint.hidden = cli.saveAs === undefined;
-      saveHint.textContent = cli.saveAs
-        ? i18n.t(opened.cliNeedsFile ? "export.cli.save" : "export.cli.download", { name: cli.saveAs })
-        : "";
+      const hint = cliHint(opened.cliTargetKind, opened.cliTarget, cli.saveAs);
+      saveHint.hidden = hint === null;
+      saveHint.textContent = hint ? i18n.t(hint.key, hint.vars) : "";
     };
     copyButton.addEventListener("click", async () => {
       try {
@@ -320,6 +343,15 @@ export function createExporter(deps: ExportDeps): Exporter {
     return ui.panel.isOpen && (!active || active === document.body || ui.panel.root.contains(active));
   };
 
+  /**
+   * True when focus is still on Cancel (or nowhere), so the result may take it. The run ends
+   * asynchronously: focus the user moved meanwhile (the command line, Close) stays where it is.
+   */
+  const focusIsOnRun = () => {
+    const active = document.activeElement;
+    return ui.panel.isOpen && (!active || active === document.body || active === ui.panel.root || active === ui.cancel);
+  };
+
   const clearFile = () => {
     if (file) URL.revokeObjectURL(file.url);
     file = null;
@@ -336,27 +368,41 @@ export function createExporter(deps: ExportDeps): Exporter {
     const moveFocus = focusIsOurs();
     render();
     if (moveFocus) ui.cancel?.focus();
+    const { signal } = controller;
+    const played = settings();
+    let exporter: BrowserExporter | null = null;
     let result: BrowserExportResult | null = null;
     try {
-      const exporter = await loadExporter();
-      controller.signal.throwIfAborted();
-      result = await exporter.exportVideo({
-        input: renderInputOf(opened, exporter.bytesToBase64),
-        width: preset.width,
-        height: preset.height,
-        fps,
-        settings: exportSettingsOf(ctx.settings, { sound: soundOn(), scheme: ctx.scheme, locale: ctx.i18n.locale }),
-        network: ctx.settings.remoteAssets ? "https" : "none",
-        signal: controller.signal,
-        onProgress: (p) => {
-          const phaseChanged = p.phase !== progress?.phase;
-          progress = p;
-          render(phaseChanged);
-        },
-      });
+      // Cancel answers at once, also while the exporter or the hidden frame still loads; the
+      // exporter notices the signal at its next step and cleans up after itself.
+      exporter = await untilAborted(loadExporter(), signal);
+      result = await untilAborted(
+        exporter.exportVideo({
+          input: renderInputOf(opened, exporter.bytesToBase64),
+          width: preset.width,
+          height: preset.height,
+          fps,
+          maxDurationMs: EXPORT_MAX_SECONDS * 1000,
+          settings: exportSettingsOf(played, { sound: soundOn(), scheme: ctx.scheme, locale: ctx.i18n.locale }),
+          network: played.remoteAssets ? "https" : "none",
+          signal,
+          onProgress: (p) => {
+            // A cancelled run may still report while it winds down; the dialog has moved on.
+            if (running !== controller) return;
+            const phaseChanged = p.phase !== progress?.phase;
+            progress = p;
+            render(phaseChanged);
+          },
+        }),
+        signal,
+      );
     } catch (error) {
-      if (controller.signal.aborted) note = () => ctx.i18n.t("export.web.cancelled");
-      else if ((error as { name?: string }).name === "UnsupportedExportError")
+      if (signal.aborted) note = () => ctx.i18n.t("export.web.cancelled");
+      else if (!exporter) {
+        // The browser's own message names the chunk URL in English; say what to do instead.
+        console.warn("[studio] exporter unavailable", error);
+        note = () => ctx.i18n.t("export.web.loadFailed");
+      } else if ((error as { name?: string }).name === "UnsupportedExportError")
         note = () => ctx.i18n.t("export.web.noCodec");
       else {
         console.warn("[studio] export failed", error);
@@ -369,16 +415,19 @@ export function createExporter(deps: ExportDeps): Exporter {
     running = null;
     progress = null;
     if (result) {
+      if (result.warnings.length > 0) console.warn("[studio] export warnings", result.warnings);
       file = {
         url: URL.createObjectURL(result.blob),
         name: exportFileName(opened.name, result.extension),
         size: result.blob.size,
         durationMs: result.durationMs,
         silent: result.soundUnsupported,
+        // Every warning but the silent-video one (reported once, as `silent`) is a resource left out.
+        blanks: Math.max(0, result.warnings.length - (result.soundUnsupported ? 1 : 0)),
         partial: !result.finished,
       };
     }
-    const refocus = focusIsOurs();
+    const refocus = focusIsOnRun();
     render();
     if (refocus) (file ? ui.download : ui.start)?.focus();
   };
@@ -390,7 +439,7 @@ export function createExporter(deps: ExportDeps): Exporter {
       return ui.panel;
     },
     open() {
-      if (sound === null && ui.soundSwitch) ui.soundSwitch.checked = ctx.settings.sound;
+      if (sound === null && ui.soundSwitch) ui.soundSwitch.checked = settings().sound;
       ui.renderCommand();
       render();
       ui.panel.open(true);

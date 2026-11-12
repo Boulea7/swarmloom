@@ -55,6 +55,21 @@ export const ja: StudioCatalog = {
   "player.notes": "一部を変更して表示しています：{notes}",
   "player.fonts": "この端末にないフォントは近いフォントで表示しています：{fonts}。",
   "player.fonts.more": "ほか {count} 件",
+  "note.lottie.noManifest": "この .lottie ファイルにはマニフェストがないため、最初のアニメーションを表示しています。",
+  "note.lottie.animations": "この .lottie ファイルには {count} 個のアニメーションがあり、「{name}」を表示しています。",
+  "note.lottie.imageFormat": { other: "対応していない形式の画像 {count} 件を省きました。" },
+  "note.lottie.imageExternal": { other: "ファイルに埋め込まれていない画像 {count} 件を省きました。" },
+  "note.lottie.footage": { other: "音声またはデータのアセット {count} 件を削除しました。" },
+  "note.lottie.duplicate": { other: "前のアセットと ID が重複するアセット {count} 件を削除しました。" },
+  "note.lottie.slots": { other: "画像スロット {count} 件を削除し、ファイル内の画像を表示しています。" },
+  "note.lottie.fontList": "壊れたフォントリストを削除しました。",
+  "note.lottie.webFonts": { other: "Web フォント {count} 件をインストール済みのフォントに置き換えました。" },
+  "note.lottie.textOrder": "文字順がランダムなテキストアニメーターは固定の順序で再生します。",
+  "note.lottie.audioLayers": "オーディオレイヤーは再生しません。",
+  "note.lottie.dataLayers": "データレイヤーは再生しません。",
+  "note.lottie.expressions": {
+    other: "エクスプレッション {count} 件を無視しました。該当するプロパティはキーフレームの値のままです。",
+  },
   "player.dismiss": "閉じる",
   "player.retry": "再試行",
   "player.home": "Studio に戻る",
@@ -155,10 +170,13 @@ export const ja: StudioCatalog = {
   "export.web.sound": "音を追加中…",
   "export.web.finishing": "ファイルを仕上げ中…",
   "export.web.ready": "完了: 長さ {time}、{size}。",
+  "export.web.blanks": { other: "{count} 件の画像またはフォントを読み込めなかったため、動画に含まれていません。" },
   "export.web.silent": "このブラウザは音をエンコードできないため、動画は無音です。",
   "export.web.partial": "動画は 10 分で終わります。",
   "export.web.cancelled": "書き出しをキャンセルしました。",
   "export.web.failed": "書き出しに失敗しました: {message}",
+  "export.web.loadFailed":
+    "書き出し機能を読み込めませんでした。接続を確認し、ページを再読み込みしてからもう一度お試しください。",
   "export.web.noCodec":
     "このブラウザはこのサイズの動画をエンコードできません。小さいサイズかコマンドラインを使ってください。",
   "export.cli.title": "コマンドラインでレンダリング",
@@ -167,7 +185,9 @@ export const ja: StudioCatalog = {
   "export.cli.format": "形式",
   "export.cli.copy": "コマンドをコピー",
   "export.cli.copied": "コピーしました",
-  "export.cli.save": "貼り付けた内容を先に {name} として保存してください。",
+  "export.cli.save": "この内容を {name} として保存し、そのフォルダーでコマンドを実行してください。",
+  "export.cli.folder": "{name} があるフォルダーでコマンドを実行してください。",
+  "export.cli.rename": "{file} のコピーを {name} として保存し、そのフォルダーでコマンドを実行してください。",
   "export.cli.download":
     "このリンクはそのままターミナルに貼り付けると安全ではありません。先に {name} としてダウンロードしてください。",
 
@@ -212,5 +232,6 @@ export const ja: StudioCatalog = {
   "theme.label": "テーマ: {theme}",
   "update.ready": "Studio の新しいバージョンがあります。",
   "update.reload": "再読み込み",
+  "launch.ready": "{name} を開けるようになりました。",
   "offline.ready": "Studio をオフラインで使えるようになりました。",
 };

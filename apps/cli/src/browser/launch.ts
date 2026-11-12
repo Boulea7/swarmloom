@@ -4,9 +4,11 @@ import type { CliIo } from "../io";
 
 /**
  * Flags for stable, repeatable frames: sRGB output, grayscale text antialiasing, no hinting
- * differences, no throttling of the (hidden) page, and SwiftShader as WebGL fallback on GPU-less hosts.
- * Frames are not paced to a 60 Hz display, so the few animation frames the render page waits for per
- * video frame (until the browser has rastered it) cost no more than their work.
+ * differences, no partial raster, no throttling of the (hidden) page, and SwiftShader as WebGL
+ * fallback on GPU-less hosts. Partial raster redraws only the changed part of a tile, so antialiased
+ * edges (rounded corners) came out one level apart depending on how many frames the browser drew
+ * between two captures. Frames are not paced to a 60 Hz display, so the few animation frames the
+ * render page waits for per video frame (until the browser has rastered it) cost no more than their work.
  */
 export const CHROME_ARGS = [
   "--hide-scrollbars",
@@ -14,6 +16,7 @@ export const CHROME_ARGS = [
   "--force-color-profile=srgb",
   "--disable-lcd-text",
   "--font-render-hinting=none",
+  "--disable-partial-raster",
   "--disable-background-timer-throttling",
   "--disable-renderer-backgrounding",
   "--disable-backgrounding-occluded-windows",
