@@ -133,3 +133,20 @@ it("paints the root's or body's background images over the whole canvas, placed 
     [255, 0, 0],
   ]);
 });
+
+it("keeps the native look of form controls and the UA's placeholder colour", async () => {
+  const { rasterizer } = await frameOf(
+    '<body style="margin:0"><progress value=1 style="display:block;width:100px"></progress>' +
+      '<input placeholder=MMMM style="display:block;border:0;padding:0;width:100px;font:bold 30px sans-serif">',
+  );
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  await rasterizer.draw(ctx);
+  const [, green = 0, blue = 0] = ctx.getImageData(50, 8, 1, 1).data;
+  const text = ctx.getImageData(0, 16, SIZE, 34).data.filter((_, i) => i % 4 === 0);
+  // A clone given the UA's border or background as author styles draws a green fallback bar, and a
+  // root clone's resolved text fill colour draws the placeholder black.
+  expect({ nativeBar: blue > 200 && green < 150, greyText: Math.min(...text) > 80 }).toEqual({
+    nativeBar: true,
+    greyText: true,
+  });
+});

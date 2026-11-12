@@ -1,7 +1,7 @@
 import { yieldTask } from "../schedule";
 import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
 import { BLANK_IMAGE, type ResourceCache } from "./resources";
-import { type InheritedValues, type StyleBaseline, styleText } from "./styles";
+import { type InheritedValues, nativeControl, type StyleBaseline, styleText } from "./styles";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -989,7 +989,9 @@ function* emitElement(
   }
   // An empty box away from the viewport shows nothing: only what sets its size and place counts.
   const props = hollow ? walk.baseline.layout : walk.baseline.props;
-  const { text: styleBody, inherited } = styleText(walk.baseline, cs, parent, override, props);
+  const control = svg || hollow ? null : nativeControl(walk.baseline, el, cs);
+  if (control?.scheme) override["color-scheme"] = control.scheme;
+  const { text: styleBody, inherited } = styleText(walk.baseline, cs, parent, override, props, control?.ua);
   if (!hollow) useFonts(walk, cs);
 
   let tag = svg || ns !== XHTML_NS ? local : local === "html" || local === "body" ? "div" : local;
@@ -1406,10 +1408,10 @@ async function walkFrame(
 /**
  * Serialises what the frame document shows into one SVG image: the flattened tree (shadow roots,
  * slots, same-origin frames) as XHTML in a `foreignObject`, every clone reset with `all: unset`
- * and given back the computed values that differ, the root's or body's background painted over
- * the whole canvas, and every resource (images, canvases, fonts) embedded as a data URL, since an
- * SVG image loads nothing else. Resources used more than once are embedded once for images and
- * once for CSS.
+ * (a native form control with `all: revert`) and given back the computed values that differ, the
+ * root's or body's background painted over the whole canvas, and every resource (images,
+ * canvases, fonts) embedded as a data URL, since an SVG image loads nothing else. Resources used
+ * more than once are embedded once for images and once for CSS.
  *
  * Only what can show is written: subtrees away from the viewport are left out (out of flow) or
  * written as empty boxes of their size (in flow), and boxes under a frame that covers the viewport
