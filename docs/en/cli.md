@@ -68,8 +68,8 @@ Render a file or web page to a video of the swarm building it, with sound by def
 | `--height <px>` | `720` | Viewport height in CSS px, 16–7680 |
 | `--scale <n>` | `1` | Pixels per CSS px; the video is width and height times this value, 0.25–4. Neither side may exceed 8192 px |
 | `--fps <n>` | `30` | Frames per second, 1–120; frame n shows `n * 1000 / fps` ms. The player always takes 120 steps a second, so rates that divide 120 (15, 24, 30, 60, ...) film the same build, only sampled more or less often; rates such as 25 or 50 give a slightly different build |
-| `--max-duration <s>` | `120` | Stop the video at this many seconds, 1–3600; warns when the build has not finished |
-| `--duration <s>` | Off | Exact video length, 0.1–3600 s: keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
+| `--max-duration <s>` | `120` | Stop the video at this many seconds, 1–3600 (at most 600 with sound); warns when the build has not finished |
+| `--duration <s>` | Off | Exact video length, 0.1–3600 s (at most 600 with sound): keeps capturing the finale and the finished page after the build, and cuts an unfinished build there; not together with `--max-duration` |
 
 Encodings: `mp4` is H.264 + AAC, `webm` is VP9 + Opus, `gif` and `webp` are silent animations. `png-seq` writes into a missing or empty directory, numbering frames from `frame-000001.png`, with the sound in `audio.wav` (not written with `--no-sound`).
 

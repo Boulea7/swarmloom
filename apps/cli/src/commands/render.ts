@@ -55,10 +55,10 @@ Output:
       --height <px>       Viewport height in CSS px (16-7680). Default: 720
       --scale <n>         Pixels per CSS px; the video is width*scale x height*scale (0.25-4). Default: 1
       --fps <n>           Frames per second (1-120). Default: 30
-      --max-duration <s>  Stop after this many seconds of video (1-3600). Default: 120
-      --duration <s>      Exact video length in seconds (0.1-3600): keeps capturing after the build
-                          (the finale, then the finished page) and cuts an unfinished build there.
-                          Replaces --max-duration
+      --max-duration <s>  Stop after this many seconds of video (1-3600; 600 with sound). Default: 120
+      --duration <s>      Exact video length in seconds (0.1-3600; 600 with sound): keeps capturing
+                          after the build (the finale, then the finished page) and cuts an unfinished
+                          build there. Replaces --max-duration
 
 Swarm:
       --agents <n|auto>   Number of cursors (1-256) or auto. Default: auto
@@ -142,6 +142,11 @@ const SPEED_RANGE = { min: 0.05, max: 16 } as const;
 const DEFAULT_TAIL_MS = 2500;
 /** --live-top adds the longest glide back to the top to the default tail, ms. */
 const LIVE_TOP_TAIL_MS = 1200;
+/**
+ * Longest video with sound, ms: the soundtrack is rendered in one piece, and core's renderOffline
+ * refuses more than 10 minutes (MAX_RENDER_MS) to bound its float buffer.
+ */
+const MAX_SOUND_MS = 600_000;
 
 const OPTIONS = {
   output: { type: "string", short: "o" },
@@ -284,6 +289,14 @@ export function parseRenderOptions(argv: string[], cwd: string): RenderOptions |
   const maxDurationMs = fixedLength
     ? readNumber("duration", values.duration, 0, { min: 0.1, max: 3600 }) * 1000
     : readNumber("max-duration", values["max-duration"], 120, { min: 1, max: 3600 }) * 1000;
+  // Checked here, not after minutes of capturing: the soundtrack is rendered after the last frame.
+  if (settings.sound && maxDurationMs > MAX_SOUND_MS) {
+    const flag = fixedLength ? "duration" : "max-duration";
+    throw new UsageError(
+      `--${flag} must be at most ${MAX_SOUND_MS / 1000} with sound (got "${values[flag]}")`,
+      "Add --no-sound, or use --format gif or webp, for a longer video.",
+    );
+  }
   const fps = readInt("fps", values.fps, 30, 1, 120);
   const cues = (values.cue ?? []).map((spec) => parseCue(spec, settings.bpm, fps));
   for (const cue of cues) {

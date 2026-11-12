@@ -91,6 +91,13 @@ describe("render options", () => {
     expect(parseRenderOptions(["a.md", "--live-top", "--tail", "1500"], cwd)).toMatchObject({
       settings: { tail: 1500 },
     });
+    // The soundtrack is what caps a video at 10 minutes; silent ones keep the full range.
+    expect(parseRenderOptions(["a.md", "--duration", "3600", "--no-sound"], cwd)).toMatchObject({
+      maxDurationMs: 3_600_000,
+    });
+    expect(parseRenderOptions(["a.md", "-f", "gif", "--max-duration", "3600"], cwd)).toMatchObject({
+      maxDurationMs: 3_600_000,
+    });
   });
 
   it.each([
@@ -121,6 +128,8 @@ describe("render options", () => {
     [["a.md", "--locale", "not a tag"], "--locale must be a BCP 47 language tag"],
     [["a.md", "b.md"], 'Unexpected argument "b.md"'],
     [["a.md", "--duration", "5", "--max-duration", "9"], "either --duration (exact length) or --max-duration"],
+    [["a.md", "--duration", "601"], '--duration must be at most 600 with sound (got "601")'],
+    [["a.md", "-o", "x.webm", "--max-duration", "3600"], "--max-duration must be at most 600 with sound"],
     [["a.md", "--duration", "4", "--cue", "8b:pause"], "counts beats, which needs --bpm"],
     [["a.md", "--duration", "4", "--bpm", "120", "--cue", "8b:pause"], "at or after the end of the video"],
     [["a.md", "--cue", "3:rewind"], "--cue must look like <time>:<action>"],
