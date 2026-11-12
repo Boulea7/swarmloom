@@ -70,21 +70,16 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       # --with-deps goes through the Ubuntu apt mirrors, whose DNS has failed for hours at a time.
-      # The runner image already carries Chrome's and Firefox's shared libraries, so then install those two alone;
-      # WebKit's (GStreamer, libmanette, ...) are not on the image, so its tests skip with a warning.
-      - name: Install Chromium, Firefox and WebKit
-        id: browsers
+      # The runner image already carries Chrome's and Firefox's shared libraries, so then install the browsers alone.
+      - name: Install Chromium and Firefox
         run: |
-          timeout 360 pnpm exec playwright install --with-deps chromium firefox webkit && exit 0
-          echo "::warning::apt mirrors unreachable, installing Chromium and Firefox without their system packages; the WebKit tests skip"
-          echo "webkit=skip" >> "$GITHUB_OUTPUT"
+          timeout 240 pnpm exec playwright install --with-deps chromium firefox && exit 0
+          echo "::warning::apt mirrors unreachable, installing the browsers without their system packages"
           pnpm exec playwright install chromium firefox
       - run: pnpm test:browser
-      # The in-browser exporter, the stage and the live page in Firefox and WebKit (Safari's engine) too: their
-      # foreignObject rasterising, native controls, media queries, WebCodecs and scrolling differ from Chromium's.
+      # The in-browser exporter, the stage and the live page in Firefox too: its foreignObject rasterising, native
+      # controls, media queries, WebCodecs and scrolling differ from Chromium's. The webkit job runs them in WebKit.
       - run: pnpm test:firefox
-      - if: steps.browsers.outputs.webkit != 'skip'
-        run: pnpm test:webkit
       # Builds the --e2e Chromium package and drives it in Playwright's Chromium (apps/extension/test/e2e).
       - run: pnpm test:e2e
       # The CLI tests on a real browser and ffmpeg (apps/cli/test/render.test.ts, snapshot.test.ts):
@@ -93,6 +88,31 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
       - run: pnpm exec vitest run --project unit apps/cli/test/render.test.ts apps/cli/test/snapshot.test.ts
+
+  # The Firefox tests again in Playwright's WebKit (Safari's engine): its foreignObject rasterising, native
+  # controls, media queries, WebCodecs and scrolling differ from Chromium's and Firefox's.
+  # The runner image lacks WebKit's shared libraries (GStreamer, libmanette, ...), so they come from apt here.
+  # Every step must pass: a failed apt or browser download fails the job, it never turns into skipped tests.
+  webkit:
+    name: browser (webkit, ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - name: Install WebKit's system packages
+        timeout-minutes: 10
+        run: pnpm exec playwright install-deps webkit
+      - name: Install WebKit
+        timeout-minutes: 10
+        run: pnpm exec playwright install webkit
+      - run: pnpm test:webkit
 
   # The same CLI tests on Windows and macOS, whose paths, file names and output checks differ from Linux's.
   # The runner images carry Google Chrome, which the CLI finds in its default install location; ffmpeg is installed here.

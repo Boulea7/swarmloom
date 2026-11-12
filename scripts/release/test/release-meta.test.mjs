@@ -108,3 +108,18 @@ test("CI runs the real CLI render tests, with ffmpeg required, on every OS it ch
   });
   for (const os of jobs.check.strategy?.matrix.os ?? []) assert.ok(covered.includes(os), os);
 });
+
+test("CI runs the WebKit tests unconditionally, so a failed WebKit install fails CI", () => {
+  // Safari's engine has no other regression entry: an apt or download failure must not become a skipped suite.
+  /** @type {Record<string, { if?: string, "continue-on-error"?: unknown, steps: { run?: string, if?: string, "continue-on-error"?: unknown }[] }>} */
+  const jobs = parse(read(".github/workflows/ci.yml")).jobs;
+  const job = Object.values(jobs).find((candidate) => candidate.steps.some((step) => step.run === "pnpm test:webkit"));
+  assert.ok(job, "no CI job runs pnpm test:webkit");
+  const webkitSteps = job.steps.filter((step) => /\bwebkit\b/.test(step.run ?? ""));
+  assert.ok(webkitSteps.some((step) => /playwright install(?:-deps| --with-deps)\b.*\bwebkit\b/.test(step.run ?? "")));
+  for (const unit of [job, ...webkitSteps]) {
+    assert.equal(unit.if, undefined, `conditional: ${JSON.stringify(unit)}`);
+    assert.equal(unit["continue-on-error"], undefined, `continue-on-error: ${JSON.stringify(unit)}`);
+  }
+  for (const step of webkitSteps) assert.doesNotMatch(step.run ?? "", /\|\||&&\s*exit 0/, "install falls back");
+});
