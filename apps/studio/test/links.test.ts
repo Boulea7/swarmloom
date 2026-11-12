@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { normalizeSourceUrl, parseRoute, type Route, routeToUrl } from "../src/route";
+import type { StudioServices } from "../src/services";
 import { DEFAULT_SETTINGS, impactOf, playerOptionsFrom } from "../src/settings";
 import {
   decodeShare,
@@ -11,7 +12,7 @@ import {
   ShareError,
   sanitizeShareName,
 } from "../src/share";
-import type { OpenedSource } from "../src/source";
+import { type OpenedSource, resolveSource } from "../src/source";
 import { buildShareLink } from "../src/views/share-link";
 
 const BASE = "https://studio.example/app/";
@@ -64,6 +65,19 @@ describe("share links", () => {
     const link = await buildShareLink(opened as OpenedSource, DEFAULT_SETTINGS, BASE);
     if (!link.ok) throw new Error(link.reason);
     expect(parseRoute(link.url).source?.kind).toBe("shared");
+  });
+
+  // A bookmarklet handoff is read once and its address may need a login: the captured markup travels.
+  it("carries a bookmarklet handoff's markup in the hash", async () => {
+    const html = '<base href="https://example.com/"><title>Handoff report</title><h1>Hello</h1>';
+    const page = { url: "https://example.com/report", origin: "https://example.com", title: "", html, width: 800 };
+    const services = { receiveHandoff: async () => page } as unknown as StudioServices;
+    const opened = await resolveSource({ kind: "handoff" }, { services, local: null });
+    const link = await buildShareLink(opened, DEFAULT_SETTINGS, BASE);
+    if (!link.ok) throw new Error(link.reason);
+    const { source } = parseRoute(link.url);
+    if (source?.kind !== "shared") throw new Error("not carried in the hash");
+    expect(await decodeShare(source.payload)).toMatchObject({ name: "report.html", text: html });
   });
 
   it.each([
