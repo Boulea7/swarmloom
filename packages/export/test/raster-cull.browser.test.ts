@@ -86,6 +86,14 @@ it("writes far boxes empty inside wrappers, lines and tables, keeping where the 
   }
 });
 
+it("paints nothing of a box written empty, wherever its transform put it", async () => {
+  const { rasterizer } = await frameOf(`<body style="margin:0;color:rgb(255,0,0)">
+    <div style="height:40px;padding:1px;border:10px solid;transform:translateY(-3000px)"><p>moved away</p></div></body>`);
+  const { svg, stats } = await rasterizer.snapshot();
+  expect({ moved: svg.includes("moved away"), culled: stats.culled }).toEqual({ moved: false, culled: 1 });
+  expect((await drawn(rasterizer))(5, 5)).toEqual([255, 255, 255]);
+});
+
 it("keeps what escapes a clipping or transparent box away from view: fixed boxes and SVG resources", async () => {
   const { win, rasterizer } = await frameOf(`<body style="margin:0">
     <div style="position:absolute;width:0;height:0;overflow:hidden"><svg>

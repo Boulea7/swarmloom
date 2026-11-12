@@ -1250,6 +1250,8 @@ function* emitElement(
     override["min-width"] = cs.getPropertyValue("width");
     override["min-height"] = cs.getPropertyValue("height");
   }
+  // Nothing of it shows wherever it lands: a transform or offset that moved it away is not written.
+  if (bare) override.visibility = cs.getPropertyValue("visibility") === "collapse" ? "collapse" : "hidden";
   const motion = svg && walk.smil.moving.has(el) ? motionMatrix(el) : null;
   if (motion) {
     for (const name of MOTION_RESET) override[name] = "none";
