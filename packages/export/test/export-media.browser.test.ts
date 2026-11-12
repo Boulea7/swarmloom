@@ -114,12 +114,7 @@ const SCREENS: Host[] = [
 
 let container: HTMLElement;
 let plain: string[];
-const contentWindow = Object.getOwnPropertyDescriptor(
-  HTMLIFrameElement.prototype,
-  "contentWindow",
-) as PropertyDescriptor & {
-  get(): Window | null;
-};
+let observer: MutationObserver;
 
 /** Exports the page; also reports what the frame's `matchMedia` and the page's styles say mid-export. */
 async function exportPage(): Promise<{ hashes: string[]; seen: string | null }> {
@@ -148,28 +143,39 @@ async function exportPage(): Promise<{ hashes: string[]; seen: string | null }> 
   return { hashes: result.frameSha256, seen };
 }
 
+function passThroughImports(frame: HTMLIFrameElement): void {
+  const win = frame.contentWindow as (Window & Record<string, unknown>) | null;
+  if (win) win.__vitest_browser_runner__ = { wrapDynamicImport: (load: () => unknown) => load() };
+}
+
+function onFrameLoad(event: Event): void {
+  if (event.target instanceof HTMLIFrameElement) passThroughImports(event.target);
+}
+
 beforeAll(async () => {
   container = document.createElement("div");
   document.body.append(container);
   // Vitest's browser runner wraps dynamic imports through a global of the test page; the export
-  // frame is a page of its own, so it gets a pass-through. WebKit replaces the initial about:blank
-  // window while srcdoc loads, so install it whenever the live contentWindow is read, not on the
-  // window the frame happened to have when it was appended.
-  Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
-    ...contentWindow,
-    get(this: HTMLIFrameElement) {
-      const win = contentWindow.get.call(this) as (Window & Record<string, unknown>) | null;
-      if (win) win.__vitest_browser_runner__ = { wrapDynamicImport: (load: () => unknown) => load() };
-      return win;
-    },
+  // frame is a page of its own, so it gets a pass-through: when added, and again on load in the
+  // capture phase, before the exporter's listener on the frame, as WebKit gives the srcdoc page a
+  // window other than the frame's first one.
+  observer = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof HTMLIFrameElement) passThroughImports(node);
+      }
+    }
   });
+  observer.observe(container, { childList: true });
+  container.addEventListener("load", onFrameLoad, true);
   const first = await exportPage();
   expect(first.seen).toBe(PINNED);
   plain = first.hashes;
 }, 120_000);
 
 afterAll(() => {
-  Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", contentWindow);
+  observer.disconnect();
+  container.removeEventListener("load", onFrameLoad, true);
   container.remove();
 });
 

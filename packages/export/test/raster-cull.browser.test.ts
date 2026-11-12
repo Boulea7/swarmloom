@@ -140,10 +140,10 @@ it("reads each box of a deep wrapper chain once for the margins passed through i
     if (pseudo === "::after") afters++;
     return read(el, pseudo);
   };
-  const { svg } = await rasterizer.snapshot();
+  const { svg, stats } = await rasterizer.snapshot();
   expect(svg).toContain(">deep<");
-  // Once to write it, once for its bottom edge: not once per wrapper above it as well.
-  expect(afters).toBeLessThan(3 * depth);
+  // Once to write it, once for its bottom edge per walk: a font load may legitimately restart one.
+  expect(afters).toBeLessThan(3 * depth * (stats.restarts + 1));
 });
 
 it("reads what overflows a far box once for the boxes in flow in it, drawing what reaches into view", async () => {
