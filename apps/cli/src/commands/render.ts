@@ -92,8 +92,8 @@ Swarm:
                           milliseconds (12500ms) or beats at an explicit --bpm (26b). <action> is
                           pause (every cursor holds), resume, finish (complete the build quickly),
                           live (go live then, not when the finale settles; also with --no-live) or
-                          speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=0.6 then
-                          17b:speed=0.45 hurries only the start). Applied at the first 1/120 s
+                          speed=<n> (build speed from then on, 0.05-16; e.g. 0:speed=2 then
+                          17b:speed=1 hurries only the start). Applied at the first 1/120 s
                           step at or after <at>, at any fps; same-time cues in order given
       --no-sound          Leave out the soundtrack (GIF and WebP never have one)
       --no-remote         Do not load https images and fonts the input links to. Scripts, style sheets
