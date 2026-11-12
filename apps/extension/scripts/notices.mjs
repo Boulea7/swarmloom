@@ -152,6 +152,47 @@ function embeddedNotices(dir, pkg) {
 }
 
 /**
+ * MPL-2.0 packages whose licence file carries no copyright line: they state it in the header comment of
+ * every source file (MPL-2.0 Exhibit A), which the minified Studio build drops, so the notice repeats the
+ * copyright lines of the named file's header. A bundled MPL-2.0 package must be listed here unless its
+ * licence file names the holder. Keep in step with HEADER_COPYRIGHTS in scripts/release/third-party-notices.mjs.
+ * @type {ReadonlyMap<string, string>} package name -> file of the package whose header holds the copyright
+ */
+export const HEADER_COPYRIGHTS = new Map([
+  ["dompurify", "dist/purify.es.mjs"],
+  ["mediabunny", "dist/modules/src/index.js"],
+]);
+
+/**
+ * The copyright notice a package keeps in its source file headers (see HEADER_COPYRIGHTS), or null when
+ * it needs none.
+ * @param {string} dir real path of the package
+ * @param {any} pkg its package.json
+ * @param {string} license
+ * @param {readonly { text: string }[]} texts its licence files
+ * @returns {{ file: string; text: string } | null}
+ * @throws Error when the listed file holds no copyright line, or an unlisted MPL-2.0 package names no holder
+ */
+function headerNotice(dir, pkg, license, texts) {
+  const file = HEADER_COPYRIGHTS.get(pkg.name);
+  if (file === undefined) {
+    // Neither the MPL-2.0 nor the Apache-2.0 text holds a copyright line of its own (beyond Apache's template).
+    const holder = /^\W*(?:Copyright\b(?! \[yyyy\])|\(c\)\s*\d|©)/m;
+    if (/\bMPL-2\.0\b/.test(license) && !texts.some(({ text }) => holder.test(text))) {
+      throw new Error(`${pkg.name}@${pkg.version}: MPL-2.0 without a copyright line; add it to HEADER_COPYRIGHTS`);
+    }
+    return null;
+  }
+  const path = join(dir, file);
+  const comment = existsSync(path) ? (/^\s*\/\*[\s\S]*?\*\//.exec(readFileSync(path, "utf8"))?.[0] ?? "") : "";
+  const lines = [...comment.matchAll(/(?:\bCopyright\b|\(c\)|©)[^\n|*]*/g)].map((match) => match[0].trim());
+  if (lines.length === 0) {
+    throw new Error(`${pkg.name}@${pkg.version}: no copyright line in the header of ${file}; update HEADER_COPYRIGHTS`);
+  }
+  return { file: `(copyright from the header of ${file}, which bundling drops)`, text: [...new Set(lines)].join("\n") };
+}
+
+/**
  * @typedef {object} Notice
  * @property {string} name
  * @property {string} version
@@ -303,6 +344,8 @@ export function collectNotices(roots) {
       const copyright = author ? `Copyright (c) ${author}\n\n` : "";
       texts.push({ file: "(standard MIT text; the package ships no licence file)", text: `${copyright}${MIT_TEXT}` });
     }
+    const header = headerNotice(dir, pkg, license, texts);
+    if (header) texts.unshift(header);
     byId.set(id, { name: pkg.name, version: pkg.version, license, source: sourceOf(pkg), texts });
     for (const notice of embeddedNotices(dir, pkg)) {
       const embeddedId = `${notice.name}@${notice.version}`;

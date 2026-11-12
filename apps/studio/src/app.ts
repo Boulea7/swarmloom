@@ -92,6 +92,11 @@ export async function mountStudio(
   let route: Route = parseRoute(win.location.href, routeOptions);
   let stored = loadSettings(services.storage);
   let settings: StudioSettings = { ...stored, ...route.overrides };
+  /**
+   * Values the current view's source settings (a share link's) replaced in `settings`: put back when
+   * the view goes. A key the user changes leaves it, the user's value stays.
+   */
+  let replaced: Partial<StudioSettings> = {};
   // The page CSP backs up the adapters' own network checks (decisions-v1 C03). It only tightens:
   // with remote assets off from the start, before anything loads.
   let assetsBlocked = false;
@@ -205,6 +210,12 @@ export async function mountStudio(
 
   const renderView = () => {
     view?.destroy();
+    // A source's settings belong to the view that opened it.
+    if (Object.keys(replaced).length > 0) {
+      settings = { ...settings, ...replaced };
+      replaced = {};
+      if (panels().settings.isOpen) renderSettingsForm();
+    }
     const watch = isWatch();
     const name = watch ? "watch" : route.source ? "player" : "home";
     html.dataset.view = name;
@@ -281,9 +292,12 @@ export async function mountStudio(
     const prev = settings;
     stored = { ...stored, ...clean };
     saveSettings(services.storage, stored);
-    // A setting the user changes stops being a per-visit URL override.
+    // A setting the user changes stops being a per-visit URL or source override.
     const overrides = { ...route.overrides };
-    for (const key of keys) delete overrides[key];
+    for (const key of keys) {
+      delete overrides[key];
+      delete replaced[key];
+    }
     route = { ...route, overrides };
     settings = { ...prev, ...clean };
     syncAssetPolicy();
@@ -307,6 +321,16 @@ export async function mountStudio(
       i18n = next;
       relocalize();
     });
+  }
+
+  function sourceSettings(patch: Partial<StudioSettings>): void {
+    const clean = sanitizeSettings(patch);
+    const keys = (Object.keys(clean) as (keyof StudioSettings)[]).filter((key) => settings[key] !== clean[key]);
+    if (keys.length === 0) return;
+    // The first value a key had before any source setting is the one to put back.
+    replaced = { ...Object.fromEntries(keys.map((key) => [key, settings[key]])), ...replaced };
+    settings = { ...settings, ...clean };
+    if (panels().settings.isOpen) renderSettingsForm();
   }
 
   function toggleSettings(): void {
@@ -353,6 +377,7 @@ export async function mountStudio(
     },
     appUrl,
     updateSettings,
+    sourceSettings,
     // Every view navigation is the user's.
     navigate: (patch, opts) => {
       releaseLaunch();

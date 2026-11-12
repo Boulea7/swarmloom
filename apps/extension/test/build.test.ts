@@ -236,6 +236,22 @@ describe("licence notices", () => {
     expect(text).toMatch(/Copyright \(C\) 2016-\d+, by Arseny Kapoulkine.*\n\nPermission is hereby granted/);
   });
 
+  it("keeps Mediabunny's copyright line, which only its source headers carry and bundling drops", () => {
+    const mediabunny = realpathSync(join(import.meta.dirname, "../../../packages/export/node_modules/mediabunny"));
+    const text = renderNotices(collectNotices([mediabunny]));
+    expect(text).toMatch(
+      /\nCopyright \(c\) \d{4}-present, Vanilagy and contributors\n\n--- LICENSE ---\n\nMozilla Public/,
+    );
+    // Another MPL-2.0 package whose licence names no holder must be added to HEADER_COPYRIGHTS.
+    const dir = mkdtempSync(join(tmpdir(), "swarmloom-notices-"));
+    try {
+      const mpl = fakePackage(dir, { name: "mpl", version: "1.0.0", license: "MPL-2.0" }, { LICENSE: "Mozilla" });
+      expect(() => collectNotices([mpl])).toThrow(/mpl@1\.0\.0: MPL-2\.0 without a copyright line/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a package without licence text it cannot reproduce, and a missing dependency", () => {
     const dir = mkdtempSync(join(tmpdir(), "swarmloom-notices-"));
     try {

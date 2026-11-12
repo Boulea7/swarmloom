@@ -130,6 +130,27 @@ export function readmeLicenseSection(markdown) {
   return /copyright/i.test(section) ? section : null;
 }
 
+/**
+ * The copyright lines of a source file's leading comment (`Copyright ...`, `(c) ...` or `© ...`, each up to
+ * the end of the line or a `|` / `*`), for packages that state their copyright there and not in their
+ * licence file. Bundlers drop the comment, so the generated notices repeat the lines.
+ * @param {string} source
+ * @returns {string | null} the lines joined by newlines, null when the comment holds none
+ */
+export function headerCopyright(source) {
+  const comment = /^\s*\/\*[\s\S]*?\*\//.exec(source)?.[0] ?? "";
+  const lines = [...comment.matchAll(/(?:\bCopyright\b|\(c\)|©)[^\n|*]*/g)].map((match) => match[0].trim());
+  return lines.length > 0 ? [...new Set(lines)].join("\n") : null;
+}
+
+/**
+ * Whether a licence text holds a copyright line of its own (the MPL-2.0 and Apache-2.0 texts hold none).
+ * @param {string} text
+ */
+export function hasCopyrightLine(text) {
+  return /^\W*(?:Copyright\b(?! \[yyyy\])|\(c\)\s*\d|©)/m.test(text);
+}
+
 const MIT_TERMS = `Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 associated documentation files (the "Software"), to deal in the Software without restriction, including
 without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell

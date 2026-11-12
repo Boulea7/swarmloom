@@ -59,8 +59,11 @@ licence and copyright (core-js inside pdf.js, the Apache-2.0 Draco decoders and 
 decoder inside three, the OFL-1.1 KaTeX fonts inside katex) are listed from `EMBEDDED_PACKAGES`,
 checked against the host's files (core-js and meshoptimizer record their version and copyright line
 there; the others are labelled `as shipped in <host> <version>`);
-`check:package` fails when a shipped script carries such code and the notices do not list it. The build log prints the entry count per package (one
-`License:` line per name@version in the file).
+`check:package` fails when a shipped script carries such code and the notices do not list it.
+MPL-2.0 packages whose licence file names no copyright holder (Mediabunny, DOMPurify) state it in
+the header of each source file, which the minified build drops: `HEADER_COPYRIGHTS` names the file
+whose header the notice copies the copyright line from, and the build fails on an unlisted one.
+The build log prints the entry count per package (one `License:` line per name@version in the file).
 
 ## Commands
 

@@ -47,6 +47,8 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
   let lastError: unknown;
   /** Autoplay links start the first time the player is ready, never again after a rebuild. */
   let autoplayPending = ctx.route.autoplay;
+  /** The settings the source carries have been handed to Studio (once per view). */
+  let sourceSettingsShown = false;
 
   // Title block
   const name = provisionalName(ctx, ref);
@@ -245,6 +247,13 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     onPhase: (next, error) => {
       phase = next;
       lastError = error;
+      // A share link's settings play from the first player on: Studio shows them, and a change of
+      // any other setting keeps them.
+      const carried = session.opened?.settings;
+      if (carried && !sourceSettingsShown) {
+        sourceSettingsShown = true;
+        ctx.sourceSettings(carried);
+      }
       root.dataset.phase = next;
       if (next === "ready" || next === "error") showOpened();
       scrubber.setPhase(next);
@@ -279,7 +288,8 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     const { i18n } = ctx;
     const opened = session.opened;
     if (!opened) return;
-    const link = await buildShareLink(opened, ctx.settings, ctx.appUrl);
+    // What the preview plays, so the recipient sees the same performance.
+    const link = await buildShareLink(opened, session.playSettings, ctx.appUrl);
     if (!link.ok) {
       ctx.toast.show(
         i18n.t(

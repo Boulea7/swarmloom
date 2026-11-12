@@ -19,9 +19,9 @@
  *   (with that package's own dependencies) and the files it inlines with `?raw`, `?inline` or `?url`.
  * The result may name a package that tree-shaking removes again; it does not leave one out.
  *
- * Modes (each fails when a bundled package ships no licence text, when a hand-written LICENSE.md is in
- * the way, or when a built dist/ holds a module path, from an esbuild comment or a source map, of a
- * package the notices do not cover):
+ * Modes (each fails when a bundled package ships no licence text, or an MPL-2.0 one no copyright line
+ * (HEADER_COPYRIGHTS), when a hand-written LICENSE.md is in the way, or when a built dist/ holds a module
+ * path, from an esbuild comment or a source map, of a package the notices do not cover):
  * - default: write the LICENSE.md files (and delete generated ones no longer needed);
  * - `--check`: write nothing; also fails when a generated LICENSE.md on disk is stale;
  * - `--clean`: delete the generated LICENSE.md files after a local release;
@@ -45,6 +45,8 @@ import { isRecord, readJson } from "./lib/json.mjs";
 import {
   bundledPackagesInOutput,
   GENERATED_MARKER,
+  hasCopyrightLine,
+  headerCopyright,
   legalFiles,
   licenseOf,
   mitLicense,
@@ -210,6 +212,18 @@ export const EMBEDDED_PACKAGES = new Map([
         "KaTeX_SansSerif, KaTeX_Script, KaTeX_Size1, KaTeX_Size2, KaTeX_Size3, KaTeX_Size4, KaTeX_Typewriter.",
     },
   ],
+]);
+
+/**
+ * MPL-2.0 packages whose licence file carries no copyright line: they state it in the header comment of
+ * every source file (MPL-2.0 Exhibit A), which minified builds drop, so the notice repeats the copyright
+ * lines of the named file's header. A bundled MPL-2.0 package must be listed here unless its licence file
+ * names the holder. Keep in step with HEADER_COPYRIGHTS in apps/extension/scripts/notices.mjs.
+ * @type {ReadonlyMap<string, string>} package name -> file of the package whose header holds the copyright
+ */
+export const HEADER_COPYRIGHTS = new Map([
+  ["dompurify", "dist/purify.es.mjs"],
+  ["mediabunny", "dist/modules/src/index.js"],
 ]);
 
 /**
@@ -403,8 +417,23 @@ export function noticeEntry(dir) {
     }
     texts.unshift(section);
   }
+  const license = licenseOf(manifest);
+  const headerFile = HEADER_COPYRIGHTS.get(manifest.name);
+  if (headerFile !== undefined) {
+    const path = join(dir, headerFile);
+    const copyright = existsSync(path) ? headerCopyright(readFileSync(path, "utf8")) : null;
+    if (!copyright) {
+      throw new Error(`${manifest.name}: no copyright line in the header of ${headerFile}; update HEADER_COPYRIGHTS`);
+    }
+    texts.unshift(copyright);
+  } else if (/\bMPL-2\.0\b/.test(license) && !texts.some(hasCopyrightLine)) {
+    throw new Error(
+      `${manifest.name} is under MPL-2.0 and its licence file names no copyright holder; ` +
+        "add the file whose header does to HEADER_COPYRIGHTS",
+    );
+  }
   const text = texts.join("\n\n");
-  return { name: manifest.name, license: licenseOf(manifest), source: repositoryUrl(manifest), text };
+  return { name: manifest.name, license, source: repositoryUrl(manifest), text };
 }
 
 /**

@@ -1,7 +1,8 @@
 // @ts-check
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -12,7 +13,7 @@ import {
   runtimeImports,
   synthesizedMitLicense,
 } from "../lib/notices.mjs";
-import { appLicenseFile, expectedLicenseFiles, pagesLicenseFiles } from "../third-party-notices.mjs";
+import { appLicenseFile, expectedLicenseFiles, noticeEntry, pagesLicenseFiles } from "../third-party-notices.mjs";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -103,6 +104,24 @@ test("every app deployed to Pages gets the licences of what it bundles or inline
   assert.match(docs?.contents ?? "", inter);
   const workflow = readFileSync(join(root, ".github/workflows/pages.yml"), "utf8");
   assert.match(workflow, /third-party-notices\.mjs --pages _site\b/);
+});
+
+test("Mediabunny's copyright line, kept only in its source headers, reaches every LICENSE.md that bundles it", () => {
+  // The report: its LICENSE is the bare MPL-2.0 text and the minified builds drop the source headers.
+  const vanilagy = /Copyright \(c\) \d{4}-present, Vanilagy and contributors\n\nMozilla Public License Version 2\.0/;
+  const studio = pagesLicenseFiles(root, "_site").find((item) => item.pkg.dir === "apps/studio");
+  assert.match(studio?.contents ?? "", vanilagy);
+  const exportPackage = expectedLicenseFiles(root).find((item) => item.pkg.dir === "packages/export");
+  assert.match(exportPackage?.contents ?? "", vanilagy);
+  // Another MPL-2.0 package whose licence names no holder must be added to HEADER_COPYRIGHTS.
+  const dir = mkdtempSync(join(tmpdir(), "swarmloom-notices-"));
+  try {
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "mpl", license: "MPL-2.0" }));
+    writeFileSync(join(dir, "LICENSE"), "Mozilla Public License Version 2.0\n");
+    assert.throws(() => noticeEntry(dir), /mpl is under MPL-2\.0 and its licence file names no copyright holder/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("the bookmarklet's Pages folder and Release ZIP carry SwarmLoom's licence", () => {
