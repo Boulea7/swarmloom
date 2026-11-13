@@ -40,6 +40,11 @@ export interface FrozenAnimations {
   finished: number;
   /** Infinite animations paused at the chosen phase. */
   paused: number;
+  /**
+   * False when the last pass ({@link FREEZE_PASSES}) still found new animations: what their poses
+   * start is not frozen and runs on wall time, so captures of the page may differ.
+   */
+  settled: boolean;
   /** Lets the paused infinite animations run again from their pose (used after go live). */
   resume(): void;
 }
@@ -127,11 +132,12 @@ async function imagesSettled(doc: Document, ms: number, signal?: AbortSignal): P
 }
 
 /**
- * Reads of the animation list after the first pass: the poses a pass sets can start transitions and
- * animations of their own, which a later read finds. Only where the page's rules let a pose start one
- * ({@link posesMayStart}).
+ * Most passes (reads of the animation list) of one freeze. The poses a pass sets can start
+ * transitions and animations of their own, which the next pass finds; a chain of them (nested
+ * container queries) takes one pass per link, and a pass that finds nothing new ends the freeze. The
+ * cap only stops a page that is still starting new ones then ({@link FrozenAnimations.settled}).
  */
-const FREEZE_ROUNDS = 4;
+export const FREEZE_PASSES = 32;
 
 /**
  * Puts every CSS animation, transition and Web Animation of a document into a pose that does not
@@ -145,8 +151,9 @@ const FREEZE_ROUNDS = 4;
  * a container takes a new size and a container query now starts an animation. Those would run on
  * wall time through the snapshot and on until go live. So after each pass the document is laid out
  * (container queries resolve in layout), the animations are read again and the new ones are frozen
- * the same way, up to {@link FREEZE_ROUNDS} more passes. Only on pages whose rules let a pose start
- * something: fades, slides and pulses start nothing, and their pages are read once.
+ * the same way, until a pass finds none, at most {@link FREEZE_PASSES} passes (`settled` says whether
+ * the freeze got there). Only on pages whose rules let a pose start something: fades, slides and
+ * pulses start nothing, and their pages are read once.
  *
  * The contents of `content-visibility: auto` elements count too: they show while the passes run (see
  * {@link withSkippedContents}), as an off-screen capture frame leaves them all unstyled.
@@ -232,10 +239,11 @@ function freezeShown(doc: Document, phase = 0.5): FrozenAnimations {
   const seen = new Set<Animation>();
   const loops: Animation[] = [];
   let finished = 0;
-  for (let round = 0; round <= FREEZE_ROUNDS && typeof doc.getAnimations === "function"; round++) {
-    if (round > 0) void doc.documentElement?.getBoundingClientRect();
+  let settled = typeof doc.getAnimations !== "function";
+  for (let pass = 0; pass < FREEZE_PASSES && !settled; pass++) {
+    if (pass > 0) void doc.documentElement?.getBoundingClientRect();
     const fresh = doc.getAnimations().filter((anim) => !seen.has(anim));
-    if (fresh.length === 0) break;
+    settled = fresh.length === 0;
     for (const anim of fresh) {
       seen.add(anim);
       const timing = anim.effect?.getComputedTiming();
@@ -254,11 +262,12 @@ function freezeShown(doc: Document, phase = 0.5): FrozenAnimations {
         // finish() throws for zero playback rates; such animations already sit still.
       }
     }
-    if (round === 0 && !posesMayStart(doc, fresh)) break;
+    if (pass === 0 && !settled && !posesMayStart(doc, fresh)) settled = true;
   }
   return {
     finished,
     paused: loops.length,
+    settled,
     resume() {
       for (const anim of loops) {
         try {

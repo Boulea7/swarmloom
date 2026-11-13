@@ -8,7 +8,7 @@ import {
 } from "@swarmloom/adapter-code";
 import type { AdapterContext, Blueprint, BlueprintSource, Plugin, SourceInput } from "@swarmloom/core";
 import { decodeHtml, isFullDocument } from "./detect";
-import { renderInFrame } from "./frame";
+import { FREEZE_PASSES, renderInFrame } from "./frame";
 import { applyNetworkPolicy, localOrigin, type NetworkPolicy } from "./policy";
 import { prepareDocument } from "./prepare";
 import { sanitizeFragment } from "./sanitize";
@@ -223,6 +223,10 @@ export function createHtmlAdapter(options: HtmlAdapterOptions = {}): TextAdapter
       let kept = false;
       try {
         if (!frame.loaded) warnings.push(`html: some resources did not load within ${loadTimeoutMs} ms`);
+        if (!frame.frozen.settled)
+          warnings.push(
+            `html: the page kept starting new animations after ${FREEZE_PASSES} freeze passes; the last ones run on wall time, so captures may differ`,
+          );
         const source = sourceOf(src, prepared.title);
         const blueprint = await snap.snapshot(frame.doc, {
           origin: "document",
