@@ -2,7 +2,7 @@ import type { Blueprint, CustomLayer, Plugin } from "@swarmloom/core";
 import { afterEach, describe, expect, it } from "vitest";
 import fadeIn from "../../../examples/html/fade-in.html?raw";
 import landing from "../../../examples/html/landing.html?raw";
-import { createHtmlAdapter, type HtmlLoadContext, TIMELINE_PLUGIN } from "../src/index";
+import { createHtmlAdapter, freezeAnimations, type HtmlLoadContext, TIMELINE_PLUGIN } from "../src/index";
 import { probeSnapshot } from "./probe";
 
 const ctx = { document, width: 1280, theme: "light" as const };
@@ -128,6 +128,40 @@ describe("html examples in Chromium", () => {
       expect(doc?.querySelector("section")?.hasAttribute("style")).toBe(false);
     } finally {
       loaded.dispose?.();
+    }
+  });
+
+  it("shows content-visibility:auto elements with one restyle per nesting level, not one per element", async () => {
+    // Each style read after a write restyles the frame: one per section took seconds on long pages.
+    const frame = document.createElement("iframe");
+    frame.style.cssText = "position:fixed;left:-20000px;top:0;width:800px;height:600px;border:0";
+    frame.srcdoc =
+      "<!DOCTYPE html><style>section,.in{content-visibility:auto}.in{display:inline-block}" +
+      "@keyframes rise{from{opacity:0}}b{animation:rise 1s}i{display:block;animation:rise 1s infinite}</style>" +
+      "<section><p>Text <span class='in'><b>in</b></span></p><i></i></section>".repeat(40);
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    document.body.append(frame);
+    try {
+      await loaded;
+      const win = frame.contentWindow as Window & typeof globalThis;
+      let wrote = false;
+      let restyles = 0;
+      const read = win.getComputedStyle.bind(win);
+      win.getComputedStyle = (el, pseudo) => {
+        if (wrote) restyles++;
+        wrote = false;
+        return read(el, pseudo);
+      };
+      const write = win.CSSStyleDeclaration.prototype.setProperty;
+      win.CSSStyleDeclaration.prototype.setProperty = function (this: CSSStyleDeclaration, ...args) {
+        wrote = true;
+        return write.apply(this, args);
+      };
+      const frozen = freezeAnimations(win.document);
+      // The nested spans and their bold text count: section, then span, then b.
+      expect([frozen.finished, frozen.paused, restyles]).toEqual([40, 40, 2]);
+    } finally {
+      frame.remove();
     }
   });
 

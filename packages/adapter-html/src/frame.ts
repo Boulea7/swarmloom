@@ -161,23 +161,43 @@ interface ShownElement {
 
 /**
  * Sets every `content-visibility: auto` element of `doc` to `visible` (inline, important), then lays
- * the document out. Document order sets an ancestor first, so the style of a nested one is read with
- * the contents around it shown: a style read inside skipped contents starts their animations at
- * their first keyframe and keeps that pose.
+ * the document out. One nesting level at a time: the styles outside the found elements are all read
+ * before any of them is set, and their subtrees are read in the next pass. So a nested one is read
+ * with the contents around it shown (a style read inside skipped contents starts their animations at
+ * their first keyframe and keeps that pose), and the document is restyled once per level: a read
+ * after each write restyled it once per element, which took seconds on pages with thousands of sections.
  */
 function showSkippedContents(doc: Document): ShownElement[] {
   const win = doc.defaultView;
+  const root = doc.documentElement;
   const shown: ShownElement[] = [];
-  if (!win) return shown;
-  for (const el of Array.from(doc.querySelectorAll("*"))) {
+  if (!win || !root) return shown;
+  for (let level = findAutoElements(win, [root]); level.length > 0; ) {
+    for (const el of level) {
+      shown.push({ el, attr: el.getAttribute("style") });
+      (el as unknown as ElementCSSInlineStyle).style.setProperty("content-visibility", "visible", "important");
+    }
+    const inside = level.flatMap((el) => Array.from(el.children));
+    level = findAutoElements(win, inside);
+  }
+  if (shown.length > 0) void root.getBoundingClientRect();
+  return shown;
+}
+
+/**
+ * The `content-visibility: auto` elements among `starts` and their descendants, in no set order. Only
+ * reads styles: the subtree of a found element is not read, as its contents are still skipped.
+ */
+function findAutoElements(win: Window, starts: Element[]): Element[] {
+  const found: Element[] = [];
+  const stack = starts.slice();
+  for (let el = stack.pop(); el; el = stack.pop()) {
     // Duck-typed: the frame's elements come from another realm.
     const style = (el as Partial<ElementCSSInlineStyle>).style;
-    if (!style || win.getComputedStyle(el).getPropertyValue("content-visibility") !== "auto") continue;
-    shown.push({ el, attr: el.getAttribute("style") });
-    style.setProperty("content-visibility", "visible", "important");
+    if (style && win.getComputedStyle(el).getPropertyValue("content-visibility") === "auto") found.push(el);
+    else for (const child of Array.from(el.children)) stack.push(child);
   }
-  if (shown.length > 0) void doc.documentElement?.getBoundingClientRect();
-  return shown;
+  return found;
 }
 
 /**
