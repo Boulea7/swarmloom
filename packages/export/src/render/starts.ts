@@ -1,9 +1,34 @@
-/**
- * Keyframe properties whose seeked value can start animations elsewhere: an element that is
- * rendered again starts its CSS animations, and a custom property can feed `animation-name`,
- * `display` or a transition through `var()`.
+/*
+ * Rules are read from their text (`cssText`), never through `style`: the in-browser exporter wraps
+ * that getter (watchSheetEdits) to hand each declaration read to its still check, which would then
+ * compare the text of every declaration of the page on each frame after go live.
  */
-const STARTING_KEYFRAME_PROPS = /^(?:--|display$|content-visibility$)/;
+
+/**
+ * A declaration of a keyframe property whose seeked value can start animations elsewhere, in the
+ * text of a `@keyframes` rule: an element that is rendered again starts its CSS animations, and a
+ * custom property can feed `animation-name`, `display` or a transition through `var()`.
+ */
+const STARTING_KEYFRAME_DECLARATION = /[{;]\s*(?:--|(?:display|content-visibility)\s*:)/i;
+/**
+ * A transition declaration that can set a duration or a delay, in the text of a rule, which starts
+ * each declaration after a `{` or a `;` (or at its start, for declarations nested in a rule): its
+ * name and value. A value is cut at a `;` or a brace, and text in a string can match too: either
+ * only counts a rule as starting something.
+ */
+const TRANSITION_DECLARATION = /(?:^|[{;])\s*(transition(?:-duration|-delay)?)\s*:([^;{}]*)/gi;
+/** The `!important` that may end a declaration's value in a rule's text. */
+const IMPORTANT = /!\s*important\s*$/i;
+/** Grouping rules, whose own text is not read: the rules in them are read one by one. */
+const GROUPING_RULES = new Set([
+  "CSSMediaRule",
+  "CSSSupportsRule",
+  "CSSLayerBlockRule",
+  "CSSScopeRule",
+  "CSSStartingStyleRule",
+]);
+/** The namespace of the element whose inline style parses declarations (in any document). */
+const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** One plain time of a transition duration or delay list. */
 const PLAIN_TIME = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:ms|s)$/i;
 /** CSS-wide keywords: each takes a value another rule sets (scanned there) or the initial 0s. */
@@ -38,49 +63,72 @@ function declaresTransition(style: CSSStyleDeclaration): boolean {
   return mayBePositive(duration) || mayBePositive(delay);
 }
 
-function keyframesStart(rule: CSSKeyframesRule): boolean {
-  for (const frame of Array.from(rule.cssRules)) {
-    const style = (frame as CSSKeyframeRule).style;
-    for (let i = 0; i < style.length; i++) {
-      if (STARTING_KEYFRAME_PROPS.test(style.item(i))) return true;
-    }
+/**
+ * Whether the text of a rule holds a transition declaration that may run, each declaration judged
+ * alone: a later one in the same block may set its time back to 0s, which only reads the rule as
+ * starting something. `probe` is a detached element's inline style, which parses the value.
+ */
+function textDeclaresTransition(text: string, probe: CSSStyleDeclaration): boolean {
+  for (const [, name, value] of text.matchAll(TRANSITION_DECLARATION)) {
+    probe.cssText = "";
+    probe.setProperty(name as string, (value as string).replace(IMPORTANT, "").trim());
+    // A value cut short may not parse again: it may hold anything.
+    if (probe.length === 0 || declaresTransition(probe)) return true;
   }
   return false;
 }
 
-function rulesStart(rules: CSSRuleList, seen: Set<CSSStyleSheet>): boolean {
+/** What the rules of a scope are read with. */
+interface Reading {
+  /** The sheets read already. */
+  seen: Set<CSSStyleSheet>;
+  /** See {@link textDeclaresTransition}. */
+  probe: CSSStyleDeclaration;
+}
+
+/** Whether `rules` let a seek start something; `nested` when the text of a rule holding them was read. */
+function rulesStart(rules: CSSRuleList, reading: Reading, nested = false): boolean {
   for (const rule of Array.from(rules)) {
-    switch (kind(rule)) {
+    const type = kind(rule);
+    switch (type) {
       case "CSSContainerRule":
         return true;
       case "CSSFontFaceRule":
         // Descriptors only, and reading them would serialise a source that may run to megabytes.
         continue;
       case "CSSKeyframesRule":
-        if (keyframesStart(rule as CSSKeyframesRule)) return true;
+        if (STARTING_KEYFRAME_DECLARATION.test(rule.cssText)) return true;
         continue;
       case "CSSImportRule": {
         const sheet = (rule as CSSImportRule).styleSheet;
-        if (sheet && sheetStarts(sheet, seen)) return true;
+        if (sheet && sheetStarts(sheet, reading)) return true;
         continue;
       }
     }
-    if ("style" in rule && declaresTransition((rule as CSSStyleRule).style)) return true;
-    if ("cssRules" in rule && rulesStart((rule as CSSGroupingRule).cssRules, seen)) return true;
+    const inner = (rule as Partial<CSSGroupingRule>).cssRules;
+    if (nested || GROUPING_RULES.has(type)) {
+      if (inner && rulesStart(inner, reading, nested)) return true;
+      continue;
+    }
+    // The text of a style rule holds the rules nested in it too: those are only read for the rules
+    // that start something by their kind.
+    const text = rule.cssText;
+    if (/transition/i.test(text) && textDeclaresTransition(text, reading.probe)) return true;
+    if (inner && /@container|keyframes/i.test(text) && rulesStart(inner, reading, true)) return true;
   }
   return false;
 }
 
-function sheetStarts(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boolean {
-  if (seen.has(sheet)) return false;
-  seen.add(sheet);
+function sheetStarts(sheet: CSSStyleSheet, reading: Reading): boolean {
+  if (reading.seen.has(sheet)) return false;
+  reading.seen.add(sheet);
   let rules: CSSRuleList;
   try {
     rules = sheet.cssRules;
   } catch {
     return true; // A cross-origin sheet cannot be read: it may hold anything.
   }
-  return rulesStart(rules, seen);
+  return rulesStart(rules, reading);
 }
 
 /**
@@ -97,9 +145,10 @@ function sheetStarts(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boolean {
  * and sheets or styles added later are not seen.
  */
 export function mayStartAnimations(scope: Document | ShadowRoot): boolean {
-  const seen = new Set<CSSStyleSheet>();
+  const doc = scope.ownerDocument ?? (scope as Document);
+  const reading: Reading = { seen: new Set(), probe: doc.createElementNS(HTML_NS, "div").style };
   const sheets = [...Array.from(scope.styleSheets), ...(scope.adoptedStyleSheets ?? [])];
-  if (sheets.some((sheet) => sheetStarts(sheet as CSSStyleSheet, seen))) return true;
+  if (sheets.some((sheet) => sheetStarts(sheet as CSSStyleSheet, reading))) return true;
   const inline = scope.querySelectorAll<HTMLElement>('[style*="transition" i]');
   return Array.from(inline).some((el) => el.style !== undefined && declaresTransition(el.style));
 }
