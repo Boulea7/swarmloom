@@ -144,9 +144,67 @@ const FREEZE_ROUNDS = 4;
  * wall time through the snapshot and on until go live. So after each pass the document is laid out
  * (container queries resolve in layout), the animations are read again and the new ones are frozen
  * the same way, up to {@link FREEZE_ROUNDS} more passes.
+ *
+ * The contents of `content-visibility: auto` elements count too: they show while the passes run (see
+ * {@link withSkippedContents}), as an off-screen capture frame leaves them all unstyled.
  * Returns counts and a `resume()` that lets the loops run again.
  */
 export function freezeAnimations(doc: Document, phase = 0.5): FrozenAnimations {
+  return withSkippedContents(doc, () => freezeShown(doc, phase));
+}
+
+/** An element whose `content-visibility: auto` {@link withSkippedContents} turned off, with its own `style` attribute. */
+interface ShownElement {
+  el: Element;
+  attr: string | null;
+}
+
+/**
+ * Sets every `content-visibility: auto` element of `doc` to `visible` (inline, important), then lays
+ * the document out. Document order sets an ancestor first, so the style of a nested one is read with
+ * the contents around it shown: a style read inside skipped contents starts their animations at
+ * their first keyframe and keeps that pose.
+ */
+function showSkippedContents(doc: Document): ShownElement[] {
+  const win = doc.defaultView;
+  const shown: ShownElement[] = [];
+  if (!win) return shown;
+  for (const el of Array.from(doc.querySelectorAll("*"))) {
+    // Duck-typed: the frame's elements come from another realm.
+    const style = (el as Partial<ElementCSSInlineStyle>).style;
+    if (!style || win.getComputedStyle(el).getPropertyValue("content-visibility") !== "auto") continue;
+    shown.push({ el, attr: el.getAttribute("style") });
+    style.setProperty("content-visibility", "visible", "important");
+  }
+  if (shown.length > 0) void doc.documentElement?.getBoundingClientRect();
+  return shown;
+}
+
+/**
+ * Runs `run` while the contents of the document's `content-visibility: auto` elements show. In the
+ * off-screen capture frame the browser skips all of them: their CSS animations and transitions do
+ * not exist yet, so the freeze never saw them, and the snapshot's style reads then started them at
+ * their first keyframe and kept that stale pose (entrances captured invisible, loops at their start,
+ * both jumping at go live). After `run` the document is laid out once more, which styles the poses
+ * `run` set, and each element gets its own `style` attribute back, so the live page behaves as written.
+ */
+function withSkippedContents<T>(doc: Document, run: () => T): T {
+  const shown = typeof doc.getAnimations === "function" ? showSkippedContents(doc) : [];
+  try {
+    return run();
+  } finally {
+    if (shown.length > 0) void doc.documentElement?.getBoundingClientRect();
+    for (const { el, attr } of shown) {
+      if (attr !== null) el.setAttribute("style", attr);
+      // Read first: Chromium writes a CSSOM change to the attribute lazily, and removing it before
+      // that only empties the declarations, which a later read writes out as `style=""`.
+      else if (el.getAttribute("style") !== null) el.removeAttribute("style");
+    }
+  }
+}
+
+/** {@link freezeAnimations} once the skipped contents show. */
+function freezeShown(doc: Document, phase = 0.5): FrozenAnimations {
   const fraction = Number.isFinite(phase) ? Math.min(1, Math.max(0, phase)) : 0.5;
   const seen = new Set<Animation>();
   const loops: Animation[] = [];
@@ -229,8 +287,10 @@ export async function renderInFrame(opts: FrameOptions): Promise<FrameDocument> 
     await delay(opts.settleMs, opts.signal);
     await nextFrame(win, opts.signal);
     // Timings before the freeze (finished animations may leave the list), boxes after it.
-    const timings = opts.keyframes ? readKeyframes(doc, opts.infinitePhase) : null;
-    const frozen = freezeAnimations(doc, opts.infinitePhase);
+    const { timings, frozen } = withSkippedContents(doc, () => ({
+      timings: opts.keyframes ? readKeyframes(doc, opts.infinitePhase) : null,
+      frozen: freezeShown(doc, opts.infinitePhase),
+    }));
     await nextFrame(win, opts.signal);
     const timelines = timings ? placeKeyframes(timings) : undefined;
     return { doc, frame, loaded, frozen, dispose, ...(timelines ? { timelines } : {}) };

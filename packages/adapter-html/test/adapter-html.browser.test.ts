@@ -109,6 +109,28 @@ describe("html examples in Chromium", () => {
     }
   });
 
+  it("freezes the animations in content-visibility:auto sections, which the off-screen frame skips", async () => {
+    const page =
+      "<!DOCTYPE html><html><head><style>" +
+      "section{content-visibility:auto;contain-intrinsic-size:auto 200px;height:200px}" +
+      "@keyframes rise{from{opacity:0}}@keyframes spin{to{transform:translateX(200px)}}" +
+      "p{animation:rise 2.5s ease-out}#dot{width:20px;height:20px;animation:spin 1.3s linear infinite}" +
+      "</style></head><body><section><p id='lead'>Hello</p><div id='dot'></div></section>" +
+      "<section><p id='more'>More</p></section></body></html>";
+    const live = createHtmlAdapter({ snapshot: probeSnapshot, keepLive: true });
+    const loaded = await live.load({ text: page }, ctx);
+    try {
+      const opacity = Object.fromEntries(loaded.blueprint.layers.map((l) => [l.id, l.opacity]));
+      expect([opacity.lead, opacity.more]).toEqual([1, 1]);
+      const doc = loaded.live?.document;
+      expect(doc?.getAnimations().map((a) => [a.playState, a.currentTime])).toEqual([["paused", 650]]);
+      // The sections get their own value back for the live page.
+      expect(doc?.querySelector("section")?.hasAttribute("style")).toBe(false);
+    } finally {
+      loaded.dispose?.();
+    }
+  });
+
   it("adds keyframe timelines under animated elements only when the host registers anim:timeline", async () => {
     const timeline: Plugin = {
       name: TIMELINE_PLUGIN,
