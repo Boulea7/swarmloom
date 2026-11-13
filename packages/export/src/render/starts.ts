@@ -53,8 +53,11 @@ const GROUPING_RULES = new Set([
 ]);
 /** The namespace of the element whose inline style parses declarations (in any document). */
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-/** One plain time of a transition duration or delay list. */
-const PLAIN_TIME = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:ms|s)$/i;
+/**
+ * One plain time of a transition duration or delay list. Each digit run has one way to match, so a
+ * long run that ends in no unit fails in linear time: the text is the page's.
+ */
+const PLAIN_TIME = /^[+-]?(?=\.?\d)\d*(?:\.\d*)?(?:e[+-]?\d+)?(?:ms|s)$/i;
 /** CSS-wide keywords: each takes a value another rule sets (scanned there) or the initial 0s. */
 const CSS_WIDE = /^(?:initial|inherit|unset|revert|revert-layer)$/i;
 

@@ -373,4 +373,15 @@ describe("export in the browser", () => {
     // A value inherits across a shadow boundary: keyframes in one root reach a transition in another.
     expect(mayStartAnimations([facts(glow, ""), facts(".a{transition:color 1s}", "")])).toBe(true);
   });
+
+  it("reads a long page-made transition time in linear time", () => {
+    // `var()` keeps the raw text, so a time check that backtracks over the digit run takes seconds.
+    const root = document.createElement("div").attachShadow({ mode: "open" });
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(`p{transition-duration:${"1".repeat(100_000)}x, var(--a)}`);
+    root.adoptedStyleSheets = [sheet];
+    const start = performance.now();
+    expect(readStyleFacts(root).transitions).toBe(true);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
 });
