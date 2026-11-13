@@ -204,17 +204,24 @@
 }
 
 /* Below this a small face cannot hold a title above the play button and the small buttons at
-   their touch sizes: the title gives way, the poster still shows the build. */
+   their touch sizes: the title gives way, the poster still shows the build. It leaves the screen,
+   not the page: the poster is decorative, so the title is all that names the example to a screen
+   reader. Out of flow, it takes no room from the controls. */
 @container (height < 175px) {
   .view-watch .watch-title {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
 /* While a build plays (or is paused), the controls sit small along the bottom so the stage stays in
-   view: no title, the play button in a row with the others. That row (play, next, phone and two
-   gaps) is wider than the 40 + 36 + 36 px floors allow below a ~185 px round face, so the floors
-   give way to shares of the safe area that always fit it. */
+   view: no title on screen (screen readers keep it, as above), the play button in a row with the
+   others. That row (play, next, phone and two gaps) is wider than the 40 + 36 + 36 px floors allow
+   below a ~185 px round face, so the floors give way to shares of the safe area that always fit it. */
 .view-watch[data-phase="playing"] .watch-safe {
   flex-direction: row;
   align-items: flex-end;
@@ -222,7 +229,12 @@
 }
 
 .view-watch[data-phase="playing"] .watch-title {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .view-watch[data-phase="playing"] .watch-play {

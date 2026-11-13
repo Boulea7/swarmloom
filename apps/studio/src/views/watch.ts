@@ -104,6 +104,8 @@ export function createWatch(ctx: AppContext): View {
     },
   });
 
+  // Off screen on a small face and while a build plays, but always on the page: with the poster
+  // decorative, it is what names the example to a screen reader (see advance for when it speaks).
   const title = h("p", { class: "watch-title" });
   const playIcon = h("span", { class: "watch-play-icon" }, icon("play", 34));
   const play = h(
@@ -296,7 +298,8 @@ export function createWatch(ctx: AppContext): View {
     phase = "idle";
     syncCycle();
     setProgress(0);
-    title.textContent = item.title;
+    // The same title again (a retry after an error) is no news to a screen reader.
+    if (title.textContent !== item.title) title.textContent = item.title;
     poster.replaceChildren(
       item.entry ? thumbnail(item.entry, ctx.services.examplesBase) : h("div", { class: "thumb" }),
     );
@@ -356,6 +359,9 @@ export function createWatch(ctx: AppContext): View {
 
   function advance(byUser: boolean): void {
     if (items.length === 0) return;
+    // Next says the new title; the cycle after a build moves on quietly, as an auto-rotating
+    // carousel does (WAI-ARIA APG), with the title there to read.
+    title.setAttribute("aria-live", byUser ? "polite" : "off");
     index = (index + 1) % items.length;
     const item = items[index];
     if (item) load(item, engaged || byUser);

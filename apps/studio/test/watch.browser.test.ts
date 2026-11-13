@@ -210,9 +210,10 @@ it.each([
     const safe = root.querySelector<HTMLElement>(".watch-safe")?.getBoundingClientRect();
     const heading = root.querySelector<HTMLElement>(".watch-title");
     if (!safe || !heading) throw new Error("no watch face");
-    // Play, Next and phone always render; the title only where it fits. Without this, controls that
-    // all vanished would pass the bounds checks below (no rects: top Infinity, bottom -Infinity).
-    const shown = (el: Element) => el.getClientRects().length > 0;
+    // Play, Next and phone always render; the title only where it fits (elsewhere it is a 1 px box
+    // for screen readers). Without this, controls that all vanished would pass the bounds checks
+    // below (no rects: top Infinity, bottom -Infinity).
+    const shown = (el: Element) => el.getBoundingClientRect().width > 1;
     const buttons = [...root.querySelectorAll<HTMLElement>(".watch-play, .watch-actions > *")];
     // A long title keeps to one line.
     const line = parseFloat(getComputedStyle(heading).lineHeight);
@@ -231,6 +232,57 @@ it.each([
     expect(bounds.bottom).toBeLessThanOrEqual(safe.bottom + 0.5);
     expect(bounds.left).toBeGreaterThanOrEqual(safe.left - 0.5);
     expect([shown(heading), ...buttons.map(shown)]).toEqual([titled, true, true, true]);
+  } finally {
+    await page.viewport(414, 896);
+  }
+});
+
+type AXNode = {
+  nodeId: string;
+  parentId?: string;
+  ignored: boolean;
+  role?: { value: string };
+  name?: { value: string };
+  description?: { value: string };
+  properties?: { name: string; value: { value: unknown } }[];
+};
+
+/** What a screen reader gets from this test's frame: its accessibility tree (ignored nodes marked). */
+async function axTree(): Promise<AXNode[]> {
+  type Frame = { frame: { id: string; url: string }; childFrames?: Frame[] };
+  const { frameTree } = (await cdp().send("Page.getFrameTree")) as { frameTree: Frame };
+  const frames = (tree: Frame): Frame["frame"][] => [tree.frame, ...(tree.childFrames ?? []).flatMap(frames)];
+  const frameId = frames(frameTree).find((frame) => frame.url === location.href)?.id;
+  const { nodes } = (await cdp().send("Accessibility.getFullAXTree", { frameId })) as { nodes: AXNode[] };
+  return nodes;
+}
+
+/** The text a screen reader reads, each with how it announces a change there: "polite", "off" or "none". */
+async function spoken(): Promise<[string | undefined, unknown][]> {
+  const nodes = await axTree();
+  const byId = new Map(nodes.map((node) => [node.nodeId, node]));
+  // The live region a text sits in sets the politeness, from the nearest ancestor that has one.
+  const live = (node: AXNode | undefined): unknown =>
+    node && (node.properties?.find((p) => p.name === "live")?.value.value ?? live(byId.get(node.parentId ?? "")));
+  return nodes
+    .filter((node) => !node.ignored && node.role?.value === "StaticText")
+    .map((node) => [node.name?.value, live(node) ?? "none"]);
+}
+
+// The poster is decorative: off screen or not, the title is what names the example to a screen
+// reader, and Next says the new one.
+it("names the example to a screen reader on a face too small for its title", async () => {
+  await page.viewport(140, 140);
+  try {
+    const root = await mountWatch("?watch=1&round=1");
+    const face = root.querySelector<HTMLElement>(".view-watch");
+    const title = root.querySelector(".watch-title");
+    const first = title?.textContent;
+    expect(await spoken()).toContainEqual([first, "none"]);
+    root.querySelector<HTMLButtonElement>(".watch-actions button:first-child")?.click();
+    await expect.poll(() => face?.dataset.phase).toBe("playing");
+    expect(title?.textContent).not.toBe(first);
+    expect(await spoken()).toContainEqual([title?.textContent, "polite"]);
   } finally {
     await page.viewport(414, 896);
   }
