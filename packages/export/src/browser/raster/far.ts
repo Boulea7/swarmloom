@@ -4,6 +4,7 @@ import {
   animationsOf,
   focusState,
   same,
+  sheetApplies,
   sheetState,
   sheetsOf,
   sheetText,
@@ -304,11 +305,12 @@ function readRules(rules: CSSRuleList, reach: SheetReach): void {
   }
 }
 
-/** The {@link SheetReach} of all the sheets of a scope. */
+/** The {@link SheetReach} of the sheets of a scope that apply (`sheetApplies`). */
 function scopeReach(targets: Iterable<Document | ShadowRoot>): SheetReach {
   const reach = { local: true, sized: false };
   for (const target of targets) {
     for (const sheet of sheetsOf(target)) {
+      if (!sheetApplies(sheet, target)) continue;
       const one = sheetReach(sheet);
       reach.local &&= one.local;
       reach.sized ||= one.sized;

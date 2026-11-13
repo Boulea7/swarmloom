@@ -15,6 +15,20 @@ export function sheetsOf(target: Document | ShadowRoot): CSSStyleSheet[] {
   return [...Array.from(target.styleSheets ?? []), ...(target.adoptedStyleSheets ?? [])] as CSSStyleSheet[];
 }
 
+/**
+ * Whether a style sheet of `target` applies: it is not switched off and its media, if it has any,
+ * match in the window of `target` (where that cannot be told, it counts as applying). A sheet that
+ * does not apply styles nothing, as the host app's sheets Studio's export frame links with
+ * `media="not all"`, whatever its rules hold.
+ */
+export function sheetApplies(sheet: CSSStyleSheet, target: Document | ShadowRoot): boolean {
+  if (sheet.disabled) return false;
+  const media = sheet.media?.mediaText;
+  if (!media) return true;
+  const view = (target.nodeType === 9 ? (target as Document) : (target as ShadowRoot).ownerDocument).defaultView;
+  return !view || typeof view.matchMedia !== "function" || view.matchMedia(media).matches;
+}
+
 /** What a read of a Web Animation gives (see {@link animationMark}). */
 export interface AnimationMark {
   /** What it shows, to compare frames by: null while it runs on the wall clock. */
@@ -163,26 +177,31 @@ export function sheetTakesUpdates(sheet: CSSStyleSheet): boolean {
 
 /**
  * Whether the CSS of documents and shadow roots may use what the engine takes at a rendering update
- * ({@link cssTakesUpdates}): in a rule of their style sheets ({@link sheetTakesUpdates}) or in a
- * `style` attribute of their elements (read after all the sheets, which are mostly known).
+ * ({@link cssTakesUpdates}): in a rule of their style sheets that apply ({@link sheetApplies},
+ * {@link sheetTakesUpdates}) or in a `style` attribute of their elements (read after all the
+ * sheets, which are mostly known).
  */
 export function takesUpdates(targets: readonly (Document | ShadowRoot)[]): boolean {
-  if (targets.some((target) => sheetsOf(target).some(sheetTakesUpdates))) return true;
+  const applied = (target: Document | ShadowRoot) => sheetsOf(target).filter((s) => sheetApplies(s, target));
+  if (targets.some((target) => applied(target).some(sheetTakesUpdates))) return true;
   return targets.some((target) =>
     Array.from(target.querySelectorAll("[style]")).some((el) => cssTakesUpdates(el.getAttribute("style") ?? "")),
   );
 }
 
 /**
- * Which style sheets apply in `targets` (each sheet, whether it is switched off, its media) and,
- * with `texts`, the text of their rules ({@link sheetText}), in a list to compare with `same`.
+ * Which style sheets apply in `targets` (each sheet, whether it is switched off, its media and
+ * whether it applies: {@link sheetApplies}) and, with `texts`, the text of the rules of those that
+ * apply ({@link sheetText}; the rules of one that does not style nothing), in a list to compare
+ * with `same`.
  */
 export function sheetState(targets: Iterable<Document | ShadowRoot>, texts: boolean): unknown[] {
   const state: unknown[] = [];
   for (const target of targets) {
     for (const sheet of sheetsOf(target)) {
-      state.push(sheet, sheet.disabled, sheet.media?.mediaText);
-      if (texts) state.push(sheetText(sheet));
+      const applies = sheetApplies(sheet, target);
+      state.push(sheet, sheet.disabled, sheet.media?.mediaText, applies);
+      if (texts && applies) state.push(sheetText(sheet));
     }
   }
   return state;

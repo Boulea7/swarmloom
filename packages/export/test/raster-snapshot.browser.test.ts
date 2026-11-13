@@ -627,6 +627,8 @@ it("walks the frame after a change once the rendering update that follows it, wh
 it.for<[string, string, boolean]>([
   ["CSS that takes no such state", "<style>div { background: rgb(255, 0, 0) }</style>", false],
   ["a style sheet with content-visibility", "<style>div { content-visibility: auto }</style>", true],
+  // As Studio's export frame mutes the app's sheets a bundler links into it.
+  ["a style sheet that does not apply", '<style media="not all">div { animation-timeline: scroll() }</style>', false],
   ["a style attribute with position-area", '<i style="position: absolute; position-area: bottom"></i>', true],
 ])("waits for a rendering update before a walk only where the page takes state there: %s", async ([, css, waits]) => {
   const { win, rasterizer } = await frameOf(`${css}<body style="margin:0"><div style="height:100px"></div></body>`);
