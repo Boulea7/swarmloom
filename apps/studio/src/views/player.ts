@@ -240,6 +240,8 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     settings: ctx.settings,
     locale: ctx.i18n.locale,
     scheme,
+    // Studio records there each setting the user sets on this entry, a whole Restore defaults too.
+    dropped: () => (ctx.route.source?.kind === "shared" ? (ctx.route.source.drop ?? []) : []),
     onPhase: (next, error) => {
       phase = next;
       lastError = error;

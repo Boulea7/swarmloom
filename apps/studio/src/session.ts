@@ -44,6 +44,13 @@ export interface SessionOptions {
    * and its phone link, since a handoff cannot be read twice.
    */
   resolve?(signal: AbortSignal): Promise<OpenedSource>;
+  /**
+   * The settings the user has set on this history entry so far (the route's current
+   * `SourceRef.drop`), read once the source is read: a share link's values for them no longer
+   * apply, also for one set while the link was still being read. `ref.drop` holds only those set
+   * before the session was made.
+   */
+  dropped?(): readonly (keyof StudioSettings)[];
   onPhase(phase: SessionPhase, error?: unknown): void;
   onProgress?(built: number, total: number): void;
   onState?(state: PlayerState): void;
@@ -153,11 +160,6 @@ export class Session {
   private unsubscribe: Array<() => void> = [];
   private destroyed = false;
   private phase: SessionPhase = "opening";
-  /**
-   * Settings {@link apply} changed while the source was still being read: the user's, so the values
-   * a share link carries for them no longer apply when it opens.
-   */
-  private readonly changedBeforeOpen = new Set<keyof StudioSettings>();
 
   constructor(private readonly o: SessionOptions) {
     this.settings = o.settings;
@@ -218,14 +220,13 @@ export class Session {
     }
   }
 
-  /** `opened` without the settings the user changed while it was read (see {@link changedBeforeOpen}). */
+  /** `opened` without the settings the user has set on this entry (see {@link SessionOptions.dropped}). */
   private withoutChanged(opened: OpenedSource): OpenedSource {
     const carried = opened.settings;
-    if (!carried || !Object.keys(carried).some((key) => this.changedBeforeOpen.has(key as keyof StudioSettings))) {
-      return opened;
-    }
+    const dropped = this.o.dropped?.() ?? [];
+    if (!carried || !dropped.some((key) => key in carried)) return opened;
     const settings: Partial<StudioSettings> = { ...carried };
-    for (const key of this.changedBeforeOpen) delete settings[key];
+    for (const key of dropped) delete settings[key];
     return { ...opened, settings };
   }
 
@@ -250,8 +251,9 @@ export class Session {
   /**
    * Applies new settings: Studio's, which include a share link's until the user changes them. Live
    * ones go straight to the player; the returned impact tells the caller whether a {@link rebuild}
-   * (new player) or {@link reload} (new adapter run) is still needed. A setting changed while the
-   * source is still being read keeps the user's value when a share link carries another.
+   * (new player) or {@link reload} (new adapter run) is still needed. A setting the user set while
+   * the source is still being read keeps the user's value when a share link carries another
+   * ({@link SessionOptions.dropped} names it).
    * The language setting is not one of them: the resolved locale arrives through {@link setLocale}
    * once Studio's strings for it have loaded.
    * Turning sound on is live, but when the sound pack, volume or beat hits changed since the player
@@ -262,11 +264,6 @@ export class Session {
     const prev = this.settings;
     let impact = impactOf({ ...prev, locale: next.locale }, next);
     this.settings = next;
-    if (!this.opened) {
-      for (const key of Object.keys(next) as (keyof StudioSettings)[]) {
-        if (prev[key] !== next[key]) this.changedBeforeOpen.add(key);
-      }
-    }
     const unmuted = next.sound && !this.soundWasOn;
     this.soundWasOn = next.sound;
     const player = this.player;
