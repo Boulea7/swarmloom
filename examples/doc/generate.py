@@ -1,18 +1,20 @@
-"""Generate examples/doc/report.doc, the Word 97-2003 (.doc) sample of SwarmLoom.
+"""Generate examples/doc/report.doc and examples/doc/table.doc, the Word 97-2003 (.doc) samples of SwarmLoom.
 
-The file is written byte by byte from the published MS-DOC and MS-CFB specifications, with the
-Python standard library only, so the sample is produced by this project (MIT like the rest of the
-repository). It exercises what the DOC adapter reads: the built-in Title and Heading styles, mixed
-Chinese and Latin text, a footnote, a hyperlink field, a bordered table, a header and a footer, an
-explicit page break and a second, landscape section (three sheets in total).
+The files are written byte by byte from the published MS-DOC and MS-CFB specifications, with the
+Python standard library only, so the samples are produced by this project (MIT like the rest of the
+repository). report.doc exercises what the DOC adapter reads: the built-in Title and Heading styles,
+mixed Chinese and Latin text, a footnote, a hyperlink field, a bordered table, a header and a footer,
+an explicit page break and a second, landscape section (three sheets in total). table.doc is one
+sheet with a 5 x 6 table whose cells carry a table depth (sprmPItap) and whose borders are set for the
+whole table (sprmTTableBorders80) rather than per cell.
 
 Usage (from the repository root, Python 3.9 or later, no packages needed):
 
     python3 examples/doc/generate.py
 
 The output is byte-for-byte reproducible: no timestamps or random values are written.
-It is checked by SwarmLoom's own parser and by an independent .doc text extractor; it has not been
-opened in Microsoft Word, so treat it as a parser sample rather than a Word compatibility reference.
+They are checked by SwarmLoom's own parser and by an independent .doc text extractor; they have not
+been opened in Microsoft Word, so treat them as parser samples rather than Word compatibility references.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parent / "report.doc"
+HERE = Path(__file__).resolve().parent
 
 HOME = "https://github.com/Boulea7/swarmloom"
 
@@ -67,8 +69,10 @@ P_LINE = 0x6412
 P_OUTLINE = 0x2640
 P_IN_TABLE = 0x2416
 P_ROW_END = 0x2417
+P_ITAP = 0x6649  # table depth: 1 for the cells of a top-level table
 T_GAP_HALF = 0x9602
 T_DEF_TABLE = 0xD608
+T_TABLE_BORDERS80 = 0xD605  # top, left, bottom, right, inside horizontal and vertical Brc80
 
 # Section sprms.
 S_BREAK = 0x3009  # 2 = new page
@@ -87,10 +91,14 @@ def line_spacing(twips: int, multiple: bool) -> bytes:
     return struct.pack("<HhH", P_LINE, twips, 1 if multiple else 0)
 
 
-def table_definition(edges: list[int]) -> bytes:
-    """sprmTDefTable: column edges in twips and a single 1/2 pt black border on every cell side."""
+BRC_SINGLE = bytes([4, 1, 1, 0])  # Brc80: width in 1/8 pt, single line, black, no spacing
+
+
+def table_definition(edges: list[int], cell_borders: bool = True) -> bytes:
+    """sprmTDefTable: column edges in twips and, unless `cell_borders` is off, a single 1/2 pt black
+    border on every cell side."""
     cells = len(edges) - 1
-    brc = bytes([4, 1, 1, 0])  # Brc80: width in 1/8 pt, single line, black, no spacing
+    brc = BRC_SINGLE if cell_borders else bytes(4)
     tc = struct.pack("<HH", 0, 0) + brc * 4
     operand = bytes([cells]) + b"".join(struct.pack("<h", e) for e in edges) + tc * cells
     # The operand of sprmTDefTable has a 2-byte size that counts the rest of the operand plus one.
@@ -267,7 +275,7 @@ TABLE = [
 ]
 
 
-def main_story() -> Story:
+def report_story() -> Story:
     s = Story()
     s.para("群织旧版文档样例 · SwarmLoom Legacy DOC Sample", TITLE)
     s.para(
@@ -312,6 +320,41 @@ def main_story() -> Story:
     )
     s.para("3.1 页眉与页脚 Header and footer", H3)
     s.para("页眉“群织 SwarmLoom · 旧版 Word 样例”和页脚出现在每一页上。The header and footer repeat on every sheet.")
+    s.para("— 完 · The End —", NORMAL, sprm(P_ALIGN, 1))
+    return s
+
+
+SCHEDULE_EDGES = [0, 1106, 2546, 3986, 5426, 6866, 8306]
+SCHEDULE = [
+    ("时段 Time", "周一 Mon", "周二 Tue", "周三 Wed", "周四 Thu", "周五 Fri"),
+    ("09:00", "整经 Warping", "穿综 Threading", "织造 Weaving", "织造 Weaving", "检验 Inspection"),
+    ("11:00", "穿综 Threading", "织造 Weaving", "织造 Weaving", "检验 Inspection", "整理 Finishing"),
+    ("14:00", "织造 Weaving", "织造 Weaving", "检验 Inspection", "整理 Finishing", "整经 Warping"),
+    ("16:00", "检验 Inspection", "整理 Finishing", "整经 Warping", "穿综 Threading", "例会 Review"),
+]
+
+
+def table_story() -> Story:
+    """The main story of table.doc: a title, one paragraph, the schedule table and a closing paragraph."""
+    s = Story()
+    s.para("织机一周排班 · Loom Week Plan", TITLE)
+    s.para(
+        "这份 Word 97-2003 文件由 examples/doc/generate.py 逐字节写出：一张五行六列的排班表，边框设在整张表上。"
+        "This file is written by a script in this repository: a 5 x 6 table with table-wide borders."
+    )
+    cell = IN_CELL + sprm(P_ITAP, 1)
+    row_end = (
+        cell
+        + sprm(P_ROW_END, 1)
+        + sprm(T_GAP_HALF, 108)
+        + table_definition(SCHEDULE_EDGES, cell_borders=False)
+        + sprm(T_TABLE_BORDERS80, BRC_SINGLE * 6)
+    )
+    for r, row in enumerate(SCHEDULE):
+        for text in row:
+            s.run(text, sprm(C_BOLD, 1) if r == 0 else b"").end(NORMAL, cell, mark="\x07")
+        s.end(NORMAL, row_end, mark="\x07")
+    # Word keeps a paragraph after a table: a document cannot end inside one.
     s.para("— 完 · The End —", NORMAL, sprm(P_ALIGN, 1))
     return s
 
@@ -457,15 +500,49 @@ def dop() -> bytes:
     return bytes(out)
 
 
-def build_document() -> tuple[bytes, bytes]:
-    main = main_story()
-    notes = footnote_story()
-    header, hdd = header_story()
+@dataclass
+class Document:
+    """The stories, sections and fields of one .doc file."""
+
+    main: Story
+    # Each section: the mark of its first CP in the main story (None for CP 0) and its SEPX grpprl.
+    sections: list[tuple[str | None, bytes]]
+    # Footnote story; its reference sits at the main story's "footnote" mark.
+    notes: Story | None = None
+    # Header story and its PlcfHdd CPs (see header_story).
+    headers: tuple[Story, list[int]] | None = None
+    # Each field character: its mark in the main story and its FLD bytes.
+    fields: list[tuple[str, bytes]] = field(default_factory=list)
+
+
+def report() -> Document:
+    return Document(
+        main=report_story(),
+        sections=[(None, PORTRAIT), ("section-2", LANDSCAPE)],
+        notes=footnote_story(),
+        headers=header_story(),
+        fields=[
+            ("field-begin", bytes([0x13, 88])),  # flt 88 = HYPERLINK
+            ("field-separator", bytes([0x14, 0xFF])),
+            ("field-end", bytes([0x15, 0x80])),  # fHasSep
+        ],
+    )
+
+
+def schedule() -> Document:
+    return Document(main=table_story(), sections=[(None, PORTRAIT)])
+
+
+def build_document(doc: Document) -> tuple[bytes, bytes]:
+    main = doc.main
+    notes = doc.notes or Story()
+    header, hdd = doc.headers or (Story(), [])
     ccp_text, ccp_ftn, ccp_hdd = main.cp, notes.cp, header.cp
     stories = [(main, 0), (notes, ccp_text), (header, ccp_text + ccp_ftn)]
-    guard = Story().end()  # one more paragraph mark after the last story
-    stories.append((guard, ccp_text + ccp_ftn + ccp_hdd))
-    total = ccp_text + ccp_ftn + ccp_hdd + guard.cp
+    if ccp_ftn or ccp_hdd:
+        guard = Story().end()  # one more paragraph mark after the last subdocument
+        stories.append((guard, ccp_text + ccp_ftn + ccp_hdd))
+    total = sum(story.cp for story, _ in stories)
     text = "".join(story.value for story, _ in stories)
     assert len(text) == total
 
@@ -497,7 +574,7 @@ def build_document() -> tuple[bytes, bytes]:
     for page in papx_pages:
         word += page[2]
     sepx_fcs = []
-    for grpprl in (PORTRAIT, LANDSCAPE):
+    for _, grpprl in doc.sections:
         sepx_fcs.append(len(word))
         word += struct.pack("<H", len(grpprl)) + grpprl
         word += bytes(len(word) % 2)
@@ -513,22 +590,20 @@ def build_document() -> tuple[bytes, bytes]:
 
     put(1, style_sheet())
     fc_lcb[0] = fc_lcb[1]  # the original style sheet is the same one
-    ref_cp = main.marks["footnote"]
-    put(2, plc([ref_cp, ccp_text], [struct.pack("<h", 1)]))  # FRD: auto-numbered
-    put(3, plc([0, notes.marks["end"], ccp_ftn]))
-    section_2 = main.marks["section-2"]
+    if doc.notes:
+        ref_cp = main.marks["footnote"]
+        put(2, plc([ref_cp, ccp_text], [struct.pack("<h", 1)]))  # FRD: auto-numbered
+        put(3, plc([0, notes.marks["end"], ccp_ftn]))
+    section_starts = [main.marks[mark] if mark else 0 for mark, _ in doc.sections]
     sed = [struct.pack("<HIHI", 0, sepx, 0, 0xFFFFFFFF) for sepx in sepx_fcs]
-    put(6, plc([0, section_2, total], sed))
-    put(11, plc(hdd))
+    put(6, plc(section_starts + [total], sed))
+    if doc.headers:
+        put(11, plc(hdd))
     put(12, bin_table(chpx_pages, chpx_pn))
     put(13, bin_table(papx_pages, papx_pn))
     put(15, font_table())
-    fields = [
-        (main.marks["field-begin"], bytes([0x13, 88])),  # flt 88 = HYPERLINK
-        (main.marks["field-separator"], bytes([0x14, 0xFF])),
-        (main.marks["field-end"], bytes([0x15, 0x80])),  # fHasSep
-    ]
-    put(16, plc([cp for cp, _ in fields] + [ccp_text], [d for _, d in fields]))
+    if doc.fields:
+        put(16, plc([main.marks[mark] for mark, _ in doc.fields] + [ccp_text], [fld for _, fld in doc.fields]))
     put(31, dop())
     pcd = struct.pack("<HIH", 0, TEXT_FC, 0)  # one uncompressed (UTF-16LE) piece
     pcdt = plc([0, total], [pcd])
@@ -620,9 +695,12 @@ def compound_file(word: bytes, table: bytes) -> bytes:
 
 
 def main() -> None:
-    word, table = build_document()
-    OUT.write_bytes(compound_file(word, table))
-    print(f"wrote {OUT.relative_to(Path.cwd()) if OUT.is_relative_to(Path.cwd()) else OUT} ({OUT.stat().st_size} bytes)")
+    for name, doc in (("report.doc", report()), ("table.doc", schedule())):
+        out = HERE / name
+        word, table = build_document(doc)
+        out.write_bytes(compound_file(word, table))
+        shown = out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out
+        print(f"wrote {shown} ({out.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":

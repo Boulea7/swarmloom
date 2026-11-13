@@ -92,6 +92,19 @@ describe("examples manifest", () => {
     }
   });
 
+  it("ships no copy of a known file whose licence does not allow it here", () => {
+    // word-extractor's test03.doc is New Media Rights' "Open Source Licensing Chart" byte for byte:
+    // CC BY-NC 3.0 US, no commercial use, so it cannot ship as an MIT sample.
+    const refused = new Set(["36887f9fe1e7b792abe991a9767630e96d5446ec36a12e237b7a9c3f1356f5e7"]);
+    const root = resolve(import.meta.dirname, "../../../examples");
+    const { files } = scanExamples(root);
+    const sha256 = (file: string) =>
+      createHash("sha256")
+        .update(readFileSync(join(root, file)))
+        .digest("hex");
+    expect(files.filter((file) => refused.has(sha256(file)))).toEqual([]);
+  });
+
   it("names every font embedded in a sample PDF in the folder's SOURCES.md", () => {
     // Chromium embeds subsets of the machine's fonts (Liberation is GPL v2 with an exception), not MIT material.
     const root = resolve(import.meta.dirname, "../../../examples");
