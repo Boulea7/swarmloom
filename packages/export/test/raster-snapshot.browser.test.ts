@@ -609,11 +609,12 @@ it.for<[string, string, number, number[]]>([
   }
 });
 
-it("reads nothing of a frame the walk leaves out until it shows", async () => {
+it("reads nothing of a frame the walk leaves out, nor draws its font faces, until it shows", async () => {
   const { win, rasterizer } = await frameOf(
-    `<body style="margin:0"><iframe id=f style="position:fixed;left:-${SIZE + 10000}px;top:0;border:0;` +
-      `width:${SIZE}px;height:${SIZE}px" srcdoc="<style>body { margin: 0; background: rgb(255, 0, 0) }</style>">` +
-      "</iframe></body>",
+    '<body style="margin:0"><p style="position:absolute;top:80px;margin:0;font:10px Probe">W</p>' +
+      `<iframe id=f style="position:fixed;left:-${SIZE + 10000}px;top:0;border:0;width:${SIZE}px;height:${SIZE}px" ` +
+      'srcdoc="<style>body { margin: 0; background: rgb(255, 0, 0) } @font-face { font-family: Probe; ' +
+      'src: url(data:font/woff2;base64,AAAA) }</style>"></iframe></body>',
   );
   const frame = win.document.getElementById("f") as HTMLIFrameElement;
   const inner = frame.contentDocument as Document;
@@ -625,8 +626,11 @@ it("reads nothing of a frame the walk leaves out until it shows", async () => {
     texts.mockClear();
     expect(await pixel(rasterizer, 5, 5)).toEqual([255, 255, 255]);
     expect(texts).not.toHaveBeenCalled();
+    // The page's text names a face only the frame declares, which the page cannot use.
+    expect((await rasterizer.snapshot()).svg).not.toContain("@font-face");
     frame.style.left = "0";
     expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+    expect((await rasterizer.snapshot()).svg).toContain("@font-face");
     for (let i = 0; i < 3; i++) await pixel(rasterizer, 5, 5);
     // Drawn now, it is watched like the page.
     ((inner.styleSheets[0] as CSSStyleSheet).cssRules[0] as CSSStyleRule).style.background = "rgb(0, 0, 255)";

@@ -2891,21 +2891,21 @@ function* emitDocument(
 
 /**
  * `@font-face` rules the frame uses, with their sources embedded, each face once: KaTeX fonts, for
- * one, are declared in the page, in the stage's sheet and through the FontFace API.
+ * one, are declared in the page, in the stage's sheet and through the FontFace API. Only those of
+ * the documents drawn (the frame document and the same-origin frames the walk drew) and of their
+ * shadow roots: nothing of a frame left out shows, its fonts included.
  */
-async function fontCss(
-  walk: Walk,
-  source: SnapshotSource,
-  docs: readonly Document[],
-  cache: FontFaceCache,
-): Promise<string> {
+async function fontCss(walk: Walk, source: SnapshotSource, cache: FontFaceCache): Promise<string> {
   const faces: FaceSource[] = [];
   const sheets = new Set<CSSStyleSheet>();
   const add = (list: Iterable<CSSStyleSheet>) => {
     for (const sheet of list) sheets.add(sheet);
   };
+  const docs = [source.document, ...walk.frames];
   for (const doc of docs) add([...Array.from(doc.styleSheets), ...doc.adoptedStyleSheets]);
-  for (const root of source.shadowRoots()) add([...Array.from(root.styleSheets), ...root.adoptedStyleSheets]);
+  for (const root of source.shadowRoots()) {
+    if (docs.includes(root.ownerDocument)) add([...Array.from(root.styleSheets), ...root.adoptedStyleSheets]);
+  }
   const win = source.document.defaultView;
   for (const sheet of sheets) {
     // Sheets that do not apply (disabled, or for other media) declare no fonts for this frame.
@@ -3221,16 +3221,7 @@ export async function snapshotFrame(
   let walk: Walk | null = null;
   for (let restarts = 0; !walk; restarts++) walk = await walkFrame(source, baseline, resources, restarts, signal);
   source.far?.commit(walk.scrolls);
-  const doc = source.document;
-  const docs = [doc];
-  for (const frame of Array.from(doc.querySelectorAll("iframe"))) {
-    try {
-      if (frame.contentDocument) docs.push(frame.contentDocument);
-    } catch {
-      // Cross-origin frames are drawn empty.
-    }
-  }
-  const fonts = await fontCss(walk, source, docs, faces);
+  const fonts = await fontCss(walk, source, faces);
   const smil = walk.smil.attributes.size > 0 || walk.smil.moving.size > 0;
   const settled = walk.unsettled || smil ? null : walk.scrolls;
   for (const { index } of walk.overlays) walk.canvases[index] = BLANK_IMAGE;
