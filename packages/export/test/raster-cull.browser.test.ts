@@ -94,6 +94,30 @@ it("writes far boxes empty inside wrappers, lines and tables, keeping where the 
   }
 });
 
+// 384 boxes of 30.515625 px compute as `30.5156px`, which Chromium lays out as 30.5: written one by
+// one, they would move what follows them 6 px up.
+it.for<[string, string, (i: number) => string, boolean]>([
+  ["siblings", "", (i) => `<section style="height:30.515625px">far ${i}</section>`, true],
+  // A float before them pushes boxes that hold their content in below it, not one block written for all.
+  [
+    "after a float",
+    '<div style="float:left;width:100px;height:300px"></div>',
+    (i) => `<section style="display:flow-root;width:60px;height:30.515625px">far ${i}</section>`,
+    false,
+  ],
+])("writes a run of far boxes as one empty box where it lays out the same: %s", async ([, before, item, merged]) => {
+  const items = Array.from({ length: 384 }, (_, i) => item(i)).join("\n");
+  const { win, rasterizer } = await frameOf(
+    `<!doctype html><body style="margin:0">${before}${items}<p id=red style="height:98px;margin:0;background:rgb(255,0,0)"></p>`,
+  );
+  const red = win.document.getElementById("red") as HTMLElement;
+  win.scrollTo(0, red.getBoundingClientRect().top - 20);
+  const { svg } = await rasterizer.snapshot();
+  expect((svg.match(/<section/g)?.length ?? 0) < 20).toBe(merged);
+  const at = await drawn(rasterizer);
+  expect({ above: at(50, 18), top: at(50, 21) }).toEqual({ above: [255, 255, 255], top: [255, 0, 0] });
+});
+
 it("paints nothing of a box written empty, wherever its transform put it", async () => {
   const { rasterizer } = await frameOf(`<body style="margin:0;color:rgb(255,0,0)">
     <div style="height:40px;padding:1px;border:10px solid;transform:translateY(-3000px)"><p>moved away</p></div></body>`);

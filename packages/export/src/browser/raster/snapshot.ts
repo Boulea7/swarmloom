@@ -96,6 +96,10 @@ const INK_MARGIN = 256;
 const HOLLOW_DISPLAYS = new Set(["block", "flow-root", "flex", "grid", "list-item"]);
 /** Of those, the ones that hold their content's margins and floats in (block formatting contexts). */
 const CONTAINED_DISPLAYS = new Set(["flow-root", "flex", "grid"]);
+/** Of those, the ones a run of empty boxes written as one may hold (no list item: it steps a counter). */
+const RUN_DISPLAYS = new Set(["block", "flow-root", "flex", "grid"]);
+/** A counter declaration in a rule written for a pseudo-element (see {@link pseudoRules}). */
+const COUNTER_DECLARATION = /[{;]counter-(?:increment|reset|set):/;
 /** Block-level displays (the outer display of the others is inline, or they are internal parts). */
 const BLOCK_LEVEL = new Set(["block", "list-item", "flow-root", "flex", "grid", "table", "-webkit-box"]);
 /** HTML elements laid out as a whole whatever their display (replaced elements, form controls). */
@@ -365,6 +369,8 @@ export interface FarBox {
   scrolls: boolean;
   /** Reading it met a shadow root the source does not list (see {@link FrameSnapshot.settled}). */
   unlisted: boolean;
+  /** What it adds to the block flow it sits in, when a run of such boxes may be written as one. */
+  flow: FlowBox | null;
 }
 
 /** A box left out, as a {@link FarBox}. */
@@ -379,7 +385,35 @@ const CUT: FarBox = {
   z: 0,
   scrolls: false,
   unlisted: false,
+  flow: null,
 };
+
+/**
+ * What an empty box away from the viewport adds to the block flow around it, CSS px: siblings
+ * written one after the other this way are written as one empty box (see {@link endRun}).
+ */
+interface FlowBox {
+  /** Its top and bottom margins, as written (those its content shares with it included). */
+  top: number;
+  bottom: number;
+  /** Its margin-box width: what it adds to the width of a box sized by its content. */
+  width: number;
+  /** It is a block formatting context, which a float beside it would move. */
+  bfc: boolean;
+}
+
+/** Consecutive empty boxes written in one block flow, to be written as one (see {@link endRun}). */
+interface FlowRun {
+  first: Element;
+  last: Element;
+  boxes: FlowBox[];
+  /** The markup written for them and the white space between them: `walk.out` from `start` up to `end`. */
+  start: number;
+  end: number;
+  /** The rules written for their pseudo-elements: `walk.rules` from `rulesStart` up to `rulesEnd`. */
+  rulesStart: number;
+  rulesEnd: number;
+}
 
 /**
  * What reading the subtree of a box for the checks of a far box met (see {@link FarCache.record}),
@@ -443,6 +477,10 @@ interface Walk {
   far: FarCache<FarBox> | null;
   /** What the far checks of the box being written met in its subtree, while they read it. */
   probe: FarProbe | null;
+  /** The {@link FlowBox} of the element written last, if it was written as one ({@link joinRun}). */
+  flow: { el: Element; box: FlowBox } | null;
+  /** Multi-column boxes the element being written is in: their columns break the block flow. */
+  columns: number;
   /** See {@link FrameSnapshot.settled}. */
   scrolls: ScrollMark[];
   /** Something written can change without a DOM mutation or a scroll (see {@link FrameSnapshot.settled}). */
@@ -467,6 +505,11 @@ interface DocView {
   scale: number;
   /** Floats written so far in this document, and boxes left out that may hold some (see `FarKey.floats`). */
   floats: number;
+  /**
+   * Boxes the element being written is in that transform or zoom what is inside them, SVG elements
+   * included (a view box scales a `foreignObject`): bounding boxes in them are not CSS px of layout.
+   */
+  transformed: number;
 }
 
 /** Steps of a walk: each `yield` hands the main thread back until the walk resumes. */
@@ -480,6 +523,7 @@ function docView(win: Window & typeof globalThis, width: number, height: number,
     top,
     scale,
     floats: 0,
+    transformed: 0,
   };
 }
 
@@ -833,7 +877,8 @@ function edgeAligned(cs: CSSStyleDeclaration, display: string): boolean {
  * - an inline block, flex or grid container placed in its line by its edges ({@link edgeAligned});
  * - a cell of one row and column in a {@link TABLE} context, placed by its edges: the grid keeps
  *   the widths written on every cell and the height written on this one.
- * Off-screen sections of a long live page then cost one element each, table rows one per cell.
+ * Off-screen sections of a long live page then cost one element each, and siblings in one block
+ * flow one in all ({@link endRun}); table rows cost one per cell.
  * Returns null when it may not, else the margins to write and the SVG elements it keeps.
  */
 function hollowable(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView, context: Context): Hollow | null {
@@ -2076,12 +2121,18 @@ function* emitElement(
     override["background-color"] = "transparent";
     override["background-image"] = "none";
   }
-  if (emptied) {
+  // Out of flex and grid items, whose flex basis would change meaning with the box sizing.
+  const size = emptied && display !== "table-cell" && context !== ITEMS ? writtenSize(el, cs, view) : null;
+  if (size) {
+    override["box-sizing"] = "border-box";
+    override.width = override["min-width"] = `${size.width}px`;
+    override.height = override["min-height"] = `${size.height}px`;
+  } else if (emptied) {
     // Without content a flex or grid item could shrink below the size it had.
     override["min-width"] = cs.getPropertyValue("width");
     override["min-height"] = cs.getPropertyValue("height");
-    Object.assign(override, emptied.margins);
   }
+  if (emptied) Object.assign(override, emptied.margins);
   if (passed) override["margin-bottom"] = passed;
   // Nothing of it shows wherever it lands: a transform or offset that moved it away is not written.
   if (bare) override.visibility = cs.getPropertyValue("visibility") === "collapse" ? "collapse" : "hidden";
@@ -2182,6 +2233,7 @@ function* emitElement(
     // What it hands on is merged only for the SVG elements it keeps (most such boxes keep none).
     if (emptied.kept.length > 0) keep(walk, emptied.kept, el, view, handed());
     walk.out.push(`</${tag}>`);
+    const flow = size && flowBox(el, cs, context, emptied, size, walk.rules.slice(rulesFrom));
     if (far && key && probe && !probe.smil && !scrolled && !walk.onCanvas.has(el)) {
       const box: FarBox = {
         cut: false,
@@ -2194,6 +2246,7 @@ function* emitElement(
         z,
         scrolls,
         unlisted: probe.unlisted,
+        flow: flow || null,
       };
       // A resource token is resolved for this walk only.
       const tokens = `\uE000${walk.key}`;
@@ -2202,6 +2255,7 @@ function* emitElement(
         far.record(el, { ...key, extent: farExtent(el, cs, probe), loose, open: !emptied.contained, scrolls }, box);
       }
     }
+    walk.flow = flow ? { el, box: flow } : null;
     return;
   }
   if (local === "textarea" && !svg) {
@@ -2215,6 +2269,14 @@ function* emitElement(
       const root = walk.path.length === 0;
       walk.path.push({ el, cs, context: root || stackingContext(cs), stacks: root || mayStack(cs), raised: 0 });
     }
+    const columns =
+      !svg && (cs.getPropertyValue("column-count") !== "auto" || cs.getPropertyValue("column-width") !== "auto");
+    const transforms = svg || transformsContent(cs);
+    if (columns) walk.columns++;
+    if (transforms) view.transformed++;
+    const runs = !columns && walk.columns === 0 && view.transformed === 0 && holdsRuns(el, cs, inner);
+    const collapses = runs && collapsesSpace(cs);
+    let run: FlowRun | null = null;
     for (let i = 0; i < children.length; i++) {
       const child = children[i] as Node;
       if (child.nodeType === 1) {
@@ -2222,16 +2284,172 @@ function* emitElement(
           walk.stats.culled++;
           // Unread, it may hold floats.
           view.floats++;
+          run = endRun(walk, run);
           continue;
         }
+        const at = walk.out.length;
+        const rules = walk.rules.length;
+        const floats = view.floats;
         yield* emitElement(walk, child as Element, view, inherited, ns, contentScroll, inner);
+        if (runs) run = joinRun(walk, run, child as Element, view, at, rules, floats);
       } else if (child.nodeType === 3 || child.nodeType === 4) {
+        // White space between blocks that collapses lays out nothing.
+        if (!(run && collapses && CSS_SPACE.test(child.nodeValue ?? ""))) run = endRun(walk, run);
         emitText(walk, child, contentScroll);
       }
     }
+    endRun(walk, run);
+    if (columns) walk.columns--;
+    if (transforms) view.transformed--;
     if (view.top) walk.path.pop();
   }
   walk.out.push(`</${tag}>`);
+}
+
+/**
+ * The border-box size to write on a box written empty, CSS px: its bounding box, unless it or a
+ * box it is in transforms or zooms it ({@link DocView.transformed}), then its computed size.
+ * Computed lengths keep six significant digits, and Chromium truncates a length to its 1/64 px
+ * layout unit: a box the page lays out 46.515625 px high computes as `46.5156px`, which lays out
+ * as 46.5, so the boxes written that way above the viewport of a long page moved what shows by px.
+ */
+function writtenSize(el: Element, cs: CSSStyleDeclaration, view: DocView): { width: number; height: number } {
+  if (view.transformed === 0 && !transformsContent(cs)) {
+    const r = el.getBoundingClientRect();
+    return { width: r.width, height: r.height };
+  }
+  const content = cs.getPropertyValue("box-sizing") !== "border-box";
+  const edges = (a: "left" | "top", b: "right" | "bottom") =>
+    content
+      ? px(cs, `padding-${a}`) + px(cs, `padding-${b}`) + px(cs, `border-${a}-width`) + px(cs, `border-${b}-width`)
+      : 0;
+  return { width: px(cs, "width") + edges("left", "right"), height: px(cs, "height") + edges("top", "bottom") };
+}
+
+/**
+ * What a box written empty adds to the block flow around it ({@link FlowBox}), or null when a run
+ * of such boxes written as one would not lay out the same, or where its bounding box does not tell
+ * where it lies in that flow: out of block flow (a flex or grid item, an inline block, a list item),
+ * positioned against something or moved (a transform, a relative offset up or down), clearing
+ * floats, stepping or resetting a counter (its pseudo-elements too), zoomed, in another writing
+ * mode, with scroll bars or gutters the empty box would not keep, or keeping SVG elements or
+ * resources.
+ */
+function flowBox(
+  el: Element,
+  cs: CSSStyleDeclaration,
+  context: Context,
+  emptied: Hollow,
+  size: { width: number },
+  rules: readonly string[],
+): FlowBox | null {
+  if (context !== FLOW || el.namespaceURI !== XHTML_NS || emptied.kept.length > 0) return null;
+  if (!RUN_DISPLAYS.has(cs.getPropertyValue("display")) || transformsContent(cs)) return null;
+  const position = cs.getPropertyValue("position");
+  if (position === "relative" && (px(cs, "top") !== 0 || px(cs, "bottom") !== 0)) return null;
+  if ((position !== "static" && position !== "relative") || cs.getPropertyValue("clear") !== "none") return null;
+  if (cs.getPropertyValue("writing-mode") !== "horizontal-tb") return null;
+  for (const name of ["counter-increment", "counter-reset", "counter-set"]) {
+    if (cs.getPropertyValue(name) !== "none") return null;
+  }
+  for (const name of ["overflow-x", "overflow-y"]) {
+    const overflow = cs.getPropertyValue(name);
+    if (overflow === "auto" || overflow === "scroll") return null;
+  }
+  const gutter = cs.getPropertyValue("scrollbar-gutter");
+  if (gutter && gutter !== "auto") return null;
+  if (rules.some((rule) => COUNTER_DECLARATION.test(rule) || rule.includes("\uE000"))) return null;
+  const margin = (side: (typeof SIDES)[number]) =>
+    Number.parseFloat(emptied.margins[`margin-${side}`] ?? cs.getPropertyValue(`margin-${side}`)) || 0;
+  return {
+    top: margin("top"),
+    bottom: margin("bottom"),
+    width: margin("left") + size.width + margin("right"),
+    bfc: holdsMargins(el, cs) !== false,
+  };
+}
+
+/**
+ * Whether the children of `el` lay out in block flow (`inner` is their {@link Context}), where a
+ * run of them written empty may be written as one ({@link endRun}): in the horizontal writing mode,
+ * in an HTML element that is not a fieldset (whose first legend sits in its border) nor a details
+ * element. A box without a box of its own or an inline one hands on the block flow around it.
+ */
+function holdsRuns(el: Element, cs: CSSStyleDeclaration, inner: Context): boolean {
+  if (el.namespaceURI !== XHTML_NS || el.localName === "fieldset" || el.localName === "details") return false;
+  return inner === FLOW && cs.getPropertyValue("writing-mode") === "horizontal-tb";
+}
+
+/** Whether a box transforms or zooms itself and what is inside it, or moves it along a path. */
+function transformsContent(cs: CSSStyleDeclaration): boolean {
+  if (["transform", ...MOTION_RESET].some((name) => (cs.getPropertyValue(name) || "none") !== "none")) return true;
+  const zoom = cs.getPropertyValue("zoom");
+  return zoom !== "" && zoom !== "1";
+}
+
+/** Whether a box collapses the white space of its text: such text alone between blocks lays out nothing. */
+function collapsesSpace(cs: CSSStyleDeclaration): boolean {
+  const collapse = cs.getPropertyValue("white-space-collapse");
+  if (collapse) return collapse === "collapse";
+  const space = cs.getPropertyValue("white-space");
+  return space === "normal" || space === "nowrap";
+}
+
+/**
+ * Adds the element just written to the run of empty boxes it continues ({@link FlowRun}), starts
+ * one, or ends the run: an element that wrote nothing in flow (not displayed, or left out out of
+ * flow) keeps it going. A box that is a block formatting context joins only while no float came
+ * before it in its document, as a float beside it would move it and not the box written instead.
+ * `at`, `rules` and `floats` are the lengths of the markup and rules and the floats count before it.
+ */
+function joinRun(
+  walk: Walk,
+  run: FlowRun | null,
+  el: Element,
+  view: DocView,
+  at: number,
+  rules: number,
+  floats: number,
+): FlowRun | null {
+  const flow = walk.flow?.el === el ? walk.flow.box : null;
+  if (flow && (!flow.bfc || view.floats === 0)) {
+    const end = walk.out.length;
+    const rulesEnd = walk.rules.length;
+    if (!run) return { first: el, last: el, boxes: [flow], start: at, end, rulesStart: rules, rulesEnd };
+    run.last = el;
+    run.boxes.push(flow);
+    run.end = end;
+    run.rulesEnd = rulesEnd;
+    return run;
+  }
+  if (!flow && walk.out.length === at && walk.rules.length === rules && view.floats === floats) return run;
+  return endRun(walk, run);
+}
+
+/**
+ * Writes a run of two or more empty boxes in one block flow as one empty box, in place of their
+ * markup and the rules of their pseudo-elements, so the length of a page adds little to the image.
+ * Its height is the distance from the top of the first box to the bottom of the last one as laid
+ * out (nothing they are in transforms them, see {@link DocView.transformed}, nor did anything move
+ * them), which holds the margins between them as the page collapsed them; its own margins are the
+ * first box's top margin and the last one's bottom margin, and its width their widest margin box
+ * (what a box sized by its content reads).
+ */
+function endRun(walk: Walk, run: FlowRun | null): null {
+  if (!run || run.boxes.length < 2) return null;
+  const { boxes } = run;
+  let width = 0;
+  for (const box of boxes) width = Math.max(width, box.width);
+  const height = run.last.getBoundingClientRect().bottom - run.first.getBoundingClientRect().top;
+  if (!(height > 0)) return null;
+  const first = boxes[0] as FlowBox;
+  const last = boxes[boxes.length - 1] as FlowBox;
+  walk.out[run.start] =
+    `<div style="display:block;width:${width}px;height:${height}px;` +
+    `margin-top:${first.top}px;margin-bottom:${last.bottom}px;visibility:hidden"></div>`;
+  walk.out.fill("", run.start + 1, run.end);
+  walk.rules.fill("", run.rulesStart, run.rulesEnd);
+  return null;
 }
 
 function farProbe(): FarProbe {
@@ -2300,6 +2518,7 @@ function writeFar(walk: Walk, el: Element, view: DocView, parent: InheritedValue
     keep(walk, box.kept, el, view, handed);
   }
   walk.out.push(box.close);
+  walk.flow = box.flow ? { el, box: box.flow } : null;
 }
 
 /**
@@ -2851,6 +3070,8 @@ async function walkFrame(
     watch,
     far,
     probe: null,
+    flow: null,
+    columns: 0,
     scrolls: [],
     unsettled: false,
     deadline: 0,
