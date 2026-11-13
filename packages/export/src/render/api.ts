@@ -180,8 +180,10 @@ function playerOptions(
  *
  * Unless `live` is off or `reducedMotion` is on, the player goes live once the finale settles (a
  * "live" cue goes live at its time in any case); from the moment the stage is live every step also
- * seeks the page's animations to the frame time and its animated images hold still copies (see
- * {@link LiveStage}), so the tail plays the finished page deterministically.
+ * seeks the page's animations to the frame time, also the ones the page's next rendering update
+ * starts (waiting for that update where it can start any, see {@link LiveStage.settle}), and its
+ * animated images hold still copies (see {@link LiveStage}), so the tail plays the finished page
+ * deterministically.
  */
 export function createRenderApi(deps: RenderDeps): RenderApi {
   let active: Active | null = null;
@@ -258,6 +260,8 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
         });
         session = started;
         await session.start();
+        // A go live as the session starts (a live cue at 0 with reduced motion) shows on frame 0.
+        await stage.settle(session.elapsed);
         const sha = await blueprintSha256(loaded.blueprint, init.input.url, doc.location?.origin);
         const paint = deps.awaitPaint ? view : null;
         active = { init, loaded, session, live: stage, host, paint };
@@ -285,6 +289,7 @@ export function createRenderApi(deps: RenderDeps): RenderApi {
       const { session, live, paint } = activeRender();
       const status = await session.step(ms);
       live.sync(session.elapsed);
+      await live.settle(session.elapsed);
       await paintFrames(paint);
       return status;
     },

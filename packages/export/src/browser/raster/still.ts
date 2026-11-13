@@ -1,4 +1,4 @@
-import { animationMark, animationsOf, focusState, same, sheetState } from "./reads";
+import { animationMark, animationsOf, focusState, same, sheetState, takesUpdates } from "./reads";
 import {
   type CanvasMark,
   canvasDataUrl,
@@ -18,8 +18,44 @@ export type StillSource = Pick<SnapshotSource, "document" | "shadowRoots" | "fac
  */
 const CHANGE_EVENTS = ["load", "error", "beforetoggle", "toggle"] as const;
 
-/** Longest wait for the page's next rendering update ({@link StillWatch.rendered}). */
+/** Longest wait for the page's next rendering update ({@link StillWatch.rendered}, {@link renderingUpdate}). */
 const RENDER_WAIT_MS = 1000;
+
+/**
+ * Calls `done` once the page's next rendering update is over: the engine lays the page out after
+ * the animation frame callbacks and takes what it keeps until the next update (scroll-state
+ * container queries, anchor positions), so a task queued from one runs after all that. Returns the
+ * animation frame request, 0 when the window has none.
+ */
+function afterRenderingUpdate(win: Window, done: () => void): number {
+  if (typeof win.requestAnimationFrame !== "function") return 0;
+  return win.requestAnimationFrame(() => {
+    win.setTimeout(done, 0);
+  });
+}
+
+/**
+ * Resolves once the page of `doc` has taken its next rendering update, so a read after it sees
+ * what the engine takes there from the page as it is now (see {@link StillWatch}). At once when the
+ * document is hidden, which takes none, or has no window; after {@link RENDER_WAIT_MS} at the latest.
+ * Waiting costs up to a display frame, so it is for a page that {@link takesRenderingState}.
+ */
+export function renderingUpdate(doc: Document): Promise<void> {
+  const win = doc.defaultView;
+  if (!win || doc.visibilityState === "hidden") return Promise.resolve();
+  return new Promise((resolve) => {
+    // This realm's timer: a frame removed meanwhile runs neither its animation frames nor its timers.
+    const timer = setTimeout(resolve, RENDER_WAIT_MS);
+    const frame = afterRenderingUpdate(win, () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    if (!frame) {
+      clearTimeout(timer);
+      resolve();
+    }
+  });
+}
 
 /**
  * Documents of the same-origin frames in `scopes` and, in turn, in those documents, in tree order:
@@ -44,6 +80,19 @@ function frameDocuments(scopes: readonly (Document | ShadowRoot)[]): Document[] 
     }
   }
   return docs;
+}
+
+/**
+ * Whether the page may show what the engine takes at a rendering update from the layout and scroll
+ * offsets it sees then (scroll-state container queries, anchor positions, `content-visibility: auto`,
+ * scroll timelines): whether the CSS of the document, of its shadow roots or of a same-origin frame
+ * document in them uses it (`takesUpdates`). A frame the walk leaves out counts too: a change can
+ * bring it into view (the live page, as the page goes live), and the frame after that change shows
+ * what the update after it takes.
+ */
+export function takesRenderingState(source: Pick<StillSource, "document" | "shadowRoots">): boolean {
+  const scopes = [source.document, ...source.shadowRoots()];
+  return takesUpdates([...scopes, ...frameDocuments(scopes)]);
 }
 
 /** A document or shadow root the watch reads. */
@@ -139,14 +188,10 @@ export class StillWatch {
     this.#faces = source.faces().length;
     for (const tree of this.#trees) this.#states.set(tree, treeState(tree));
     this.#texts = texts ? new Map(this.#trees.map((tree) => [tree, sheetState([tree], true)])) : null;
-    if (typeof win?.requestAnimationFrame === "function") {
-      // The engine lays the page out after the animation frame callbacks and takes what it keeps
-      // until the next update; a task queued from one runs once all that is done.
-      this.#frame = win.requestAnimationFrame(() => {
-        win.setTimeout(() => {
-          this.#updated = true;
-          this.#onUpdate?.();
-        }, 0);
+    if (win) {
+      this.#frame = afterRenderingUpdate(win, () => {
+        this.#updated = true;
+        this.#onUpdate?.();
       });
     }
   }

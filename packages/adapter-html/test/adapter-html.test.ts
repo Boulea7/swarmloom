@@ -127,19 +127,38 @@ describe("sanitizeDocument", () => {
     ],
     ["a top-level CDO and an escaped <", "<!-- .a\\<b{} -->", "  .a\\3c b{} -->"],
     [
+      "type syntax and a range before a name, where no space may follow the <",
+      "@function --d(--a <length>) returns <length>{result:var(--a)}p{width:attr(data-w type(<length>))}" +
+        "@media (400px<width){p{margin:0}}",
+      "@function --d(--a <\\6c ength>) returns <\\6c ength>{result:var(--a)}p{width:attr(data-w type(<\\6c ength>))}" +
+        "@media (400px<\\77 idth){p{margin:0}}",
+    ],
+    [
       "an unquoted data: URL",
       "p{background:url(data:image/svg+xml,<svg/>)}",
       "p{background:url(data:image/svg+xml,\\3c svg/>)}",
     ],
     [
+      "a hex escape and then a < in an unquoted URL",
+      "p{background:url(data:image/svg+xml,\\3c svg\\3e <g/>)}",
+      "p{background:url(data:image/svg+xml,\\3c svg\\3e \\3c g/>)}",
+    ],
+    [
       "markup-like text, so it never reads as markup",
       "</textarea><img src=x onerror=e()>",
-      "< /textarea>< img src=x onerror=e()>",
+      "< /textarea><\\69 mg src=x onerror=e()>",
     ],
   ])("keeps a style sheet with %s, escaping the <", (_label, css, escaped) => {
     const doc = parse(sanitizeDocument(`<!DOCTYPE html><style>${css}</style><h1>T</h1>`, window));
     expect(doc.querySelector("style")?.textContent).toBe(escaped);
     expect(doc.querySelector("img")).toBeNull();
+  });
+
+  it("keeps an escaped < in an unquoted URL a URL for the network policy", () => {
+    const html = "<!DOCTYPE html><style>p{background:url(data:image/svg+xml,<svg/>)}</style><p>T</p>";
+    const out = prepareDocument(html, window, { baseUrl: "https://x.dev/" });
+    const css = Array.from(parse(out.html).querySelectorAll("style"), (el) => el.textContent);
+    expect(css).toContain('p{background:url("data:image/svg+xml,%3Csvg/%3E")}');
   });
 });
 
@@ -202,6 +221,15 @@ describe("rewriteCssUrls", () => {
     const out = rewriteCssUrls(css, "none");
     expect(performance.now() - started).toBeLessThan(5000);
     expect(out).toBe(`a{b:${"f(".repeat(n)}invalid(var(--a) 1x)${")".repeat(n)}}`);
+  });
+
+  it("reads an unquoted url( of hex escapes without its ) in linear time", () => {
+    // Each `\a` also read as one escaped character, so 28 of them took 2^28 tries, ~5 s.
+    const escapes = "\\a".repeat(28);
+    const started = performance.now();
+    const out = rewriteCssUrls(`p{background:url(${escapes}"x") red}`, "https", "https://x.dev/");
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(out).toBe(`p{background:invalid(${escapes}"x") red}`);
   });
 });
 

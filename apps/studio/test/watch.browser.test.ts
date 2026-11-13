@@ -1,5 +1,5 @@
 import type { PlayerEvent } from "@swarmloom/core";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
@@ -430,43 +430,6 @@ it.each<{ shows: string; src: string; says: StudioKey[] }>([
   }
 });
 
-// The smallest round face holds three lines of notice above the close button: the rest scrolls, by
-// keyboard too in engines that make no scroller a tab stop (WebKit), so the notice is one itself.
-it("scrolls a notice too long for the smallest face to its end", async () => {
-  await page.viewport(100, 100);
-  try {
-    const src = `http://example.invalid/${"a".repeat(3000)}`;
-    history.replaceState(null, "", `${location.pathname}?watch=1&round=1&lang=de&src=${encodeURIComponent(src)}`);
-    const root = document.createElement("div");
-    document.body.append(root);
-    const manifest = { version: 1 as const, entries: [] };
-    const fetch = async () => new Response("", { status: 404 });
-    app = await mountStudio(
-      root,
-      fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
-    );
-    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
-
-    const dialog = root.querySelector<HTMLElement>(".watch-qr");
-    const notice = root.querySelector<HTMLElement>(".watch-qr-caption[data-notice]");
-    if (!dialog || !notice) throw new Error("no notice");
-    expect(notice.textContent).toBe("Dieser Link ist zu lang für einen QR-Code.");
-    expect(notice.scrollHeight).toBeGreaterThan(notice.clientHeight);
-    const box = dialog.getBoundingClientRect();
-    const safe = parseFloat(getComputedStyle(dialog).paddingTop);
-    const shown = notice.getBoundingClientRect();
-    expect(shown.top).toBeGreaterThanOrEqual(box.top + safe - 0.5);
-    expect(shown.bottom).toBeLessThanOrEqual(box.bottom - safe + 0.5);
-    expect(notice.getAttribute("tabindex")).toBe("0");
-    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
-    expect(document.activeElement).toBe(notice);
-    await userEvent.keyboard("{End}");
-    await expect.poll(() => notice.scrollTop + notice.clientHeight).toBeGreaterThanOrEqual(notice.scrollHeight - 1);
-  } finally {
-    await page.viewport(414, 896);
-  }
-});
-
 // The poster of a shared text or a web file is blank: the title is all that names it, on the face and
 // to a screen reader, before the wearer plays it.
 it.each([
@@ -548,6 +511,13 @@ it.each([
   }
 });
 
+// Modules a phone can still read, or the notice that the link is too long for this face.
+function scannable(root: HTMLElement): boolean {
+  const code = root.querySelector<SVGSVGElement>(".watch-qr svg.qr");
+  if (!code) return root.querySelector(".watch-qr-caption")?.textContent === app?.context.i18n.t("watch.tooLong");
+  return (code.getBoundingClientRect().width * devicePixelRatio) / code.viewBox.baseVal.width >= MIN_MODULE_PX;
+}
+
 // The code is sized when the dialog opens: a face that shrinks while it is open needs it drawn again.
 it("draws the watch QR code again for the room left when the face shrinks", async () => {
   const metrics = (size: number) =>
@@ -562,18 +532,43 @@ it("draws the watch QR code again for the room left when the face shrinks", asyn
   try {
     const root = await mountWatch("?watch=1&round=1", false);
     root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
-    const svg = () => root.querySelector<SVGSVGElement>(".watch-qr svg.qr");
-    expect(svg()).not.toBeNull();
+    expect(root.querySelector(".watch-qr svg.qr")).not.toBeNull();
     await page.viewport(100, 100);
     await metrics(100);
-    // Modules a phone can still read, or the notice that the link is too long for this face.
-    const scannable = () => {
-      const code = svg();
-      if (!code) return root.querySelector(".watch-qr-caption")?.textContent === app?.context.i18n.t("watch.tooLong");
-      return (code.getBoundingClientRect().width * devicePixelRatio) / code.viewBox.baseVal.width >= MIN_MODULE_PX;
-    };
-    await expect.poll(scannable).toBe(true);
+    await expect.poll(() => scannable(root)).toBe(true);
   } finally {
+    await cdp().send("Emulation.clearDeviceMetricsOverride");
+    await page.viewport(414, 896);
+  }
+});
+
+// A window moved to a screen with fewer device pixels a CSS pixel keeps its room in CSS pixels (no
+// resize), not the pixels each module gets. CDP's emulated ratio changes devicePixelRatio and the
+// media values but fires no change event, so the test sends the one a real move fires.
+it("draws the watch QR code again when the window moves to a screen with fewer device pixels", async () => {
+  const metrics = (dpr: number) =>
+    cdp().send("Emulation.setDeviceMetricsOverride", {
+      width: 240,
+      height: 240,
+      deviceScaleFactor: dpr,
+      mobile: false,
+    });
+  await page.viewport(240, 240);
+  await metrics(2);
+  const media = vi.spyOn(window, "matchMedia");
+  try {
+    const src = `http://example.invalid/${"a".repeat(200)}`;
+    const root = await mountWatch(`?watch=1&round=1&src=${encodeURIComponent(src)}`, false);
+    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+    expect(root.querySelector(".watch-qr svg.qr")).not.toBeNull();
+    await metrics(1);
+    for (const result of media.mock.results) {
+      const list = result.type === "return" ? result.value : null;
+      if (list?.media.includes("resolution") && !list.matches) list.dispatchEvent(new Event("change"));
+    }
+    expect(scannable(root)).toBe(true);
+  } finally {
+    media.mockRestore();
     await cdp().send("Emulation.clearDeviceMetricsOverride");
     await page.viewport(414, 896);
   }

@@ -10,6 +10,11 @@
       "@swarmloom/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./internal": {
+      "@swarmloom/source": "./src/animation-starts.ts",
+      "types": "./dist/animation-starts.d.ts",
+      "import": "./dist/animation-starts.js"
     }
   },
   "main": "./dist/index.js",
@@ -23,7 +28,7 @@
     "directory": "packages/core"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/animation-starts.ts --format esm --dts --clean",
     "typecheck": "tsc --noEmit -p ."
   }
 }

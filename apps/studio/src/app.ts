@@ -202,7 +202,7 @@ export async function mountStudio(
         compact: html.dataset.view === "watch",
         onChange: (patch) => updateSettings(patch),
         onReset: () => {
-          updateSettings({ ...DEFAULT_SETTINGS });
+          updateSettings({ ...DEFAULT_SETTINGS }, true);
           renderSettingsForm();
         },
       }),
@@ -349,10 +349,15 @@ export async function mountStudio(
     });
   }
 
-  function updateSettings(patch: Partial<StudioSettings>): void {
+  /**
+   * Makes `patch` the user's settings. One that changes nothing is ignored unless `whole` is set
+   * (Restore defaults): then every key it names is the user's even at the value it has, since a
+   * `#d=` link still being read has not put its own values in yet.
+   */
+  function updateSettings(patch: Partial<StudioSettings>, whole = false): void {
     const clean = sanitizeSettings(patch);
     const keys = Object.keys(clean) as (keyof StudioSettings)[];
-    if (keys.every((key) => settings[key] === clean[key])) return;
+    if (!whole && keys.every((key) => settings[key] === clean[key])) return;
     const prev = settings;
     stored = { ...stored, ...clean };
     saveSettings(services.storage, stored);

@@ -169,7 +169,8 @@ h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
     // both are read half a cycle in (+150 px), not wherever real time had them. A Web Animation
     // whose finish handler plays the same object again must stay at its end too (+300 px), and so
     // must a CSS animation that its animationend handler restarts as a new object by a class toggle,
-    // also when that handler listens at the window in the capture phase, ahead of the freeze.
+    // also when that handler listens in the capture phase ahead of the freeze: at the window, or at
+    // an open shadow root, which its end events do not leave.
     const page = `<!doctype html><title>t</title><style>
 @keyframes enter { from { transform: translateX(0) } to { transform: translateX(10px) } }
 @keyframes slide { from { transform: translateX(0) } to { transform: translateX(300px) } }
@@ -177,6 +178,7 @@ h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
 .pop { animation: slide 60s linear forwards }
 </style><p id="chain" class="enter">chain</p><p id="paused">paused</p><p id="replayed">replayed</p>
 <p id="restarted" class="pop">restarted</p><p id="windowed" class="pop">windowed</p>
+<div id="host"><p>shadowed</p></div>
 <video autoplay muted loop playsinline src="${CLIP}"></video>
 <script>
 const chain = document.getElementById("chain");
@@ -200,6 +202,13 @@ addEventListener("animationend", (e) => {
   void windowed.offsetWidth;
   windowed.classList.add("pop");
 }, true);
+const shadow = document.getElementById("host").attachShadow({ mode: "open" });
+shadow.innerHTML = "<style>" + document.querySelector("style").textContent + "</style><div class=pop><slot></slot></div>";
+shadow.addEventListener("animationend", (e) => {
+  e.target.classList.remove("pop");
+  void e.target.offsetWidth;
+  e.target.classList.add("pop");
+}, true);
 </script>`;
     const server = createServer((_req, res) => res.setHeader("content-type", "text/html").end(page));
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -222,6 +231,7 @@ addEventListener("animationend", (e) => {
         ["replayed", 308],
         ["restarted", 308],
         ["windowed", 308],
+        ["shadowed", 308],
       ]);
     } finally {
       server.close();

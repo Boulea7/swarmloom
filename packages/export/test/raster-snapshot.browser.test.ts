@@ -606,7 +606,7 @@ it("walks the frame again when the focused element starts to show its focus", as
   expect(await frame()).toEqual([3, [0, 0, 255]]);
 });
 
-it("walks the frame again after the rendering update that follows a change, which the engine shows only then", async ({
+it("walks the frame after a change once the rendering update that follows it, which the engine shows only then, is over", async ({
   skip,
 }) => {
   const { win, rasterizer } = await frameOf(
@@ -617,10 +617,29 @@ it("walks the frame again after the rendering update that follows a change, whic
   );
   if (!(win as Window & typeof globalThis).CSS.supports("container-type", "scroll-state")) skip("no scroll-state");
   expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
-  // The engine takes the root's scroll state at its next rendering update, with no mutation or event.
+  // The engine takes the root's scroll state at its next rendering update, with no mutation or
+  // event; the frame drawn right after the scroll shows it, as the CLI's screenshot does.
   win.scrollTo(0, 300);
-  await pixel(rasterizer, 5, 5);
   expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
+  expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
+});
+
+it.for<[string, string, boolean]>([
+  ["CSS that takes no such state", "<style>div { background: rgb(255, 0, 0) }</style>", false],
+  ["a style sheet with content-visibility", "<style>div { content-visibility: auto }</style>", true],
+  ["a style attribute with position-area", '<i style="position: absolute; position-area: bottom"></i>', true],
+])("waits for a rendering update before a walk only where the page takes state there: %s", async ([, css, waits]) => {
+  const { win, rasterizer } = await frameOf(`${css}<body style="margin:0"><div style="height:100px"></div></body>`);
+  // Animation frames run only when the test lets them; a wait for one holds the walk until then.
+  const held: FrameRequestCallback[] = [];
+  win.requestAnimationFrame = (callback) => held.push(callback);
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const drawn = pixel(rasterizer, 5, 5);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(walk).toHaveBeenCalledTimes(waits ? 0 : 1);
+  for (const callback of held.splice(0)) callback(performance.now());
+  await drawn;
+  expect(walk).toHaveBeenCalledTimes(1);
 });
 
 it.for<[string, string, number, number[]]>([
@@ -647,9 +666,12 @@ it.for<[string, string, number, number[]]>([
       `<style>.on::before { content: url("${url}"); display: block }</style><body style="margin:0">${body}</body>`,
     );
     const host = win.document.getElementById("h") as HTMLElement;
-    // Read while the page loads the image, which fires no event once it has.
+    // Read while the page loads the image, which fires no event once it has. As in a hidden tab
+    // the walk starts at once, so the image cannot load while it waits for a rendering update.
+    Object.defineProperty(win.document, "visibilityState", { configurable: true, get: () => "hidden" });
     host.className = "on";
     expect(await pixel(rasterizer, 5, 70)).toEqual([255, 255, 255]);
+    delete (win.document as { visibilityState?: unknown }).visibilityState;
     await vi.waitFor(() => expect(host.offsetHeight).toBeGreaterThanOrEqual(height));
     expect(await pixel(rasterizer, 5, 70)).toEqual(loaded);
   } finally {

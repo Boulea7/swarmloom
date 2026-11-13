@@ -1,4 +1,5 @@
-import { createPlayer, mayStartAnimations, readStyleFacts } from "@swarmloom/core";
+import { createPlayer } from "@swarmloom/core";
+import { mayStartAnimations, readStyleFacts } from "@swarmloom/core/internal";
 import { describe, expect, it } from "vitest";
 import { server } from "vitest/browser";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
@@ -144,6 +145,60 @@ describe("export in the browser", () => {
       host.remove();
     }
   });
+
+  it.runIf(chromium)(
+    "starts a transition the go-live scroll sets off at the next rendering update at the frame time",
+    async () => {
+      // The live page waits scrolled down, its sticky header stuck and red. Going live scrolls it to
+      // the stage's view at the top, and Chromium unsticks the header at its next rendering update.
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-same-origin");
+      frame.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;border:0";
+      const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+      frame.srcdoc =
+        "<style>body{margin:0}p{margin:0;height:150px}header{position:sticky;top:0;container-type:scroll-state}" +
+        "header div{height:20px;background:rgb(0,0,255);transition:background-color .6s linear}" +
+        "@container scroll-state(stuck: top){header div{background:rgb(255,0,0)}}</style>" +
+        "<p></p><header><div></div></header><p></p><p></p><p></p>";
+      document.body.append(frame);
+      const api = createRenderApi({
+        load: async () => {
+          await loaded;
+          const doc = frame.contentDocument as Document;
+          frame.contentWindow?.scrollTo(0, 300);
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const size = { w: 320, h: doc.documentElement.scrollHeight };
+          return {
+            blueprint: { version: 1 as const, source: { type: "fake" }, size, background: "#fff", layers: [] },
+            live: { frame, document: doc },
+          };
+        },
+        createPlayer,
+        renderAudioWav: async () => new Uint8Array(),
+      });
+      try {
+        const cues = [{ at: 100, action: "live" as const }];
+        await api.init({
+          input: { name: "a.html", text: "" },
+          width: 320,
+          height: 200,
+          fps: 10,
+          reducedMotion: true,
+          cues,
+        });
+        await api.step(100); // goes live at 100 ms
+        await new Promise((resolve) => setTimeout(resolve, 150)); // a slow screenshot
+        const doc = frame.contentDocument as Document;
+        expect([
+          frame.contentWindow?.scrollY,
+          doc.getAnimations().map((anim) => [anim.playState, anim.currentTime]),
+        ]).toEqual([0, [["paused", 0]]]);
+      } finally {
+        api.dispose();
+        frame.remove();
+      }
+    },
+  );
 
   it("freezes live-page animations started after the capture by the capture's rule on go live, however long they ran", async () => {
     // The capture froze the page; these started since (as in a content-visibility section laid out later).
@@ -350,6 +405,8 @@ describe("export in the browser", () => {
       ["@keyframes round{to{border-top-left-radius:9px}}.a{border-radius:inherit;transition:all 1s}", "", true],
       ["@keyframes slide{to{transform:translateX(9px)}}.a{transition:color .2s}", "", false],
       ["@keyframes slide{to{transform:translateX(9px)}}@container (width>9px){.a{color:red}}", "", true],
+      // An origin moves a transformed box's scrollable overflow, so scrollbars can resize a container.
+      ["@keyframes swing{to{transform-origin:0 200%}}@container (width>9px){.a{color:red}}", "", true],
       ["@keyframes wide{to{width:300px}}.box{container-type:inline-size}", "", true],
       ["@keyframes hue{to{--hue:120}}", "", true],
     ];

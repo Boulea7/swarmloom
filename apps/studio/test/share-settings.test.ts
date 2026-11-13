@@ -31,11 +31,15 @@ const { seed, speed, finale } = DEFAULT_SETTINGS;
 
 /**
  * Mounts Studio on a `#d=` link carrying {@link shared}, with the saved settings at their defaults.
- * `opening` runs while the link is still being read.
+ * `opening` runs while the link is still being read; `query` goes before the link's hash.
  */
-async function openLink(target?: StudioTarget, opening?: (studio: StudioApp, root: HTMLElement) => void) {
+async function openLink(
+  target?: StudioTarget,
+  opening?: (studio: StudioApp, root: HTMLElement) => void,
+  query = "?lang=en",
+) {
   const payload = await encodeShare({ name: "notes.md", text: "# N", settings: shared });
-  history.replaceState(null, "", `/?lang=en#d=${payload}`);
+  history.replaceState(null, "", `/${query}#d=${payload}`);
   const root = document.createElement("div");
   document.body.append(root);
   const { services, log } = fakeServices({
@@ -159,6 +163,24 @@ it("keeps a setting changed while a #d= link is read over the link's value", asy
   expect(studio.context.settings).toMatchObject({ ...shared, speed: 3 });
   expect(log.players.at(-1)).toMatchObject({ seed: 42, speed: 3 });
 });
+
+// Restore defaults sets every setting, also those at their default while the link is read: with
+// `?lang=en` it changes the language, without it nothing at all.
+it.each(["?lang=en", ""])(
+  "lets Restore defaults pressed while a #d= link is read clear its settings (%j)",
+  async (query) => {
+    const { studio, log } = await openLink(
+      undefined,
+      (studio, root) => {
+        studio.context.toggleSettings();
+        [...root.querySelectorAll("button")].find((b) => b.textContent === "Restore defaults")?.click();
+      },
+      query,
+    );
+    expect(studio.context.settings).toMatchObject({ seed, speed, finale });
+    expect(log.players.at(-1)).toMatchObject({ seed, speed, finale });
+  },
+);
 
 it("takes speed, sound and tour changed on the player's toolbar into the panel, a share link and the next player", async () => {
   const { studio, log, byLabel } = await openLink();

@@ -35,12 +35,14 @@ const firefoxPath = process.env.SWARMLOOM_FIREFOX || undefined;
  * form and video controls, media queries, WebCodecs, animated images and scrolling differ from
  * Chromium's: the in-browser exporter and its rasteriser, the stage's frame determinism (still GIFs,
  * exact scroll offsets, unseen engine ticks left unpainted), the SVG drawing's SMIL clock, the
- * export's pinned media features, the go-live page and the offline sound render (old WebKit's
- * event-only `startRendering()` and the engine-dependent `suspend()`/`resume()` slicing). Cases
- * built on Chromium-only APIs (CDP) and other engine-specific cases skip themselves or loosen their
- * bounds.
+ * export's pinned media features, the go-live page, the offline sound render (old WebKit's
+ * event-only `startRendering()` and the engine-dependent `suspend()`/`resume()` slicing) and the
+ * Studio watch QR notice's keyboard focus and scrolling (WebKit puts no scroller in the Tab order).
+ * Cases built on Chromium-only APIs (CDP) and other engine-specific cases skip themselves or loosen
+ * their bounds.
  */
 const crossBrowserTests = [
+  "apps/studio/test/watch-notice.browser.test.ts",
   "packages/adapter-svg/test/smil.browser.test.ts",
   "packages/core/test/sound/offline.browser.test.ts",
   "packages/core/test/stage/stage.browser.test.ts",
@@ -58,7 +60,25 @@ const crossBrowserTests = [
 const emulateMedia: BrowserCommand<[Parameters<Page["emulateMedia"]>[0]]> = async ({ page }, media) => {
   await page.emulateMedia(media);
 };
-const commands = { emulateMedia };
+/** What lets the image loads `holdImage` holds go on, by URL. */
+const heldImages = new Map<string, () => void>();
+/**
+ * `commands.holdImage(url, svg)` for browser tests: serves the SVG `svg` at `url`, but the test page
+ * and its frames load it as an image only once `commands.releaseImage(url)` is called, as from a slow
+ * server, in every engine. Other requests for it (the rasteriser's fetch) get it at once.
+ */
+const holdImage: BrowserCommand<[url: string, svg: string]> = async ({ page }, url, svg) => {
+  const released = new Promise<void>((resolve) => heldImages.set(url, resolve));
+  await page.route(url, async (route) => {
+    if (route.request().resourceType() === "image") await released;
+    await route.fulfill({ body: svg, contentType: "image/svg+xml" });
+  });
+};
+const releaseImage: BrowserCommand<[url: string]> = (_, url) => {
+  heldImages.get(url)?.();
+  heldImages.delete(url);
+};
+const commands = { emulateMedia, holdImage, releaseImage };
 
 export default defineConfig({
   resolve: {

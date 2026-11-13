@@ -831,7 +831,7 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
       const content = ps.getPropertyValue("content");
       if (!content || content === "none" || content === "normal") continue;
       if (stepsCounter(ps, inList)) return true;
-      noteImages(walk, el.ownerDocument, ps, ps.getPropertyValue("display").includes("list-item"));
+      noteImages(walk, el.ownerDocument, ps, ps.getPropertyValue("display").includes("list-item"), content);
     }
     // A frame's document counts on its own.
     if (el.localName === "iframe") continue;
@@ -1910,7 +1910,7 @@ function pseudoRules(
     if (scroll) scrollWith(scroll, ps, item, override);
     const { text } = styleText(walk.baseline, ps, from, override, props);
     if (!hollow) useFonts(walk, ps);
-    if (text.includes("url(") || content.includes("url(")) noteImages(walk, el.ownerDocument, ps);
+    if (text.includes("url(") || content.includes("url(")) noteImages(walk, el.ownerDocument, ps, true, content);
     walk.rules.push(`.${cls}${pseudo}{${embedCssUrls(walk, text, "s")};content:${embedCssUrls(walk, content, "s")}}`);
   }
   return cls;
@@ -1934,13 +1934,21 @@ const SIZING_IMAGES = ["content", "list-style-image", "shape-outside"] as const;
  * ({@link SIZING_IMAGES}), and counts it (`Walk.loading`): the page fires no event once a CSS image
  * has loaded, and the box then takes the image's size. That holds for a box written in full, at
  * the size it has now, as for one in a subtree left out or written empty, found away from the
- * viewport by its size now ({@link stepsCounters}); the far cache keeps no such subtree. Without
- * `marker` the box is no list item, and its `list-style-image` (inherited) lays out nothing.
+ * viewport by its size now ({@link stepsCounters}); the far cache keeps no such subtree.
+ *
+ * @param marker Whether to check `list-style-image` too (it inherits: no use on a box that is no list item).
+ * @param content The box's `content`, when the caller has read it.
  */
-function noteImages(walk: Walk, doc: Document, cs: CSSStyleDeclaration, marker = true): void {
+function noteImages(
+  walk: Walk,
+  doc: Document,
+  cs: CSSStyleDeclaration,
+  marker = true,
+  content = cs.getPropertyValue("content"),
+): void {
   for (const name of SIZING_IMAGES) {
     if (!marker && name === "list-style-image") continue;
-    const value = cs.getPropertyValue(name);
+    const value = name === "content" ? content : cs.getPropertyValue(name);
     if (value.includes("url(") && cssImagePending(doc, value)) {
       walk.unsettled = true;
       walk.loading++;

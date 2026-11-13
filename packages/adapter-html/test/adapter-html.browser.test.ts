@@ -2,6 +2,7 @@ import type { Blueprint, CustomLayer, Plugin } from "@swarmloom/core";
 import { afterEach, describe, expect, it } from "vitest";
 import fadeIn from "../../../examples/html/fade-in.html?raw";
 import landing from "../../../examples/html/landing.html?raw";
+import { FREEZE_PASSES } from "../src/frame";
 import { createHtmlAdapter, freezeAnimations, type HtmlLoadContext, TIMELINE_PLUGIN } from "../src/index";
 import { probeSnapshot } from "./probe";
 
@@ -107,6 +108,30 @@ describe("html examples in Chromium", () => {
     } finally {
       loaded.dispose?.();
     }
+  });
+
+  it("follows a chain of set-off animations to its end, and warns when it outruns the passes", async () => {
+    // Half a cycle in, each box is 300 px wide and the container query starts the loop of the box inside.
+    const nested = (depth: number) =>
+      "<!DOCTYPE html><html><head><style>@keyframes grow{from{width:100px}to{width:500px}}" +
+      ".box{container-type:inline-size;width:100px;height:2px}#b0{animation:grow 10s linear infinite}" +
+      "@container (min-width:250px){.box>.box{animation:grow 10s linear infinite}}</style></head><body>" +
+      `<div id='b0' class='box'>${"<div class='box'>".repeat(depth - 1)}${"</div>".repeat(depth)}</body></html>`;
+    const live = createHtmlAdapter({ snapshot: probeSnapshot, keepLive: true });
+    const results: [number, boolean][] = [];
+    for (const depth of [9, FREEZE_PASSES + 3]) {
+      const loaded = await live.load({ text: nested(depth) }, ctx);
+      try {
+        const paused = loaded.live?.document.getAnimations().filter((a) => a.playState === "paused") ?? [];
+        results.push([paused.length, loaded.warnings.some((w) => w.includes("kept starting"))]);
+      } finally {
+        loaded.dispose?.();
+      }
+    }
+    expect(results).toEqual([
+      [9, false],
+      [FREEZE_PASSES, true],
+    ]);
   });
 
   it("freezes the animations in content-visibility:auto sections, which the off-screen frame skips", async () => {
