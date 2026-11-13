@@ -7,8 +7,11 @@ export type SourceRef =
   | { kind: "example"; id: string }
   /** A remote file or page. */
   | { kind: "url"; url: string }
-  /** Text compressed into the URL hash (`#d=`). */
-  | { kind: "shared"; payload: string }
+  /**
+   * Text compressed into the URL hash (`#d=`). `drop` names the payload's settings the user changed
+   * on this history entry: they no longer apply, even before the payload is re-encoded without them.
+   */
+  | { kind: "shared"; payload: string; drop?: readonly (keyof StudioSettings)[] }
   /** Files or text received through the PWA share target, held by the service worker. */
   | { kind: "inbox"; id: string }
   /** Files passed by the OS through `file_handlers` (Launch Queue API). */

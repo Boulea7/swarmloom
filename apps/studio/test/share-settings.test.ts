@@ -130,19 +130,20 @@ it("leaves a link's settings behind with its view", async () => {
   expect(studio.context.settings).toMatchObject({ seed, speed, finale });
 });
 
+// Left at once, before the payload is encoded again without the setting: Back still keeps the user's value.
 it("keeps a setting changed on a #d= link's entry on Back: it leaves the payload", async () => {
   const { studio, log } = await openLink();
   const link = location.hash;
   studio.context.updateSettings({ speed: 3 });
-  await until(() => location.hash !== link);
-  const payload = new URLSearchParams(location.hash.slice(1)).get("d") ?? "";
-  expect((await decodeShare(payload)).settings).toEqual({ seed: 42, finale: "halo" });
-
   studio.context.navigate({ source: null });
   history.back();
   await until(() => studio.context.settings.seed === 42 && document.querySelector(".play-big"));
   expect(studio.context.settings).toMatchObject({ ...shared, speed: 3 });
   expect(log.players.at(-1)).toMatchObject({ seed: 42, speed: 3 });
+
+  await until(() => location.hash !== link);
+  const payload = new URLSearchParams(location.hash.slice(1)).get("d") ?? "";
+  expect((await decodeShare(payload)).settings).toEqual({ seed: 42, finale: "halo" });
 });
 
 it("takes speed, sound and tour changed on the player's toolbar into the panel, a share link and the next player", async () => {

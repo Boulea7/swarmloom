@@ -192,12 +192,18 @@ async function fromUrl(ref: { kind: "url"; url: string }, ctx: ResolveContext): 
   };
 }
 
-async function fromShared(ref: { kind: "shared"; payload: string }): Promise<OpenedSource> {
+async function fromShared(ref: Extract<SourceRef, { kind: "shared" }>): Promise<OpenedSource> {
   let decoded: Awaited<ReturnType<typeof decodeShare>>;
   try {
     decoded = await decodeShare(ref.payload);
   } catch (error) {
     throw new StudioError("share", {}, { cause: error instanceof ShareError ? error : undefined });
+  }
+  // Settings the user changed on this entry keep the user's value, not the link's.
+  let settings = decoded.settings;
+  if (settings && ref.drop?.length) {
+    settings = { ...settings };
+    for (const key of ref.drop) delete settings[key];
   }
   const input: SourceInput = { name: decoded.name, text: decoded.text };
   return {
@@ -209,7 +215,7 @@ async function fromShared(ref: { kind: "shared"; payload: string }): Promise<Ope
     text: decoded.text,
     cliTarget: decoded.name,
     cliTargetKind: "text",
-    settings: decoded.settings,
+    settings,
   };
 }
 
