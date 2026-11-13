@@ -179,6 +179,20 @@ export function createWatch(ctx: AppContext): View {
   let qrShown: { url: string } | { notice: string } | null = null;
   /** Ends the reads of sources still running when the face goes. */
   const lifetime = new AbortController();
+  const back = h(
+    "button",
+    {
+      class: "watch-icon-btn",
+      attrs: { type: "button", "aria-label": i18n.t("watch.back") },
+      on: {
+        click: (e) => {
+          e.stopPropagation();
+          hideQr();
+        },
+      },
+    },
+    icon("close", 18),
+  );
   // A native modal <dialog>: while open, the covered player and the rest of the page are inert,
   // so Tab and screen readers stay inside it; Esc closes it like the Back button.
   const qr = h(
@@ -186,20 +200,7 @@ export function createWatch(ctx: AppContext): View {
     { class: "watch-qr", attrs: { "aria-label": i18n.t("watch.phone"), "aria-describedby": qrCaption.id } },
     qrBox,
     qrCaption,
-    h(
-      "button",
-      {
-        class: "watch-icon-btn",
-        attrs: { type: "button", "aria-label": i18n.t("watch.back") },
-        on: {
-          click: (e) => {
-            e.stopPropagation();
-            hideQr();
-          },
-        },
-      },
-      icon("close", 18),
-    ),
+    back,
   );
 
   const face = h(
@@ -450,9 +451,11 @@ export function createWatch(ctx: AppContext): View {
     if (qrCaption.textContent !== caption) qrCaption.textContent = caption;
     qrCaption.toggleAttribute("data-notice", caption !== scan);
     // A notice scrolls when it is longer than its room (watch.css): a tab stop, so the arrow keys
-    // scroll it in every engine, not only where a scroller is one (Safari's is not). -1 otherwise:
-    // out of the Tab order, but focus stays put if it was on the notice when a code takes its place.
+    // scroll it in every engine, not only where a scroller is one (Safari's is not). Out of the Tab
+    // order otherwise; focus left on the notice when a code takes its place goes to Back, as the
+    // "scan" caption leaves the screen on a round or small face (watch.css) and its ring with it.
     qrCaption.tabIndex = caption !== scan ? 0 : -1;
+    if (caption === scan && qrCaption.matches(":focus")) back.focus();
   }
 
   function showQr(): void {
@@ -473,7 +476,7 @@ export function createWatch(ctx: AppContext): View {
     }
     root.dataset.qr = "true";
     session?.player?.pause();
-    qr.querySelector("button")?.focus();
+    back.focus();
   }
 
   function hideQr(): void {

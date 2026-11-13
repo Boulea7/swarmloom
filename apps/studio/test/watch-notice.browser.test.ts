@@ -54,3 +54,32 @@ it("scrolls a notice too long for the smallest face to its end", async () => {
     await page.viewport(414, 896);
   }
 });
+
+// A round face leaves out the "scan" caption under a code: focus on the "getting ready" notice
+// when the code comes must move to a control still on screen, not stay on the hidden caption.
+it("moves focus from the notice to Back when the code of a link read late takes its place", async () => {
+  history.replaceState(null, "", `${location.pathname}?watch=1&round=1&lang=en&key=held`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  const fake = fakeServices({ manifest, examplesBase: `${location.origin}/examples/` });
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  fake.services.readStored = async () => {
+    await held;
+    return { name: "notes.md", text: "# Notes\n" };
+  };
+  app = await mountStudio(root, fake.services);
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+  const notice = root.querySelector<HTMLElement>(".watch-qr-caption[data-notice]");
+  const back = root.querySelector<HTMLElement>(".watch-qr button");
+  if (!notice || !back) throw new Error("no notice");
+  await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+  expect(document.activeElement).toBe(notice);
+  release();
+  await expect.poll(() => root.querySelector(".watch-qr svg.qr")).not.toBeNull();
+  expect(document.activeElement).toBe(back);
+});
