@@ -2,9 +2,8 @@
  * Whether putting animations into a pose can start others, from the rules of a page: the HTML
  * adapter's capture freeze and the export's go-live seek read the animations again only then.
  *
- * Rules are read from their text (`cssText`), never through `style`: the in-browser exporter wraps
- * that getter (watchSheetEdits) to hand each declaration read to its still check, which would then
- * compare the text of every declaration of the page on each frame after go live.
+ * Rules are read from their text (`cssText`), which holds the whole rule: selectors, preludes,
+ * declarations and nested rules.
  */
 
 /**

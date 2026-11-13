@@ -511,7 +511,7 @@ it("reads anew what the selectors reach after a rule is replaced in place by as 
     <body style="margin:0">${cards.join("")}<p id=near style="height:98px;margin:0"></p><div style="height:2000px"></div>`);
   win.scrollTo(0, 4000);
   await drawn(rasterizer);
-  // The rule count stays: only the still check of a drawn frame sees the edit.
+  // The rule count stays, and no element changed.
   const sheet = win.document.styleSheets[0] as CSSStyleSheet;
   sheet.deleteRule(0);
   sheet.insertRule("body:has(.x) section { margin-bottom: 80px }", 0);

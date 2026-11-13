@@ -1,6 +1,7 @@
 import { yieldTask } from "../schedule";
 import type { FarCache } from "./far";
 import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
+import { cssImagePending } from "./image-loads";
 import { pickImageSets } from "./image-set";
 import { BLANK_IMAGE, LONG_PIECE, type ResourceCache } from "./resources";
 import { type InheritedValues, nativeControl, type StyleBaseline, styleText } from "./styles";
@@ -237,6 +238,16 @@ export interface ScrollMark {
   top: number;
 }
 
+/**
+ * A box the walk wrote empty, with the size its bounding box had then: the size written, which
+ * places what follows it.
+ */
+export interface SizeMark {
+  el: Element;
+  width: number;
+  height: number;
+}
+
 /** A canvas whose pixels went into the image, with the data URL read for it. */
 export interface CanvasMark {
   canvas: HTMLCanvasElement;
@@ -261,15 +272,20 @@ export interface FrameSnapshot {
    * The scroll offsets the image depends on: each scroll container written and each document
    * viewport (same-origin frames included), as the walk read them. Null when the image shows what
    * can change without a DOM mutation or a scroll: a video, a frame whose document cannot be read,
-   * a shadow root the source does not list, SMIL animations, an image still loading.
+   * a shadow root the source does not list, SMIL animations, an image still loading (an `<img>`
+   * written, or a CSS image that lays out a box the walk read, see {@link SIZING_IMAGES}).
    */
   settled: readonly ScrollMark[] | null;
+  /** The boxes written empty, with their size: the image holds only while each keeps it. */
+  sizes: readonly SizeMark[];
   /**
    * The canvases whose pixels are in the image rather than drawn over it (one painted under a live
    * page, for one): they change without a mutation, so the image holds only while each gives the
    * same data URL again.
    */
   pixels: readonly CanvasMark[];
+  /** The documents of the same-origin frames drawn into the image (not those left out). */
+  frames: readonly Document[];
 }
 
 export interface Box {
@@ -483,8 +499,14 @@ interface Walk {
   columns: number;
   /** See {@link FrameSnapshot.settled}. */
   scrolls: ScrollMark[];
+  /** See {@link FrameSnapshot.sizes}. */
+  sizes: SizeMark[];
+  /** See {@link FrameSnapshot.frames}. */
+  frames: Document[];
   /** Something written can change without a DOM mutation or a scroll (see {@link FrameSnapshot.settled}). */
   unsettled: boolean;
+  /** CSS images still loading that the walk found laying out a box it read ({@link noteImages}). */
+  loading: number;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
   stats: SnapshotStats;
@@ -786,6 +808,10 @@ function stepsCounter(cs: CSSStyleDeclaration, listed: boolean): boolean {
  * again: leaving them out would change the numbers. Resets are not looked at: a reset reaches the
  * boxes after it under the same parent only, so one inside the subtrees is not seen after them.
  * One on `nodes` themselves is, and is for the caller to check ({@link resetsCounter}).
+ *
+ * The subtrees are left out or written empty when it finds none, as away from the viewport by
+ * their boxes now: on the way it notes each CSS image still loading that lays out one of those
+ * boxes ({@link noteImages}), which may grow it into view once loaded, without an event.
  */
 function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boolean {
   const stack: [Element, boolean][] = [];
@@ -793,14 +819,19 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
   for (let next = stack.pop(); next; next = stack.pop()) {
     const [el, inList] = next;
     const cs = view.win.getComputedStyle(el);
-    if (cs.getPropertyValue("display") === "none") continue;
+    const display = cs.getPropertyValue("display");
+    if (display === "none") continue;
     if (stepsCounter(cs, inList)) return true;
     // SVG elements have no such boxes, and the snapshot writes none for void elements either.
-    const pseudos = el.namespaceURI === SVG_NS || VOID.has(el.localName) ? [] : PSEUDOS;
+    const html = el.namespaceURI !== SVG_NS;
+    if (html) noteImages(walk, el.ownerDocument, cs, display.includes("list-item"));
+    const pseudos = html && !VOID.has(el.localName) ? PSEUDOS : [];
     for (const pseudo of pseudos) {
       const ps = view.win.getComputedStyle(el, pseudo);
       const content = ps.getPropertyValue("content");
-      if (content && content !== "none" && content !== "normal" && stepsCounter(ps, inList)) return true;
+      if (!content || content === "none" || content === "normal") continue;
+      if (stepsCounter(ps, inList)) return true;
+      noteImages(walk, el.ownerDocument, ps, ps.getPropertyValue("display").includes("list-item"));
     }
     // A frame's document counts on its own.
     if (el.localName === "iframe") continue;
@@ -823,7 +854,8 @@ function resetsCounter(el: Element, cs: CSSStyleDeclaration): boolean {
  * An absolutely positioned subtree that cannot show: fully transparent, or with nothing in it near
  * the viewport. Leaving it out cannot move anything else (it is out of flow), unless it counts:
  * it steps a counter, or resets one for the boxes after it. Returns null when it may show, else the
- * SVG elements with an id in it ({@link offscreen}).
+ * SVG elements with an id in it ({@link offscreen}). A CSS image still loading in it may grow it
+ * into view: the walk notes it ({@link stepsCounters}).
  */
 function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView): Element[] | null {
   const position = cs.getPropertyValue("position");
@@ -1878,6 +1910,7 @@ function pseudoRules(
     if (scroll) scrollWith(scroll, ps, item, override);
     const { text } = styleText(walk.baseline, ps, from, override, props);
     if (!hollow) useFonts(walk, ps);
+    if (text.includes("url(") || content.includes("url(")) noteImages(walk, el.ownerDocument, ps);
     walk.rules.push(`.${cls}${pseudo}{${embedCssUrls(walk, text, "s")};content:${embedCssUrls(walk, content, "s")}}`);
   }
   return cls;
@@ -1887,6 +1920,39 @@ function pseudoRules(
 function useFonts(walk: Walk, cs: CSSStyleDeclaration): void {
   const face = `${cs.getPropertyValue("font-style")}|${cs.getPropertyValue("font-weight")}|${cs.getPropertyValue("font-stretch")}`;
   walk.fonts.add(`${face}\n${cs.getPropertyValue("font-family")}`);
+}
+
+/**
+ * CSS properties whose image lays out the box it is on: as its content (an element's or a
+ * pseudo-element's), its list marker, or the shape its float wraps lines around. Other CSS images
+ * only paint, and the image embeds each itself.
+ */
+const SIZING_IMAGES = ["content", "list-style-image", "shape-outside"] as const;
+
+/**
+ * Marks the snapshot unsettled while the page loads an image a box with style `cs` is laid out by
+ * ({@link SIZING_IMAGES}), and counts it (`Walk.loading`): the page fires no event once a CSS image
+ * has loaded, and the box then takes the image's size. That holds for a box written in full, at
+ * the size it has now, as for one in a subtree left out or written empty, found away from the
+ * viewport by its size now ({@link stepsCounters}); the far cache keeps no such subtree. Without
+ * `marker` the box is no list item, and its `list-style-image` (inherited) lays out nothing.
+ */
+function noteImages(walk: Walk, doc: Document, cs: CSSStyleDeclaration, marker = true): void {
+  for (const name of SIZING_IMAGES) {
+    if (!marker && name === "list-style-image") continue;
+    const value = cs.getPropertyValue(name);
+    if (value.includes("url(") && cssImagePending(doc, value)) {
+      walk.unsettled = true;
+      walk.loading++;
+      return;
+    }
+  }
+}
+
+/** Records the size of a box written empty (see {@link SizeMark}). */
+function markSize(walk: Walk, el: Element): void {
+  const r = el.getBoundingClientRect();
+  walk.sizes.push({ el, width: r.width, height: r.height });
 }
 
 /**
@@ -2081,12 +2147,14 @@ function* emitElement(
   if (!svg && cs.getPropertyValue("float") !== "none") view.floats++;
   const probe: FarProbe | null = far ? farProbe() : null;
   walk.probe = probe;
+  // A box with a CSS image still loading in it, which may grow it, is read again by the next walk.
+  const loading = walk.loading;
   const cut = svg ? null : culled(walk, el, cs, view);
   if (cut) {
     walk.probe = null;
     walk.stats.culled++;
     keep(walk, cut, el, view, parent);
-    if (far && key && probe && !probe.smil) {
+    if (far && key && probe && !probe.smil && walk.loading === loading) {
       const box: FarBox = { ...CUT, kept: cut, unlisted: probe.unlisted };
       const extent = farExtent(el, cs, probe);
       far.record(el, { ...key, extent, loose: probe.loose, open: false, scrolls: false }, box);
@@ -2167,6 +2235,10 @@ function* emitElement(
   const control = svg || bare ? null : nativeControl(walk.baseline, el, cs);
   if (control?.scheme) override["color-scheme"] = control.scheme;
   const { text: styleBody, inherited: own } = styleText(walk.baseline, cs, parent, override, props, control?.ua);
+  // An image the box is laid out by is in its style where its value first differs from the
+  // parent's (a box written empty has only layout values: those of its content were read in
+  // hollowable, and one of its own sizes it, which is compared).
+  if (!svg && styleBody.includes("url(")) noteImages(walk, el.ownerDocument, cs);
   // A clone written with what places it only inherits everything else from its parent's clone.
   const handed = (): InheritedValues => (bare && parent ? new Map([...parent, ...own]) : own);
   if (!bare) useFonts(walk, cs);
@@ -2233,8 +2305,9 @@ function* emitElement(
     // What it hands on is merged only for the SVG elements it keeps (most such boxes keep none).
     if (emptied.kept.length > 0) keep(walk, emptied.kept, el, view, handed());
     walk.out.push(`</${tag}>`);
+    markSize(walk, el);
     const flow = size && flowBox(el, cs, context, emptied, size, walk.rules.slice(rulesFrom));
-    if (far && key && probe && !probe.smil && !scrolled && !walk.onCanvas.has(el)) {
+    if (far && key && probe && !probe.smil && walk.loading === loading && !scrolled && !walk.onCanvas.has(el)) {
       const box: FarBox = {
         cut: false,
         kept: emptied.kept,
@@ -2504,6 +2577,7 @@ function writeFar(walk: Walk, el: Element, view: DocView, parent: InheritedValue
     return;
   }
   walk.stats.elements++;
+  markSize(walk, el);
   if (view.top && box.z > 0) raise(walk, box.z);
   if (box.scrolls) walk.scrolls.push({ el, left: 0, top: 0 });
   let cls = "";
@@ -2648,6 +2722,7 @@ function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaratio
     return;
   }
   walk.watch?.observe(doc);
+  walk.frames.push(doc);
   const width = frame.clientWidth;
   const height = frame.clientHeight;
   const at = {
@@ -2816,21 +2891,21 @@ function* emitDocument(
 
 /**
  * `@font-face` rules the frame uses, with their sources embedded, each face once: KaTeX fonts, for
- * one, are declared in the page, in the stage's sheet and through the FontFace API.
+ * one, are declared in the page, in the stage's sheet and through the FontFace API. Only those of
+ * the documents drawn (the frame document and the same-origin frames the walk drew) and of their
+ * shadow roots: nothing of a frame left out shows, its fonts included.
  */
-async function fontCss(
-  walk: Walk,
-  source: SnapshotSource,
-  docs: readonly Document[],
-  cache: FontFaceCache,
-): Promise<string> {
+async function fontCss(walk: Walk, source: SnapshotSource, cache: FontFaceCache): Promise<string> {
   const faces: FaceSource[] = [];
   const sheets = new Set<CSSStyleSheet>();
   const add = (list: Iterable<CSSStyleSheet>) => {
     for (const sheet of list) sheets.add(sheet);
   };
+  const docs = [source.document, ...walk.frames];
   for (const doc of docs) add([...Array.from(doc.styleSheets), ...doc.adoptedStyleSheets]);
-  for (const root of source.shadowRoots()) add([...Array.from(root.styleSheets), ...root.adoptedStyleSheets]);
+  for (const root of source.shadowRoots()) {
+    if (docs.includes(root.ownerDocument)) add([...Array.from(root.styleSheets), ...root.adoptedStyleSheets]);
+  }
   const win = source.document.defaultView;
   for (const sheet of sheets) {
     // Sheets that do not apply (disabled, or for other media) declare no fonts for this frame.
@@ -3073,7 +3148,10 @@ async function walkFrame(
     flow: null,
     columns: 0,
     scrolls: [],
+    sizes: [],
+    frames: [],
     unsettled: false,
+    loading: 0,
     deadline: 0,
     stats: { elements: 0, culled: 0, reused: 0, restarts },
     nextClass: 0,
@@ -3143,16 +3221,7 @@ export async function snapshotFrame(
   let walk: Walk | null = null;
   for (let restarts = 0; !walk; restarts++) walk = await walkFrame(source, baseline, resources, restarts, signal);
   source.far?.commit(walk.scrolls);
-  const doc = source.document;
-  const docs = [doc];
-  for (const frame of Array.from(doc.querySelectorAll("iframe"))) {
-    try {
-      if (frame.contentDocument) docs.push(frame.contentDocument);
-    } catch {
-      // Cross-origin frames are drawn empty.
-    }
-  }
-  const fonts = await fontCss(walk, source, docs, faces);
+  const fonts = await fontCss(walk, source, faces);
   const smil = walk.smil.attributes.size > 0 || walk.smil.moving.size > 0;
   const settled = walk.unsettled || smil ? null : walk.scrolls;
   for (const { index } of walk.overlays) walk.canvases[index] = BLANK_IMAGE;
@@ -3202,6 +3271,8 @@ export async function snapshotFrame(
     stats: walk.stats,
     overlays,
     settled,
+    sizes: walk.sizes,
     pixels: walk.pixels,
+    frames: walk.frames,
   };
 }
