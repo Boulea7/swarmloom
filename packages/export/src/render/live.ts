@@ -5,6 +5,11 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const SMIL = new Set(["animate", "animateTransform", "animateMotion", "animateColor", "set"]);
 /** Height difference (CSS px) up to which the live page still counts as the page that was woven. */
 const SIZE_SLACK = 2;
+/**
+ * Rounds of seeking what the last round's writes started ({@link LiveStage.sync}). What the last
+ * round starts is seeked on the next frame, from its start then.
+ */
+const SETTLE_ROUNDS = 3;
 
 /** The live page an adapter kept behind its capture (`LoadedHtml.live` of @swarmloom/adapter-html). */
 export interface LivePage {
@@ -238,15 +243,37 @@ export class LiveStage {
     this.sync(t);
   }
 
-  /** Seeks every animation to transport time `t` (ms); does nothing before go live. */
+  /**
+   * Seeks every animation to transport time `t` (ms); does nothing before go live.
+   *
+   * The seeked values can start transitions and animations elsewhere: an element inherits a new
+   * value, or a container takes a new size and a container query now matches. Those appear at the
+   * next style and layout update, and until a seek reaches them they would run on wall time (the
+   * screenshot, the rasterizer's reads of the frame). So the seek makes that update right away, reads
+   * the animations again and seeks what started at `t` as well, from its start, a few rounds deep.
+   */
   sync(t: number): void {
     if (!this.#live) return;
     this.#seeker.seekAnimations(this.#animations(), t);
     this.#seeker.seekSvgs(this.#svgs, t);
+    for (let round = 0; round < SETTLE_ROUNDS; round++) {
+      this.#layout();
+      if (this.#seeker.seekNew(this.#animations(), t) === 0) break;
+    }
   }
 
   dispose(): void {
     this.#o.shadows.stop();
+  }
+
+  /**
+   * Lays out the render page and the live page. `getAnimations()` flushes style, but an element in a
+   * size container takes its style from the container's laid-out size, which not every engine
+   * resolves in a style flush. The frame needs this layout anyway.
+   */
+  #layout(): void {
+    void this.#o.document.documentElement?.getBoundingClientRect();
+    void this.#page?.document.documentElement?.getBoundingClientRect();
   }
 
   /** The stage world: the first watched root's host that sits in another watched root. */

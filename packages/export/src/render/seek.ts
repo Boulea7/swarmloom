@@ -3,6 +3,8 @@ export interface SeekableAnimation {
   readonly playState: AnimationPlayState;
   readonly playbackRate: number;
   currentTime: CSSNumberish | null;
+  /** Read only for an animation that starts reversed: it starts at its effect's end. */
+  readonly effect?: { getComputedTiming(): ComputedEffectTiming } | null;
   pause(): void;
 }
 
@@ -20,14 +22,30 @@ interface Anchor {
 }
 
 /**
+ * Where an animation first seen after the first seek starts: at 0, or at its effect's end when it
+ * plays backwards (null when that end is infinite).
+ */
+function startOf(anim: SeekableAnimation, rate: number): number | null {
+  if (rate >= 0) return 0;
+  const end = anim.effect?.getComputedTiming().endTime;
+  return typeof end === "number" && Number.isFinite(end) ? end : null;
+}
+
+/**
  * Drives animations from transport (video) time instead of wall time, so every frame is a pure
- * function of it. Each animation is anchored the first time it is seen, at its pose then and the
- * transport time then; every seek pauses it and sets
- * `currentTime = base + (t - t0) * playbackRate`, so it plays on from that pose at its own speed,
- * but only as far as the export clock moved. SVG documents are anchored at 0 s.
+ * function of it. Each animation is anchored the first time it is seen, at a pose and the transport
+ * time then; every seek pauses it and sets `currentTime = base + (t - t0) * playbackRate`, so it
+ * plays on from that pose at its own speed, but only as far as the export clock moved. The first
+ * seek (go live) anchors the animations it finds at their pose then, the frozen pose of the page.
+ * An animation first seen later is one that started since (a seeked value changed an inherited
+ * value or a container's size, and a transition or a container query's animation began): it is
+ * anchored at its start, since its time then counts the wall time since that style change. SVG
+ * documents are anchored at 0 s.
  */
 export class AnimationSeeker {
   readonly #anchors = new WeakMap<object, Anchor>();
+  /** True once {@link seekAnimations} ran: animations first seen from then on are anchored at their start. */
+  #started = false;
 
   #anchor(target: object, base: number, t: number): Anchor {
     let anchor = this.#anchors.get(target);
@@ -49,14 +67,37 @@ export class AnimationSeeker {
    * @returns How many animations were seeked.
    */
   seekAnimations(animations: Iterable<SeekableAnimation>, t: number): number {
+    const count = this.#seek(animations, t, false);
+    this.#started = true;
+    return count;
+  }
+
+  /**
+   * Seeks, as {@link seekAnimations} does, only the animations no seek has seen yet: the ones a
+   * seek's writes started, once the caller made the style and layout update that creates them.
+   * Anchored at their start, they play from `t` on.
+   * @returns How many animations were seeked.
+   */
+  seekNew(animations: Iterable<SeekableAnimation>, t: number): number {
+    return this.#seek(animations, t, true);
+  }
+
+  #seek(animations: Iterable<SeekableAnimation>, t: number, onlyNew: boolean): number {
     const seeks: { anim: SeekableAnimation; paused: boolean; time: number }[] = [];
     for (const anim of animations) {
+      // Checked before any getter, so passing the animations seen before costs no style flush.
+      if (onlyNew && this.#anchors.has(anim)) continue;
       const state = anim.playState;
       if (state === "idle") continue;
       const current = anim.currentTime;
       if (current !== null && typeof current !== "number") continue;
-      const { base, t0 } = this.#anchor(anim, current ?? 0, t);
-      seeks.push({ anim, paused: state === "paused", time: base + (t - t0) * anim.playbackRate });
+      const rate = anim.playbackRate;
+      let anchor = this.#anchors.get(anim);
+      if (!anchor) {
+        anchor = { base: (this.#started ? startOf(anim, rate) : null) ?? current ?? 0, t0: t };
+        this.#anchors.set(anim, anchor);
+      }
+      seeks.push({ anim, paused: state === "paused", time: anchor.base + (t - anchor.t0) * rate });
     }
     let count = 0;
     for (const { anim, paused, time } of seeks) {
