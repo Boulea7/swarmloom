@@ -18,8 +18,43 @@ export type StillSource = Pick<SnapshotSource, "document" | "shadowRoots" | "fac
  */
 const CHANGE_EVENTS = ["load", "error", "beforetoggle", "toggle"] as const;
 
-/** Longest wait for the page's next rendering update ({@link StillWatch.rendered}). */
+/** Longest wait for the page's next rendering update ({@link StillWatch.rendered}, {@link renderingUpdate}). */
 const RENDER_WAIT_MS = 1000;
+
+/**
+ * Calls `done` once the page's next rendering update is over: the engine lays the page out after
+ * the animation frame callbacks and takes what it keeps until the next update (scroll-state
+ * container queries, anchor positions), so a task queued from one runs after all that. Returns the
+ * animation frame request, 0 when the window has none.
+ */
+function afterRenderingUpdate(win: Window, done: () => void): number {
+  if (typeof win.requestAnimationFrame !== "function") return 0;
+  return win.requestAnimationFrame(() => {
+    win.setTimeout(done, 0);
+  });
+}
+
+/**
+ * Resolves once the page of `doc` has taken its next rendering update, so a read after it sees
+ * what the engine takes there from the page as it is now (see {@link StillWatch}). At once when the
+ * document is hidden, which takes none, or has no window; after {@link RENDER_WAIT_MS} at the latest.
+ */
+export function renderingUpdate(doc: Document): Promise<void> {
+  const win = doc.defaultView;
+  if (!win || doc.visibilityState === "hidden") return Promise.resolve();
+  return new Promise((resolve) => {
+    // This realm's timer: a frame removed meanwhile runs neither its animation frames nor its timers.
+    const timer = setTimeout(resolve, RENDER_WAIT_MS);
+    const frame = afterRenderingUpdate(win, () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    if (!frame) {
+      clearTimeout(timer);
+      resolve();
+    }
+  });
+}
 
 /**
  * Documents of the same-origin frames in `scopes` and, in turn, in those documents, in tree order:
@@ -139,14 +174,10 @@ export class StillWatch {
     this.#faces = source.faces().length;
     for (const tree of this.#trees) this.#states.set(tree, treeState(tree));
     this.#texts = texts ? new Map(this.#trees.map((tree) => [tree, sheetState([tree], true)])) : null;
-    if (typeof win?.requestAnimationFrame === "function") {
-      // The engine lays the page out after the animation frame callbacks and takes what it keeps
-      // until the next update; a task queued from one runs once all that is done.
-      this.#frame = win.requestAnimationFrame(() => {
-        win.setTimeout(() => {
-          this.#updated = true;
-          this.#onUpdate?.();
-        }, 0);
+    if (win) {
+      this.#frame = afterRenderingUpdate(win, () => {
+        this.#updated = true;
+        this.#onUpdate?.();
       });
     }
   }
