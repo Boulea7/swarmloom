@@ -15,8 +15,9 @@
  * Windows already open then keep the page they opened with, so an older release's shell and
  * assets stay cached until each of those windows has closed or reloaded: their lazy chunks (an
  * adapter, the exporter) still load, offline too, after the host dropped them. Only the newest
- * release drops files: a worker with a newer one installing or waiting leaves the newer files alone
- * (they are not in its lists) and the clean-up to that worker, which takes over without reinstalling.
+ * release drops files: a worker with a newer one installing, waiting or already active (it took over
+ * while the older one was still tidying) leaves the newer files alone (they are not in its lists)
+ * and the clean-up to that worker, which takes over without reinstalling.
  * Remote files (other origins) are never cached.
  */
 
@@ -105,16 +106,27 @@ async function openWindows(): Promise<string[]> {
 }
 
 /**
- * Whether a newer release is installing or waiting. Its shell and its assets are not in this
- * release's lists, and it does not install again when it takes over (offline too), so they stay.
+ * This worker, noted once it runs as the registration's active one (activate and fetch events reach
+ * only that one). `self.serviceWorker` where the engine has it, else `registration.active` then.
+ */
+let thisWorker: ServiceWorker | null = null;
+function noteActive(): void {
+  thisWorker ??= (self.serviceWorker as ServiceWorker | undefined) ?? self.registration.active;
+}
+
+/**
+ * Whether a newer release is installing, waiting or has taken over from this one. Its shell and its
+ * assets are not in this release's lists, and it does not install again when it takes over (offline
+ * too), so they stay.
  */
 function newerRelease(): boolean {
-  return Boolean(self.registration.installing ?? self.registration.waiting);
+  const { installing, waiting, active } = self.registration;
+  return Boolean(installing ?? waiting) || active !== thisWorker;
 }
 
 /**
  * Drops the shells of older releases and the assets this release does not list. Stops, returning
- * false, once a newer release is installing or waiting: it drops this release's files after it.
+ * false, once a newer release is installing, waiting or active: it drops this release's files after it.
  */
 async function dropOldReleases(): Promise<boolean> {
   for (const name of await caches.keys()) {
@@ -164,6 +176,7 @@ function tidy(): Promise<void> {
 }
 
 async function activate(): Promise<void> {
+  noteActive();
   // Read before claiming: every Studio window open now runs an older release (or none yet).
   const old = await openWindows();
   await (await caches.open(SHELL_CACHE)).put(OLD_WINDOWS_URL, new Response(JSON.stringify(old)));
@@ -273,6 +286,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (request.method !== "GET" || !url.startsWith(scope)) return;
+  noteActive();
   event.waitUntil(tidy());
   if (request.mode === "navigate") {
     event.respondWith(navigation(request));

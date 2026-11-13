@@ -13,7 +13,7 @@ import { appBar, settingsButton, themeButton } from "./chrome";
 import { createExporter } from "./export";
 import { formatLabel } from "./home";
 import { createScrubber } from "./scrubber";
-import { buildShareLink } from "./share-link";
+import { buildShareLink, shareRefusalKey } from "./share-link";
 
 /** Name to show before the source has been resolved. */
 function provisionalName(ctx: AppContext, ref: SourceRef): string {
@@ -299,12 +299,7 @@ export function createPlayerView(ctx: AppContext, ref: SourceRef): View {
     // What the preview plays, so the recipient sees the same performance.
     const link = await buildShareLink(opened, session.playSettings, ctx.shareUrl);
     if (!link.ok) {
-      ctx.toast.show(
-        i18n.t(
-          link.reason === "tooLarge" ? "share.tooLarge" : link.reason === "binary" ? "share.binary" : "share.failed",
-        ),
-        { icon: "alert" },
-      );
+      ctx.toast.show(i18n.t(shareRefusalKey(link.reason)), { icon: "alert" });
       return;
     }
     const coarse = window.matchMedia("(pointer: coarse)").matches;

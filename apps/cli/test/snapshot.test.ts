@@ -167,12 +167,15 @@ h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
   it("freezes the loops that the freeze itself starts", async () => {
     // Ending the entrance animation and pausing the video fire events that start endless slides;
     // both are read half a cycle in (+150 px), not wherever real time had them. A Web Animation
-    // whose finish handler plays the same object again must stay at its end too (+300 px).
+    // whose finish handler plays the same object again must stay at its end too (+300 px), and so
+    // must a CSS animation that its animationend handler restarts as a new object by a class toggle.
     const page = `<!doctype html><title>t</title><style>
 @keyframes enter { from { transform: translateX(0) } to { transform: translateX(10px) } }
 @keyframes slide { from { transform: translateX(0) } to { transform: translateX(300px) } }
 .enter { animation: enter 60s linear forwards } .slide { animation: slide 1s linear infinite }
+.pop { animation: slide 60s linear forwards }
 </style><p id="chain" class="enter">chain</p><p id="paused">paused</p><p id="replayed">replayed</p>
+<p id="restarted" class="pop">restarted</p>
 <video autoplay muted loop playsinline src="${CLIP}"></video>
 <script>
 const chain = document.getElementById("chain");
@@ -183,6 +186,12 @@ const replayed = document.getElementById("replayed").animate(
   { duration: 60000, fill: "forwards" },
 );
 replayed.onfinish = () => { replayed.currentTime = 0; replayed.play(); };
+const restarted = document.getElementById("restarted");
+restarted.addEventListener("animationend", () => {
+  restarted.classList.remove("pop");
+  void restarted.offsetWidth;
+  restarted.classList.add("pop");
+});
 </script>`;
     const server = createServer((_req, res) => res.setHeader("content-type", "text/html").end(page));
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -203,6 +212,7 @@ replayed.onfinish = () => { replayed.currentTime = 0; replayed.play(); };
         ["chain", 158],
         ["paused", 158],
         ["replayed", 308],
+        ["restarted", 308],
       ]);
     } finally {
       server.close();

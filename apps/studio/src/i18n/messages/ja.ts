@@ -175,6 +175,8 @@ export const ja: StudioCatalog = {
   "share.title": "SwarmLoom: {name}",
   "share.tooLarge": "リンクで共有するには大きすぎます。動画を書き出して共有してください。",
   "share.binary": "リンクで共有できるのはテキストファイルだけです。動画を書き出して共有してください。",
+  "share.private":
+    "ブックマークレットから送られたページはリンクで共有できません。ページの見えないデータが含まれることがあります。動画を書き出して共有してください。",
   "share.failed": "リンクをコピーできませんでした。",
 
   "export.title": "動画を書き出す",
@@ -224,6 +226,7 @@ export const ja: StudioCatalog = {
   "watch.next": "次のサンプル",
   "watch.phone": "スマホで開く",
   "watch.scan": "スマホでスキャンして開く",
+  "watch.preparing": "リンクを準備しています…",
   "watch.tooLong": "このリンクは長すぎて QR コードにできません。",
   "watch.back": "戻る",
   "watch.empty": "再生できるサンプルがありません",

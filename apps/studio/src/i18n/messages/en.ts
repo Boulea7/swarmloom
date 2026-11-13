@@ -214,6 +214,8 @@ export const en = {
   "share.title": "{name} on SwarmLoom",
   "share.tooLarge": "This is too large to share as a link. Export a video instead.",
   "share.binary": "Only text files can be shared as a link. Export a video instead.",
+  "share.private":
+    "A page sent by the bookmarklet is not shared as a link: it can hold the page's hidden data. Export a video instead.",
   "share.failed": "Couldn't copy the link.",
 
   "export.title": "Export video",
@@ -262,6 +264,7 @@ export const en = {
   "watch.next": "Next example",
   "watch.phone": "Open on phone",
   "watch.scan": "Scan to open on your phone",
+  "watch.preparing": "Getting the link ready…",
   "watch.tooLong": "This link is too long for a QR code.",
   "watch.back": "Back",
   "watch.empty": "No examples to play",

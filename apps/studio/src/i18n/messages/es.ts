@@ -208,6 +208,8 @@ export const es: StudioCatalog = {
   "share.title": "{name} en SwarmLoom",
   "share.tooLarge": "Es demasiado grande para compartirlo como enlace. Exporta un vídeo.",
   "share.binary": "Solo los archivos de texto se pueden compartir como enlace. Exporta un vídeo.",
+  "share.private":
+    "Una página enviada por el bookmarklet no se comparte como enlace: puede contener datos ocultos de la página. Exporta un vídeo.",
   "share.failed": "No se pudo copiar el enlace.",
 
   "export.title": "Exportar vídeo",
@@ -259,6 +261,7 @@ export const es: StudioCatalog = {
   "watch.next": "Siguiente ejemplo",
   "watch.phone": "Abrir en el móvil",
   "watch.scan": "Escanéalo con el móvil",
+  "watch.preparing": "Preparando el enlace…",
   "watch.tooLong": "Este enlace es demasiado largo para un código QR.",
   "watch.back": "Atrás",
   "watch.empty": "No hay ejemplos para reproducir",

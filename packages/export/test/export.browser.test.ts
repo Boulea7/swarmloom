@@ -105,6 +105,46 @@ describe("export in the browser", () => {
     }
   });
 
+  it("starts a transition a seek sets off at the frame time, however long the frame took", async () => {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    // The box widens with transport time; from 200 px on, a container query turns the chip blue over 1 s.
+    frame.srcdoc =
+      "<style>@keyframes wide{from{width:100px}to{width:300px}}" +
+      ".box{container-type:inline-size;animation:wide 1s linear paused;height:20px}" +
+      ".chip{height:10px;background:rgb(255,0,0);transition:background-color 1s linear}" +
+      "@container (min-width:200px){.chip{background:rgb(0,0,255)}}</style>" +
+      '<body style="margin:0"><div class="box"><div class="chip"></div></div>';
+    const host = document.createElement("div");
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.height = "200px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument as Document;
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: doc },
+      });
+      stage.goLive(0);
+      stage.sync(600); // 220 px wide: the chip's transition starts at 600 ms
+      await new Promise((resolve) => setTimeout(resolve, 300)); // a slow screenshot
+      stage.sync(850);
+      const transitions = doc.getAnimations().filter((anim) => "transitionProperty" in anim);
+      expect(transitions.map((anim) => anim.currentTime)).toEqual([250]);
+    } finally {
+      frame.remove();
+      host.remove();
+    }
+  });
+
   it("shows an animated GIF on the live page as its first frame: an <img> at the same size, a background, an SVG <image>, a video poster, an image button", async () => {
     // 1x1 GIF, red then blue, looping.
     const gif =

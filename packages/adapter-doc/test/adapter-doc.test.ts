@@ -94,15 +94,20 @@ describe("parser on the headers/footers sample", () => {
   });
 });
 
-describe("parser on the table sample", () => {
-  it("recovers the 5 x 6 table", () => {
+describe("parser on the generated table sample", () => {
+  it("recovers the 5 x 6 table and its table-wide borders", () => {
     const model = parseDoc(new Uint8Array(TABLE));
+    expect(model.warnings).toEqual([]);
     expect(model.stats.tables).toBe(1);
     const table = model.sections[0].blocks.find((b) => b.kind === "table");
     expect(table?.kind).toBe("table");
     if (table?.kind !== "table") return;
     expect(table.rows).toHaveLength(5);
     expect(table.rows.every((r) => r.cells.length === 6)).toBe(true);
+    const first = table.rows[0].cells[0].blocks[0];
+    expect(first?.kind === "paragraph" && text(first)).toBe("时段 Time");
+    // The cells carry no borders of their own: sprmTTableBorders80 draws them.
+    expect(table.rows.every((r) => r.borders === true)).toBe(true);
   });
 });
 

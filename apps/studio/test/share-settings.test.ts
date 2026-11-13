@@ -100,25 +100,50 @@ it("plays a link made at the default settings with them, not with the recipient'
   expect(log.players.at(-1)).toMatchObject({ seed, speed, opening: 0, liveTop: false });
 });
 
+// Share links of examples and web pages carry every build setting in the query, as #d= links do in the payload.
+it("plays what is opened after a query link with the saved settings, and the link's again on Back", async () => {
+  const opened = { ref: { kind: "example", id: "notes" }, name: "notes.md" } as OpenedSource;
+  const link = await buildShareLink(opened, DEFAULT_SETTINGS, `${location.origin}/`);
+  if (!link.ok) throw new Error(link.reason);
+  history.replaceState(null, "", `/${new URL(link.url).search}&lang=en`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const { services } = fakeServices({ manifest: { version: 1, entries: [] }, examplesBase: "https://studio.test/x/" });
+  const saved = { ...DEFAULT_SETTINGS, agents: 12, seed: 42, finale: "halo", follow: "none" } as const;
+  const storage = { getItem: () => JSON.stringify(saved), setItem: () => undefined } as unknown as Storage;
+  const studio = await mountStudio(root, { ...services, storage });
+  app = studio;
+  const fromLink = { agents: "auto", seed, finale, follow: "tour" } as const;
+  expect(studio.context.settings).toMatchObject(fromLink);
+
+  studio.context.navigate({ source: { kind: "example", id: "more" }, autoplay: true });
+  expect(studio.context.settings).toMatchObject({ agents: 12, seed: 42, finale: "halo", follow: "none" });
+  expect(location.search).toBe("?example=more&autoplay=1&lang=en");
+  history.back();
+  await until(() => studio.context.settings.seed === seed);
+  expect(studio.context.settings).toMatchObject(fromLink);
+});
+
 it("leaves a link's settings behind with its view", async () => {
   const { studio } = await openLink();
   studio.context.navigate({ source: null });
   expect(studio.context.settings).toMatchObject({ seed, speed, finale });
 });
 
+// Left at once, before the payload is encoded again without the setting: Back still keeps the user's value.
 it("keeps a setting changed on a #d= link's entry on Back: it leaves the payload", async () => {
   const { studio, log } = await openLink();
   const link = location.hash;
   studio.context.updateSettings({ speed: 3 });
-  await until(() => location.hash !== link);
-  const payload = new URLSearchParams(location.hash.slice(1)).get("d") ?? "";
-  expect((await decodeShare(payload)).settings).toEqual({ seed: 42, finale: "halo" });
-
   studio.context.navigate({ source: null });
   history.back();
   await until(() => studio.context.settings.seed === 42 && document.querySelector(".play-big"));
   expect(studio.context.settings).toMatchObject({ ...shared, speed: 3 });
   expect(log.players.at(-1)).toMatchObject({ seed: 42, speed: 3 });
+
+  await until(() => location.hash !== link);
+  const payload = new URLSearchParams(location.hash.slice(1)).get("d") ?? "";
+  expect((await decodeShare(payload)).settings).toEqual({ seed: 42, finale: "halo" });
 });
 
 it("takes speed, sound and tour changed on the player's toolbar into the panel, a share link and the next player", async () => {
@@ -153,9 +178,10 @@ it("brings an entry's URL settings back on Back, and drops the ones the user cha
   const { services } = fakeServices({ manifest: { version: 1, entries: [] }, examplesBase: "https://studio.test/x/" });
   const studio = await mountStudio(root, services);
   app = studio;
-  const fromLink = { opening: true, liveTop: true, intro: "outline" } as const;
+  // Changed on the link's own entry: it leaves that entry's URL.
+  studio.context.updateSettings({ intro: "warp" });
+  expect(location.search).toBe("?lang=en&opening=1&live-top=1");
   studio.context.navigate({ source: null });
-  studio.context.updateSettings({ opening: false, liveTop: false, intro: "warp" });
   expect(location.search).toBe("?lang=en");
   studio.context.toggleSettings();
   const opening = () =>
@@ -165,7 +191,7 @@ it("brings an entry's URL settings back on Back, and drops the ones the user cha
 
   history.back();
   await until(() => studio.context.settings.opening);
-  expect(studio.context.settings).toMatchObject(fromLink);
+  expect(studio.context.settings).toMatchObject({ opening: true, liveTop: true, intro: "warp" });
   expect(opening()?.checked).toBe(true);
   history.forward();
   await until(() => !studio.context.settings.opening);

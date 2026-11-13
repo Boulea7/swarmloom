@@ -6,10 +6,11 @@ import { formatById } from "../formats-meta";
 import { portable, routeToUrl, type SourceRef } from "../route";
 import { Session, type SessionPhase } from "../session";
 import { type OpenedSource, resolveSource } from "../source";
+import { nextId } from "../ui/controls";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { qrCode } from "./qr";
-import { buildShareLink, shareableSettings } from "./share-link";
+import { buildShareLink, shareableSettings, shareRefusalKey } from "./share-link";
 import { thumbnail } from "./thumb";
 
 /**
@@ -104,6 +105,8 @@ export function createWatch(ctx: AppContext): View {
     },
   });
 
+  // Off screen on a small face and while a build plays, but always on the page: with the poster
+  // decorative, it is what names the example to a screen reader (see advance for when it speaks).
   const title = h("p", { class: "watch-title" });
   const playIcon = h("span", { class: "watch-play-icon" }, icon("play", 34));
   const play = h(
@@ -159,7 +162,13 @@ export function createWatch(ctx: AppContext): View {
   );
 
   const qrBox = h("div", { class: "watch-qr-code" });
-  const qrCaption = h("p", { class: "watch-qr-caption", text: i18n.t("watch.scan") });
+  // A status: a link read after the dialog opens (a local file, pasted text, a handoff) says when
+  // its code is ready or why there is none, while a screen reader's focus stays on Back.
+  const qrCaption = h("p", {
+    class: "watch-qr-caption",
+    text: i18n.t("watch.scan"),
+    attrs: { id: nextId("watch-qr-caption"), role: "status" },
+  });
   /** Bumped per QR code shown, so a link that is read late never replaces a newer one. */
   let qrRequest = 0;
   /** Ends the reads of sources still running when the face goes. */
@@ -168,7 +177,7 @@ export function createWatch(ctx: AppContext): View {
   // so Tab and screen readers stay inside it; Esc closes it like the Back button.
   const qr = h(
     "dialog",
-    { class: "watch-qr", attrs: { "aria-label": i18n.t("watch.scan") } },
+    { class: "watch-qr", attrs: { "aria-label": i18n.t("watch.phone"), "aria-describedby": qrCaption.id } },
     qrBox,
     qrCaption,
     h(
@@ -296,7 +305,8 @@ export function createWatch(ctx: AppContext): View {
     phase = "idle";
     syncCycle();
     setProgress(0);
-    title.textContent = item.title;
+    // The same title again (a retry after an error) is no news to a screen reader.
+    if (title.textContent !== item.title) title.textContent = item.title;
     poster.replaceChildren(
       item.entry ? thumbnail(item.entry, ctx.services.examplesBase) : h("div", { class: "thumb" }),
     );
@@ -356,6 +366,9 @@ export function createWatch(ctx: AppContext): View {
 
   function advance(byUser: boolean): void {
     if (items.length === 0) return;
+    // Next says the new title; the cycle after a build moves on quietly, as an auto-rotating
+    // carousel does (WAI-ARIA APG), with the title there to read.
+    title.setAttribute("aria-live", byUser ? "polite" : "off");
     index = (index + 1) % items.length;
     const item = items[index];
     if (item) load(item, engaged || byUser);
@@ -364,7 +377,7 @@ export function createWatch(ctx: AppContext): View {
 
   /**
    * The phone link for a source no link can name: like Share, small text travels in `#d=`. A
-   * notice instead says why it cannot (binary, too large, unreadable).
+   * notice instead says why it cannot (binary, too large, a bookmarklet page, unreadable).
    */
   async function carriedLink(item: Item): Promise<{ url: string } | { notice: string }> {
     let opened: OpenedSource;
@@ -375,27 +388,46 @@ export function createWatch(ctx: AppContext): View {
     }
     const link = await buildShareLink(opened, ctx.settings, ctx.shareUrl);
     if (link.ok) return { url: link.url };
-    const key =
-      link.reason === "tooLarge" ? "share.tooLarge" : link.reason === "binary" ? "share.binary" : "share.failed";
-    return { notice: i18n.t(key) };
+    return { notice: i18n.t(shareRefusalKey(link.reason)) };
+  }
+
+  /** The width in device pixels the open dialog draws a code at: its light box less the padding. */
+  function codeSide(): number {
+    const box = qrBox.getBoundingClientRect();
+    const style = getComputedStyle(qrBox);
+    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    return (Math.min(box.width, box.height) - padding) * devicePixelRatio;
   }
 
   /**
-   * Shows the code for a link, a notice in its place, or (null) an empty code while the link is
-   * read. A link too long for any QR code (a long source URL, a large `#d=`) gets a notice too.
+   * Shows the code for a link, a notice in its place, or (null) "getting the link ready" in its
+   * place while the link is read. A link too long for a code this face draws with modules a phone
+   * can scan (a long source URL, a large `#d=`, or a shorter link on a small face) gets a notice too.
+   * Call with the dialog open: the code is sized to the room it gets there.
    */
   function drawQr(shown: { url: string } | { notice: string } | null): void {
-    const code = shown && "url" in shown ? qrCode(shown.url, i18n.t("watch.scan")) : null;
+    // Lay the dialog out as for a code (box shown, no notice) to measure that room. The caption is
+    // a status: its words are written only when they change, or a screen reader hears them again.
+    qrBox.hidden = false;
+    qrBox.replaceChildren();
+    const scan = i18n.t("watch.scan");
+    if (qrCaption.textContent !== scan) qrCaption.textContent = scan;
+    qrCaption.removeAttribute("data-notice");
+    const code = shown && "url" in shown ? qrCode(shown.url, scan, codeSide()) : null;
     const notice = shown && "notice" in shown ? shown.notice : shown && !code ? i18n.t("watch.tooLong") : null;
-    qrBox.hidden = notice !== null;
+    // "Getting ready" while the link is read, then the outcome. Any words but "scan" stand in the
+    // code's place, where faces that leave out the caption under a code still show them.
+    const caption = notice ?? (shown ? scan : i18n.t("watch.preparing"));
+    qrBox.hidden = caption !== scan;
     qrBox.replaceChildren(...(code ? [code] : []));
-    qrCaption.textContent = notice ?? i18n.t("watch.scan");
-    qrCaption.toggleAttribute("data-notice", notice !== null);
+    if (qrCaption.textContent !== caption) qrCaption.textContent = caption;
+    qrCaption.toggleAttribute("data-notice", caption !== scan);
   }
 
   function showQr(): void {
     const item = items[index];
     const request = ++qrRequest;
+    if (!qr.open) qr.showModal();
     // The phone plays the same show: every performance setting in effect here (saved or from this
     // link), not the wrist-only WATCH_OVERRIDES. A `#d=` payload's own settings win there as here.
     if (!item) drawQr({ url: ctx.shareUrl });
@@ -408,7 +440,6 @@ export function createWatch(ctx: AppContext): View {
         if (request === qrRequest && qr.open) drawQr(shown);
       });
     }
-    if (!qr.open) qr.showModal();
     root.dataset.qr = "true";
     session?.player?.pause();
     qr.querySelector("button")?.focus();

@@ -1,11 +1,11 @@
 import type { PlayerEvent } from "@swarmloom/core";
 import { afterEach, expect, it } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import { routeToUrl } from "../src/route";
 import type { OpenedSource } from "../src/source";
-import { qrCode } from "../src/views/qr";
+import { MIN_MODULE_PX, qrCode } from "../src/views/qr";
 import { buildShareLink } from "../src/views/share-link";
 import { fakeServices } from "./fakes";
 
@@ -210,9 +210,10 @@ it.each([
     const safe = root.querySelector<HTMLElement>(".watch-safe")?.getBoundingClientRect();
     const heading = root.querySelector<HTMLElement>(".watch-title");
     if (!safe || !heading) throw new Error("no watch face");
-    // Play, Next and phone always render; the title only where it fits. Without this, controls that
-    // all vanished would pass the bounds checks below (no rects: top Infinity, bottom -Infinity).
-    const shown = (el: Element) => el.getClientRects().length > 0;
+    // Play, Next and phone always render; the title only where it fits (elsewhere it is a 1 px box
+    // for screen readers). Without this, controls that all vanished would pass the bounds checks
+    // below (no rects: top Infinity, bottom -Infinity).
+    const shown = (el: Element) => el.getBoundingClientRect().width > 1;
     const buttons = [...root.querySelectorAll<HTMLElement>(".watch-play, .watch-actions > *")];
     // A long title keeps to one line.
     const line = parseFloat(getComputedStyle(heading).lineHeight);
@@ -231,6 +232,57 @@ it.each([
     expect(bounds.bottom).toBeLessThanOrEqual(safe.bottom + 0.5);
     expect(bounds.left).toBeGreaterThanOrEqual(safe.left - 0.5);
     expect([shown(heading), ...buttons.map(shown)]).toEqual([titled, true, true, true]);
+  } finally {
+    await page.viewport(414, 896);
+  }
+});
+
+type AXNode = {
+  nodeId: string;
+  parentId?: string;
+  ignored: boolean;
+  role?: { value: string };
+  name?: { value: string };
+  description?: { value: string };
+  properties?: { name: string; value: { value: unknown } }[];
+};
+
+/** What a screen reader gets from this test's frame: its accessibility tree (ignored nodes marked). */
+async function axTree(): Promise<AXNode[]> {
+  type Frame = { frame: { id: string; url: string }; childFrames?: Frame[] };
+  const { frameTree } = (await cdp().send("Page.getFrameTree")) as { frameTree: Frame };
+  const frames = (tree: Frame): Frame["frame"][] => [tree.frame, ...(tree.childFrames ?? []).flatMap(frames)];
+  const frameId = frames(frameTree).find((frame) => frame.url === location.href)?.id;
+  const { nodes } = (await cdp().send("Accessibility.getFullAXTree", { frameId })) as { nodes: AXNode[] };
+  return nodes;
+}
+
+/** The text a screen reader reads, each with how it announces a change there: "polite", "off" or "none". */
+async function spoken(): Promise<[string | undefined, unknown][]> {
+  const nodes = await axTree();
+  const byId = new Map(nodes.map((node) => [node.nodeId, node]));
+  // The live region a text sits in sets the politeness, from the nearest ancestor that has one.
+  const live = (node: AXNode | undefined): unknown =>
+    node && (node.properties?.find((p) => p.name === "live")?.value.value ?? live(byId.get(node.parentId ?? "")));
+  return nodes
+    .filter((node) => !node.ignored && node.role?.value === "StaticText")
+    .map((node) => [node.name?.value, live(node) ?? "none"]);
+}
+
+// The poster is decorative: off screen or not, the title is what names the example to a screen
+// reader, and Next says the new one.
+it("names the example to a screen reader on a face too small for its title", async () => {
+  await page.viewport(140, 140);
+  try {
+    const root = await mountWatch("?watch=1&round=1");
+    const face = root.querySelector<HTMLElement>(".view-watch");
+    const title = root.querySelector(".watch-title");
+    const first = title?.textContent;
+    expect(await spoken()).toContainEqual([first, "none"]);
+    root.querySelector<HTMLButtonElement>(".watch-actions button:first-child")?.click();
+    await expect.poll(() => face?.dataset.phase).toBe("playing");
+    expect(title?.textContent).not.toBe(first);
+    expect(await spoken()).toContainEqual([title?.textContent, "polite"]);
   } finally {
     await page.viewport(414, 896);
   }
@@ -268,22 +320,99 @@ it("hands the phone a local file inside the link, not the bare Studio page", asy
 });
 
 // A source URL may run to 4096 characters and a #d= payload to 16 KB; a QR code holds about 2.3 KB.
-it("says a link is too long for a QR code instead of throwing", async () => {
-  const src = `http://example.invalid/${"a".repeat(3000)}`;
-  history.replaceState(null, "", `${location.pathname}?watch=1&round=1&src=${encodeURIComponent(src)}`);
+// A small face draws a code too small to scan sooner: 400 characters fit a code, not its 37 px there.
+it.each([
+  { length: 3000, size: 0, dpr: 1 },
+  { length: 400, size: 100, dpr: 2 },
+])("says a $length-character link is too long for a QR code instead of throwing", async ({ length, size, dpr }) => {
+  if (size) {
+    await page.viewport(size, size);
+    await cdp().send("Emulation.setDeviceMetricsOverride", {
+      width: size,
+      height: size,
+      deviceScaleFactor: dpr,
+      mobile: false,
+    });
+  }
+  try {
+    const src = `http://example.invalid/${"a".repeat(length)}`;
+    history.replaceState(null, "", `${location.pathname}?watch=1&round=1&src=${encodeURIComponent(src)}`);
+    const root = document.createElement("div");
+    document.body.append(root);
+    const manifest = { version: 1 as const, entries: [] };
+    const fetch = async () => new Response("", { status: 404 });
+    app = await mountStudio(
+      root,
+      fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
+    );
+    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+    expect(root.querySelector(".watch-qr")?.matches(":modal")).toBe(true);
+    expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
+    expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
+  } finally {
+    if (size) {
+      await cdp().send("Emulation.clearDeviceMetricsOverride");
+      await page.viewport(414, 896);
+    }
+  }
+});
+
+// A local file's link is read after the dialog opens, with focus on Back: a status says when it is ready.
+it("tells a screen reader when the QR code of a link read late is ready", async () => {
+  history.replaceState(null, "", `${location.pathname}?watch=1&round=1`);
   const root = document.createElement("div");
   document.body.append(root);
   const manifest = { version: 1 as const, entries: [] };
-  const fetch = async () => new Response("", { status: 404 });
-  app = await mountStudio(
-    root,
-    fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
-  );
+  app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
+  const local = { name: "notes.md", text: "# Notes\n" };
+  app.context.navigate({ source: { kind: "file", name: local.name }, autoplay: true }, { local });
   root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+  const { t } = app.context.i18n;
+  const caption = root.querySelector<HTMLElement>(".watch-qr-caption");
+  expect(caption?.textContent).toBe(t("watch.preparing"));
+  // Seen too, in the code's place, not an empty code on a face that leaves out the caption.
+  expect(caption?.getBoundingClientRect().height).toBeGreaterThan(1);
+  expect(root.querySelector<HTMLElement>(".watch-qr-code")?.hidden).toBe(true);
 
-  expect(root.querySelector(".watch-qr")?.matches(":modal")).toBe(true);
-  expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
-  expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
+  await expect.poll(() => root.querySelector(".watch-qr svg.qr")).not.toBeNull();
+  expect(await spoken()).toContainEqual([t("watch.scan"), "polite"]);
+  const dialog = (await axTree()).find((n) => !n.ignored && n.role?.value === "dialog");
+  expect([dialog?.name?.value, dialog?.description?.value]).toEqual([t("watch.phone"), t("watch.scan")]);
+  expect(document.activeElement?.getAttribute("aria-label")).toBe(t("watch.back"));
+});
+
+// The smallest round face holds three lines of notice above the close button: the rest scrolls.
+it("scrolls a notice too long for the smallest face to its end", async () => {
+  await page.viewport(100, 100);
+  try {
+    const src = `http://example.invalid/${"a".repeat(3000)}`;
+    history.replaceState(null, "", `${location.pathname}?watch=1&round=1&lang=de&src=${encodeURIComponent(src)}`);
+    const root = document.createElement("div");
+    document.body.append(root);
+    const manifest = { version: 1 as const, entries: [] };
+    const fetch = async () => new Response("", { status: 404 });
+    app = await mountStudio(
+      root,
+      fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
+    );
+    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+    const dialog = root.querySelector<HTMLElement>(".watch-qr");
+    const notice = root.querySelector<HTMLElement>(".watch-qr-caption[data-notice]");
+    if (!dialog || !notice) throw new Error("no notice");
+    expect(notice.textContent).toBe("Dieser Link ist zu lang für einen QR-Code.");
+    expect(notice.scrollHeight).toBeGreaterThan(notice.clientHeight);
+    const box = dialog.getBoundingClientRect();
+    const safe = parseFloat(getComputedStyle(dialog).paddingTop);
+    const shown = notice.getBoundingClientRect();
+    expect(shown.top).toBeGreaterThanOrEqual(box.top + safe - 0.5);
+    expect(shown.bottom).toBeLessThanOrEqual(box.bottom - safe + 0.5);
+    await userEvent.wheel(notice, { delta: { y: 100 } });
+    await expect.poll(() => notice.scrollTop + notice.clientHeight).toBeGreaterThanOrEqual(notice.scrollHeight - 1);
+  } finally {
+    await page.viewport(414, 896);
+  }
 });
 
 // A QR code holds 2.3 KB, but past ~650 bytes its modules get too small to scan off a watch face.
@@ -311,30 +440,41 @@ it("keeps the watch QR code small enough to scan, with a notice for a longer #d=
   expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
 });
 
+// Watches this small have dense screens: three device pixels a CSS pixel, two on larger faces.
 it.each([
-  { size: 100, round: true },
-  { size: 140, round: true },
-  { size: 200, round: false },
-])("keeps the QR dialog of a $size px face (round: $round) inside its safe area", async ({ size, round }) => {
+  { size: 100, round: true, dpr: 3 },
+  { size: 140, round: true, dpr: 3 },
+  { size: 200, round: false, dpr: 2 },
+])("keeps the QR dialog of a $size px face (round: $round) inside its safe area", async ({ size, round, dpr }) => {
   await page.viewport(size, size);
+  await cdp().send("Emulation.setDeviceMetricsOverride", {
+    width: size,
+    height: size,
+    deviceScaleFactor: dpr,
+    mobile: false,
+  });
   try {
     const root = await mountWatch(round ? "?watch=1&round=1" : "?watch=1", false);
     root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
     const dialog = root.querySelector<HTMLElement>(".watch-qr");
-    const code = root.querySelector(".watch-qr svg")?.getBoundingClientRect();
-    if (!dialog || !code) throw new Error("no QR code");
+    const svg = root.querySelector<SVGSVGElement>(".watch-qr svg.qr");
+    const code = svg?.getBoundingClientRect();
+    if (!dialog || !svg || !code) throw new Error("no QR code");
     const box = dialog.getBoundingClientRect();
     const safe = parseFloat(getComputedStyle(dialog).paddingTop);
     expect(dialog.scrollHeight).toBeLessThanOrEqual(dialog.clientHeight);
     // Nothing reaches past the safe area, where the circle or the dialog would crop the finder patterns.
-    const parts = [code, ...[...dialog.children].map((el) => el.getBoundingClientRect())].filter((r) => r.height);
+    // (A caption kept only for screen readers is a 1 px box that draws nothing.)
+    const parts = [code, ...[...dialog.children].map((el) => el.getBoundingClientRect())].filter((r) => r.height > 1);
     for (const part of parts) {
       expect(part.top).toBeGreaterThanOrEqual(box.top + safe - 0.5);
       expect(part.bottom).toBeLessThanOrEqual(box.bottom - safe + 0.5);
     }
-    // ...and the code stays large enough to scan.
+    // ...and the code stays large enough to scan: it fills its room, with modules a phone can read.
     expect(code.width).toBeGreaterThanOrEqual(0.4 * (box.height - 2 * safe));
+    expect((code.width * devicePixelRatio) / svg.viewBox.baseVal.width).toBeGreaterThanOrEqual(MIN_MODULE_PX);
   } finally {
+    await cdp().send("Emulation.clearDeviceMetricsOverride");
     await page.viewport(414, 896);
   }
 });

@@ -16,6 +16,17 @@ function localChrome(): string | undefined {
 }
 
 const executablePath = localChrome();
+/**
+ * Chromium switches for the browser project. Without a GPU (CI runners, servers) WebGL comes from the
+ * SwiftShader software rasteriser, which Chromium only allows behind this switch; Playwright passes it today too.
+ */
+const chromiumArgs = ["--enable-unsafe-swiftshader"];
+/**
+ * Whether a browser test must fail, not skip, when the browser lacks a capability it checks (WebGL 2): on CI
+ * (`CI=1` or `CI=true`), unless the job sets SWARMLOOM_TEST_DEPS=optional, as for the CLI tests' real browser and
+ * ffmpeg. A launch switch or runner image that loses WebGL then fails the job instead of skipping the GPU cases.
+ */
+const requireWebGL = /^(1|true)$/i.test(process.env.CI ?? "") && process.env.SWARMLOOM_TEST_DEPS !== "optional";
 /** Local Firefox for the Firefox project: $SWARMLOOM_FIREFOX, else Playwright's bundled build. */
 const firefoxPath = process.env.SWARMLOOM_FIREFOX || undefined;
 
@@ -73,10 +84,14 @@ export default defineConfig({
           // One file at a time: Chromium throttles requestAnimationFrame and screenshots in the
           // background pages of parallel files, which timed out frame-driven tests in full runs.
           fileParallelism: false,
+          // Read by inject("requireWebGL") (packages/adapter-three/test/adapter-three.browser.test.ts).
+          provide: { requireWebGL },
           browser: {
             enabled: true,
             headless: true,
-            provider: playwright({ launchOptions: executablePath ? { executablePath } : {} }),
+            provider: playwright({
+              launchOptions: { args: chromiumArgs, ...(executablePath ? { executablePath } : {}) },
+            }),
             instances: [{ browser: "chromium" }],
             commands,
           },

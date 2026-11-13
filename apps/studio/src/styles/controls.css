@@ -277,7 +277,7 @@ textarea.input {
 /*
  * Switch. Off is an outline around a small grey knob, on a filled track with a white knob: each
  * keeps 3:1 or more against the panel in both themes (WCAG 1.4.11), and the states differ in more
- * than their hue.
+ * than their hue. Forced colours repaint both in layout.css.
  */
 .switch {
   position: relative;

@@ -138,8 +138,8 @@ export class FrameRasterizer {
 
   /**
    * Draws the current frame into `ctx` at its origin, scaled to `ctx.canvas`, over white. While
-   * the document shows what the last snapshot read (no mutation, load, scroll, focus or animation
-   * change since, in it or in the live page it shows, and the same pixels in each canvas drawn
+   * the document shows what the last snapshot read (no mutation, load, scroll, focus or animated
+   * value change since, in it or in the live page it shows, and the same pixels in each canvas drawn
    * into the image; see {@link StillWatch}), the frame skips the snapshot and draws the last image
    * again with the overlays, such as the cursors, over it: an opening that holds the page, an
    * intro whose cursors move over a still stage, or the rest of a still page after going live. A
@@ -176,9 +176,13 @@ export class FrameRasterizer {
     const { document, shadows, fonts } = this.#o;
     // Its probe elements would count as a change.
     this.#baseline ??= readBaseline(document);
+    // The far cache does not read rules edited in place through the CSSOM, nor keyframes set anew;
+    // the still watch does. Forgotten before the next watch reads what each animation animates, or
+    // after it when it watched a new window, which hands the rules (see watchSheetEdits).
+    const edited = !this.#sheets?.holds();
+    if (edited) this.#far.forget();
     const watch = new StillWatch({ document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() });
-    // The far cache does not read rules edited in place through the CSSOM; the still watch does.
-    if (!this.#sheets?.holds()) this.#far.forget();
+    if (!edited && !this.#sheets?.holds()) this.#far.forget();
     this.#sheets = watch.sheets;
     try {
       const { parts, stats, overlays, settled, pixels } = await this.snapshot(signal, scale);

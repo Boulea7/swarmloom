@@ -167,6 +167,8 @@ export const ko: StudioCatalog = {
   "share.title": "SwarmLoom: {name}",
   "share.tooLarge": "링크로 공유하기에는 너무 큽니다. 영상으로 내보내 공유하세요.",
   "share.binary": "텍스트 파일만 링크로 공유할 수 있습니다. 영상으로 내보내 공유하세요.",
+  "share.private":
+    "북마클릿으로 보낸 페이지는 링크로 공유할 수 없습니다. 페이지의 숨은 데이터가 들어 있을 수 있습니다. 영상으로 내보내 공유하세요.",
   "share.failed": "링크를 복사하지 못했습니다.",
 
   "export.title": "영상 내보내기",
@@ -213,6 +215,7 @@ export const ko: StudioCatalog = {
   "watch.next": "다음 예제",
   "watch.phone": "휴대폰에서 열기",
   "watch.scan": "휴대폰으로 스캔해서 열기",
+  "watch.preparing": "링크를 준비하는 중…",
   "watch.tooLong": "링크가 너무 길어 QR 코드로 만들 수 없습니다.",
   "watch.back": "뒤로",
   "watch.empty": "재생할 예제가 없습니다",

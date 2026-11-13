@@ -132,6 +132,11 @@ describe("rewriteCssUrls", () => {
       'p{cursor:-webkit-image-set(linear-gradient(red,blue) 1x,if(else:"https://x.dev/i.png") 2x),auto}',
       'p{cursor:invalid(linear-gradient(red,blue) 1x,if(else:"https://x.dev/i.png") 2x),auto}',
     ],
+    [
+      "an image() string from var() in an image-set",
+      "p{background:image-set(linear-gradient(red,blue) 1x,image(var(--a)) 2x)}",
+      "p{background:invalid(linear-gradient(red,blue) 1x,image(var(--a)) 2x)}",
+    ],
     ["a quote in a local reference", "p{fill:url('#a\")x')}", 'p{fill:url("#a%22%29x")}'],
   ])("refuses %s under network none", (_label, css, out) => {
     expect(rewriteCssUrls(css, "none")).toBe(out);
@@ -143,10 +148,28 @@ describe("rewriteCssUrls", () => {
   });
 
   it("keeps an image-set whose functions cannot compute a URL string", () => {
-    const css = 'p{background:image-set(linear-gradient(rgb(0 0 0),red) 1x,"a.png" type("image/png") 2x)}';
+    // light-dark() takes images or colors, never strings; round() gives a resolution.
+    const css =
+      'p{background:image-set(light-dark(linear-gradient(rgb(0 0 0),red),url(d.png)) 1x,"a.png" type("image/png") round(2.4x,1x))}';
     expect(rewriteCssUrls(css, "https", "https://x.dev/")).toBe(
-      'p{background:image-set(linear-gradient(rgb(0 0 0),red) 1x,url("https://x.dev/a.png") type("image/png") 2x)}',
+      'p{background:image-set(light-dark(linear-gradient(rgb(0 0 0),red),url("https://x.dev/d.png")) 1x,url("https://x.dev/a.png") type("image/png") round(2.4x,1x))}',
     );
+  });
+
+  it("keeps an image-set whose gradient takes a color from var()", () => {
+    // var() there fills only the gradient's arguments, never one of the image-set's URL strings.
+    const css = "p{--a:red;background:image-set(linear-gradient(var(--a),blue) 1x)}";
+    expect(rewriteCssUrls(css, "https")).toBe(css);
+  });
+
+  it("reads deeply nested functions in linear time", () => {
+    // 900 KB of nesting: a scan of the open parentheses per function took ~24 s here.
+    const n = 300_000;
+    const css = `a{b:${"f(".repeat(n)}image-set(var(--a) 1x)${")".repeat(n)}}`;
+    const started = performance.now();
+    const out = rewriteCssUrls(css, "none");
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(out).toBe(`a{b:${"f(".repeat(n)}invalid(var(--a) 1x)${")".repeat(n)}}`);
   });
 });
 

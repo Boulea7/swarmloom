@@ -13,6 +13,12 @@ export const LOOP_PHASE = 0.5;
  * each pass it waits two frames and freezes the animations that appeared, until a pass finds none or
  * after a few passes for a page that keeps starting new ones.
  *
+ * A page can also restart a finite animation from its end handler: play the same object again, or
+ * toggle a class (or `style.animation`) back, which makes a new CSS animation object every time.
+ * Finishing it again would only start it again, and the last restart would run on wall time. So when
+ * one of these comes back in a later pass, and for every finite animation of the last pass, it is
+ * paused at its end instead, and the end event that this seek still fires is kept from the page.
+ *
  * Self-contained: Playwright sends its source to the page. Open shadow roots are frozen too; closed
  * roots and child frames are out of reach. Animations a later scroll or a later event starts still
  * run, so the CLI calls it after the pre-scroll pass that starts reveal-on-scroll transitions and again
@@ -35,13 +41,45 @@ export async function freezePageAnimations(phase: number): Promise<number> {
       requestAnimationFrame(() => resolve());
       setTimeout(resolve, 200);
     });
+  // Same key for the new objects a restart creates: a CSS animation's name, a transition's property,
+  // a Web Animation's keyframes; with the pseudo-element. Their end events carry the same key.
+  const keyOf = (anim: Animation, effect: KeyframeEffect | null) => {
+    const css = anim as Partial<CSSAnimation & CSSTransition>;
+    const name =
+      css.animationName !== undefined
+        ? `a:${css.animationName}`
+        : css.transitionProperty !== undefined
+          ? `t:${css.transitionProperty}`
+          : `w:${JSON.stringify(effect?.getKeyframes() ?? null)}`;
+    return `${effect?.pseudoElement ?? ""} ${name}`;
+  };
+  const held = new WeakMap<Element, Set<string>>();
+  const swallow = (event: Event) => {
+    const e = event as AnimationEvent & TransitionEvent;
+    const name = event.type === "animationend" ? `a:${e.animationName}` : `t:${e.propertyName}`;
+    if (held.get(event.target as Element)?.has(`${e.pseudoElement ?? ""} ${name}`)) event.stopImmediatePropagation();
+  };
+  // Caught on the way down at the window, or at the shadow root since end events do not leave it,
+  // so listeners on the element and its ancestors never see it.
+  const hooked = new Set<EventTarget>();
+  const hold = (target: Element, key: string) => {
+    held.set(target, (held.get(target) ?? new Set()).add(key));
+    const root = target.getRootNode();
+    const at = root instanceof ShadowRoot ? root : window;
+    if (hooked.has(at)) return;
+    hooked.add(at);
+    at.addEventListener("animationend", swallow, true);
+    at.addEventListener("transitionend", swallow, true);
+  };
+  const PASSES = 5;
   const seen = new Set<Animation>();
+  // Pass in which each key was finished, per element (the document for target-less animations).
+  const finished = new WeakMap<object, Map<string, number>>();
   let frozen = 0;
-  for (let pass = 0; pass < 5; pass++) {
+  for (let pass = 0; pass < PASSES; pass++) {
     const all = [...collect()];
     const fresh = all.filter((anim) => !seen.has(anim));
-    // A finish handler can play the same Web Animation again. Finish() would just fire that handler
-    // once more, so a restarted one is paused at its end instead of finished a second time.
+    // A finish handler can play the same Web Animation again.
     const restarted = all.filter((anim) => seen.has(anim) && anim.playState === "running");
     if (fresh.length === 0 && restarted.length === 0) break;
     for (const anim of [...fresh, ...restarted]) {
@@ -51,10 +89,16 @@ export async function freezePageAnimations(phase: number): Promise<number> {
       if (!timing) continue;
       try {
         if (Number.isFinite(timing.endTime)) {
-          if (again) {
+          const effect = anim.effect instanceof KeyframeEffect ? anim.effect : null;
+          const owner = effect?.target ?? document;
+          const key = keyOf(anim, effect);
+          const ended = finished.get(owner) ?? new Map<string, number>();
+          if (again || pass === PASSES - 1 || (ended.get(key) ?? pass) < pass) {
+            if (effect?.target) hold(effect.target, key);
             anim.pause();
             anim.currentTime = anim.playbackRate < 0 ? 0 : (timing.endTime ?? 0);
           } else {
+            finished.set(owner, ended.set(key, pass));
             anim.finish();
           }
         } else {

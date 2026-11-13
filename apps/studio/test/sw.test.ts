@@ -63,8 +63,11 @@ function stubHost() {
   return caches;
 }
 
-/** The one registration every release's worker shares; `waiting` stands for a newer installed worker. */
-const registration = { scope: SCOPE, installing: null, waiting: null as object | null };
+/**
+ * The one registration every release's worker shares; `waiting` stands for a newer installed worker.
+ * The workers share one `self` too (no `serviceWorker`), so each tells itself apart by `active`.
+ */
+const registration = { scope: SCOPE, installing: null, waiting: null as object | null, active: null as object | null };
 
 /** Loads the worker of `release` while the windows `open()` lists are open. */
 async function loadWorker(release: Release, open: () => string[]) {
@@ -91,9 +94,15 @@ async function loadWorker(release: Release, open: () => string[]) {
     handlers.get(type)?.({ ...event, waitUntil: (promise: unknown) => work.push(promise) });
     await Promise.all(work);
   };
+  const worker = { version: release.version };
   return {
     install: () => dispatch("install"),
-    activate: () => dispatch("activate"),
+    /** Takes over like the browser does: the worker becomes `active`, no longer `waiting`. */
+    activate: () => {
+      registration.active = worker;
+      registration.waiting = null;
+      return dispatch("activate");
+    },
     /** A page's request for `path`: the response once the worker's follow-up work has finished too. */
     async get(path: string, mode = "cors"): Promise<Response | undefined> {
       let response: Promise<Response> | undefined;
@@ -115,6 +124,7 @@ async function activateWorker(release: Release, open: () => string[]) {
 afterEach(() => {
   vi.unstubAllGlobals();
   registration.waiting = null;
+  registration.active = null;
 });
 
 describe("Studio service worker", () => {
@@ -142,7 +152,7 @@ describe("Studio service worker", () => {
   });
 
   it("leaves a newer release waiting to take over its files", async () => {
-    stubHost();
+    const caches = stubHost();
     const a = { version: "a", shell: ["./", "assets/index-a.js"], lazy: ["assets/pdf-a.js"] };
     const b = { version: "b", shell: ["./", "assets/index-b.js"], lazy: ["assets/pdf-b.js"] };
     let windows = ["tab-1"];
@@ -155,10 +165,17 @@ describe("Studio service worker", () => {
     registration.waiting = {};
     windows = ["tab-1b"];
     await current.get("assets/index-a.js");
-    // Offline, tab-1b takes the update: release b opens and loads its lazy chunks from its own cache.
+    // tab-1b fetches again and release a's tidy-up stalls listing caches; meanwhile, offline, tab-1b
+    // takes the update, and release b opens and loads its lazy chunks from its own cache.
+    let resume = () => {};
+    const gate = new Promise<void>((resolve) => (resume = resolve));
+    const keys = caches.keys;
+    caches.keys = () => gate.then(keys);
+    const stalled = current.get("assets/index-a.js");
     hosted = new Map();
-    registration.waiting = null;
     await next.activate();
+    resume();
+    await stalled;
     for (const path of ["./", "assets/index-b.js", "assets/pdf-b.js"]) {
       const response = await next.get(path, path === "./" ? "navigate" : "cors");
       expect([path, response?.status, await response?.text()]).toEqual([path, 200, "b"]);

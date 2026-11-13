@@ -424,7 +424,7 @@ it("decodes the image again only once the snapshot changed, reusing the encoding
   }
 });
 
-it("walks the frame again only after a mutation, a scroll, an animation seek or a change of canvas pixels in the image", async () => {
+it("walks the frame again only after a mutation, a scroll, an animation seek that changes a value or a change of canvas pixels in the image", async () => {
   const { win, rasterizer } = await frameOf(
     '<body style="margin:0"><div id=s style="height:100px;overflow:hidden">' +
       '<div style="height:100px;background:rgb(255,0,0)"></div><div style="height:100px;background:rgb(0,0,255)"></div>' +
@@ -448,6 +448,9 @@ it("walks the frame again only after a mutation, a scroll, an animation seek or 
   expect((await frame())[0]).toBe(3);
   fade.currentTime = 1000;
   expect(await frame()).toEqual([4, [255, 255, 255]]);
+  // Past its end it holds its last value, as after going live, where every frame seeks it.
+  fade.currentTime = 1500;
+  expect(await frame()).toEqual([4, [255, 255, 255]]);
   fade.cancel();
   // A canvas painted over is drawn into the image: its pixels change without a mutation.
   box.innerHTML = '<canvas width=10 height=10></canvas><p style="margin:0;height:10px;background:#fff"></p>';
@@ -456,6 +459,70 @@ it("walks the frame again only after a mutation, a scroll, an animation seek or 
   const canvas = box.querySelector("canvas") as HTMLCanvasElement;
   (canvas.getContext("2d") as CanvasRenderingContext2D).fillRect(0, 0, 1, 1);
   expect((await frame())[0]).toBe(6);
+});
+
+it("lists the animations once per frame and reads what each animates once", async () => {
+  const { win, rasterizer } = await frameOf(
+    "<style>@keyframes k { to { opacity: 0.5 } } i { display: block; height: 10px; animation: k 1s both paused }</style>" +
+      '<body style="margin:0"><i></i><i></i><i></i></body>',
+  );
+  const animations = win.document.getAnimations();
+  const realm = win as Window & typeof globalThis;
+  const keyframes = vi.spyOn(realm.KeyframeEffect.prototype, "getKeyframes");
+  const lists = vi.spyOn(realm.Document.prototype, "getAnimations");
+  try {
+    // Every frame seeks each animation, as after going live, and so walks again.
+    for (let time = 0; time < 400; time += 100) {
+      for (const animation of animations) animation.currentTime = time;
+      await pixel(rasterizer, 5, 5);
+    }
+    const reads = { keyframes: keyframes.mock.calls.length, lists: lists.mock.calls.length };
+    expect(reads).toEqual({ keyframes: 3, lists: 4 });
+  } finally {
+    keyframes.mockRestore();
+    lists.mockRestore();
+  }
+});
+
+const COLOURS = "from { background-color: rgb(255, 0, 0) } to { background-color: rgb(0, 0, 255) }";
+
+// The same effect animates something else from then on: a seek after the next frame is seen.
+it.for<[string, (box: HTMLElement) => Animation, (animation: Animation, doc: Document) => unknown]>([
+  [
+    "keyframes set anew",
+    (box) => box.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 1000, fill: "both" }),
+    (animation) =>
+      (animation.effect as KeyframeEffect).setKeyframes([
+        { backgroundColor: "rgb(255, 0, 0)" },
+        { backgroundColor: "rgb(0, 0, 255)" },
+      ]),
+  ],
+  [
+    "a style sheet that redefines its keyframes",
+    (box) => {
+      box.style.animation = "k 1s linear both";
+      return box.getAnimations()[0] as Animation;
+    },
+    // Once loaded: the load itself would count as a change of the next frame too.
+    (_, doc) => {
+      const style = doc.createElement("style");
+      style.textContent = `@keyframes k { ${COLOURS} }`;
+      const loaded = new Promise((resolve) => style.addEventListener("load", resolve, { once: true }));
+      doc.head.append(style);
+      return loaded;
+    },
+  ],
+])("sees what an animation animates anew after %s", async ([, start, change]) => {
+  const { win, rasterizer } = await frameOf(
+    '<style>@keyframes k { to { opacity: 1 } }</style><body style="margin:0"><div id=b style="height:100px"></div>',
+  );
+  const animation = start(win.document.getElementById("b") as HTMLElement);
+  animation.pause();
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 255, 255]);
+  await change(animation, win.document);
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+  animation.currentTime = 1000;
+  expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
 });
 
 it("walks the frame again when a popover opens without a DOM mutation", async () => {
@@ -495,7 +562,7 @@ it("walks the frame again after a style sheet changes through the CSSOM without 
   rule.style.background = "rgb(0, 0, 255)";
   expect(await frame()).toEqual([2, [0, 0, 255]]);
   expect(await frame()).toEqual([2, [0, 0, 255]]);
-  // Through the declaration taken before: no setter or method of the CSSOM runs.
+  // A declaration kept after the watch, set by name: no setter or method of the CSSOM runs.
   const kept = rule.style;
   kept.background = "rgb(0, 255, 255)";
   expect(await frame()).toEqual([3, [0, 255, 255]]);
@@ -512,21 +579,46 @@ it("walks the frame again after a style sheet changes through the CSSOM without 
   expect(await frame()).toEqual([7, [0, 0, 255]]);
 });
 
+it("walks the frame again after a script edits a rule declaration it took before the watch", async () => {
+  const { win, rasterizer } = await frameOf(
+    '<style>div { background: rgb(255, 0, 0) }</style><body style="margin:0"><div style="height:100px"></div>' +
+      "<script>window.kept = document.styleSheets[0].cssRules[0].style</script></body>",
+  );
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  (win as Window & { kept: CSSStyleDeclaration }).kept.background = "rgb(0, 0, 255)";
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+});
+
 it("holds a still frame without serialising the rules of its sheets, in a frame that runs no scripts too", async () => {
+  // Long enough for boxes away from the viewport, whose cache reads what the frame's rules match.
   const { win, rasterizer } = await frameOf(
     `<style>p { color: red }</style><body style="margin:0"><iframe sandbox="allow-same-origin" ` +
       `style="border:0;width:${SIZE}px;height:${SIZE}px" srcdoc="<style>div { background: rgb(255, 0, 0) }</style>` +
-      `<body style='margin:0'><div style='height:100px'></div></body>"></iframe></body>`,
+      `<body style='margin:0'>${"<div style='height:100px'></div>".repeat(5)}</body>"></iframe></body>`,
   );
   const inner = (win.document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document;
   await inner.fonts.ready;
   // The text of every rule, read once per rule on every frame, cost 30 ms a frame on a page with 5,000 rules.
+  // Nor is a declaration of the frame without scripts (the live page) read: none of its scripts took one, and
+  // reading the frame's rules for the far cache must not take them either (48 ms a frame with 5,000 rules).
+  const realm = inner.defaultView as Window & typeof globalThis;
   let serialised = 0;
-  for (const realm of [win, inner.defaultView] as (Window & typeof globalThis)[]) {
-    const text = Object.getOwnPropertyDescriptor(realm.CSSRule.prototype, "cssText") as PropertyDescriptor;
-    Object.defineProperty(realm.CSSRule.prototype, "cssText", {
+  for (const proto of [
+    (win as Window & typeof globalThis).CSSRule.prototype,
+    realm.CSSRule.prototype,
+    realm.CSSStyleDeclaration.prototype,
+  ]) {
+    const text = Object.getOwnPropertyDescriptor(proto, "cssText") as PropertyDescriptor;
+    Object.defineProperty(proto, "cssText", {
       ...text,
-      get(this: CSSRule) {
+      get(this: object) {
         serialised++;
         return text.get?.call(this);
       },

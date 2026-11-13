@@ -157,8 +157,20 @@
     border: 1px solid CanvasText;
   }
 
+  /*
+   * Forcing turns the knob's own colour into Canvas and drops its shadow, so an off knob would
+   * vanish into the panel; system colours survive forcing, so name them for both states.
+   */
+  .switch::before {
+    background: CanvasText;
+  }
+
   .switch:checked {
     background: Highlight;
+  }
+
+  .switch:checked::before {
+    background: HighlightText;
   }
 
   .progress-fill,

@@ -59,13 +59,13 @@ const CSS_URL_REST =
 /** Functions that take a plain string as an image URL, as in `image-set("a.png" 1x)`. */
 const URL_STRING_FUNCTIONS = new Set(["image-set", "-webkit-image-set", "image", "src"]);
 /**
- * Functions an image function may contain that never compute one of its URL strings: image
- * functions, `type()`, gradients, colors and math. Any other function there (`var()`, `env()`,
- * `attr()`, `if()`, a custom `--fn()`) can put a string in place when the browser computes the
- * value, after this check, so the image function around it is refused whole.
+ * Functions an image function may hold directly that never compute one of its URL strings: image
+ * functions, `type()`, gradients, colors (`light-dark()` included) and math. Any other function
+ * there (`var()`, `env()`, `attr()`, `if()`, a custom `--fn()`) can put a string in place when the
+ * browser computes the value, after this check, so the image function around it is refused whole.
  */
 const IMAGE_ARGUMENT_FUNCTION =
-  /^(?:(?:-webkit-)?(?:image-set|(?:repeating-)?(?:linear|radial|conic)-gradient)|image|src|type|rgba?|hsla?|hwb|(?:ok)?(?:lab|lch)|color(?:-mix)?|calc|min|max|clamp)$/;
+  /^(?:(?:-webkit-)?(?:image-set|(?:repeating-)?(?:linear|radial|conic)-gradient)|image|src|type|rgba?|hsla?|hwb|(?:ok)?(?:lab|lch)|color(?:-mix)?|light-dark|contrast-color|calc|min|max|clamp|round|mod|rem|abs|sign|a?(?:sin|cos|tan)|atan2|pow|sqrt|hypot|log|exp)$/;
 /** SVG presentation attributes the browser reads as CSS, where a `url()` can name another document. */
 const CSS_ATTRIBUTES = [
   "style",
@@ -140,7 +140,8 @@ function cssUrl(url: string): string {
  * and every string an image function takes as a URL (`image-set("a.png" 1x)`) becomes an absolute
  * allowed URL or an empty data: URL, `@import` rules are removed, and a `url(` the browser would
  * not read as one URL becomes `invalid(`, as does an image function holding a function that could
- * compute a URL string later (`image-set(var(--a) 1x)`). The text is read token by token like the
+ * compute one of its URL strings later (`image-set(var(--a) 1x)`, not
+ * `image-set(linear-gradient(var(--a),red) 1x)`). The text is read token by token like the
  * browser does, so CSS escapes (`\75rl(`, `@\69mport`) cannot hide a request; the rest of the
  * text, escapes in selectors included, is kept as written. `local` is as in {@link allowedResource}.
  */
@@ -160,6 +161,19 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
   // One entry per open parenthesis: for a function that takes strings as image URLs, the index of
   // its name in `out`; -1 for any other parenthesis.
   const parens: number[] = [];
+  // How many entries of `parens` are image functions, and the outermost one's index in `out`. Kept
+  // on push and pop so a deeply nested value costs linear time, not a scan of `parens` per function.
+  let images = 0;
+  let outerImage = -1;
+  const open = (image: number): void => {
+    parens.push(image);
+    if (image < 0) return;
+    if (images++ === 0) outerImage = image;
+  };
+  const close = (): void => {
+    const image = parens.pop();
+    if (image !== undefined && image >= 0 && --images === 0) outerImage = -1;
+  };
   // Parenthesis depth of the `@import` rule being removed, or -1.
   let dropDepth = -1;
   for (let at = 0; at < text.length; ) {
@@ -187,16 +201,19 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
           emit = url(u[2] ?? u[3] ?? "");
         } else {
           emit = "invalid(";
-          parens.push(-1);
+          open(-1);
         }
       } else if (paren) {
-        const image = parens.find((i) => i >= 0);
-        if (image !== undefined && !atSign && !IMAGE_ARGUMENT_FUNCTION.test(id)) out[image] = "invalid(";
+        // Only a function written right where an image function reads URL strings can put one
+        // there: deeper down, in a gradient or a color, what var() and the like put in has balanced
+        // parentheses, so it stays among that function's own arguments.
+        const urlStrings = (parens.at(-1) ?? -1) >= 0;
+        if (urlStrings && !atSign && !IMAGE_ARGUMENT_FUNCTION.test(id)) out[outerImage] = "invalid(";
         // Inside a removed @import nothing is written, so there is no name to refuse later.
-        parens.push(!atSign && !dropping && URL_STRING_FUNCTIONS.has(id) ? out.length : -1);
+        open(!atSign && !dropping && URL_STRING_FUNCTIONS.has(id) ? out.length : -1);
       }
-    } else if (tok === "(") parens.push(-1);
-    else if (tok === ")") parens.pop();
+    } else if (tok === "(") open(-1);
+    else if (tok === ")") close();
     if (dropping) {
       // The rule ends at its `;` (removed with it), at a brace, or where its enclosing `(` closes.
       const end = parens.length < dropDepth || (parens.length === dropDepth && /^[;{}]$/.test(tok));

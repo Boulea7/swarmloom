@@ -44,6 +44,21 @@ const THEME_COLOR = { light: "#fafafc", dark: "#0b0b12" } as const;
 const LOCAL_HISTORY_LIMIT = 8;
 /** `history.state` key naming the local input of an entry. */
 const LOCAL_STATE_KEY = "swarmloomLocal";
+/** `history.state` key listing the `#d=` payload's settings the user changed on an entry. */
+const DROP_STATE_KEY = "swarmloomDrop";
+
+/** The payload settings `state` says the user changed on its entry. */
+function droppedOf(state: unknown): (keyof StudioSettings)[] {
+  const keys = state && typeof state === "object" ? (state as Record<string, unknown>)[DROP_STATE_KEY] : undefined;
+  return Array.isArray(keys) ? SHARE_SETTING_KEYS.filter((key) => keys.includes(key)) : [];
+}
+
+/** `route` with the payload settings `state` says the user changed taken off its `#d=` source. */
+function withDropped(route: Route, state: unknown): Route {
+  const drop = droppedOf(state);
+  if (route.source?.kind !== "shared" || drop.length === 0) return route;
+  return { ...route, source: { ...route.source, drop } };
+}
 
 /** A random hex id, so keys left in `history.state` by an earlier page load never match. */
 function randomKey(win: Window): string {
@@ -91,7 +106,7 @@ export async function mountStudio(
   const routeOptions = { allowFileUrls: services.target === "extension" };
   const appUrl = appUrlOf(win.location.href);
 
-  let route: Route = parseRoute(win.location.href, routeOptions);
+  let route: Route = withDropped(parseRoute(win.location.href, routeOptions), win.history.state);
   let stored = loadSettings(services.storage);
   let settings: StudioSettings = { ...stored, ...route.overrides };
   /**
@@ -266,13 +281,19 @@ export async function mountStudio(
   };
 
   function navigate(patch: Partial<Route>, opts: NavigateOptions = {}): void {
+    // A link's build settings (seed, speed, finale...) belong to the entry it opened, as a `#d=`
+    // payload's do: a new entry plays with the saved ones, and Back to the link's entry brings them
+    // back from its URL. The rest (theme, language, motion, sound) stay for the visit; a replaced
+    // entry keeps them all.
+    const overrides = { ...route.overrides };
+    if (!opts.replace) for (const key of SHARE_SETTING_KEYS) delete overrides[key];
     const next: Route = {
       source: null,
       autoplay: false,
       watch: route.watch,
       round: route.round,
       import: false,
-      overrides: route.overrides,
+      overrides,
       ...patch,
     };
     // A local input belongs to the entry this navigation creates; other entries carry none.
@@ -289,7 +310,15 @@ export async function mountStudio(
     route = next;
     entry += 1;
     navigated = true;
+    // As on Back and Forward: the entry's URL settings over the saved ones, the left view's source
+    // settings and the left entry's build settings gone.
+    const prev = settings;
+    replaced = {};
+    settings = { ...stored, ...route.overrides };
+    settingsApplied(prev);
     renderView();
+    if (panels().settings.isOpen) renderSettingsForm();
+    localeApplied(prev);
   }
 
   /** Puts the page (network policy, theme, motion, theme buttons) in line with settings changed from `prev`. */
@@ -336,16 +365,24 @@ export async function mountStudio(
     }
     route = { ...route, overrides };
     const href = withoutOverrides(win.location.href, keys);
-    if (href !== win.location.href) {
+    let state: unknown = win.history.state;
+    const source = route.source;
+    const dropped = source?.kind === "shared" ? SHARE_SETTING_KEYS.filter((key) => keys.includes(key)) : [];
+    if (source?.kind === "shared" && dropped.length > 0) {
+      // The entry's state says so at once: the payload is encoded again a moment later, maybe after
+      // the user left the entry, and Back or a reload must not bring the link's value back meanwhile.
+      const drop = SHARE_SETTING_KEYS.filter((key) => dropped.includes(key) || source.drop?.includes(key));
+      state = { ...(state && typeof state === "object" ? state : {}), [DROP_STATE_KEY]: drop };
+      route = { ...route, source: { ...source, drop } };
+    }
+    if (href !== win.location.href || dropped.length > 0) {
       try {
-        win.history.replaceState(win.history.state, "", href);
+        win.history.replaceState(state, "", href);
       } catch (error) {
         console.warn("[studio] history update failed", error);
       }
     }
-    if (route.source?.kind === "shared" && keys.some((key) => SHARE_SETTING_KEYS.includes(key))) {
-      dropFromPayload(keys);
-    }
+    if (dropped.length > 0) dropFromPayload(dropped);
     settings = { ...prev, ...clean };
     settingsApplied(prev);
     view?.settingsChanged?.(prev, settings);
@@ -355,7 +392,7 @@ export async function mountStudio(
   /**
    * Takes `keys` out of the settings the current entry's `#d=` payload carries, the way a changed
    * setting's parameter leaves the query (encoding is async, so it lands a moment later). Dropped
-   * once the user has left the entry.
+   * once the user has left the entry; the entry's state keeps `keys` until it is shown again.
    */
   function dropFromPayload(keys: readonly (keyof StudioSettings)[]): void {
     const at = entry;
@@ -369,8 +406,9 @@ export async function mountStudio(
         // A damaged payload carries no settings to drop.
         return;
       }
-      if (!payload || at !== entry || destroyed) return;
-      route = { ...route, source: { kind: "shared", payload } };
+      const now = route.source;
+      if (!payload || at !== entry || destroyed || now?.kind !== "shared") return;
+      route = { ...route, source: { ...now, payload } };
       const url = new URL(win.location.href);
       const hash = new URLSearchParams(url.hash.slice(1));
       hash.set("d", payload);
@@ -482,7 +520,7 @@ export async function mountStudio(
   };
   const onPop = (event: PopStateEvent) => {
     releaseLaunch();
-    route = parseRoute(win.location.href, routeOptions);
+    route = withDropped(parseRoute(win.location.href, routeOptions), event.state);
     entry += 1;
     local = localOf(event.state);
     navigated = true;
@@ -495,6 +533,11 @@ export async function mountStudio(
     renderView();
     if (panels().settings.isOpen) renderSettingsForm();
     localeApplied(prev);
+    finishDrop();
+  };
+  /** Finishes taking the settings the user changed on this entry out of its payload, if left before. */
+  const finishDrop = () => {
+    if (route.source?.kind === "shared" && route.source.drop) dropFromPayload(route.source.drop);
   };
   const onSystemScheme = () => {
     if (settings.theme !== "auto") return;
@@ -555,6 +598,7 @@ export async function mountStudio(
   services.onLaunch?.((files) => void openLaunched(files));
 
   renderAll();
+  finishDrop();
 
   return {
     context: ctx,

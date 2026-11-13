@@ -204,17 +204,24 @@
 }
 
 /* Below this a small face cannot hold a title above the play button and the small buttons at
-   their touch sizes: the title gives way, the poster still shows the build. */
+   their touch sizes: the title gives way, the poster still shows the build. It leaves the screen,
+   not the page: the poster is decorative, so the title is all that names the example to a screen
+   reader. Out of flow, it takes no room from the controls. */
 @container (height < 175px) {
   .view-watch .watch-title {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
 /* While a build plays (or is paused), the controls sit small along the bottom so the stage stays in
-   view: no title, the play button in a row with the others. That row (play, next, phone and two
-   gaps) is wider than the 40 + 36 + 36 px floors allow below a ~185 px round face, so the floors
-   give way to shares of the safe area that always fit it. */
+   view: no title on screen (screen readers keep it, as above), the play button in a row with the
+   others. That row (play, next, phone and two gaps) is wider than the 40 + 36 + 36 px floors allow
+   below a ~185 px round face, so the floors give way to shares of the safe area that always fit it. */
 .view-watch[data-phase="playing"] .watch-safe {
   flex-direction: row;
   align-items: flex-end;
@@ -222,7 +229,12 @@
 }
 
 .view-watch[data-phase="playing"] .watch-title {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .view-watch[data-phase="playing"] .watch-play {
@@ -355,29 +367,70 @@
 }
 
 /* The caption would take the room the code needs to scan on a round face (its inscribed square is
-   short) and on a small square one; the dialog's label still says what to do. */
+   short) and on a small square one. It leaves the screen, not the page: it describes the dialog and
+   says when the link is ready, as a status for screen readers. */
 .view-watch[data-round="true"] .watch-qr-caption:not([data-notice]) {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @container (height < 200px) {
   .watch-qr-caption:not([data-notice]) {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
-/* Why the item cannot open on a phone, in the code's place: as wide as the safe area, cut to whole
-   lines of the code's room if it must. */
+/* Why the item cannot open on a phone, or that its link is being read, in the code's place. It keeps
+   no room for a code: it takes what the close button leaves, up to its own height. */
+.watch-qr[open]:has(> .watch-qr-caption[data-notice]) {
+  grid-template-rows: minmax(0, max-content);
+}
+
+/* As wide as the safe area. Past that room (three lines on the smallest round face) it shows whole
+   lines and scrolls to its last word: by touch or wheel, and by keyboard where a scroller is a tab
+   stop (Chromium, Firefox). */
 .watch-qr-caption[data-notice] {
   align-self: center;
   max-width: none;
   max-height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   opacity: 1;
 }
 
 @supports (max-height: round(down, 100%, 1lh)) {
   .watch-qr-caption[data-notice] {
     max-height: round(down, 100%, 1lh);
+  }
+}
+
+/* While more of it is below, its last line fades: the sign to scroll on a watch, in place of a
+   scrollbar a narrow face cannot spare. A notice that fits has no scroll range, so its scroll
+   timeline is inactive and nothing fades. */
+@supports (animation-timeline: scroll()) {
+  .watch-qr-caption[data-notice] {
+    scrollbar-width: none;
+    animation: watch-notice-more linear both;
+    animation-timeline: scroll(self);
+  }
+}
+
+@keyframes watch-notice-more {
+  0%,
+  99% {
+    mask-image: linear-gradient(#000 calc(100% - 1lh), transparent);
+  }
+
+  100% {
+    mask-image: none;
   }
 }

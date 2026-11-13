@@ -29,6 +29,8 @@ Files are read in the browser and never uploaded. Remote https images and fonts 
 | `?from=bookmarklet` | Receive a page copy from the bookmarklet (`window.opener`). |
 | `agents`, `speed`, `seed`, `labels`, `theme`, `finale`, `intro`, `follow`, `opening`, `live-top`, `motion`, `sound`, `pack`, `lang` | Settings for this visit only. |
 
+The build settings among them (`agents`, `speed`, `seed`, `labels`, `finale`, `intro`, `follow`, `opening`, `live-top`) hold only for the page the link opens, as the settings in a `#d=` link do: whatever you open next plays with your saved settings, and Back to that page brings the link's back. Share links and the watch's QR code carry all nine.
+
 ## Keyboard
 
 Press `?` for the full list. Studio keys: `O` open a file, `P` paste, `U` URL, `S` settings, `E` export, `Esc` back. Playback keys (`Space`, `1` to `3`, `M`, `T`, `R`, `L`) belong to the core player toolbar; a speed, sound or tour change made there becomes Studio's setting, so exports and the next player use it. Share links carry the speed and the tour, never the sound: a link always plays with the recipient's own sound setting. On the scrubber, arrows move 2%, `Page Up`/`Page Down` 10%, and `Home`/`End` jump to the ends.

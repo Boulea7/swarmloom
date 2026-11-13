@@ -94,6 +94,30 @@ it("writes far boxes empty inside wrappers, lines and tables, keeping where the 
   }
 });
 
+// 384 boxes of 30.515625 px compute as `30.5156px`, which Chromium lays out as 30.5: written one by
+// one, they would move what follows them 6 px up.
+it.for<[string, string, (i: number) => string, boolean]>([
+  ["siblings", "", (i) => `<section style="height:30.515625px">far ${i}</section>`, true],
+  // A float before them pushes boxes that hold their content in below it, not one block written for all.
+  [
+    "after a float",
+    '<div style="float:left;width:100px;height:300px"></div>',
+    (i) => `<section style="display:flow-root;width:60px;height:30.515625px">far ${i}</section>`,
+    false,
+  ],
+])("writes a run of far boxes as one empty box where it lays out the same: %s", async ([, before, item, merged]) => {
+  const items = Array.from({ length: 384 }, (_, i) => item(i)).join("\n");
+  const { win, rasterizer } = await frameOf(
+    `<!doctype html><body style="margin:0">${before}${items}<p id=red style="height:98px;margin:0;background:rgb(255,0,0)"></p>`,
+  );
+  const red = win.document.getElementById("red") as HTMLElement;
+  win.scrollTo(0, red.getBoundingClientRect().top - 20);
+  const { svg } = await rasterizer.snapshot();
+  expect((svg.match(/<section/g)?.length ?? 0) < 20).toBe(merged);
+  const at = await drawn(rasterizer);
+  expect({ above: at(50, 18), top: at(50, 21) }).toEqual({ above: [255, 255, 255], top: [255, 0, 0] });
+});
+
 it("paints nothing of a box written empty, wherever its transform put it", async () => {
   const { rasterizer } = await frameOf(`<body style="margin:0;color:rgb(255,0,0)">
     <div style="height:40px;padding:1px;border:10px solid;transform:translateY(-3000px)"><p>moved away</p></div></body>`);
@@ -418,6 +442,31 @@ it.for<[string, (win: Window) => void, "all" | "even" | "none", ((win: Window) =
     (win) =>
       win.document.head.insertAdjacentHTML("beforeend", "<style>@container (width > 0) { h3 { color: red } }</style>"),
   ],
+  // The far boxes keep their size, but their percentage margins follow the width of the page
+  // around them, which follows the box animated in view.
+  [
+    "a layout animation that resizes what the far boxes' margins resolve against",
+    (win) =>
+      paused(
+        (win.document.getElementById("near") as HTMLElement).animate([{ width: "100px" }, { width: "300px" }], 1000),
+        500,
+      ),
+    "none",
+    (win) =>
+      win.document.head.insertAdjacentHTML(
+        "beforeend",
+        `<style>body { display: inline-block; vertical-align: top } section > * { display: none }
+          section, div { width: 50px; margin-top: 10% } #near { width: 100px }</style>`,
+      ),
+  ],
+  // Container units resolve against a container another box may resize, as container queries do;
+  // a grouping rule's own text is not read, the rules in it are.
+  [
+    "a layout animation under container units",
+    (win) => paused(nearHeight(win), 500),
+    "none",
+    (win) => win.document.head.insertAdjacentHTML("beforeend", "<style>@media all { h3 { margin-top: 1cqi } }</style>"),
+  ],
   ["the scroll", (win) => win.scrollBy(0, 60), "all"],
   [
     "a far card's text",
@@ -441,6 +490,8 @@ it.for<[string, (win: Window) => void, "all" | "even" | "none", ((win: Window) =
   const { win, rasterizer } = await frameOf(`<!doctype html><body style="margin:0">${cards}
     <p id=near style="height:98px;margin:0;background:rgb(255,0,0)"></p><div style="height:2000px"></div>`);
   setup?.(win);
+  // A style element added fires its load a task later, a change of the sheets for any walk after.
+  await new Promise((resolve) => setTimeout(resolve));
   win.scrollTo(0, 4060);
   await rasterizer.snapshot();
   change(win);
@@ -449,4 +500,25 @@ it.for<[string, (win: Window) => void, "all" | "even" | "none", ((win: Window) =
   const count = stats.reused;
   const which = count === 0 ? "none" : count > 30 ? "all" : count >= 15 ? "even" : String(count);
   expect({ name, same: svg === fresh.svg, reused: which }).toEqual({ name, same: true, reused });
+});
+
+it("reads anew what the selectors reach after a rule is replaced in place by as many", async () => {
+  const cards = Array.from(
+    { length: 40 },
+    (_, i) => `<section style="height:100px;display:flow-root"><p>far ${i}</p></section>`,
+  );
+  const { win, rasterizer } = await frameOf(`<!doctype html><style>section { margin-bottom: 0 }</style>
+    <body style="margin:0">${cards.join("")}<p id=near style="height:98px;margin:0"></p><div style="height:2000px"></div>`);
+  win.scrollTo(0, 4000);
+  await drawn(rasterizer);
+  // The rule count stays: only the still check of a drawn frame sees the edit.
+  const sheet = win.document.styleSheets[0] as CSSStyleSheet;
+  sheet.deleteRule(0);
+  sheet.insertRule("body:has(.x) section { margin-bottom: 80px }", 0);
+  await drawn(rasterizer);
+  // A change in view now restyles every card.
+  (win.document.getElementById("near") as HTMLElement).className = "x";
+  const { svg, stats } = await rasterizer.snapshot();
+  const fresh = await rasterizerOf(win).snapshot();
+  expect({ same: svg === fresh.svg, reused: stats.reused }).toEqual({ same: true, reused: 0 });
 });

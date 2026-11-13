@@ -188,6 +188,14 @@ describe("markdownToHtml: safety", () => {
     expect(on.html).not.toContain("v.mp4");
   });
 
+  it("cleans URL edges in linear time when spaces run inside the URL", () => {
+    // An end-anchored regex took seconds here; a ~1.4 KB share link could hang the tab for an hour.
+    const url = `a${" ".repeat(100_000)}b.png`;
+    const start = performance.now();
+    expect(safeImageSrc(` \u0001${url}\u0001 `, undefined, { remote: false })).toBe(url);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
   it("reads network paths as the URL parser does, without a base too", async () => {
     // Backslashes, tabs and leading control characters still name another host in the browser.
     const md = [
@@ -209,6 +217,12 @@ describe("markdownToHtml: safety", () => {
     expect(safeImageSrc("file://srv/share/a.png", doc)).toBeUndefined();
     expect(safeImageSrc(String.raw`\\srv\share\a.png`, doc, { remote: false })).toBeUndefined();
     expect(safeImageSrc("img/a.png", doc, { remote: false })).toBe("file:///C:/docs/img/a.png");
+    // On the CLI's loopback http server a network path to that origin stays local http, remote images off too.
+    const served = "http://127.0.0.1:4100/input/doc.md";
+    expect(safeImageSrc(String.raw`\\127.0.0.1:4100/img.png`, served, { remote: false })).toBe(
+      "http://127.0.0.1:4100/img.png",
+    );
+    expect(safeImageSrc("//evil.test/a.png", served)).toBe("https://evil.test/a.png");
   });
 
   it("maps relative images through the asset resolver (dropped folders)", async () => {
@@ -250,6 +264,14 @@ describe("helpers", () => {
   it("splits YAML front matter but not a leading thematic break", () => {
     expect(splitFrontMatter('---\ntitle: "Hi"\nx: 1\n---\n# Body')).toEqual({ body: "# Body", title: "Hi" });
     expect(splitFrontMatter("---\n\nText\n---\n").body).toBe("---\n\nText\n---\n");
+  });
+
+  it("reads a front matter title in linear time when spaces run inside it", () => {
+    // A lazy (.+?)\s*$ took seconds here; a ~1.4 KB share link could hang the tab for most of an hour.
+    const title = `a${" ".repeat(100_000)}b`;
+    const start = performance.now();
+    expect(splitFrontMatter(`---\ntitle: "${title}"  \n---\nx`).title).toBe(title);
+    expect(performance.now() - start).toBeLessThan(1000);
   });
 
   it("slugifies like GitHub", () => {

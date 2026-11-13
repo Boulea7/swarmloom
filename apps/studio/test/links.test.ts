@@ -67,17 +67,14 @@ describe("share links", () => {
     expect(parseRoute(link.url).source?.kind).toBe("shared");
   });
 
-  // A bookmarklet handoff is read once and its address may need a login: the captured markup travels.
-  it("carries a bookmarklet handoff's markup in the hash", async () => {
-    const html = '<base href="https://example.com/"><title>Handoff report</title><h1>Hello</h1>';
-    const page = { url: "https://example.com/report", origin: "https://example.com", title: "", html, width: 800 };
+  // The capture is the page's raw markup: hidden inputs, inline state and the session URL in <base>.
+  it("keeps a bookmarklet page out of share links", async () => {
+    const url = "https://mail.example/inbox?session=S";
+    const html = `<base href="${url}"><input type=hidden value=TOKEN><h1>Inbox</h1>`;
+    const page = { url, origin: "https://mail.example", title: "", html, width: 800 };
     const services = { receiveHandoff: async () => page } as unknown as StudioServices;
     const opened = await resolveSource({ kind: "handoff" }, { services, local: null });
-    const link = await buildShareLink(opened, DEFAULT_SETTINGS, BASE);
-    if (!link.ok) throw new Error(link.reason);
-    const { source } = parseRoute(link.url);
-    if (source?.kind !== "shared") throw new Error("not carried in the hash");
-    expect(await decodeShare(source.payload)).toMatchObject({ name: "report.html", text: html });
+    expect(await buildShareLink(opened, DEFAULT_SETTINGS, BASE)).toEqual({ ok: false, reason: "private" });
   });
 
   it.each([

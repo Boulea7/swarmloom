@@ -1,24 +1,23 @@
 # Word 97-2003 samples
 
-`report.doc` is this project's own sample: `generate.py` (next to it, Python standard library only)
-writes it byte by byte from the published MS-DOC and MS-CFB specifications, so it is MIT like the
-rest of the repository. Run `python3 examples/doc/generate.py` from the repository root to rebuild it;
-the output is reproducible. It has a title, headings, Chinese and Latin text, a footnote, a hyperlink,
-a bordered table, a header and footer, an explicit page break and a landscape second section (three
-sheets). It is checked by SwarmLoom's parser and by word-extractor's text extraction, but it has not
-been opened in Microsoft Word.
+`report.doc` and `table.doc` are this project's own samples: `generate.py` (next to them, Python standard
+library only) writes both byte by byte from the published MS-DOC and MS-CFB specifications, so they are MIT
+like the rest of the repository. Run `python3 examples/doc/generate.py` from the repository root to rebuild
+them; the output is reproducible. `report.doc` has a title, headings, Chinese and Latin text, a footnote, a
+hyperlink, a bordered table, a header and footer, an explicit page break and a landscape second section
+(three sheets). `table.doc` is one sheet with a 5 x 6 table, a made-up weekly loom schedule in Chinese and
+English, whose borders are set for the whole table rather than per cell. Both are checked by SwarmLoom's
+parser and by word-extractor's text extraction, but neither has been opened in Microsoft Word.
 
-The two other files are real `.doc` files saved by Microsoft Word, used by the `@swarmloom/adapter-doc`
-tests. They are copied unchanged (byte for byte) from the test data of the `word-extractor` project,
-but `headers-footers-unicode.doc` did not start there: it is Apache POI's test file
-`HeaderFooterUnicode.doc`, in POI's test data years before word-extractor added it, so it is under
-POI's Apache License 2.0 and comes with POI's NOTICE. Nothing in SwarmLoom's code is derived from
-either project.
+The other file is a real `.doc` file saved by Microsoft Word, used by the `@swarmloom/adapter-doc` tests. It
+is copied unchanged (byte for byte) from the test data of the `word-extractor` project, but it did not start
+there: it is Apache POI's test file `HeaderFooterUnicode.doc`, in POI's test data years before word-extractor
+added it, so it is under POI's Apache License 2.0 and comes with POI's NOTICE. Nothing in SwarmLoom's code is
+derived from either project.
 
 | File | Copied from | First published in | Size | SHA-256 |
 | --- | --- | --- | --- | --- |
 | `headers-footers-unicode.doc` | word-extractor `__tests__/data/test04.doc` | Apache POI `test-data/document/HeaderFooterUnicode.doc` | 28,672 bytes | `8bd7fc9552bccb7b71a0dc34ffd801e7d3547d1317fd75d0c35fca3572f6fa4b` |
-| `table.doc` | word-extractor `__tests__/data/test03.doc` | word-extractor (not in POI's test data) | 33,280 bytes | `36887f9fe1e7b792abe991a9767630e96d5446ec36a12e237b7a9c3f1356f5e7` |
 
 `headers-footers-unicode.doc`:
 
@@ -29,47 +28,20 @@ either project.
 - Licence: Apache License 2.0, Copyright The Apache Software Foundation. The full licence text and POI's
   NOTICE file (`legal/NOTICE`) are below.
 - Checked against POI's `trunk`: 2026-11-13.
+- Contents (per word-extractor's `__tests__/data/manifest.md` and our parser): two pages split by an
+  explicit page break, a header and a footer with non-ASCII text (euro sign, "Molière"), one Heading 1
+  paragraph, 12 body paragraphs.
 
-`table.doc`:
-
-- Source: https://github.com/morungos/node-word-extractor (branch `main`), files under
-  https://github.com/morungos/node-word-extractor/tree/main/__tests__/data
-- Licence: MIT, Copyright (c) 2016-2021 Stuart Watt (full text below).
-- Retrieved: 2026-11-10.
-
-What they contain (per word-extractor's `__tests__/data/manifest.md` and our parser):
-
-- `headers-footers-unicode.doc`: two pages split by an explicit page break, a header and a footer
-  with non-ASCII text (euro sign, "Molière"), one Heading 1 paragraph, 12 body paragraphs.
-- `table.doc`: one paragraph followed by a 5 x 6 table of licence names.
+Until 2026-11-13 `table.doc` was a copy of word-extractor's `__tests__/data/test03.doc` (33,280 bytes,
+SHA-256 `36887f9fe1e7b792abe991a9767630e96d5446ec36a12e237b7a9c3f1356f5e7`). That file is not
+word-extractor's MIT material: it is byte for byte "NMR - Open Source Licensing Chart.doc", attached to New
+Media Rights' Open Source Licensing Guide
+(https://www.newmediarights.org/open_source/new_media_rights_open_source_licensing_guide), whose original
+content is under CC BY-NC 3.0 US (https://www.newmediarights.org/copyright_policy). That licence forbids the
+commercial use the MIT licence of this repository allows, so the generated table replaced it. Do not copy it
+back.
 
 ## Licences
-
-### MIT licence of word-extractor (`table.doc`)
-
-```
-The MIT License (MIT)
-
-Copyright (c) 2016-2021 Stuart Watt
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
 
 ### Apache License 2.0 of Apache POI (`headers-footers-unicode.doc`)
 

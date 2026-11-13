@@ -165,6 +165,7 @@ export const zhCN: StudioCatalog = {
   "share.title": "群织：{name}",
   "share.tooLarge": "内容太大，无法放进链接。可以导出视频来分享。",
   "share.binary": "只有文本文件能通过链接分享。可以导出视频来分享。",
+  "share.private": "书签工具发来的网页不能通过链接分享：其中可能带有网页里看不见的数据。可以导出视频来分享。",
   "share.failed": "复制链接失败。",
 
   "export.title": "导出视频",
@@ -209,6 +210,7 @@ export const zhCN: StudioCatalog = {
   "watch.next": "下一个示例",
   "watch.phone": "在手机上打开",
   "watch.scan": "用手机扫码打开",
+  "watch.preparing": "正在准备链接…",
   "watch.tooLong": "链接太长，无法生成二维码。",
   "watch.back": "返回",
   "watch.empty": "没有可播放的示例",

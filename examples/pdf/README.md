@@ -1,6 +1,6 @@
 # PDF sample
 
-`brochure.pdf` is a two-page A4 brochure written for this repository (about 94 KB). It is the fixture of
+`brochure.pdf` is a two-page A4 brochure written for this repository (about 95 KB). It is the fixture of
 the `@swarmloom/adapter-pdf` browser tests and the PDF demo. It covers:
 
 - a title, headings and paragraphs, including a line of CJK text;
