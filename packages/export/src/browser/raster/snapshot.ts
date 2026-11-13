@@ -465,6 +465,8 @@ interface DocView {
   top: boolean;
   /** Device px of the image per CSS px of this document, the transforms of the frames it is in included. */
   scale: number;
+  /** Floats written so far in this document, and boxes left out that may hold some (see `FarKey.floats`). */
+  floats: number;
 }
 
 /** Steps of a walk: each `yield` hands the main thread back until the walk resumes. */
@@ -477,6 +479,7 @@ function docView(win: Window & typeof globalThis, width: number, height: number,
     reach: { left: -INK_MARGIN, top: -INK_MARGIN, right: width + INK_MARGIN, bottom: height + INK_MARGIN },
     top,
     scale,
+    floats: 0,
   };
 }
 
@@ -2010,13 +2013,17 @@ function* emitElement(
   const ns = el.namespaceURI ?? XHTML_NS;
   const local = el.localName;
   const svg = ns === SVG_NS;
-  if (ns === XHTML_NS && SKIP_HTML.has(local)) return;
+  if (ns === XHTML_NS && SKIP_HTML.has(local)) {
+    // Not drawn, yet a floating one (an object, an embed) moves the content after it.
+    if (walk.far && view.win.getComputedStyle(el).getPropertyValue("float") !== "none") view.floats++;
+    return;
+  }
   if (svg && SKIP_SVG.has(local)) return;
   // Before any of its elements is written: an animation may target the svg itself (its viewBox).
   if (svg && parentNs !== SVG_NS) collectSmil(walk.smil, el);
   // Not in a scrolled box (its scroll offset would be in the markup) nor in a far table row.
   const far = !svg && scroll === null && walk.kept && context !== FAR_ROW ? walk.far : null;
-  const key = far ? { win: view.win, reach: view.reach, parent, parentNs, context } : null;
+  const key = far ? { win: view.win, reach: view.reach, parent, parentNs, context, floats: view.floats } : null;
   const known = far && key ? far.reuse(el, key) : null;
   if (known) {
     writeFar(walk, el, view, parent, known);
@@ -2026,6 +2033,7 @@ function* emitElement(
   const display = cs.getPropertyValue("display");
   // SVG resources (gradients, symbols) count even inside display:none, so only HTML subtrees go.
   if (!svg && display === "none") return;
+  if (!svg && cs.getPropertyValue("float") !== "none") view.floats++;
   const probe: FarProbe | null = far ? farProbe() : null;
   walk.probe = probe;
   const cut = svg ? null : culled(walk, el, cs, view);
@@ -2212,6 +2220,8 @@ function* emitElement(
       if (child.nodeType === 1) {
         if (cover && i !== cover.index && underCover(child as Element, i, cover, view)) {
           walk.stats.culled++;
+          // Unread, it may hold floats.
+          view.floats++;
           continue;
         }
         yield* emitElement(walk, child as Element, view, inherited, ns, contentScroll, inner);
