@@ -4,6 +4,8 @@
  * declaration of a rule set through its `style`. {@link watchSheetEdits} wraps the CSSOM of a window
  * so that they are counted, and {@link SheetMark} tells whether any happened since it was taken:
  * neither serialises a rule, so a still frame costs the same whatever the size of the page's CSS.
+ * The count is per window, not per sheet: an edit to a sheet no document uses (a constructed sheet
+ * not adopted) counts too.
  */
 
 /** The interfaces whose setters and writing methods {@link watchSheetEdits} wraps. */
@@ -61,18 +63,35 @@ function hand(rule: CSSRule, declaration: CSSStyleDeclaration): void {
   edited();
 }
 
+/**
+ * The inline style maps scripts took from elements (`el.attributeStyleMap`). Like `el.style`,
+ * writing one sets the element's `style` attribute, a DOM mutation the watches read box by box. A
+ * `StylePropertyMap` has no owner to tell, so a map not seen here counts as an edit: a rule's
+ * (`rule.styleMap`), and an element's a script took before its window was watched.
+ */
+const inlineMaps = new WeakSet<object>();
+
+/** The prototypes that hold `attributeStyleMap` (ElementCSSInlineStyle). */
+const INLINE_STYLED = ["HTMLElement", "SVGElement", "MathMLElement"];
+
 /** A declaration of a rule; an element's inline style changes its `style` attribute, a DOM mutation. */
 function inRule(target: unknown): boolean {
   return (target as CSSStyleDeclaration).parentRule != null;
 }
 
+/** Whether writing through `target`, of interface `name`, may edit a style sheet. */
+function counts(name: string, target: unknown): boolean {
+  if (name === "CSSStyleDeclaration") return inRule(target);
+  if (name === "StylePropertyMap") return !inlineMaps.has(target as object);
+  return true;
+}
+
 function wrap(name: string, proto: object, key: string, descriptor: PropertyDescriptor): void {
   const declaration = name === "CSSStyleDeclaration";
-  const counts = (target: unknown): boolean => !declaration || inRule(target);
   const { get, set, value } = descriptor;
   if (set) {
     descriptor.set = function (this: unknown, v: unknown): void {
-      if (counts(this)) edited();
+      if (counts(name, this)) edited();
       Reflect.apply(set, this, [v]);
     };
   }
@@ -87,7 +106,7 @@ function wrap(name: string, proto: object, key: string, descriptor: PropertyDesc
   }
   if (typeof value === "function" && WRITERS.has(key)) {
     descriptor.value = function (this: unknown, ...args: unknown[]): unknown {
-      if (counts(this)) edited();
+      if (counts(name, this)) edited();
       const result = Reflect.apply(value, this, args);
       // `replace()` may set the rules in a later task.
       if (typeof (result as PromiseLike<unknown> | null)?.then === "function") {
@@ -106,9 +125,10 @@ function wrap(name: string, proto: object, key: string, descriptor: PropertyDesc
  * by any script (the sheets of a frame without scripts are edited from its parent through its
  * prototypes too): the setters and the writing methods of its sheets, rules, media lists and rule
  * declarations are wrapped, and so is the `style` of its rules, whose declarations are compared by
- * text from then on (see {@link handed}). Once per window; the wrappers stay with the window. Not
- * seen: a declaration a script took before, then sets by property name, and declarations of
- * `@font-face` rules set that way.
+ * text from then on (see {@link handed}). Writes to an element's inline style map do not count
+ * ({@link inlineMaps}). Once per window; the wrappers stay with the window. Not seen: a declaration
+ * a script took before, then sets by property name, and declarations of `@font-face` rules set that
+ * way.
  */
 export function watchSheetEdits(win: Window | null): void {
   const realm = win as unknown as Record<string, { prototype?: object } | undefined> | null;
@@ -123,6 +143,18 @@ export function watchSheetEdits(win: Window | null): void {
       const descriptor = Object.getOwnPropertyDescriptor(proto, prop);
       if (descriptor?.configurable) wrap(name, proto, prop, descriptor);
     }
+  }
+  for (const name of INLINE_STYLED) {
+    const proto = realm[name]?.prototype;
+    const descriptor = proto && Object.getOwnPropertyDescriptor(proto, "attributeStyleMap");
+    const get = descriptor?.get;
+    if (!descriptor?.configurable || !get) continue;
+    descriptor.get = function (this: Element): unknown {
+      const map = Reflect.apply(get, this, []) as object | null;
+      if (map) inlineMaps.add(map);
+      return map;
+    };
+    Object.defineProperty(proto, "attributeStyleMap", descriptor);
   }
 }
 
