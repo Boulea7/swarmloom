@@ -478,3 +478,34 @@ it.each([
     await page.viewport(414, 896);
   }
 });
+
+// The code is sized when the dialog opens: a face that shrinks while it is open needs it drawn again.
+it("draws the watch QR code again for the room left when the face shrinks", async () => {
+  const metrics = (size: number) =>
+    cdp().send("Emulation.setDeviceMetricsOverride", {
+      width: size,
+      height: size,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+  await page.viewport(240, 240);
+  await metrics(240);
+  try {
+    const root = await mountWatch("?watch=1&round=1", false);
+    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+    const svg = () => root.querySelector<SVGSVGElement>(".watch-qr svg.qr");
+    expect(svg()).not.toBeNull();
+    await page.viewport(100, 100);
+    await metrics(100);
+    // Modules a phone can still read, or the notice that the link is too long for this face.
+    const scannable = () => {
+      const code = svg();
+      if (!code) return root.querySelector(".watch-qr-caption")?.textContent === app?.context.i18n.t("watch.tooLong");
+      return (code.getBoundingClientRect().width * devicePixelRatio) / code.viewBox.baseVal.width >= MIN_MODULE_PX;
+    };
+    await expect.poll(scannable).toBe(true);
+  } finally {
+    await cdp().send("Emulation.clearDeviceMetricsOverride");
+    await page.viewport(414, 896);
+  }
+});

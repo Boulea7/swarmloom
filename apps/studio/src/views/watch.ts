@@ -171,6 +171,8 @@ export function createWatch(ctx: AppContext): View {
   });
   /** Bumped per QR code shown, so a link that is read late never replaces a newer one. */
   let qrRequest = 0;
+  /** What the open dialog shows (null: the link is still read), drawn again when the face resizes. */
+  let qrShown: { url: string } | { notice: string } | null = null;
   /** Ends the reads of sources still running when the face goes. */
   const lifetime = new AbortController();
   // A native modal <dialog>: while open, the covered player and the rest of the page are inert,
@@ -403,9 +405,11 @@ export function createWatch(ctx: AppContext): View {
    * Shows the code for a link, a notice in its place, or (null) "getting the link ready" in its
    * place while the link is read. A link too long for a code this face draws with modules a phone
    * can scan (a long source URL, a large `#d=`, or a shorter link on a small face) gets a notice too.
-   * Call with the dialog open: the code is sized to the room it gets there.
+   * Call with the dialog open: the code is sized to the room it gets there, and drawn again when
+   * that room changes.
    */
   function drawQr(shown: { url: string } | { notice: string } | null): void {
+    qrShown = shown;
     // Lay the dialog out as for a code (box shown, no notice) to measure that room. The caption is
     // a status: its words are written only when they change, or a screen reader hears them again.
     qrBox.hidden = false;
@@ -456,6 +460,17 @@ export function createWatch(ctx: AppContext): View {
     if (root.dataset.qr === "true") hideQr();
   });
 
+  // A code sized for a larger face packs modules too small to scan once the face shrinks: draw it
+  // again for the room it has now (a smaller code, or the too-long notice). The dialog's size is set
+  // by the viewport alone, so drawing in it never sets this off again.
+  const qrResize =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => {
+          if (qr.open) drawQr(qrShown);
+        })
+      : null;
+  qrResize?.observe(qr);
+
   const first = items[0];
   if (first) load(first, engaged);
 
@@ -479,6 +494,7 @@ export function createWatch(ctx: AppContext): View {
     },
     destroy() {
       lifetime.abort();
+      qrResize?.disconnect();
       window.clearTimeout(cycleTimer);
       window.clearTimeout(idleTimer);
       session?.destroy();
