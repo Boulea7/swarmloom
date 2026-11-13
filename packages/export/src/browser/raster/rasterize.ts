@@ -3,7 +3,7 @@ import { FarCache } from "./far";
 import { FontFaceCache, type FontWatch } from "./fonts";
 import { LONG_PIECE, networkGate, ResourceCache, type ResourcePolicy } from "./resources";
 import { type CanvasOverlay, type FarBox, type FrameSnapshot, type SnapshotStats, snapshotFrame } from "./snapshot";
-import { renderingUpdate, StillWatch } from "./still";
+import { renderingUpdate, StillWatch, takesRenderingState } from "./still";
 import { readBaseline, type StyleBaseline } from "./styles";
 
 /** What {@link FrameRasterizer} reads and where it reports. */
@@ -162,12 +162,13 @@ export class FrameRasterizer {
    * What the engine takes at a rendering update from the layout and scroll offsets it sees then
    * (scroll-state container queries, the scroll offsets anchor positions follow, the fallbacks they
    * take) follows a change only at the page's next rendering update, without a mutation or event.
-   * So the first frame, and the first after each change, waits for that update before its walk, as
-   * the CLI's screenshot comes after it; in a hidden document, which takes none, it walks at once.
-   * It holds only until the update after its walk: the next frame then waits for that one if it has
-   * not come and walks again, and the frame holds once the walk gives the same markup
-   * ({@link DrawnFrame.final}), so a cascade of that state (a stuck header that changes what
-   * scrolls) settles too.
+   * So on a page whose CSS uses that state ({@link takesRenderingState}), the first frame, and the
+   * first after each change, waits for that update before its walk, as the CLI's screenshot comes
+   * after it; elsewhere, and in a hidden document, which takes none, it walks at once (a wait costs
+   * up to a display frame). It holds only until the update after its walk: the next frame then waits
+   * for that one if it has not come and walks again, and the frame holds once the walk gives the
+   * same markup ({@link DrawnFrame.final}), so a cascade of that state (a stuck header that changes
+   * what scrolls) settles too.
    *
    * @throws The signal's reason when it aborts while the snapshot walk pauses.
    */
@@ -177,15 +178,17 @@ export class FrameRasterizer {
   ): Promise<SnapshotStats> {
     const { width, height } = ctx.canvas;
     const scale = Math.max(width / this.#o.width, height / this.#o.height);
-    // A walk after a change, or the first, follows the rendering update after the change. After a
-    // frame that changed or was not watched this one most likely walks too, so it waits before the
-    // still check: an await between that check and the walk would end the reads they share with
-    // the next watch and the far cache (see reads.ts).
+    // A walk after a change, or the first, follows the rendering update after the change where the
+    // page takes state there. After a frame that changed or was not watched this one most likely
+    // walks too, so it waits before the still check: an await between that check and the walk would
+    // end the reads they share with the next watch and the far cache (see reads.ts).
+    const { document, shadows } = this.#o;
+    const page = { document, shadowRoots: () => shadows.roots() };
     const updated = this.#busy || !this.#last?.watch;
-    if (updated) await renderingUpdate(this.#o.document);
+    if (updated && takesRenderingState(page)) await renderingUpdate(document);
     let held = this.#still(scale);
     if (held instanceof Promise) held = await held;
-    else if (!held && !updated) await renderingUpdate(this.#o.document);
+    else if (!held && !updated && takesRenderingState(page)) await renderingUpdate(document);
     const { img, overlays, stats } = held ?? (await this.#capture(scale, signal));
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, width, height);

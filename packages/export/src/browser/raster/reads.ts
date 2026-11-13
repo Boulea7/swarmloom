@@ -59,6 +59,16 @@ function faceText(rule: CSSFontFaceRule): string {
   return `${text}}`;
 }
 
+/** The last text {@link sheetText} read of a sheet, and what {@link sheetTakesUpdates} found in it. */
+interface SheetRead {
+  text: string;
+  /** Some of its rules, or of the sheets it imports, cannot be read: they are of another origin. */
+  opaque: boolean;
+  updates?: boolean;
+}
+
+const lastReads = new WeakMap<CSSStyleSheet, SheetRead>();
+
 /**
  * The text of a style sheet's rules, the rules of the sheets it imports included. The CSSOM
  * serialises the whole state of a rule (selectors, preludes, declarations, nested rules), so any
@@ -72,20 +82,95 @@ export function sheetText(sheet: CSSStyleSheet): string {
   if (text !== undefined) return text;
   text = "";
   let rules: CSSRuleList | null = null;
+  let opaque = false;
   try {
     rules = sheet.cssRules;
   } catch {
     rules = null;
+    opaque = true;
   }
   for (let i = 0; rules && i < rules.length; i++) {
     const rule = rules[i] as CSSRule & { styleSheet?: CSSStyleSheet | null };
     // By interface name: each frame document has its own CSSFontFaceRule.
     text += rule.constructor.name === "CSSFontFaceRule" ? faceText(rule as CSSFontFaceRule) : rule.cssText;
     // An `@import` rule's own text only names its sheet.
-    if (rule.styleSheet) text += `{${sheetText(rule.styleSheet)}}`;
+    if (!rule.styleSheet) continue;
+    text += `{${sheetText(rule.styleSheet)}}`;
+    opaque ||= lastReads.get(rule.styleSheet)?.opaque === true;
   }
   shares.texts.set(sheet, text);
+  const last = lastReads.get(sheet);
+  if (last?.text !== text || last.opaque !== opaque) lastReads.set(sheet, { text, opaque });
   return text;
+}
+
+/**
+ * CSS whose effect the engine takes at a rendering update, from the layout and scroll offsets it
+ * sees then, and keeps until the next one, wherever it is written: scroll-state container queries,
+ * and anchor positioning (the scroll offsets an anchored box follows, the `@position-try` fallback
+ * it took).
+ */
+const UPDATE_NAMES = /scroll-state\(|anchor(?:-size)?\(|anchor-center|@position-try/i;
+
+/**
+ * Declarations of the rest of that CSS: anchor positioning by area and fallbacks, whether a
+ * `content-visibility: auto` box is relevant (and so the size it lays out at), and scroll and view
+ * timelines. Each counts unless its value turns it off ({@link QUIET}), as a reset with
+ * `all: initial` does, which Chromium writes out as every longhand.
+ */
+const UPDATE_DECLARATIONS =
+  /(content-visibility|animation-timeline|position-area|inset-area|position-try(?:-fallbacks)?)\s*:\s*([^;}]*)/gi;
+
+/** Values that take nothing at a rendering update by themselves (CSS-wide keywords inherit or reset). */
+const QUIET = /^(?:none|normal(?:\s+none)?|initial|inherit|unset|revert|revert-layer)$/i;
+
+/** Whether a declaration of {@link UPDATE_DECLARATIONS} turns its feature on. */
+function turnsOn(property: string, value: string): boolean {
+  if (property === "content-visibility") return /auto|var\(/i.test(value);
+  // `auto` is the document's timeline.
+  if (property === "animation-timeline") return /scroll\(|view\(|--/i.test(value);
+  return !QUIET.test(value);
+}
+
+/**
+ * Whether CSS text (rules or a `style` attribute) may use what the engine takes at a rendering
+ * update. A match elsewhere, as in a string, only makes a page wait for nothing.
+ */
+function cssTakesUpdates(text: string): boolean {
+  if (UPDATE_NAMES.test(text)) return true;
+  for (const [, name = "", value = ""] of text.matchAll(UPDATE_DECLARATIONS)) {
+    if (turnsOn(name.toLowerCase(), value.replace(/!\s*important\s*$/i, "").trim())) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the rules of a style sheet may use what the engine takes at a rendering update
+ * ({@link cssTakesUpdates}); true when some of them cannot be read (another origin's). Reads the
+ * text of a sheet not read before (an element given new CSS gets a new sheet object); after that it
+ * follows the text {@link sheetText} last read for the watches, so an edit through the CSSOM counts
+ * from the next frame that reads the text (no page script runs in an export).
+ */
+export function sheetTakesUpdates(sheet: CSSStyleSheet): boolean {
+  let read = lastReads.get(sheet);
+  if (!read) {
+    sheetText(sheet);
+    read = lastReads.get(sheet) as SheetRead;
+  }
+  read.updates ??= read.opaque || cssTakesUpdates(read.text);
+  return read.updates;
+}
+
+/**
+ * Whether the CSS of documents and shadow roots may use what the engine takes at a rendering update
+ * ({@link cssTakesUpdates}): in a rule of their style sheets ({@link sheetTakesUpdates}) or in a
+ * `style` attribute of their elements (read after all the sheets, which are mostly known).
+ */
+export function takesUpdates(targets: readonly (Document | ShadowRoot)[]): boolean {
+  if (targets.some((target) => sheetsOf(target).some(sheetTakesUpdates))) return true;
+  return targets.some((target) =>
+    Array.from(target.querySelectorAll("[style]")).some((el) => cssTakesUpdates(el.getAttribute("style") ?? "")),
+  );
 }
 
 /**

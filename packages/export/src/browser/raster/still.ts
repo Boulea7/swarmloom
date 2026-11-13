@@ -1,4 +1,4 @@
-import { animationMark, animationsOf, focusState, same, sheetState } from "./reads";
+import { animationMark, animationsOf, focusState, same, sheetState, takesUpdates } from "./reads";
 import {
   type CanvasMark,
   canvasDataUrl,
@@ -38,6 +38,7 @@ function afterRenderingUpdate(win: Window, done: () => void): number {
  * Resolves once the page of `doc` has taken its next rendering update, so a read after it sees
  * what the engine takes there from the page as it is now (see {@link StillWatch}). At once when the
  * document is hidden, which takes none, or has no window; after {@link RENDER_WAIT_MS} at the latest.
+ * Waiting costs up to a display frame, so it is for a page that {@link takesRenderingState}.
  */
 export function renderingUpdate(doc: Document): Promise<void> {
   const win = doc.defaultView;
@@ -79,6 +80,19 @@ function frameDocuments(scopes: readonly (Document | ShadowRoot)[]): Document[] 
     }
   }
   return docs;
+}
+
+/**
+ * Whether the page may show what the engine takes at a rendering update from the layout and scroll
+ * offsets it sees then (scroll-state container queries, anchor positions, `content-visibility: auto`,
+ * scroll timelines): whether the CSS of the document, of its shadow roots or of a same-origin frame
+ * document in them uses it (`takesUpdates`). A frame the walk leaves out counts too: a change can
+ * bring it into view (the live page, as the page goes live), and the frame after that change shows
+ * what the update after it takes.
+ */
+export function takesRenderingState(source: Pick<StillSource, "document" | "shadowRoots">): boolean {
+  const scopes = [source.document, ...source.shadowRoots()];
+  return takesUpdates([...scopes, ...frameDocuments(scopes)]);
 }
 
 /** A document or shadow root the watch reads. */
