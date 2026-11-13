@@ -162,9 +162,16 @@ function isNetworkPath(v: string): boolean {
   return /^[\\/]{2}/.test(v);
 }
 
-/** The https: URL a network-path reference names (it is held to the https: rules), or undefined if it does not parse. */
-function networkPathUrl(v: string): string | undefined {
+/**
+ * The URL a network-path reference names, or undefined if it does not parse. On the loopback origin
+ * of a plain-http `base` it is the local server's http: URL, as the browser reads it there; any
+ * other host becomes https: and is held to the https: rules, whatever the base.
+ */
+function networkPathUrl(v: string, base: string | undefined): string | undefined {
   try {
+    const local = localOrigin(base);
+    const onBase = local ? new URL(v, base) : undefined;
+    if (onBase && onBase.origin === local) return onBase.href;
     return new URL(v, "https://network-path.invalid/").href;
   } catch {
     return undefined;
@@ -230,13 +237,13 @@ function isLocalFile(url: string): boolean {
  * for the input folder), with remote images on or off. Other plain `http:` is refused, a remote http
  * base's own origin included: it is not local, would be mixed content in the Studio and leaks the
  * reader's address. A network-path reference ("//host/a", also written "\\host/a" or "/\host/a")
- * becomes `https://host/a` whatever the base. Without a base, other relative paths are kept as
- * written.
+ * becomes `https://host/a` whatever the base, unless it names the loopback origin of a plain-http
+ * base, where it is that local http: URL. Without a base, other relative paths are kept as written.
  */
 export function safeImageSrc(url: string, base?: string, policy: ImagePolicy = {}): string | undefined {
   const v = urlText(url);
   if (!v) return undefined;
-  const resolved = isNetworkPath(v) ? networkPathUrl(v) : schemeOf(v) ? v : resolveRelative(v, base);
+  const resolved = isNetworkPath(v) ? networkPathUrl(v, base) : schemeOf(v) ? v : resolveRelative(v, base);
   if (resolved === undefined) return undefined;
   const scheme = schemeOf(resolved);
   if (!scheme) return resolved;

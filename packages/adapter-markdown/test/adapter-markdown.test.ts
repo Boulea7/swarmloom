@@ -209,6 +209,12 @@ describe("markdownToHtml: safety", () => {
     expect(safeImageSrc("file://srv/share/a.png", doc)).toBeUndefined();
     expect(safeImageSrc(String.raw`\\srv\share\a.png`, doc, { remote: false })).toBeUndefined();
     expect(safeImageSrc("img/a.png", doc, { remote: false })).toBe("file:///C:/docs/img/a.png");
+    // On the CLI's loopback http server a network path to that origin stays local http, remote images off too.
+    const served = "http://127.0.0.1:4100/input/doc.md";
+    expect(safeImageSrc(String.raw`\\127.0.0.1:4100/img.png`, served, { remote: false })).toBe(
+      "http://127.0.0.1:4100/img.png",
+    );
+    expect(safeImageSrc("//evil.test/a.png", served)).toBe("https://evil.test/a.png");
   });
 
   it("maps relative images through the asset resolver (dropped folders)", async () => {
