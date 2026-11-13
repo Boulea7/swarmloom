@@ -512,6 +512,23 @@ it("walks the frame again after a style sheet changes through the CSSOM without 
   expect(await frame()).toEqual([7, [0, 0, 255]]);
 });
 
+it("walks the frame again after a script edits a rule declaration it took before the watch", async () => {
+  const { win, rasterizer } = await frameOf(
+    '<style>div { background: rgb(255, 0, 0) }</style><body style="margin:0"><div style="height:100px"></div>' +
+      "<script>window.kept = document.styleSheets[0].cssRules[0].style</script></body>",
+  );
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  (win as Window & { kept: CSSStyleDeclaration }).kept.background = "rgb(0, 0, 255)";
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+});
+
 it("holds a still frame without serialising the rules of its sheets, in a frame that runs no scripts too", async () => {
   const { win, rasterizer } = await frameOf(
     `<style>p { color: red }</style><body style="margin:0"><iframe sandbox="allow-same-origin" ` +
@@ -521,12 +538,18 @@ it("holds a still frame without serialising the rules of its sheets, in a frame 
   const inner = (win.document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document;
   await inner.fonts.ready;
   // The text of every rule, read once per rule on every frame, cost 30 ms a frame on a page with 5,000 rules.
+  // Nor is a declaration of the frame without scripts (the live page) read: none of its scripts took one.
+  const realm = inner.defaultView as Window & typeof globalThis;
   let serialised = 0;
-  for (const realm of [win, inner.defaultView] as (Window & typeof globalThis)[]) {
-    const text = Object.getOwnPropertyDescriptor(realm.CSSRule.prototype, "cssText") as PropertyDescriptor;
-    Object.defineProperty(realm.CSSRule.prototype, "cssText", {
+  for (const proto of [
+    (win as Window & typeof globalThis).CSSRule.prototype,
+    realm.CSSRule.prototype,
+    realm.CSSStyleDeclaration.prototype,
+  ]) {
+    const text = Object.getOwnPropertyDescriptor(proto, "cssText") as PropertyDescriptor;
+    Object.defineProperty(proto, "cssText", {
       ...text,
-      get(this: CSSRule) {
+      get(this: object) {
         serialised++;
         return text.get?.call(this);
       },

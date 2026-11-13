@@ -82,7 +82,7 @@ function same(a: readonly unknown[], b: readonly unknown[]): boolean {
  * changing on its own (videos, frames of another origin, shadow roots the source does not list,
  * SMIL) the snapshot reports instead (`FrameSnapshot.settled`). Not watched: form control values,
  * which the render page never changes between frames, and the declarations watchSheetEdits does not
- * see (`@font-face` rules, one a script took before its window was watched).
+ * see (`@font-face` rules, one taken from a frame without scripts before its window was watched).
  */
 export class StillWatch {
   readonly #source: StillSource;
@@ -116,7 +116,8 @@ export class StillWatch {
     }
     for (const d of this.#docs) {
       d.fonts?.addEventListener("loadingdone", this.#mark);
-      watchSheetEdits(d.defaultView);
+      // Its scripts may have taken declarations from the sheets of its watched shadow roots too.
+      watchSheetEdits(d.defaultView, d === doc ? [d, ...this.#roots] : [d]);
     }
     this.#state = stateOf(source, this.#docs, this.#targets);
     this.sheets = new SheetMark(this.#targets.flatMap(sheetsOf));
