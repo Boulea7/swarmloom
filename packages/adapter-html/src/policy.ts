@@ -160,6 +160,19 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
   // One entry per open parenthesis: for a function that takes strings as image URLs, the index of
   // its name in `out`; -1 for any other parenthesis.
   const parens: number[] = [];
+  // How many entries of `parens` are image functions, and the outermost one's index in `out`. Kept
+  // on push and pop so a deeply nested value costs linear time, not a scan of `parens` per function.
+  let images = 0;
+  let outerImage = -1;
+  const open = (image: number): void => {
+    parens.push(image);
+    if (image < 0) return;
+    if (images++ === 0) outerImage = image;
+  };
+  const close = (): void => {
+    const image = parens.pop();
+    if (image !== undefined && image >= 0 && --images === 0) outerImage = -1;
+  };
   // Parenthesis depth of the `@import` rule being removed, or -1.
   let dropDepth = -1;
   for (let at = 0; at < text.length; ) {
@@ -187,16 +200,15 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
           emit = url(u[2] ?? u[3] ?? "");
         } else {
           emit = "invalid(";
-          parens.push(-1);
+          open(-1);
         }
       } else if (paren) {
-        const image = parens.find((i) => i >= 0);
-        if (image !== undefined && !atSign && !IMAGE_ARGUMENT_FUNCTION.test(id)) out[image] = "invalid(";
+        if (images > 0 && !atSign && !IMAGE_ARGUMENT_FUNCTION.test(id)) out[outerImage] = "invalid(";
         // Inside a removed @import nothing is written, so there is no name to refuse later.
-        parens.push(!atSign && !dropping && URL_STRING_FUNCTIONS.has(id) ? out.length : -1);
+        open(!atSign && !dropping && URL_STRING_FUNCTIONS.has(id) ? out.length : -1);
       }
-    } else if (tok === "(") parens.push(-1);
-    else if (tok === ")") parens.pop();
+    } else if (tok === "(") open(-1);
+    else if (tok === ")") close();
     if (dropping) {
       // The rule ends at its `;` (removed with it), at a brace, or where its enclosing `(` closes.
       const end = parens.length < dropDepth || (parens.length === dropDepth && /^[;{}]$/.test(tok));

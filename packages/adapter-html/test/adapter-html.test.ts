@@ -148,6 +148,16 @@ describe("rewriteCssUrls", () => {
       'p{background:image-set(linear-gradient(rgb(0 0 0),red) 1x,url("https://x.dev/a.png") type("image/png") 2x)}',
     );
   });
+
+  it("reads deeply nested functions in linear time", () => {
+    // 900 KB of nesting: a scan of the open parentheses per function took ~24 s here.
+    const n = 300_000;
+    const css = `a{b:${"f(".repeat(n)}image-set(var(--a) 1x)${")".repeat(n)}}`;
+    const started = performance.now();
+    const out = rewriteCssUrls(css, "none");
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(out).toBe(`a{b:${"f(".repeat(n)}invalid(var(--a) 1x)${")".repeat(n)}}`);
+  });
 });
 
 describe("htmlAdapter.load (fragments)", () => {
