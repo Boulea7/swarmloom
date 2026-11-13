@@ -35,12 +35,14 @@ const firefoxPath = process.env.SWARMLOOM_FIREFOX || undefined;
  * form and video controls, media queries, WebCodecs, animated images and scrolling differ from
  * Chromium's: the in-browser exporter and its rasteriser, the stage's frame determinism (still GIFs,
  * exact scroll offsets, unseen engine ticks left unpainted), the SVG drawing's SMIL clock, the
- * export's pinned media features, the go-live page and the offline sound render (old WebKit's
- * event-only `startRendering()` and the engine-dependent `suspend()`/`resume()` slicing). Cases
- * built on Chromium-only APIs (CDP) and other engine-specific cases skip themselves or loosen their
- * bounds.
+ * export's pinned media features, the go-live page, the offline sound render (old WebKit's
+ * event-only `startRendering()` and the engine-dependent `suspend()`/`resume()` slicing) and the
+ * Studio watch QR notice's keyboard focus and scrolling (WebKit puts no scroller in the Tab order).
+ * Cases built on Chromium-only APIs (CDP) and other engine-specific cases skip themselves or loosen
+ * their bounds.
  */
 const crossBrowserTests = [
+  "apps/studio/test/watch-notice.browser.test.ts",
   "packages/adapter-svg/test/smil.browser.test.ts",
   "packages/core/test/sound/offline.browser.test.ts",
   "packages/core/test/stage/stage.browser.test.ts",
