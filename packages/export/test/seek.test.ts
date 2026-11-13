@@ -44,6 +44,46 @@ describe("AnimationSeeker", () => {
     expect([idle.pauses, scroll.pauses]).toEqual([0, 0]);
   });
 
+  it("reads every animation before it writes any, so a seek flushes the page's style at most once", () => {
+    // Chromium's CSS animation getters flush style; each pause() or currentTime write dirties it.
+    let dirty = false;
+    let flushes = 0;
+    const read = () => {
+      if (dirty) flushes++;
+      dirty = false;
+    };
+    const cssAnimation = (): SeekableAnimation => {
+      let time: CSSNumberish | null = 100;
+      let state: AnimationPlayState = "running";
+      return {
+        get playState() {
+          read();
+          return state;
+        },
+        get playbackRate() {
+          read();
+          return 1;
+        },
+        get currentTime() {
+          read();
+          return time;
+        },
+        set currentTime(value) {
+          dirty = true;
+          time = value;
+        },
+        pause() {
+          dirty = true;
+          state = "paused";
+        },
+      };
+    };
+    const anims = Array.from({ length: 20 }, cssAnimation);
+    expect(new AnimationSeeker().seekAnimations(anims, 1000)).toBe(20);
+    expect(flushes).toBe(0);
+    expect(anims.map((a) => [a.playState, a.currentTime])).toEqual(anims.map(() => ["paused", 100]));
+  });
+
   it("starts SVG documents at 0 s when first seen and follows transport time in seconds", () => {
     const seeker = new AnimationSeeker();
     const calls: string[] = [];

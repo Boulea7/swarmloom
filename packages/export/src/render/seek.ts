@@ -41,18 +41,28 @@ export class AnimationSeeker {
   /**
    * Pauses each animation and sets its time for transport time `t` (ms). Idle animations and ones
    * on non-time timelines (scroll-driven, whose time is a percentage) are left alone.
+   *
+   * Reads every animation before it writes any: Chromium's CSS animation and transition getters
+   * flush style, and each `pause()` or `currentTime` write dirties it again, so reading and writing
+   * them in turn recalculates the document's style once per animation (seconds per frame on a page
+   * with thousands of them).
    * @returns How many animations were seeked.
    */
   seekAnimations(animations: Iterable<SeekableAnimation>, t: number): number {
-    let count = 0;
+    const seeks: { anim: SeekableAnimation; paused: boolean; time: number }[] = [];
     for (const anim of animations) {
-      if (anim.playState === "idle") continue;
+      const state = anim.playState;
+      if (state === "idle") continue;
       const current = anim.currentTime;
       if (current !== null && typeof current !== "number") continue;
       const { base, t0 } = this.#anchor(anim, current ?? 0, t);
+      seeks.push({ anim, paused: state === "paused", time: base + (t - t0) * anim.playbackRate });
+    }
+    let count = 0;
+    for (const { anim, paused, time } of seeks) {
       try {
-        if (anim.playState !== "paused") anim.pause();
-        anim.currentTime = base + (t - t0) * anim.playbackRate;
+        if (!paused) anim.pause();
+        anim.currentTime = time;
         count++;
       } catch {
         // pause() refuses some reversed infinite animations; they keep their state.
