@@ -2,7 +2,7 @@ import type { Blueprint, CustomLayer, Plugin } from "@swarmloom/core";
 import { afterEach, describe, expect, it } from "vitest";
 import fadeIn from "../../../examples/html/fade-in.html?raw";
 import landing from "../../../examples/html/landing.html?raw";
-import { createHtmlAdapter, type HtmlLoadContext, TIMELINE_PLUGIN } from "../src/index";
+import { createHtmlAdapter, freezeAnimations, type HtmlLoadContext, TIMELINE_PLUGIN } from "../src/index";
 import { probeSnapshot } from "./probe";
 
 const ctx = { document, width: 1280, theme: "light" as const };
@@ -83,6 +83,128 @@ describe("html examples in Chromium", () => {
     } finally {
       loaded.dispose?.();
     }
+  });
+
+  it("also freezes the transitions and animations its own poses set off", async () => {
+    // Half a cycle in, the box is 300 px wide and the container query starts a 60 s transition and a loop.
+    const page =
+      "<!DOCTYPE html><html><head><style>" +
+      "@keyframes grow{from{width:100px}to{width:500px}}@keyframes spin{to{transform:rotate(360deg)}}" +
+      ".box{container-type:inline-size;animation:grow 10s linear infinite}" +
+      "#bar{height:20px;width:0;transition:width 60s linear}#dot{width:20px;height:20px}" +
+      "@container (min-width:250px){#bar{width:100%}#dot{animation:spin 3s linear infinite}}" +
+      "</style></head><body><div class='box'><section id='bar'></section><section id='dot'></section></div></body></html>";
+    const live = createHtmlAdapter({ snapshot: probeSnapshot, keepLive: true });
+    const loaded = await live.load({ text: page }, ctx);
+    try {
+      expect(loaded.blueprint.layers.find((l) => l.id === "bar")?.box.w).toBe(300);
+      // Nothing is left running on wall time until go live.
+      const doc = loaded.live?.document;
+      expect(doc?.getAnimations().map((a) => [a.playState, a.currentTime])).toEqual([
+        ["paused", 5000],
+        ["paused", 1500],
+      ]);
+    } finally {
+      loaded.dispose?.();
+    }
+  });
+
+  it("freezes the animations in content-visibility:auto sections, which the off-screen frame skips", async () => {
+    const page =
+      "<!DOCTYPE html><html><head><style>" +
+      "section{content-visibility:auto;contain-intrinsic-size:auto 200px;height:200px}" +
+      "@keyframes rise{from{opacity:0}}@keyframes spin{to{transform:translateX(200px)}}" +
+      "p{animation:rise 2.5s ease-out}#dot{width:20px;height:20px;animation:spin 1.3s linear infinite}" +
+      "</style></head><body><section><p id='lead'>Hello</p><div id='dot'></div></section>" +
+      "<section><p id='more'>More</p></section></body></html>";
+    const live = createHtmlAdapter({ snapshot: probeSnapshot, keepLive: true });
+    const loaded = await live.load({ text: page }, ctx);
+    try {
+      const opacity = Object.fromEntries(loaded.blueprint.layers.map((l) => [l.id, l.opacity]));
+      expect([opacity.lead, opacity.more]).toEqual([1, 1]);
+      const doc = loaded.live?.document;
+      expect(doc?.getAnimations().map((a) => [a.playState, a.currentTime])).toEqual([["paused", 650]]);
+      // The sections get their own value back for the live page.
+      expect(doc?.querySelector("section")?.hasAttribute("style")).toBe(false);
+    } finally {
+      loaded.dispose?.();
+    }
+  });
+
+  it("shows content-visibility:auto elements with one restyle per nesting level, not one per element", async () => {
+    // Each style read after a write restyles the frame: one per section took seconds on long pages.
+    const frame = document.createElement("iframe");
+    frame.style.cssText = "position:fixed;left:-20000px;top:0;width:800px;height:600px;border:0";
+    frame.srcdoc =
+      "<!DOCTYPE html><style>section,.in{content-visibility:auto}.in{display:inline-block}" +
+      "@keyframes rise{from{opacity:0}}b{animation:rise 1s}i{display:block;animation:rise 1s infinite}</style>" +
+      "<section><p>Text <span class='in'><b>in</b></span></p><i></i></section>".repeat(40);
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    document.body.append(frame);
+    try {
+      await loaded;
+      const win = frame.contentWindow as Window & typeof globalThis;
+      let wrote = false;
+      let restyles = 0;
+      const read = win.getComputedStyle.bind(win);
+      win.getComputedStyle = (el, pseudo) => {
+        if (wrote) restyles++;
+        wrote = false;
+        return read(el, pseudo);
+      };
+      const write = win.CSSStyleDeclaration.prototype.setProperty;
+      win.CSSStyleDeclaration.prototype.setProperty = function (this: CSSStyleDeclaration, ...args) {
+        wrote = true;
+        return write.apply(this, args);
+      };
+      const frozen = freezeAnimations(win.document);
+      // The nested spans and their bold text count: section, then span, then b.
+      expect([frozen.finished, frozen.paused, restyles]).toEqual([40, 40, 2]);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  it("reads the animations again only where the page's rules let a pose start one", async () => {
+    // Each read sorts every animation of the page: entrances on thousands of cards took a third longer.
+    const cases: [css: string, html: string, counts: number[]][] = [
+      // Fades and slides start nothing, whatever transitions the page declares.
+      [
+        "@keyframes rise{from{opacity:0;transform:translateY(9px)}}p{animation:rise 1s;transition:color 1s}",
+        "<p>a</p><p>b</p>",
+        [1, 2, 0],
+      ],
+      // A finished transition changes its own property: the box's full width starts the dot's glow.
+      [
+        "@keyframes glow{to{opacity:.5}}.box{container-type:inline-size;width:500px;transition:width 60s linear}" +
+          "@starting-style{.box{width:100px}}@container (min-width:250px){#dot{animation:glow 2s infinite}}",
+        "<div class='box'><i id='dot'></i></div>",
+        [3, 1, 1],
+      ],
+    ];
+    const results: number[][] = [];
+    for (const [css, html] of cases) {
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "position:fixed;left:-20000px;top:0;width:800px;height:600px;border:0";
+      frame.srcdoc = `<!DOCTYPE html><style>${css}</style>${html}`;
+      const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+      document.body.append(frame);
+      try {
+        await loaded;
+        const doc = frame.contentDocument as Document;
+        const read = doc.getAnimations.bind(doc);
+        let reads = 0;
+        doc.getAnimations = () => {
+          reads++;
+          return read();
+        };
+        const frozen = freezeAnimations(doc);
+        results.push([reads, frozen.finished, frozen.paused]);
+      } finally {
+        frame.remove();
+      }
+    }
+    expect(results).toEqual(cases.map(([, , counts]) => counts));
   });
 
   it("adds keyframe timelines under animated elements only when the host registers anim:timeline", async () => {

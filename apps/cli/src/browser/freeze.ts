@@ -1,6 +1,36 @@
 /** Pose of infinite animations in a live capture, as a fraction of one cycle (decision C02). */
 export const LOOP_PHASE = 0.5;
 
+/** Global that {@link catchEndEvents} installs in the captured page. */
+export const END_EVENTS_GLOBAL = "__swarmloomEndEvents";
+
+/** Options of {@link freezePageAnimations}. */
+export interface AnimationFreeze {
+  /** Pose of infinite animations, as a fraction of one cycle (see {@link LOOP_PHASE}). */
+  phase: number;
+  /** Global that {@link catchEndEvents} installed in the page, if it ran there. */
+  endEvents: string;
+}
+
+/**
+ * Runs in the captured page before its own scripts (a Playwright init script): listens for
+ * `animationend` and `transitionend` at the window in the capture phase, so ahead of every listener
+ * the page adds there, and hands them to the filters that {@link freezePageAnimations} registers
+ * through the global `name`. Without it a page listening at the window in the capture phase saw the
+ * end events the freeze must keep from it, and restarted the animation on wall time.
+ *
+ * Self-contained: Playwright sends its source to the page.
+ */
+export function catchEndEvents(name: string): void {
+  const filters: ((event: Event) => void)[] = [];
+  const pass = (event: Event) => {
+    for (const filter of filters) filter(event);
+  };
+  addEventListener("animationend", pass, true);
+  addEventListener("transitionend", pass, true);
+  Object.defineProperty(globalThis, name, { value: (filter: (event: Event) => void) => void filters.push(filter) });
+}
+
 /**
  * Runs in the captured page: puts every CSS animation, transition and Web Animation into a pose that
  * does not depend on when the capture ran, the rule of `freezeAnimations` in @swarmloom/adapter-html
@@ -17,7 +47,11 @@ export const LOOP_PHASE = 0.5;
  * toggle a class (or `style.animation`) back, which makes a new CSS animation object every time.
  * Finishing it again would only start it again, and the last restart would run on wall time. So when
  * one of these comes back in a later pass, and for every finite animation of the last pass, it is
- * paused at its end instead, and the end event that this seek still fires is kept from the page.
+ * paused at its end instead, and the end event that this seek still fires is kept from the page: by
+ * the window listener of {@link catchEndEvents}, which runs before all of the page's, or, when that
+ * init script did not run, by a capture listener added at the window now, which a capture listener
+ * the page put on the window earlier still precedes. In an open shadow root, whose end events do not
+ * reach the window, the freeze listens at the root, after a capture listener the page put there.
  *
  * Self-contained: Playwright sends its source to the page. Open shadow roots are frozen too; closed
  * roots and child frames are out of reach. Animations a later scroll or a later event starts still
@@ -25,7 +59,7 @@ export const LOOP_PHASE = 0.5;
  * after {@link freezePageVideos}, whose pauses fire `pause` events.
  * @returns How many animations were frozen.
  */
-export async function freezePageAnimations(phase: number): Promise<number> {
+export async function freezePageAnimations({ phase, endEvents }: AnimationFreeze): Promise<number> {
   const collect = () => {
     const all = new Set<Animation>();
     const roots: (Document | ShadowRoot)[] = [document];
@@ -68,6 +102,11 @@ export async function freezePageAnimations(phase: number): Promise<number> {
     const at = root instanceof ShadowRoot ? root : window;
     if (hooked.has(at)) return;
     hooked.add(at);
+    const early = at === window ? (globalThis as unknown as Record<string, unknown>)[endEvents] : undefined;
+    if (typeof early === "function") {
+      early(swallow);
+      return;
+    }
     at.addEventListener("animationend", swallow, true);
     at.addEventListener("transitionend", swallow, true);
   };

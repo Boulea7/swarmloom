@@ -396,8 +396,8 @@
 }
 
 /* As wide as the safe area. Past that room (three lines on the smallest round face) it shows whole
-   lines and scrolls to its last word: by touch or wheel, and by keyboard where a scroller is a tab
-   stop (Chromium, Firefox). */
+   lines and scrolls to its last word: by touch or wheel, and by keyboard, as a notice is a tab stop
+   (watch.ts sets its tabindex, for engines that make no scroller one, such as Safari). */
 .watch-qr-caption[data-notice] {
   align-self: center;
   max-width: none;
@@ -422,6 +422,11 @@
     animation: watch-notice-more linear both;
     animation-timeline: scroll(self);
   }
+}
+
+/* Its focus ring sits inside it: the fade's mask clips anything drawn outside its box. */
+.watch-qr-caption[data-notice]:focus-visible {
+  outline-offset: -2px;
 }
 
 @keyframes watch-notice-more {

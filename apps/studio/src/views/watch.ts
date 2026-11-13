@@ -5,7 +5,8 @@ import { type ExampleEntry, entriesForLocale } from "../examples/manifest";
 import { formatById } from "../formats-meta";
 import { portable, routeToUrl, type SourceRef } from "../route";
 import { Session, type SessionPhase } from "../session";
-import { type OpenedSource, resolveSource } from "../source";
+import { decodeShare } from "../share";
+import { nameOfRef, type OpenedSource, resolveSource } from "../source";
 import { nextId } from "../ui/controls";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -61,7 +62,8 @@ function playlist(ctx: AppContext): Item[] {
     const entry = ctx.services.manifest.entries.find((e) => e.id === source.id);
     return [{ ref: source, title: entry?.title ?? source.id, entry }, ...items];
   }
-  return [{ ref: source, title: ctx.local?.name ?? "" }, ...items];
+  // Named by its reference where it can be (a URL's file name), else once it is read (see named).
+  return [{ ref: source, title: nameOfRef(source, ctx.local) }, ...items];
 }
 
 /**
@@ -164,13 +166,17 @@ export function createWatch(ctx: AppContext): View {
   const qrBox = h("div", { class: "watch-qr-code" });
   // A status: a link read after the dialog opens (a local file, pasted text, a handoff) says when
   // its code is ready or why there is none, while a screen reader's focus stays on Back.
+  // Named by its own words, for when a notice takes focus to scroll (see drawQr).
+  const qrCaptionId = nextId("watch-qr-caption");
   const qrCaption = h("p", {
     class: "watch-qr-caption",
     text: i18n.t("watch.scan"),
-    attrs: { id: nextId("watch-qr-caption"), role: "status" },
+    attrs: { id: qrCaptionId, role: "status", "aria-labelledby": qrCaptionId },
   });
   /** Bumped per QR code shown, so a link that is read late never replaces a newer one. */
   let qrRequest = 0;
+  /** What the open dialog shows (null: the link is still read), drawn again when the face resizes. */
+  let qrShown: { url: string } | { notice: string } | null = null;
   /** Ends the reads of sources still running when the face goes. */
   const lifetime = new AbortController();
   // A native modal <dialog>: while open, the covered player and the rest of the page are inert,
@@ -291,11 +297,21 @@ export function createWatch(ctx: AppContext): View {
     if (!item.opened) {
       const opened = resolveSource(item.ref, { services: ctx.services, local: ctx.local, signal: lifetime.signal });
       item.opened = opened;
-      opened.catch(() => {
-        if (item.opened === opened) item.opened = undefined;
-      });
+      opened.then(
+        (source) => named(item, source.title),
+        () => {
+          if (item.opened === opened) item.opened = undefined;
+        },
+      );
     }
     return item.opened;
+  }
+
+  /** Gives `item` the title its source was read with, on the face too when it is the one shown. */
+  function named(item: Item, name: string): void {
+    if (!name || name === item.title || lifetime.signal.aborted) return;
+    item.title = name;
+    if (items[index] === item) title.textContent = name;
   }
 
   function load(item: Item, autostart: boolean): void {
@@ -325,6 +341,7 @@ export function createWatch(ctx: AppContext): View {
       resolve: portable(item.ref) ? undefined : () => openedOf(item),
       onPhase: (next) => {
         phase = next;
+        if (current.opened) named(item, current.opened.title);
         if (next === "ready") current.start();
         if (next === "done") setProgress(1);
         syncCycle();
@@ -391,11 +408,25 @@ export function createWatch(ctx: AppContext): View {
     return { notice: i18n.t(shareRefusalKey(link.reason)) };
   }
 
-  /** The width in device pixels the open dialog draws a code at: its light box less the padding. */
+  /**
+   * The width in device pixels the open dialog draws a code at: its light box less the padding.
+   * Lays the dialog out as for a code (box shown and empty, no notice, a caption that reads "scan")
+   * to measure that room, and leaves it so for the caller to draw in. The caption is a status: its
+   * words are written only when they change, or a screen reader hears them again. So it keeps them
+   * and leaves the flow while an unspoken stand-in that reads "scan" takes its place.
+   */
   function codeSide(): number {
+    qrBox.hidden = false;
+    qrBox.replaceChildren();
+    qrCaption.removeAttribute("data-notice");
+    qrCaption.style.position = "absolute";
+    const ruler = h("p", { class: "watch-qr-caption", text: i18n.t("watch.scan"), attrs: { "aria-hidden": "true" } });
+    qrCaption.after(ruler);
     const box = qrBox.getBoundingClientRect();
     const style = getComputedStyle(qrBox);
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    ruler.remove();
+    qrCaption.style.removeProperty("position");
     return (Math.min(box.width, box.height) - padding) * devicePixelRatio;
   }
 
@@ -403,16 +434,12 @@ export function createWatch(ctx: AppContext): View {
    * Shows the code for a link, a notice in its place, or (null) "getting the link ready" in its
    * place while the link is read. A link too long for a code this face draws with modules a phone
    * can scan (a long source URL, a large `#d=`, or a shorter link on a small face) gets a notice too.
-   * Call with the dialog open: the code is sized to the room it gets there.
+   * Call with the dialog open: the code is sized to the room it gets there, and drawn again when
+   * that room changes.
    */
   function drawQr(shown: { url: string } | { notice: string } | null): void {
-    // Lay the dialog out as for a code (box shown, no notice) to measure that room. The caption is
-    // a status: its words are written only when they change, or a screen reader hears them again.
-    qrBox.hidden = false;
-    qrBox.replaceChildren();
+    qrShown = shown;
     const scan = i18n.t("watch.scan");
-    if (qrCaption.textContent !== scan) qrCaption.textContent = scan;
-    qrCaption.removeAttribute("data-notice");
     const code = shown && "url" in shown ? qrCode(shown.url, scan, codeSide()) : null;
     const notice = shown && "notice" in shown ? shown.notice : shown && !code ? i18n.t("watch.tooLong") : null;
     // "Getting ready" while the link is read, then the outcome. Any words but "scan" stand in the
@@ -422,6 +449,10 @@ export function createWatch(ctx: AppContext): View {
     qrBox.replaceChildren(...(code ? [code] : []));
     if (qrCaption.textContent !== caption) qrCaption.textContent = caption;
     qrCaption.toggleAttribute("data-notice", caption !== scan);
+    // A notice scrolls when it is longer than its room (watch.css): a tab stop, so the arrow keys
+    // scroll it in every engine, not only where a scroller is one (Safari's is not). -1 otherwise:
+    // out of the Tab order, but focus stays put if it was on the notice when a code takes its place.
+    qrCaption.tabIndex = caption !== scan ? 0 : -1;
   }
 
   function showQr(): void {
@@ -456,8 +487,26 @@ export function createWatch(ctx: AppContext): View {
     if (root.dataset.qr === "true") hideQr();
   });
 
+  // A code sized for a larger face packs modules too small to scan once the face shrinks: draw it
+  // again for the room it has now (a smaller code, or the too-long notice). The dialog's size is set
+  // by the viewport alone, so drawing in it never sets this off again.
+  const qrResize =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => {
+          if (qr.open) drawQr(qrShown);
+        })
+      : null;
+  qrResize?.observe(qr);
+
   const first = items[0];
   if (first) load(first, engaged);
+  // A `#d=` payload holds its name: read it here (no network), not only once the wearer plays it.
+  if (first?.ref.kind === "shared" && !first.title) {
+    decodeShare(first.ref.payload).then(
+      (shared) => named(first, shared.name),
+      () => undefined, // A damaged payload says why when it plays.
+    );
+  }
 
   return {
     root,
@@ -479,6 +528,7 @@ export function createWatch(ctx: AppContext): View {
     },
     destroy() {
       lifetime.abort();
+      qrResize?.disconnect();
       window.clearTimeout(cycleTimer);
       window.clearTimeout(idleTimer);
       session?.destroy();

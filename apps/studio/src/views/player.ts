@@ -6,6 +6,7 @@ import { localizeNote } from "../notes";
 import type { SourceRef } from "../route";
 import { Session, type SessionPhase } from "../session";
 import type { StudioSettings } from "../settings";
+import { nameOfRef } from "../source";
 import { button } from "../ui/controls";
 import { formatSize, h, isTyping } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -21,14 +22,8 @@ function provisionalName(ctx: AppContext, ref: SourceRef): string {
     case "example":
       return ctx.services.manifest.entries.find((e) => e.id === ref.id)?.title ?? ref.id;
     case "url":
-      try {
-        const u = new URL(ref.url);
-        return decodeURIComponent(u.pathname.split("/").pop() || "") || u.hostname;
-      } catch {
-        return ref.url;
-      }
     case "file":
-      return ctx.local?.name ?? ref.name;
+      return nameOfRef(ref, ctx.local);
     default:
       return ctx.i18n.t("app.name");
   }

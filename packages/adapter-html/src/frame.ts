@@ -1,3 +1,4 @@
+import { mayStartAnimations, readStyleFacts } from "@swarmloom/core";
 import { type KeyframeTimeline, placeKeyframes, readKeyframes } from "./timeline";
 
 /** Options of {@link renderInFrame}. */
@@ -126,35 +127,134 @@ async function imagesSettled(doc: Document, ms: number, signal?: AbortSignal): P
 }
 
 /**
+ * Reads of the animation list after the first pass: the poses a pass sets can start transitions and
+ * animations of their own, which a later read finds. Only where the page's rules let a pose start one
+ * ({@link posesMayStart}).
+ */
+const FREEZE_ROUNDS = 4;
+
+/**
  * Puts every CSS animation, transition and Web Animation of a document into a pose that does not
  * depend on machine speed (decision C02):
  *  - finite ones jump to their end state, the look the page settles into, so entrance effects
  *    (fade-ins starting at opacity 0) are captured visible;
  *  - infinite loops pause `phase` of a cycle after their delay (default half a cycle, which is
  *    rarely the invisible start pose of a pulse or a fade).
+ *
+ * A pose can set off new ones: a paused font size changes an em-based width with a transition, or
+ * a container takes a new size and a container query now starts an animation. Those would run on
+ * wall time through the snapshot and on until go live. So after each pass the document is laid out
+ * (container queries resolve in layout), the animations are read again and the new ones are frozen
+ * the same way, up to {@link FREEZE_ROUNDS} more passes. Only on pages whose rules let a pose start
+ * something: fades, slides and pulses start nothing, and their pages are read once.
+ *
+ * The contents of `content-visibility: auto` elements count too: they show while the passes run (see
+ * {@link withSkippedContents}), as an off-screen capture frame leaves them all unstyled.
  * Returns counts and a `resume()` that lets the loops run again.
  */
 export function freezeAnimations(doc: Document, phase = 0.5): FrozenAnimations {
+  return withSkippedContents(doc, () => freezeShown(doc, phase));
+}
+
+/** An element whose `content-visibility: auto` {@link withSkippedContents} turned off, with its own `style` attribute. */
+interface ShownElement {
+  el: Element;
+  attr: string | null;
+}
+
+/**
+ * Sets every `content-visibility: auto` element of `doc` to `visible` (inline, important), then lays
+ * the document out. One nesting level at a time: the styles outside the found elements are all read
+ * before any of them is set, and their subtrees are read in the next pass. So a nested one is read
+ * with the contents around it shown (a style read inside skipped contents starts their animations at
+ * their first keyframe and keeps that pose), and the document is restyled once per level: a read
+ * after each write restyled it once per element, which took seconds on pages with thousands of sections.
+ */
+function showSkippedContents(doc: Document): ShownElement[] {
+  const win = doc.defaultView;
+  const root = doc.documentElement;
+  const shown: ShownElement[] = [];
+  if (!win || !root) return shown;
+  for (let level = findAutoElements(win, [root]); level.length > 0; ) {
+    for (const el of level) {
+      shown.push({ el, attr: el.getAttribute("style") });
+      (el as unknown as ElementCSSInlineStyle).style.setProperty("content-visibility", "visible", "important");
+    }
+    const inside = level.flatMap((el) => Array.from(el.children));
+    level = findAutoElements(win, inside);
+  }
+  if (shown.length > 0) void root.getBoundingClientRect();
+  return shown;
+}
+
+/**
+ * The `content-visibility: auto` elements among `starts` and their descendants, in no set order. Only
+ * reads styles: the subtree of a found element is not read, as its contents are still skipped.
+ */
+function findAutoElements(win: Window, starts: Element[]): Element[] {
+  const found: Element[] = [];
+  const stack = starts.slice();
+  for (let el = stack.pop(); el; el = stack.pop()) {
+    // Duck-typed: the frame's elements come from another realm.
+    const style = (el as Partial<ElementCSSInlineStyle>).style;
+    if (style && win.getComputedStyle(el).getPropertyValue("content-visibility") === "auto") found.push(el);
+    else for (const child of Array.from(el.children)) stack.push(child);
+  }
+  return found;
+}
+
+/**
+ * Runs `run` while the contents of the document's `content-visibility: auto` elements show. In the
+ * off-screen capture frame the browser skips all of them: their CSS animations and transitions do
+ * not exist yet, so the freeze never saw them, and the snapshot's style reads then started them at
+ * their first keyframe and kept that stale pose (entrances captured invisible, loops at their start,
+ * both jumping at go live). After `run` the document is laid out once more, which styles the poses
+ * `run` set, and each element gets its own `style` attribute back, so the live page behaves as written.
+ */
+function withSkippedContents<T>(doc: Document, run: () => T): T {
+  const shown = typeof doc.getAnimations === "function" ? showSkippedContents(doc) : [];
+  try {
+    return run();
+  } finally {
+    if (shown.length > 0) void doc.documentElement?.getBoundingClientRect();
+    for (const { el, attr } of shown) {
+      if (attr !== null) el.setAttribute("style", attr);
+      // Read first: Chromium writes a CSSOM change to the attribute lazily, and removing it before
+      // that only empties the declarations, which a later read writes out as `style=""`.
+      else if (el.getAttribute("style") !== null) el.removeAttribute("style");
+    }
+  }
+}
+
+/** {@link freezeAnimations} once the skipped contents show. */
+function freezeShown(doc: Document, phase = 0.5): FrozenAnimations {
   const fraction = Number.isFinite(phase) ? Math.min(1, Math.max(0, phase)) : 0.5;
-  const all = typeof doc.getAnimations === "function" ? doc.getAnimations() : [];
+  const seen = new Set<Animation>();
   const loops: Animation[] = [];
   let finished = 0;
-  for (const anim of all) {
-    const timing = anim.effect?.getComputedTiming();
-    if (!timing) continue;
-    try {
-      if (Number.isFinite(timing.endTime)) {
-        anim.finish();
-        finished++;
-        continue;
+  for (let round = 0; round <= FREEZE_ROUNDS && typeof doc.getAnimations === "function"; round++) {
+    if (round > 0) void doc.documentElement?.getBoundingClientRect();
+    const fresh = doc.getAnimations().filter((anim) => !seen.has(anim));
+    if (fresh.length === 0) break;
+    for (const anim of fresh) {
+      seen.add(anim);
+      const timing = anim.effect?.getComputedTiming();
+      if (!timing) continue;
+      try {
+        if (Number.isFinite(timing.endTime)) {
+          anim.finish();
+          finished++;
+          continue;
+        }
+        const cycle = typeof timing.duration === "number" && Number.isFinite(timing.duration) ? timing.duration : 0;
+        anim.pause();
+        anim.currentTime = (timing.delay ?? 0) + fraction * cycle;
+        loops.push(anim);
+      } catch {
+        // finish() throws for zero playback rates; such animations already sit still.
       }
-      const cycle = typeof timing.duration === "number" && Number.isFinite(timing.duration) ? timing.duration : 0;
-      anim.pause();
-      anim.currentTime = (timing.delay ?? 0) + fraction * cycle;
-      loops.push(anim);
-    } catch {
-      // finish() throws for zero playback rates; such animations already sit still.
     }
+    if (round === 0 && !posesMayStart(doc, fresh)) break;
   }
   return {
     finished,
@@ -169,6 +269,23 @@ export function freezeAnimations(doc: Document, phase = 0.5): FrozenAnimations {
       }
     },
   };
+}
+
+/**
+ * Whether the poses the first pass gave `frozen` can start transitions or animations in `doc`
+ * ({@link mayStartAnimations} on the document's rules). Reading the animations again is the costly
+ * part of the freeze (Chromium sorts them by tree order), so only such a page is read again. A
+ * transition the pass finished changes its own property, which no `@keyframes` rule names; a
+ * script-made animation's keyframes are in no rule at all, so it counts as starting something.
+ */
+function posesMayStart(doc: Document, frozen: readonly Animation[]): boolean {
+  const facts = readStyleFacts(doc);
+  for (const anim of frozen) {
+    // Duck-typed: the frame's animations come from another realm.
+    if ("transitionProperty" in anim) facts.animated.add(String(anim.transitionProperty));
+    else if (!("animationName" in anim)) return true;
+  }
+  return mayStartAnimations([facts]);
 }
 
 /**
@@ -211,8 +328,10 @@ export async function renderInFrame(opts: FrameOptions): Promise<FrameDocument> 
     await delay(opts.settleMs, opts.signal);
     await nextFrame(win, opts.signal);
     // Timings before the freeze (finished animations may leave the list), boxes after it.
-    const timings = opts.keyframes ? readKeyframes(doc, opts.infinitePhase) : null;
-    const frozen = freezeAnimations(doc, opts.infinitePhase);
+    const { timings, frozen } = withSkippedContents(doc, () => ({
+      timings: opts.keyframes ? readKeyframes(doc, opts.infinitePhase) : null,
+      frozen: freezeShown(doc, opts.infinitePhase),
+    }));
     await nextFrame(win, opts.signal);
     const timelines = timings ? placeKeyframes(timings) : undefined;
     return { doc, frame, loaded, frozen, dispose, ...(timelines ? { timelines } : {}) };
