@@ -430,7 +430,8 @@ it.each<{ shows: string; src: string; says: StudioKey[] }>([
   }
 });
 
-// The smallest round face holds three lines of notice above the close button: the rest scrolls.
+// The smallest round face holds three lines of notice above the close button: the rest scrolls, by
+// keyboard too in engines that make no scroller a tab stop (WebKit), so the notice is one itself.
 it("scrolls a notice too long for the smallest face to its end", async () => {
   await page.viewport(100, 100);
   try {
@@ -456,7 +457,10 @@ it("scrolls a notice too long for the smallest face to its end", async () => {
     const shown = notice.getBoundingClientRect();
     expect(shown.top).toBeGreaterThanOrEqual(box.top + safe - 0.5);
     expect(shown.bottom).toBeLessThanOrEqual(box.bottom - safe + 0.5);
-    await userEvent.wheel(notice, { delta: { y: 100 } });
+    expect(notice.getAttribute("tabindex")).toBe("0");
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(document.activeElement).toBe(notice);
+    await userEvent.keyboard("{End}");
     await expect.poll(() => notice.scrollTop + notice.clientHeight).toBeGreaterThanOrEqual(notice.scrollHeight - 1);
   } finally {
     await page.viewport(414, 896);

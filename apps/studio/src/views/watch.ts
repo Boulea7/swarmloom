@@ -166,10 +166,12 @@ export function createWatch(ctx: AppContext): View {
   const qrBox = h("div", { class: "watch-qr-code" });
   // A status: a link read after the dialog opens (a local file, pasted text, a handoff) says when
   // its code is ready or why there is none, while a screen reader's focus stays on Back.
+  // Named by its own words, for when a notice takes focus to scroll (see drawQr).
+  const qrCaptionId = nextId("watch-qr-caption");
   const qrCaption = h("p", {
     class: "watch-qr-caption",
     text: i18n.t("watch.scan"),
-    attrs: { id: nextId("watch-qr-caption"), role: "status" },
+    attrs: { id: qrCaptionId, role: "status", "aria-labelledby": qrCaptionId },
   });
   /** Bumped per QR code shown, so a link that is read late never replaces a newer one. */
   let qrRequest = 0;
@@ -447,6 +449,10 @@ export function createWatch(ctx: AppContext): View {
     qrBox.replaceChildren(...(code ? [code] : []));
     if (qrCaption.textContent !== caption) qrCaption.textContent = caption;
     qrCaption.toggleAttribute("data-notice", caption !== scan);
+    // A notice scrolls when it is longer than its room (watch.css): a tab stop, so the arrow keys
+    // scroll it in every engine, not only where a scroller is one (Safari's is not). -1 otherwise:
+    // out of the Tab order, but focus stays put if it was on the notice when a code takes its place.
+    qrCaption.tabIndex = caption !== scan ? 0 : -1;
   }
 
   function showQr(): void {
