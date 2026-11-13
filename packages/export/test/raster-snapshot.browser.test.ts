@@ -495,7 +495,7 @@ it("walks the frame again after a style sheet changes through the CSSOM without 
   rule.style.background = "rgb(0, 0, 255)";
   expect(await frame()).toEqual([2, [0, 0, 255]]);
   expect(await frame()).toEqual([2, [0, 0, 255]]);
-  // Through the declaration taken before: no setter or method of the CSSOM runs.
+  // A declaration kept after the watch, set by name: no setter or method of the CSSOM runs.
   const kept = rule.style;
   kept.background = "rgb(0, 255, 255)";
   expect(await frame()).toEqual([3, [0, 255, 255]]);
