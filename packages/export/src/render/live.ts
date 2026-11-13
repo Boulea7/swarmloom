@@ -11,6 +11,16 @@ const SIZE_SLACK = 2;
  * round starts is seeked on the next frame, from its start then.
  */
 const SETTLE_ROUNDS = 3;
+/** Longest wait for the render page's next rendering update ({@link renderingUpdate}). */
+const UPDATE_WAIT_MS = 1000;
+/**
+ * Rule text whose state the engine takes at its rendering updates, from the layout and scroll
+ * offsets it sees then, not in a style or layout flush: scroll-state container queries and the
+ * fallbacks of anchor positions (`position-try`, which `anchored()` container queries follow).
+ */
+const AT_UPDATE = /scroll-state|position-try/i;
+/** Inline styles that can hold {@link AT_UPDATE} declarations. */
+const AT_UPDATE_INLINE = '[style*="position-try" i]';
 
 /**
  * Pose of the live page's infinite loops, as a fraction of one cycle: the render page's HTML adapter
@@ -157,6 +167,69 @@ async function stillAttribute(el: Element, name: "poster" | "src", doc: Document
   await probe.decode().catch(() => undefined);
 }
 
+/** The interface name of a CSSOM object, which works across frames (unlike `instanceof`). */
+function kind(rule: CSSRule): string {
+  return Object.prototype.toString.call(rule).slice(8, -1);
+}
+
+/** Whether `sheet` or a sheet it imports holds {@link AT_UPDATE} rule text; true when it cannot be read. */
+function sheetTakesAtUpdate(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boolean {
+  if (seen.has(sheet)) return false;
+  seen.add(sheet);
+  let rules: CSSRuleList;
+  try {
+    rules = sheet.cssRules;
+  } catch {
+    // Another origin's sheet: it may hold anything.
+    return true;
+  }
+  for (const rule of Array.from(rules)) {
+    const type = kind(rule);
+    if (type === "CSSImportRule") {
+      const imported = (rule as CSSImportRule).styleSheet;
+      if (imported && sheetTakesAtUpdate(imported, seen)) return true;
+    } else if (type !== "CSSFontFaceRule" && AT_UPDATE.test(rule.cssText)) {
+      // A rule's text holds its prelude and the rules nested in it; a font face's holds its sources.
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether the style sheets or inline styles of `doc` hold rules whose state the engine takes at its
+ * rendering updates ({@link AT_UPDATE}).
+ */
+function takesAtUpdate(doc: Document): boolean {
+  if (doc.querySelector(AT_UPDATE_INLINE)) return true;
+  const seen = new Set<CSSStyleSheet>();
+  const sheets = [...Array.from(doc.styleSheets), ...(doc.adoptedStyleSheets ?? [])];
+  return sheets.some((sheet) => sheetTakesAtUpdate(sheet as CSSStyleSheet, seen));
+}
+
+/**
+ * Resolves once the next rendering update of the page of `doc` is over: the engine lays the page
+ * out after the animation frame callbacks and starts there what it takes at that update, so a task
+ * queued from one runs after all that (as the raster export's `renderingUpdate` waits). At once when
+ * the document is hidden, which takes none, or its window has no animation frames; after
+ * {@link UPDATE_WAIT_MS} at the latest.
+ */
+function renderingUpdate(doc: Document): Promise<void> {
+  const win = doc.defaultView;
+  if (!win || typeof win.requestAnimationFrame !== "function" || doc.visibilityState === "hidden") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const timer = win.setTimeout(resolve, UPDATE_WAIT_MS);
+    win.requestAnimationFrame(() => {
+      win.setTimeout(() => {
+        win.clearTimeout(timer);
+        resolve();
+      }, 0);
+    });
+  });
+}
+
 /**
  * Shows the live page over the stage, scrolled so it covers exactly the part of the world the stage
  * shows (the frame keeps its size, so nothing reflows). Returns why it could not, or null.
@@ -212,10 +285,11 @@ export interface LiveStageOptions {
  * live page an adapter kept (the real HTML page, its animations frozen at the captured pose, and any
  * it started since frozen by the same rule then) over the stage, and from then on every frame pauses
  * all Web Animations (document, stage subtrees, live page) and the live page's SVG documents and
- * seeks them to the transport time, so frames never depend on wall time. The live page's `<marquee>`
- * elements, which no seek reaches, stay still at their captured resting pose, and its animated images
- * show still copies ({@link LiveStage.holdImages}). Plugin players (SMIL replay, Lottie) follow
- * player time on their own.
+ * seeks them to the transport time ({@link LiveStage.sync}), also the ones the page's next rendering
+ * update starts ({@link LiveStage.settle}), so frames never depend on wall time. The live page's
+ * `<marquee>` elements, which no seek reaches, stay still at their captured resting pose, and its
+ * animated images show still copies ({@link LiveStage.holdImages}). Plugin players (SMIL replay,
+ * Lottie) follow player time on their own.
  */
 export class LiveStage {
   readonly #seeker = new AnimationSeeker();
@@ -225,6 +299,10 @@ export class LiveStage {
   #live = false;
   /** What the styles of each document and shadow root let a seek start ({@link LiveStage.sync}). */
   readonly #facts = new WeakMap<Document | ShadowRoot, StyleFacts>();
+  /** The live page was just shown and scrolled: the next {@link LiveStage.settle} waits whatever its styles. */
+  #shown = false;
+  /** Whether the live page's styles hold rules the engine takes at its rendering updates, once read. */
+  #atUpdate: boolean | null = null;
 
   constructor(options: LiveStageOptions) {
     this.#o = options;
@@ -255,6 +333,7 @@ export class LiveStage {
         this.#page = null;
         this.#o.onWarning?.(`the live page stays hidden: ${problem}`);
       } else {
+        this.#shown = true;
         restMarquees(page.document);
         this.#svgs = animatedSvgs(page.document);
         // The capture froze every animation of the page, but the page may have started more since
@@ -292,6 +371,36 @@ export class LiveStage {
     for (let round = 0; round < SETTLE_ROUNDS; round++) {
       this.#layout();
       if (this.#seeker.seekNew(this.#animations(stage, page), t) === 0) break;
+    }
+  }
+
+  /**
+   * Seeks what the page's next rendering update starts to transport time `t` (ms), from its start;
+   * call it after {@link sync}, before the frame is painted or read. Does nothing before go live or
+   * without the live page.
+   *
+   * Some state the engine takes only at a rendering update, from the layout and scroll offsets it
+   * sees then (AT_UPDATE: a scroll-state query that sticks a header once go live scrolls the page,
+   * the fallback an anchor-positioned tooltip flips to). A transition or animation that starts there
+   * is not there for {@link sync} to read: it would run on wall time through the screenshot or the
+   * rasterizer's reads, then jump back to its start at the next frame's seek. So this waits for that
+   * update, reads the live page's animations again and seeks what started, from its start at `t`,
+   * as long as an update starts more (a few rounds); the stage under the live page is not read again.
+   * It waits on the frame that went live, which showed and scrolled the page, and on later frames
+   * only while the live page's styles hold such rules (a seek that moves the layout can change that
+   * state too); otherwise it resolves at once, and so it does in a hidden document, which takes no
+   * rendering updates.
+   */
+  async settle(t: number): Promise<void> {
+    const page = this.#page;
+    if (!this.#live || !page) return;
+    const shown = this.#shown;
+    this.#shown = false;
+    this.#atUpdate ??= takesAtUpdate(page.document);
+    if (!shown && !this.#atUpdate) return;
+    for (let round = 0; round < SETTLE_ROUNDS; round++) {
+      await renderingUpdate(this.#o.document);
+      if (this.#seeker.seekNew(this.#animations(false, true), t) === 0) break;
     }
   }
 
