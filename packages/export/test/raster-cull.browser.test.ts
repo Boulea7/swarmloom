@@ -418,6 +418,30 @@ it.for<[string, (win: Window) => void, "all" | "even" | "none", ((win: Window) =
     (win) =>
       win.document.head.insertAdjacentHTML("beforeend", "<style>@container (width > 0) { h3 { color: red } }</style>"),
   ],
+  // The far boxes keep their size, but their percentage margins follow the width of the page
+  // around them, which follows the box animated in view.
+  [
+    "a layout animation that resizes what the far boxes' margins resolve against",
+    (win) =>
+      paused(
+        (win.document.getElementById("near") as HTMLElement).animate([{ width: "100px" }, { width: "300px" }], 1000),
+        500,
+      ),
+    "none",
+    (win) =>
+      win.document.head.insertAdjacentHTML(
+        "beforeend",
+        `<style>body { display: inline-block; vertical-align: top } section > * { display: none }
+          section, div { width: 50px; margin-top: 10% } #near { width: 100px }</style>`,
+      ),
+  ],
+  // Container units resolve against a container another box may resize, as container queries do.
+  [
+    "a layout animation under container units",
+    (win) => paused(nearHeight(win), 500),
+    "none",
+    (win) => win.document.head.insertAdjacentHTML("beforeend", "<style>h3 { margin-top: 1cqi }</style>"),
+  ],
   ["the scroll", (win) => win.scrollBy(0, 60), "all"],
   [
     "a far card's text",
@@ -441,6 +465,8 @@ it.for<[string, (win: Window) => void, "all" | "even" | "none", ((win: Window) =
   const { win, rasterizer } = await frameOf(`<!doctype html><body style="margin:0">${cards}
     <p id=near style="height:98px;margin:0;background:rgb(255,0,0)"></p><div style="height:2000px"></div>`);
   setup?.(win);
+  // A style element added fires its load a task later, a change of the sheets for any walk after.
+  await new Promise((resolve) => setTimeout(resolve));
   win.scrollTo(0, 4060);
   await rasterizer.snapshot();
   change(win);

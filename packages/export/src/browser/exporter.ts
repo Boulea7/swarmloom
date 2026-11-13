@@ -185,10 +185,11 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * in it), as through an opening or after going live, a frame skips the snapshot and draws the last
  * image again under the cursors; a frame whose snapshot equals the last one's also reuses its image.
  * Otherwise, as while one animation runs on a long live page, the snapshot writes each box away
- * from the viewport as the last one wrote it while nothing in it changed and it stayed away, without
- * reading it again, so it costs about the same however long the page is; not when the animation
- * transforms, filters or recolours an element those boxes are in, or changes layout under a style
- * sheet that queries container sizes or cannot be read (see the README for the rest).
+ * from the viewport as the last one wrote it while nothing in it changed, it kept its size and
+ * margins and it stayed away, without reading it again, so it costs about the same however long the
+ * page is; not when the animation transforms, filters or recolours an element those boxes are in,
+ * or changes layout under a style sheet that queries container sizes (container rules or units) or
+ * cannot be read (see the README for the rest).
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).

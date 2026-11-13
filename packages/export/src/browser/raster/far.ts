@@ -83,6 +83,8 @@ const KEYFRAME_TIMING = new Set(["offset", "computedOffset", "easing", "composit
  * pseudo-classes. A false match (`[class~=a]`, `::first-line`) only makes the check stricter.
  */
 const NONLOCAL_SELECTOR = /[+~]|:(?:has|nth-|first-|last-|only-|empty|host-context)/;
+/** A length in container query units (`5cqi`, `calc(2cqw + 1px)`): it follows a container's size. */
+const CONTAINER_UNIT = /\dcq(?:[whib]|min|max)\b/;
 /** Elements whose content sheets or document-wide colours depend on. */
 const SHEET_OWNERS = new Set(["style", "link", "meta"]);
 /**
@@ -141,6 +143,9 @@ interface Entry<T> {
   height: number;
   /** {@link FarKey.extent} from its box's edges (outwards negative at the left and top). */
   extent: Area;
+  /** Its live computed style, and its used margins as written ({@link marginsOf}). */
+  cs: CSSStyleDeclaration;
+  margins: string;
   loose: boolean;
   open: boolean;
   scrolls: boolean;
@@ -257,7 +262,10 @@ function sheetState(targets: Iterable<Document | ShadowRoot>): unknown[] {
 interface SheetReach {
   /** Its selectors match by an element and its ancestors only ({@link NONLOCAL_SELECTOR}). */
   local: boolean;
-  /** It queries container sizes: a box laid out anew may restyle the boxes in another one. */
+  /**
+   * It queries container sizes, by container rules or container units ({@link CONTAINER_UNIT}): a
+   * box laid out anew may restyle the boxes in another one.
+   */
   sized: boolean;
 }
 
@@ -282,12 +290,18 @@ function sheetReach(sheet: CSSStyleSheet): SheetReach {
 function readRules(rules: CSSRuleList, reach: SheetReach): void {
   for (const rule of Array.from(rules)) {
     if (!reach.local && reach.sized) return;
-    const r = rule as CSSRule & { selectorText?: unknown; cssRules?: CSSRuleList; styleSheet?: CSSStyleSheet | null };
+    const r = rule as CSSRule & {
+      selectorText?: unknown;
+      cssRules?: CSSRuleList;
+      styleSheet?: CSSStyleSheet | null;
+      style?: CSSStyleDeclaration;
+    };
     if (typeof r.selectorText === "string" && NONLOCAL_SELECTOR.test(r.selectorText)) reach.local = false;
     // Type tags, not instanceof: the rule may belong to another frame's realm.
     const kind = Object.prototype.toString.call(rule).slice(8, -1);
-    // A container's size or a scope's limits may change without a mutation in what they style.
-    if (kind === "CSSContainerRule") {
+    // A container's size or a scope's limits may change without a mutation in what they style; so
+    // may a length in container units, with or without a container rule.
+    if (kind === "CSSContainerRule" || (r.style && CONTAINER_UNIT.test(r.style.cssText))) {
       reach.local = false;
       reach.sized = true;
     } else if (kind === "CSSScopeRule") reach.local = false;
@@ -311,6 +325,15 @@ function scopeReach(targets: Iterable<Document | ShadowRoot>): SheetReach {
     }
   }
   return reach;
+}
+
+/**
+ * The used margins of a box, which its far markup writes in px: in percentages, container units or
+ * `auto`, they follow the size of a box outside it, which a change elsewhere may resize while its
+ * own size stays.
+ */
+function marginsOf(cs: CSSStyleDeclaration): string {
+  return ["top", "right", "bottom", "left"].map((side) => cs.getPropertyValue(`margin-${side}`)).join(" ");
 }
 
 /** The state of a document's fonts: any change, or a font still loading, may move any text. */
@@ -428,24 +451,25 @@ export interface FarSource {
  * included), and drops what that may have reached:
  * - a mutation drops the boxes it is inside of, and those inside its target (attributes) or the
  *   nodes it added; any box at all where the sheets match by more than an element and its
- *   ancestors ({@link NONLOCAL_SELECTOR}, container and scope rules, a sheet that cannot be read),
- *   or when it adds or edits a style sheet;
+ *   ancestors ({@link NONLOCAL_SELECTOR}, container and scope rules, container units, a sheet
+ *   that cannot be read), or when it adds or edits a style sheet;
  * - a load or error (images, frames), and a popover or details element opening or closing, as a
  *   mutation of its target; of a style sheet, as any change of the sheets;
  * - a Web Animation that runs, or changed a value it animates since: the boxes around its target
  *   when it only animates how its target's own box paints ({@link PAINT_SELF}), and those inside
  *   it too when it animates how they paint ({@link PAINT_DEEP}); otherwise, as a mutation of its
  *   target's style, those inside and around it, and any box where the sheets query container
- *   sizes (or cannot be read);
+ *   sizes (container rules or units, see {@link SheetReach.sized}) or cannot be read;
  * - a change of the sheets, the font sets, a font loading, or a change of focus: any box.
- * The walk then checks each box itself: the same size, and the same place or, when what is in it
- * all moves with it, an extent still away from the viewport; for a box with something laid out
- * against a box outside it, the same place and no change at all in its document, scroll offsets
- * included; for a box whose content flows around floats outside it with a float before it, no
- * change in its document but scrolling. Form control state, custom element definitions and custom
- * states are not seen, as by the still check (`StillWatch`), nor are rules edited in place through
- * the CSSOM: the rasterizer reads those from the still check, then drops every box and reads what
- * the sheets match anew ({@link forget}).
+ * The walk then checks each box itself: the same size and used margins (in percentages, container
+ * units or `auto`, those follow a box outside it that such a change may have resized), and the
+ * same place or, when what is in it all moves with it, an extent still away from the viewport; for
+ * a box with something laid out against a box outside it, the same place and no change at all in
+ * its document, scroll offsets included; for a box whose content flows around floats outside it
+ * with a float before it, no change in its document but scrolling. Form control state, custom
+ * element definitions and custom states are not seen, as by the still check (`StillWatch`), nor
+ * are rules edited in place through the CSSOM: the rasterizer reads those from the still check,
+ * then drops every box and reads what the sheets match anew ({@link forget}).
  */
 export class FarCache<T> {
   readonly #scopes = new Map<Document, Scope>();
@@ -509,6 +533,8 @@ export class FarCache<T> {
     if (!sameArea(entry.reach, key.reach) || entry.parent !== inheritedKey(key.parent)) return null;
     const r = el.getBoundingClientRect();
     if (r.width !== entry.width || r.height !== entry.height) return null;
+    // Written in px, its margins may follow a box a change outside it resized (see marginsOf).
+    if (marginsOf(entry.cs) !== entry.margins) return null;
     // Moved: still away while all it may draw is, which moved with it.
     const moved = r.left !== entry.left || r.top !== entry.top;
     if (moved && (entry.loose || !away(r, entry.extent, key.reach))) return null;
@@ -523,6 +549,7 @@ export class FarCache<T> {
     if (!scope) return;
     const r = el.getBoundingClientRect();
     const { extent } = key;
+    const cs = key.win.getComputedStyle(el);
     this.#pending.set(el, {
       scope,
       data,
@@ -542,6 +569,8 @@ export class FarCache<T> {
         right: extent.right - r.right,
         bottom: extent.bottom - r.bottom,
       },
+      cs,
+      margins: marginsOf(cs),
       loose: key.loose,
       open: key.open,
       scrolls: key.scrolls,
