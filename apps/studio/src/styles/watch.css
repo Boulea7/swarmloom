@@ -366,18 +366,48 @@
   }
 }
 
-/* Why the item cannot open on a phone, in the code's place: as wide as the safe area, cut to whole
-   lines of the code's room if it must. */
+/* Why the item cannot open on a phone, in the code's place. It keeps no room for a code: it takes
+   what the close button leaves, up to its own height. */
+.watch-qr[open]:has(> .watch-qr-caption[data-notice]) {
+  grid-template-rows: minmax(0, max-content);
+}
+
+/* As wide as the safe area. Past that room (three lines on the smallest round face) it shows whole
+   lines and scrolls to its last word: by touch or wheel, and by keyboard where a scroller is a tab
+   stop (Chromium, Firefox). */
 .watch-qr-caption[data-notice] {
   align-self: center;
   max-width: none;
   max-height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   opacity: 1;
 }
 
 @supports (max-height: round(down, 100%, 1lh)) {
   .watch-qr-caption[data-notice] {
     max-height: round(down, 100%, 1lh);
+  }
+}
+
+/* While more of it is below, its last line fades: the sign to scroll on a watch, in place of a
+   scrollbar a narrow face cannot spare. A notice that fits has no scroll range, so its scroll
+   timeline is inactive and nothing fades. */
+@supports (animation-timeline: scroll()) {
+  .watch-qr-caption[data-notice] {
+    scrollbar-width: none;
+    animation: watch-notice-more linear both;
+    animation-timeline: scroll(self);
+  }
+}
+
+@keyframes watch-notice-more {
+  0%,
+  99% {
+    mask-image: linear-gradient(#000 calc(100% - 1lh), transparent);
+  }
+
+  100% {
+    mask-image: none;
   }
 }

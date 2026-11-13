@@ -286,6 +286,39 @@ it("says a link is too long for a QR code instead of throwing", async () => {
   expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
 });
 
+// The smallest round face holds three lines of notice above the close button: the rest scrolls.
+it("scrolls a notice too long for the smallest face to its end", async () => {
+  await page.viewport(100, 100);
+  try {
+    const src = `http://example.invalid/${"a".repeat(3000)}`;
+    history.replaceState(null, "", `${location.pathname}?watch=1&round=1&lang=de&src=${encodeURIComponent(src)}`);
+    const root = document.createElement("div");
+    document.body.append(root);
+    const manifest = { version: 1 as const, entries: [] };
+    const fetch = async () => new Response("", { status: 404 });
+    app = await mountStudio(
+      root,
+      fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
+    );
+    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+    const dialog = root.querySelector<HTMLElement>(".watch-qr");
+    const notice = root.querySelector<HTMLElement>(".watch-qr-caption[data-notice]");
+    if (!dialog || !notice) throw new Error("no notice");
+    expect(notice.textContent).toBe("Dieser Link ist zu lang für einen QR-Code.");
+    expect(notice.scrollHeight).toBeGreaterThan(notice.clientHeight);
+    const box = dialog.getBoundingClientRect();
+    const safe = parseFloat(getComputedStyle(dialog).paddingTop);
+    const shown = notice.getBoundingClientRect();
+    expect(shown.top).toBeGreaterThanOrEqual(box.top + safe - 0.5);
+    expect(shown.bottom).toBeLessThanOrEqual(box.bottom - safe + 0.5);
+    await userEvent.wheel(notice, { delta: { y: 100 } });
+    await expect.poll(() => notice.scrollTop + notice.clientHeight).toBeGreaterThanOrEqual(notice.scrollHeight - 1);
+  } finally {
+    await page.viewport(414, 896);
+  }
+});
+
 // A QR code holds 2.3 KB, but past ~650 bytes its modules get too small to scan off a watch face.
 it("keeps the watch QR code small enough to scan, with a notice for a longer #d= link", async () => {
   history.replaceState(null, "", `${location.pathname}?watch=1`);
