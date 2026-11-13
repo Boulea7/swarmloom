@@ -1,4 +1,4 @@
-import { mayStartAnimations, readStyleFacts } from "@swarmloom/core";
+import { mayStartAnimations, readStyleFacts } from "@swarmloom/core/internal";
 import { type KeyframeTimeline, placeKeyframes, readKeyframes } from "./timeline";
 
 /** Options of {@link renderInFrame}. */

@@ -1,4 +1,5 @@
-import { createPlayer, mayStartAnimations, readStyleFacts } from "@swarmloom/core";
+import { createPlayer } from "@swarmloom/core";
+import { mayStartAnimations, readStyleFacts } from "@swarmloom/core/internal";
 import { describe, expect, it } from "vitest";
 import { server } from "vitest/browser";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";

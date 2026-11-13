@@ -31,6 +31,13 @@ describe("@swarmloom/core public index", () => {
     expect(() => encodeWav({} as AudioBuffer)).toThrow(TypeError);
   });
 
+  // The capture heuristics change with the capture: they live in the internal subpath, so they are
+  // no semver promise and stay out of the CDN build, which inlines this whole index.
+  it("keeps the animation-start heuristics out of the public index", async () => {
+    const index: Record<string, unknown> = await import("../src/index");
+    expect(Object.keys(index).filter((name) => /StyleFacts|StartAnimations/.test(name))).toEqual([]);
+  });
+
   it("createPlayer rejects a malformed blueprint without mounting anything", () => {
     const host = document.body.appendChild(document.createElement("div"));
     expect(() => createPlayer({ blueprint: { ...blueprint, version: 2 } as never, host })).toThrow(TypeError);

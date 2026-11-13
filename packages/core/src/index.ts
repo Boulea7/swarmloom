@@ -1,11 +1,12 @@
 /**
  * @swarmloom/core: engine, choreography, stage, overlay, sound, player and toolbar UI.
  *
- * All public types live in `./types` (the contract shared by every package).
+ * The types shared by every package live in `./types` (the contract); the few others are exported
+ * next to the functions that take them. The rules that tell whether a seek can start an animation,
+ * which the HTML capture and the export share and which may change in any release, are exported from
+ * `@swarmloom/core/internal` instead.
  */
 
-export type { StyleFacts } from "./animation-starts";
-export { mayStartAnimations, readStyleFacts } from "./animation-starts";
 export type { RealtimeClockOptions } from "./clock";
 export { RealtimeClock, VirtualClock } from "./clock";
 export { missingFonts } from "./font-probe";

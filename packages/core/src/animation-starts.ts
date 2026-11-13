@@ -4,6 +4,9 @@
  *
  * Rules are read from their text (`cssText`), which holds the whole rule: selectors, preludes,
  * declarations and nested rules.
+ *
+ * Exported as `@swarmloom/core/internal` for those two packages only, not from the public index:
+ * the rules change with the capture and the export, so they carry no semver promise.
  */
 
 /**
