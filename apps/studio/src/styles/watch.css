@@ -367,14 +367,25 @@
 }
 
 /* The caption would take the room the code needs to scan on a round face (its inscribed square is
-   short) and on a small square one; the dialog's label still says what to do. */
+   short) and on a small square one. It leaves the screen, not the page: it describes the dialog and
+   says when the link is ready, as a status for screen readers. */
 .view-watch[data-round="true"] .watch-qr-caption:not([data-notice]) {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @container (height < 200px) {
   .watch-qr-caption:not([data-notice]) {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 

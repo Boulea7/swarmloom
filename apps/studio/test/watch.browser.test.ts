@@ -358,6 +358,26 @@ it.each([
   }
 });
 
+// A local file's link is read after the dialog opens, with focus on Back: a status says when it is ready.
+it("tells a screen reader when the QR code of a link read late is ready", async () => {
+  history.replaceState(null, "", `${location.pathname}?watch=1&round=1`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
+  const local = { name: "notes.md", text: "# Notes\n" };
+  app.context.navigate({ source: { kind: "file", name: local.name }, autoplay: true }, { local });
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+  const { t } = app.context.i18n;
+  expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(t("watch.preparing"));
+
+  await expect.poll(() => root.querySelector(".watch-qr svg.qr")).not.toBeNull();
+  expect(await spoken()).toContainEqual([t("watch.scan"), "polite"]);
+  const dialog = (await axTree()).find((n) => !n.ignored && n.role?.value === "dialog");
+  expect([dialog?.name?.value, dialog?.description?.value]).toEqual([t("watch.phone"), t("watch.scan")]);
+  expect(document.activeElement?.getAttribute("aria-label")).toBe(t("watch.back"));
+});
+
 // The smallest round face holds three lines of notice above the close button: the rest scrolls.
 it("scrolls a notice too long for the smallest face to its end", async () => {
   await page.viewport(100, 100);
@@ -440,7 +460,8 @@ it.each([
     const safe = parseFloat(getComputedStyle(dialog).paddingTop);
     expect(dialog.scrollHeight).toBeLessThanOrEqual(dialog.clientHeight);
     // Nothing reaches past the safe area, where the circle or the dialog would crop the finder patterns.
-    const parts = [code, ...[...dialog.children].map((el) => el.getBoundingClientRect())].filter((r) => r.height);
+    // (A caption kept only for screen readers is a 1 px box that draws nothing.)
+    const parts = [code, ...[...dialog.children].map((el) => el.getBoundingClientRect())].filter((r) => r.height > 1);
     for (const part of parts) {
       expect(part.top).toBeGreaterThanOrEqual(box.top + safe - 0.5);
       expect(part.bottom).toBeLessThanOrEqual(box.bottom - safe + 0.5);

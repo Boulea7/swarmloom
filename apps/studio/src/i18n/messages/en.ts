@@ -264,6 +264,7 @@ export const en = {
   "watch.next": "Next example",
   "watch.phone": "Open on phone",
   "watch.scan": "Scan to open on your phone",
+  "watch.preparing": "Getting the link ready…",
   "watch.tooLong": "This link is too long for a QR code.",
   "watch.back": "Back",
   "watch.empty": "No examples to play",

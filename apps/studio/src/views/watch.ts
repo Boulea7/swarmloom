@@ -6,6 +6,7 @@ import { formatById } from "../formats-meta";
 import { portable, routeToUrl, type SourceRef } from "../route";
 import { Session, type SessionPhase } from "../session";
 import { type OpenedSource, resolveSource } from "../source";
+import { nextId } from "../ui/controls";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { qrCode } from "./qr";
@@ -161,7 +162,13 @@ export function createWatch(ctx: AppContext): View {
   );
 
   const qrBox = h("div", { class: "watch-qr-code" });
-  const qrCaption = h("p", { class: "watch-qr-caption", text: i18n.t("watch.scan") });
+  // A status: a link read after the dialog opens (a local file, pasted text, a handoff) says when
+  // its code is ready or why there is none, while a screen reader's focus stays on Back.
+  const qrCaption = h("p", {
+    class: "watch-qr-caption",
+    text: i18n.t("watch.scan"),
+    attrs: { id: nextId("watch-qr-caption"), role: "status" },
+  });
   /** Bumped per QR code shown, so a link that is read late never replaces a newer one. */
   let qrRequest = 0;
   /** Ends the reads of sources still running when the face goes. */
@@ -170,7 +177,7 @@ export function createWatch(ctx: AppContext): View {
   // so Tab and screen readers stay inside it; Esc closes it like the Back button.
   const qr = h(
     "dialog",
-    { class: "watch-qr", attrs: { "aria-label": i18n.t("watch.scan") } },
+    { class: "watch-qr", attrs: { "aria-label": i18n.t("watch.phone"), "aria-describedby": qrCaption.id } },
     qrBox,
     qrCaption,
     h(
@@ -399,16 +406,20 @@ export function createWatch(ctx: AppContext): View {
    * open: the code is sized to the room it gets there.
    */
   function drawQr(shown: { url: string } | { notice: string } | null): void {
-    // Lay the dialog out as for a code (box shown, no notice) to measure that room.
+    // Lay the dialog out as for a code (box shown, no notice) to measure that room. The caption is
+    // a status: its words are written only when they change, or a screen reader hears them again.
     qrBox.hidden = false;
     qrBox.replaceChildren();
-    qrCaption.textContent = i18n.t("watch.scan");
+    const scan = i18n.t("watch.scan");
+    if (qrCaption.textContent !== scan) qrCaption.textContent = scan;
     qrCaption.removeAttribute("data-notice");
-    const code = shown && "url" in shown ? qrCode(shown.url, i18n.t("watch.scan"), codeSide()) : null;
+    const code = shown && "url" in shown ? qrCode(shown.url, scan, codeSide()) : null;
     const notice = shown && "notice" in shown ? shown.notice : shown && !code ? i18n.t("watch.tooLong") : null;
     qrBox.hidden = notice !== null;
     qrBox.replaceChildren(...(code ? [code] : []));
-    qrCaption.textContent = notice ?? i18n.t("watch.scan");
+    // "Getting ready" while the link is read, then the outcome.
+    const caption = notice ?? (shown ? scan : i18n.t("watch.preparing"));
+    if (qrCaption.textContent !== caption) qrCaption.textContent = caption;
     qrCaption.toggleAttribute("data-notice", notice !== null);
   }
 

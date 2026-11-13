@@ -210,6 +210,7 @@ export const zhCN: StudioCatalog = {
   "watch.next": "下一个示例",
   "watch.phone": "在手机上打开",
   "watch.scan": "用手机扫码打开",
+  "watch.preparing": "正在准备链接…",
   "watch.tooLong": "链接太长，无法生成二维码。",
   "watch.back": "返回",
   "watch.empty": "没有可播放的示例",

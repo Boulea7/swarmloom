@@ -212,6 +212,7 @@ export const zhTW: StudioCatalog = {
   "watch.next": "下一個範例",
   "watch.phone": "在手機上開啟",
   "watch.scan": "用手機掃描開啟",
+  "watch.preparing": "正在準備連結…",
   "watch.tooLong": "連結太長，無法產生 QR 碼。",
   "watch.back": "返回",
   "watch.empty": "沒有可播放的範例",
