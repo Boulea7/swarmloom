@@ -1,5 +1,5 @@
 import type { CustomLayer, LoadedSource, Plugin } from "@swarmloom/core";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { createThreeAdapter, THREE_TASKS } from "../src/index";
 import { driveBuild } from "./helpers/drive";
 
@@ -17,7 +17,19 @@ function hasWebGL2(): boolean {
   }
 }
 
+declare module "vitest" {
+  interface ProvidedContext {
+    /** Set by vitest.config.ts on CI: a browser without WebGL 2 fails this file instead of skipping its GPU cases. */
+    requireWebGL: boolean;
+  }
+}
+
 const webgl = hasWebGL2();
+if (!webgl && inject("requireWebGL")) {
+  throw new Error(
+    "adapter-three browser test: WebGL 2 is unavailable in this browser, and CI requires it for the GPU checks.",
+  );
+}
 if (!webgl) console.warn("adapter-three browser test: WebGL 2 is unavailable in this browser; GPU checks are skipped.");
 
 /** Reads one RGBA pixel of the canvas centre region and reports whether anything was drawn. */
