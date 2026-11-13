@@ -450,3 +450,24 @@ it.for<[string, (win: Window) => void, "all" | "even" | "none", ((win: Window) =
   const which = count === 0 ? "none" : count > 30 ? "all" : count >= 15 ? "even" : String(count);
   expect({ name, same: svg === fresh.svg, reused: which }).toEqual({ name, same: true, reused });
 });
+
+it("reads anew what the selectors reach after a rule is replaced in place by as many", async () => {
+  const cards = Array.from(
+    { length: 40 },
+    (_, i) => `<section style="height:100px;display:flow-root"><p>far ${i}</p></section>`,
+  );
+  const { win, rasterizer } = await frameOf(`<!doctype html><style>section { margin-bottom: 0 }</style>
+    <body style="margin:0">${cards.join("")}<p id=near style="height:98px;margin:0"></p><div style="height:2000px"></div>`);
+  win.scrollTo(0, 4000);
+  await drawn(rasterizer);
+  // The rule count stays: only the still check of a drawn frame sees the edit.
+  const sheet = win.document.styleSheets[0] as CSSStyleSheet;
+  sheet.deleteRule(0);
+  sheet.insertRule("body:has(.x) section { margin-bottom: 80px }", 0);
+  await drawn(rasterizer);
+  // A change in view now restyles every card.
+  (win.document.getElementById("near") as HTMLElement).className = "x";
+  const { svg, stats } = await rasterizer.snapshot();
+  const fresh = await rasterizerOf(win).snapshot();
+  expect({ same: svg === fresh.svg, reused: stats.reused }).toEqual({ same: true, reused: 0 });
+});

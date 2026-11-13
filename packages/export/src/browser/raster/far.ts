@@ -261,7 +261,12 @@ interface SheetReach {
   sized: boolean;
 }
 
-const sheetReaches = new WeakMap<CSSStyleSheet, SheetReach & { count: number }>();
+/**
+ * The {@link SheetReach} of each sheet read, with its rule count then. A rule edited in place may
+ * keep the count (one replaced, a new selector, one inserted into a grouping rule): those are read
+ * anew on {@link FarCache.forget}.
+ */
+let sheetReaches = new WeakMap<CSSStyleSheet, SheetReach & { count: number }>();
 
 /** The {@link SheetReach} of a sheet: neither local nor free of container queries while unreadable. */
 function sheetReach(sheet: CSSStyleSheet): SheetReach {
@@ -439,7 +444,8 @@ export interface FarSource {
  * included; for a box whose content flows around floats outside it with a float before it, no
  * change in its document but scrolling. Form control state, custom element definitions and custom
  * states are not seen, as by the still check (`StillWatch`), nor are rules edited in place through
- * the CSSOM: the rasterizer reads those from the still check and drops every box ({@link forget}).
+ * the CSSOM: the rasterizer reads those from the still check, then drops every box and reads what
+ * the sheets match anew ({@link forget}).
  */
 export class FarCache<T> {
   readonly #scopes = new Map<Document, Scope>();
@@ -559,9 +565,15 @@ export class FarCache<T> {
     this.#scrolls = scrolls;
   }
 
-  /** Drops every box kept, for a change it does not read itself (rules edited in place). */
+  /**
+   * Drops every box kept, for a change it does not read itself (rules edited in place), and reads
+   * anew what the sheets match: an edit that keeps the rule count may match beyond the boxes a
+   * mutation reaches by itself, or query container sizes, from now on.
+   */
   forget(): void {
     this.#entries.clear();
+    sheetReaches = new WeakMap();
+    for (const scope of this.#scopes.values()) Object.assign(scope, scopeReach(scope.targets));
   }
 
   /** The boxes kept for the next walk (for tests and diagnostics). */
