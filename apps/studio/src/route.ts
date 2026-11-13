@@ -30,7 +30,10 @@ export interface Route {
   round: boolean;
   /** Ask the home view to highlight its file picker (`?import=1`, sent by the extension). */
   import: boolean;
-  /** Settings overridden for this visit only (never persisted). */
+  /**
+   * Settings overridden by the URL, never persisted. The build settings (`SHARE_SETTING_KEYS`) hold for
+   * this history entry only, the rest for the visit.
+   */
   overrides: Partial<StudioSettings>;
 }
 

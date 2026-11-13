@@ -100,6 +100,30 @@ it("plays a link made at the default settings with them, not with the recipient'
   expect(log.players.at(-1)).toMatchObject({ seed, speed, opening: 0, liveTop: false });
 });
 
+// Share links of examples and web pages carry every build setting in the query, as #d= links do in the payload.
+it("plays what is opened after a query link with the saved settings, and the link's again on Back", async () => {
+  const opened = { ref: { kind: "example", id: "notes" }, name: "notes.md" } as OpenedSource;
+  const link = await buildShareLink(opened, DEFAULT_SETTINGS, `${location.origin}/`);
+  if (!link.ok) throw new Error(link.reason);
+  history.replaceState(null, "", `/${new URL(link.url).search}&lang=en`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const { services } = fakeServices({ manifest: { version: 1, entries: [] }, examplesBase: "https://studio.test/x/" });
+  const saved = { ...DEFAULT_SETTINGS, agents: 12, seed: 42, finale: "halo", follow: "none" } as const;
+  const storage = { getItem: () => JSON.stringify(saved), setItem: () => undefined } as unknown as Storage;
+  const studio = await mountStudio(root, { ...services, storage });
+  app = studio;
+  const fromLink = { agents: "auto", seed, finale, follow: "tour" } as const;
+  expect(studio.context.settings).toMatchObject(fromLink);
+
+  studio.context.navigate({ source: { kind: "example", id: "more" }, autoplay: true });
+  expect(studio.context.settings).toMatchObject({ agents: 12, seed: 42, finale: "halo", follow: "none" });
+  expect(location.search).toBe("?example=more&autoplay=1&lang=en");
+  history.back();
+  await until(() => studio.context.settings.seed === seed);
+  expect(studio.context.settings).toMatchObject(fromLink);
+});
+
 it("leaves a link's settings behind with its view", async () => {
   const { studio } = await openLink();
   studio.context.navigate({ source: null });
@@ -153,9 +177,10 @@ it("brings an entry's URL settings back on Back, and drops the ones the user cha
   const { services } = fakeServices({ manifest: { version: 1, entries: [] }, examplesBase: "https://studio.test/x/" });
   const studio = await mountStudio(root, services);
   app = studio;
-  const fromLink = { opening: true, liveTop: true, intro: "outline" } as const;
+  // Changed on the link's own entry: it leaves that entry's URL.
+  studio.context.updateSettings({ intro: "warp" });
+  expect(location.search).toBe("?lang=en&opening=1&live-top=1");
   studio.context.navigate({ source: null });
-  studio.context.updateSettings({ opening: false, liveTop: false, intro: "warp" });
   expect(location.search).toBe("?lang=en");
   studio.context.toggleSettings();
   const opening = () =>
@@ -165,7 +190,7 @@ it("brings an entry's URL settings back on Back, and drops the ones the user cha
 
   history.back();
   await until(() => studio.context.settings.opening);
-  expect(studio.context.settings).toMatchObject(fromLink);
+  expect(studio.context.settings).toMatchObject({ opening: true, liveTop: true, intro: "warp" });
   expect(opening()?.checked).toBe(true);
   history.forward();
   await until(() => !studio.context.settings.opening);

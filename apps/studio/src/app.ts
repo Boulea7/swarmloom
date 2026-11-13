@@ -266,13 +266,19 @@ export async function mountStudio(
   };
 
   function navigate(patch: Partial<Route>, opts: NavigateOptions = {}): void {
+    // A link's build settings (seed, speed, finale...) belong to the entry it opened, as a `#d=`
+    // payload's do: a new entry plays with the saved ones, and Back to the link's entry brings them
+    // back from its URL. The rest (theme, language, motion, sound) stay for the visit; a replaced
+    // entry keeps them all.
+    const overrides = { ...route.overrides };
+    if (!opts.replace) for (const key of SHARE_SETTING_KEYS) delete overrides[key];
     const next: Route = {
       source: null,
       autoplay: false,
       watch: route.watch,
       round: route.round,
       import: false,
-      overrides: route.overrides,
+      overrides,
       ...patch,
     };
     // A local input belongs to the entry this navigation creates; other entries carry none.
@@ -289,7 +295,15 @@ export async function mountStudio(
     route = next;
     entry += 1;
     navigated = true;
+    // As on Back and Forward: the entry's URL settings over the saved ones, the left view's source
+    // settings and the left entry's build settings gone.
+    const prev = settings;
+    replaced = {};
+    settings = { ...stored, ...route.overrides };
+    settingsApplied(prev);
     renderView();
+    if (panels().settings.isOpen) renderSettingsForm();
+    localeApplied(prev);
   }
 
   /** Puts the page (network policy, theme, motion, theme buttons) in line with settings changed from `prev`. */
