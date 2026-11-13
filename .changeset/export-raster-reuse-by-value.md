@@ -1,0 +1,5 @@
+---
+"@swarmloom/export": patch
+---
+
+A browser export no longer wraps the page's CSSOM to tell that a frame holds still or that a box away from the viewport can be written as before. The still check and the far-box cache now compare the text of every rule in the style sheets that apply (a font face without its source) and what each Web Animation shows (its target, keyframes, composite modes and iteration progress) by value, besides the DOM mutations, loads and font loads they observe. An edit the wrappers missed, such as a rule declaration the parent page took from the live page before the export and later set by property name, no longer leaves a stale frame. Reading the rules back costs about 3 µs a rule in Chromium: at 1280x720 a still frame of `examples/markdown/welcome.zh.md` or `examples/web/demo.html` takes about 1.7 ms instead of 0.8 ms and the export about 1 to 2% longer, with the same frames; on a page with 5,000 rules a still frame takes about 18 ms instead of 1 ms and the export about 10% longer.
