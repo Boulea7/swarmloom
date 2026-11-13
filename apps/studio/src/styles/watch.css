@@ -389,8 +389,8 @@
   }
 }
 
-/* Why the item cannot open on a phone, in the code's place. It keeps no room for a code: it takes
-   what the close button leaves, up to its own height. */
+/* Why the item cannot open on a phone, or that its link is being read, in the code's place. It keeps
+   no room for a code: it takes what the close button leaves, up to its own height. */
 .watch-qr[open]:has(> .watch-qr-caption[data-notice]) {
   grid-template-rows: minmax(0, max-content);
 }

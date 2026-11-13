@@ -400,10 +400,10 @@ export function createWatch(ctx: AppContext): View {
   }
 
   /**
-   * Shows the code for a link, a notice in its place, or (null) an empty code while the link is
-   * read. A link too long for a code this face draws with modules a phone can scan (a long source
-   * URL, a large `#d=`, or a shorter link on a small face) gets a notice too. Call with the dialog
-   * open: the code is sized to the room it gets there.
+   * Shows the code for a link, a notice in its place, or (null) "getting the link ready" in its
+   * place while the link is read. A link too long for a code this face draws with modules a phone
+   * can scan (a long source URL, a large `#d=`, or a shorter link on a small face) gets a notice too.
+   * Call with the dialog open: the code is sized to the room it gets there.
    */
   function drawQr(shown: { url: string } | { notice: string } | null): void {
     // Lay the dialog out as for a code (box shown, no notice) to measure that room. The caption is
@@ -415,12 +415,13 @@ export function createWatch(ctx: AppContext): View {
     qrCaption.removeAttribute("data-notice");
     const code = shown && "url" in shown ? qrCode(shown.url, scan, codeSide()) : null;
     const notice = shown && "notice" in shown ? shown.notice : shown && !code ? i18n.t("watch.tooLong") : null;
-    qrBox.hidden = notice !== null;
-    qrBox.replaceChildren(...(code ? [code] : []));
-    // "Getting ready" while the link is read, then the outcome.
+    // "Getting ready" while the link is read, then the outcome. Any words but "scan" stand in the
+    // code's place, where faces that leave out the caption under a code still show them.
     const caption = notice ?? (shown ? scan : i18n.t("watch.preparing"));
+    qrBox.hidden = caption !== scan;
+    qrBox.replaceChildren(...(code ? [code] : []));
     if (qrCaption.textContent !== caption) qrCaption.textContent = caption;
-    qrCaption.toggleAttribute("data-notice", notice !== null);
+    qrCaption.toggleAttribute("data-notice", caption !== scan);
   }
 
   function showQr(): void {

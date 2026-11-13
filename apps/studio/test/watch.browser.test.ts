@@ -369,7 +369,11 @@ it("tells a screen reader when the QR code of a link read late is ready", async 
   app.context.navigate({ source: { kind: "file", name: local.name }, autoplay: true }, { local });
   root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
   const { t } = app.context.i18n;
-  expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(t("watch.preparing"));
+  const caption = root.querySelector<HTMLElement>(".watch-qr-caption");
+  expect(caption?.textContent).toBe(t("watch.preparing"));
+  // Seen too, in the code's place, not an empty code on a face that leaves out the caption.
+  expect(caption?.getBoundingClientRect().height).toBeGreaterThan(1);
+  expect(root.querySelector<HTMLElement>(".watch-qr-code")?.hidden).toBe(true);
 
   await expect.poll(() => root.querySelector(".watch-qr svg.qr")).not.toBeNull();
   expect(await spoken()).toContainEqual([t("watch.scan"), "polite"]);
