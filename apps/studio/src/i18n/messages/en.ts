@@ -214,6 +214,8 @@ export const en = {
   "share.title": "{name} on SwarmLoom",
   "share.tooLarge": "This is too large to share as a link. Export a video instead.",
   "share.binary": "Only text files can be shared as a link. Export a video instead.",
+  "share.private":
+    "A page sent by the bookmarklet is not shared as a link: it can hold the page's hidden data. Export a video instead.",
   "share.failed": "Couldn't copy the link.",
 
   "export.title": "Export video",

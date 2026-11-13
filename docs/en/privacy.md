@@ -54,6 +54,8 @@ Small text can be encoded in the `#d=` URL hash. A hash is normally omitted from
 
 `#d=` honours only playback settings (seed, speed, cursor count, labels, finale, intro, follow, showing the original first, back to the top at the end) and ignores every other field. Remote assets and volume always follow the recipient's own settings; no link can change them.
 
+A page sent by the bookmarklet stays in memory and is never encoded into a link, because its markup can carry the page's tokens and session address.
+
 Check for credentials, private text, unpublished material and third-party copyrighted content before sharing. Never share configuration, source or documents containing secrets.
 
 ## Microphone

@@ -1,3 +1,4 @@
+import type { StudioKey } from "../i18n";
 import { portable, routeToUrl } from "../route";
 import type { StudioTarget } from "../services";
 import type { StudioSettings } from "../settings";
@@ -16,10 +17,25 @@ export function shareBase(target: StudioTarget, appUrl: string): string {
   return target === "extension" ? HOSTED_STUDIO : appUrl;
 }
 
-/** Why a source cannot be shared as a link. */
-export type ShareRefusal = "binary" | "tooLarge" | "unsupported";
+/**
+ * Why a source cannot be shared as a link. `private`: a page sent by the bookmarklet, whose
+ * captured markup can hold the page's tokens, inline state and session address.
+ */
+export type ShareRefusal = "binary" | "tooLarge" | "private" | "unsupported";
 
 export type ShareLink = { ok: true; url: string } | { ok: false; reason: ShareRefusal };
+
+const REFUSAL_KEYS = {
+  binary: "share.binary",
+  tooLarge: "share.tooLarge",
+  private: "share.private",
+  unsupported: "share.failed",
+} as const satisfies Record<ShareRefusal, StudioKey>;
+
+/** Message key that explains a refusal to the user. */
+export function shareRefusalKey(reason: ShareRefusal): StudioKey {
+  return REFUSAL_KEYS[reason];
+}
 
 /**
  * Settings a link carries: every one that shapes the performance, defaults included. The receiving
@@ -35,9 +51,11 @@ export function shareableSettings(s: StudioSettings): Partial<StudioSettings> {
 /**
  * Builds a link on `base` (see {@link shareBase}) that reopens `opened` elsewhere: examples and web
  * URLs by reference, small text inputs (local `file:` URLs too) compressed into the hash, anything
- * else refused with a reason the UI can explain.
+ * else refused with a reason the UI can explain. A bookmarklet page is always refused: its copy is
+ * the page's raw markup, kept in memory only (apps/bookmarklet/PROTOCOL.md).
  */
 export async function buildShareLink(opened: OpenedSource, settings: StudioSettings, base: string): Promise<ShareLink> {
+  if (opened.ref.kind === "handoff") return { ok: false, reason: "private" };
   const overrides = shareableSettings(settings);
   if (portable(opened.ref) && opened.ref.kind !== "shared") {
     return { ok: true, url: routeToUrl({ source: opened.ref, autoplay: true, overrides }, base) };

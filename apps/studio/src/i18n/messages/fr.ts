@@ -213,6 +213,8 @@ export const fr: StudioCatalog = {
   "share.title": "{name} sur SwarmLoom",
   "share.tooLarge": "Trop volumineux pour un lien. Exportez plutôt une vidéo.",
   "share.binary": "Seuls les fichiers texte peuvent être partagés par lien. Exportez plutôt une vidéo.",
+  "share.private":
+    "Une page envoyée par le bookmarklet ne se partage pas par lien : elle peut contenir des données cachées de la page. Exportez plutôt une vidéo.",
   "share.failed": "Impossible de copier le lien.",
 
   "export.title": "Exporter la vidéo",

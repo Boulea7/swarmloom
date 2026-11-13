@@ -167,6 +167,7 @@ export const zhTW: StudioCatalog = {
   "share.title": "群織：{name}",
   "share.tooLarge": "內容太大，無法放進連結。可以匯出影片來分享。",
   "share.binary": "只有文字檔案能透過連結分享。可以匯出影片來分享。",
+  "share.private": "書籤工具傳來的網頁不能透過連結分享：其中可能帶有網頁裡看不見的資料。可以匯出影片來分享。",
   "share.failed": "複製連結失敗。",
 
   "export.title": "匯出影片",

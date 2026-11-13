@@ -167,6 +167,8 @@ export const ko: StudioCatalog = {
   "share.title": "SwarmLoom: {name}",
   "share.tooLarge": "링크로 공유하기에는 너무 큽니다. 영상으로 내보내 공유하세요.",
   "share.binary": "텍스트 파일만 링크로 공유할 수 있습니다. 영상으로 내보내 공유하세요.",
+  "share.private":
+    "북마클릿으로 보낸 페이지는 링크로 공유할 수 없습니다. 페이지의 숨은 데이터가 들어 있을 수 있습니다. 영상으로 내보내 공유하세요.",
   "share.failed": "링크를 복사하지 못했습니다.",
 
   "export.title": "영상 내보내기",

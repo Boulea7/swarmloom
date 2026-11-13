@@ -9,7 +9,7 @@ import { type OpenedSource, resolveSource } from "../source";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { qrCode } from "./qr";
-import { buildShareLink, shareableSettings } from "./share-link";
+import { buildShareLink, shareableSettings, shareRefusalKey } from "./share-link";
 import { thumbnail } from "./thumb";
 
 /**
@@ -364,7 +364,7 @@ export function createWatch(ctx: AppContext): View {
 
   /**
    * The phone link for a source no link can name: like Share, small text travels in `#d=`. A
-   * notice instead says why it cannot (binary, too large, unreadable).
+   * notice instead says why it cannot (binary, too large, a bookmarklet page, unreadable).
    */
   async function carriedLink(item: Item): Promise<{ url: string } | { notice: string }> {
     let opened: OpenedSource;
@@ -375,9 +375,7 @@ export function createWatch(ctx: AppContext): View {
     }
     const link = await buildShareLink(opened, ctx.settings, ctx.shareUrl);
     if (link.ok) return { url: link.url };
-    const key =
-      link.reason === "tooLarge" ? "share.tooLarge" : link.reason === "binary" ? "share.binary" : "share.failed";
-    return { notice: i18n.t(key) };
+    return { notice: i18n.t(shareRefusalKey(link.reason)) };
   }
 
   /**

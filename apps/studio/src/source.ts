@@ -321,8 +321,8 @@ async function fromHandoff(ref: { kind: "handoff" }, ctx: ResolveContext): Promi
     name,
     title: page.title || urlBaseName(page.url),
     format: "html",
-    // The captured markup, not the page's address (often behind a login), is what Share carries.
-    text: page.html,
+    // No `text`: the raw capture still holds the page's scripts, hidden inputs, inline state and
+    // its full address in the <base>, so Share and the watch's phone link refuse it (PROTOCOL.md).
     cliTarget: page.url,
     cliTargetKind: "url",
     layoutWidth: page.width,

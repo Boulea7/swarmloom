@@ -165,6 +165,7 @@ export const zhCN: StudioCatalog = {
   "share.title": "群织：{name}",
   "share.tooLarge": "内容太大，无法放进链接。可以导出视频来分享。",
   "share.binary": "只有文本文件能通过链接分享。可以导出视频来分享。",
+  "share.private": "书签工具发来的网页不能通过链接分享：其中可能带有网页里看不见的数据。可以导出视频来分享。",
   "share.failed": "复制链接失败。",
 
   "export.title": "导出视频",

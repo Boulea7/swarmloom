@@ -175,6 +175,8 @@ export const ja: StudioCatalog = {
   "share.title": "SwarmLoom: {name}",
   "share.tooLarge": "リンクで共有するには大きすぎます。動画を書き出して共有してください。",
   "share.binary": "リンクで共有できるのはテキストファイルだけです。動画を書き出して共有してください。",
+  "share.private":
+    "ブックマークレットから送られたページはリンクで共有できません。ページの見えないデータが含まれることがあります。動画を書き出して共有してください。",
   "share.failed": "リンクをコピーできませんでした。",
 
   "export.title": "動画を書き出す",
