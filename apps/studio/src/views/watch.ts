@@ -5,7 +5,8 @@ import { type ExampleEntry, entriesForLocale } from "../examples/manifest";
 import { formatById } from "../formats-meta";
 import { portable, routeToUrl, type SourceRef } from "../route";
 import { Session, type SessionPhase } from "../session";
-import { type OpenedSource, resolveSource } from "../source";
+import { decodeShare } from "../share";
+import { nameOfRef, type OpenedSource, resolveSource } from "../source";
 import { nextId } from "../ui/controls";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -61,7 +62,8 @@ function playlist(ctx: AppContext): Item[] {
     const entry = ctx.services.manifest.entries.find((e) => e.id === source.id);
     return [{ ref: source, title: entry?.title ?? source.id, entry }, ...items];
   }
-  return [{ ref: source, title: ctx.local?.name ?? "" }, ...items];
+  // Named by its reference where it can be (a URL's file name), else once it is read (see named).
+  return [{ ref: source, title: nameOfRef(source, ctx.local) }, ...items];
 }
 
 /**
@@ -293,11 +295,21 @@ export function createWatch(ctx: AppContext): View {
     if (!item.opened) {
       const opened = resolveSource(item.ref, { services: ctx.services, local: ctx.local, signal: lifetime.signal });
       item.opened = opened;
-      opened.catch(() => {
-        if (item.opened === opened) item.opened = undefined;
-      });
+      opened.then(
+        (source) => named(item, source.title),
+        () => {
+          if (item.opened === opened) item.opened = undefined;
+        },
+      );
     }
     return item.opened;
+  }
+
+  /** Gives `item` the title its source was read with, on the face too when it is the one shown. */
+  function named(item: Item, name: string): void {
+    if (!name || name === item.title || lifetime.signal.aborted) return;
+    item.title = name;
+    if (items[index] === item) title.textContent = name;
   }
 
   function load(item: Item, autostart: boolean): void {
@@ -327,6 +339,7 @@ export function createWatch(ctx: AppContext): View {
       resolve: portable(item.ref) ? undefined : () => openedOf(item),
       onPhase: (next) => {
         phase = next;
+        if (current.opened) named(item, current.opened.title);
         if (next === "ready") current.start();
         if (next === "done") setProgress(1);
         syncCycle();
@@ -481,6 +494,13 @@ export function createWatch(ctx: AppContext): View {
 
   const first = items[0];
   if (first) load(first, engaged);
+  // A `#d=` payload holds its name: read it here (no network), not only once the wearer plays it.
+  if (first?.ref.kind === "shared" && !first.title) {
+    decodeShare(first.ref.payload).then(
+      (shared) => named(first, shared.name),
+      () => undefined, // A damaged payload says why when it plays.
+    );
+  }
 
   return {
     root,

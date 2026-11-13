@@ -5,6 +5,7 @@ import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import type { StudioKey } from "../src/i18n";
 import { routeToUrl } from "../src/route";
+import { encodeShare } from "../src/share";
 import type { OpenedSource } from "../src/source";
 import { MIN_MODULE_PX, qrCode } from "../src/views/qr";
 import { buildShareLink } from "../src/views/share-link";
@@ -460,6 +461,23 @@ it("scrolls a notice too long for the smallest face to its end", async () => {
   } finally {
     await page.viewport(414, 896);
   }
+});
+
+// The poster of a shared text or a web file is blank: the title is all that names it, on the face and
+// to a screen reader, before the wearer plays it.
+it.each([
+  { shows: "a #d= link", title: "quarterly-report.md", src: "" },
+  { shows: "a web file", title: "report.pdf", src: "https://example.com/report.pdf" },
+])("names $shows on the watch face before it plays", async ({ title, src }) => {
+  const query = src
+    ? `?watch=1&lang=en&src=${encodeURIComponent(src)}`
+    : `?watch=1&lang=en#d=${await encodeShare({ name: title, text: "# Quarterly report" })}`;
+  history.replaceState(null, "", `${location.pathname}${query}`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
+  await expect.poll(() => root.querySelector(".watch-title")?.textContent).toBe(title);
 });
 
 // A QR code holds 2.3 KB, but past ~650 bytes its modules get too small to scan off a watch face.
