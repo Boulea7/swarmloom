@@ -3,11 +3,13 @@ import { createPlayer } from "@swarmloom/core";
 import { type FormatEntry, formats, load } from "@swarmloom/formats";
 import { renderAudioWav } from "../audio";
 import { createRenderApi } from "./api";
+import { LIVE_LOOP_PHASE } from "./live";
 import type { RenderApi, TerminalFont } from "./protocol";
 
 /**
  * The formats registry with the render page's go-live settings: HTML documents keep their live page
- * (laid out at the frame's height, so it lines up with the woven one); SVG SMIL replays and Lottie
+ * (laid out at the frame's height, so it lines up with the woven one, with loops frozen at the phase
+ * go live freezes the ones it finds running at); SVG SMIL replays and Lottie
  * players stay on player time after go live, since the export clock keeps ticking. With
  * `terminalFont: "fill"` terminal recordings grow their font to fill the frame.
  */
@@ -27,7 +29,7 @@ export function renderFormats(height: number, terminalFont: TerminalFont = "fit"
         ...entry,
         loader: () =>
           import("@swarmloom/adapter-html").then((m) =>
-            m.createHtmlAdapter({ keepLive: true, viewportHeight: height }),
+            m.createHtmlAdapter({ keepLive: true, viewportHeight: height, infinitePhase: LIVE_LOOP_PHASE }),
           ),
       };
     }

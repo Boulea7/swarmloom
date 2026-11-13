@@ -1,5 +1,5 @@
 import { holdAllCssImages, holdSvgImages, stillImageSource } from "@swarmloom/core";
-import { AnimationSeeker } from "./seek";
+import { AnimationSeeker, freezeRunning } from "./seek";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const SMIL = new Set(["animate", "animateTransform", "animateMotion", "animateColor", "set"]);
@@ -10,6 +10,13 @@ const SIZE_SLACK = 2;
  * round starts is seeked on the next frame, from its start then.
  */
 const SETTLE_ROUNDS = 3;
+
+/**
+ * Pose of the live page's infinite loops, as a fraction of one cycle: the render page's HTML adapter
+ * freezes them there for the capture (its `infinitePhase`, see renderFormats), and go live freezes
+ * the loops the page started since at the same pose.
+ */
+export const LIVE_LOOP_PHASE = 0.5;
 
 /** The live page an adapter kept behind its capture (`LoadedHtml.live` of @swarmloom/adapter-html). */
 export interface LivePage {
@@ -193,12 +200,13 @@ export interface LiveStageOptions {
 
 /**
  * The render page's side of go live. Once the stage is live (`PlayerOptions.onLive`) it shows the
- * live page an adapter kept (the real HTML page, its animations frozen at the captured pose) over
- * the stage, and from then on every frame pauses all Web Animations (document, stage subtrees, live
- * page) and the live page's SVG documents and seeks them to the transport time, so frames never
- * depend on wall time. The live page's `<marquee>` elements, which no seek reaches, stay still at
- * their captured resting pose, and its animated images show still copies ({@link LiveStage.holdImages}).
- * Plugin players (SMIL replay, Lottie) follow player time on their own.
+ * live page an adapter kept (the real HTML page, its animations frozen at the captured pose, and any
+ * it started since frozen by the same rule then) over the stage, and from then on every frame pauses
+ * all Web Animations (document, stage subtrees, live page) and the live page's SVG documents and
+ * seeks them to the transport time, so frames never depend on wall time. The live page's `<marquee>`
+ * elements, which no seek reaches, stay still at their captured resting pose, and its animated images
+ * show still copies ({@link LiveStage.holdImages}). Plugin players (SMIL replay, Lottie) follow
+ * player time on their own.
  */
 export class LiveStage {
   readonly #seeker = new AnimationSeeker();
@@ -238,6 +246,10 @@ export class LiveStage {
       } else {
         restMarquees(page.document);
         this.#svgs = animatedSvgs(page.document);
+        // The capture froze every animation of the page, but the page may have started more since
+        // (sections with `content-visibility: auto` the browser laid out later, the marquees just
+        // replaced) that run on wall time: freeze those by the same rule before the seek anchors them.
+        freezeRunning(page.document.getAnimations(), LIVE_LOOP_PHASE);
       }
     }
     this.sync(t);

@@ -145,6 +145,45 @@ describe("export in the browser", () => {
     }
   });
 
+  it("freezes live-page animations started after the capture by the capture's rule on go live, however long they ran", async () => {
+    // The capture froze the page; these started since (as in a content-visibility section laid out later).
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc =
+      "<style>@keyframes slide{to{transform:translateX(200px)}}@keyframes rise{from{opacity:0}}" +
+      ".dot{animation:slide 1.3s linear infinite}.rise{animation:rise 1.5s}</style>" +
+      '<body style="margin:0;height:200px"><div class="dot">a</div><div class="rise">b</div>';
+    const host = document.createElement("div");
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.height = "200px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument as Document;
+      const [slide, rise] = doc.getAnimations();
+      await new Promise((resolve) => setTimeout(resolve, 200)); // a slow build
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: doc },
+      });
+      stage.goLive(3000);
+      // The loop at half a cycle (LIVE_LOOP_PHASE), the entrance at its end, then on with transport time.
+      expect([slide?.currentTime, rise?.currentTime]).toEqual([650, 1500]);
+      stage.sync(3400);
+      expect(slide?.currentTime).toBe(1050);
+    } finally {
+      frame.remove();
+      host.remove();
+    }
+  });
+
   it("shows an animated GIF on the live page as its first frame: an <img> at the same size, a background, an SVG <image>, a video poster, an image button", async () => {
     // 1x1 GIF, red then blue, looping.
     const gif =
