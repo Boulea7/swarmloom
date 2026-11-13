@@ -126,34 +126,52 @@ async function imagesSettled(doc: Document, ms: number, signal?: AbortSignal): P
 }
 
 /**
+ * Reads of the animation list after the first pass: the poses a pass sets can start transitions and
+ * animations of their own, which a later read finds.
+ */
+const FREEZE_ROUNDS = 4;
+
+/**
  * Puts every CSS animation, transition and Web Animation of a document into a pose that does not
  * depend on machine speed (decision C02):
  *  - finite ones jump to their end state, the look the page settles into, so entrance effects
  *    (fade-ins starting at opacity 0) are captured visible;
  *  - infinite loops pause `phase` of a cycle after their delay (default half a cycle, which is
  *    rarely the invisible start pose of a pulse or a fade).
+ *
+ * A pose can set off new ones: a paused font size changes an em-based width with a transition, or
+ * a container takes a new size and a container query now starts an animation. Those would run on
+ * wall time through the snapshot and on until go live. So after each pass the document is laid out
+ * (container queries resolve in layout), the animations are read again and the new ones are frozen
+ * the same way, up to {@link FREEZE_ROUNDS} more passes.
  * Returns counts and a `resume()` that lets the loops run again.
  */
 export function freezeAnimations(doc: Document, phase = 0.5): FrozenAnimations {
   const fraction = Number.isFinite(phase) ? Math.min(1, Math.max(0, phase)) : 0.5;
-  const all = typeof doc.getAnimations === "function" ? doc.getAnimations() : [];
+  const seen = new Set<Animation>();
   const loops: Animation[] = [];
   let finished = 0;
-  for (const anim of all) {
-    const timing = anim.effect?.getComputedTiming();
-    if (!timing) continue;
-    try {
-      if (Number.isFinite(timing.endTime)) {
-        anim.finish();
-        finished++;
-        continue;
+  for (let round = 0; round <= FREEZE_ROUNDS && typeof doc.getAnimations === "function"; round++) {
+    if (round > 0) void doc.documentElement?.getBoundingClientRect();
+    const fresh = doc.getAnimations().filter((anim) => !seen.has(anim));
+    if (fresh.length === 0) break;
+    for (const anim of fresh) {
+      seen.add(anim);
+      const timing = anim.effect?.getComputedTiming();
+      if (!timing) continue;
+      try {
+        if (Number.isFinite(timing.endTime)) {
+          anim.finish();
+          finished++;
+          continue;
+        }
+        const cycle = typeof timing.duration === "number" && Number.isFinite(timing.duration) ? timing.duration : 0;
+        anim.pause();
+        anim.currentTime = (timing.delay ?? 0) + fraction * cycle;
+        loops.push(anim);
+      } catch {
+        // finish() throws for zero playback rates; such animations already sit still.
       }
-      const cycle = typeof timing.duration === "number" && Number.isFinite(timing.duration) ? timing.duration : 0;
-      anim.pause();
-      anim.currentTime = (timing.delay ?? 0) + fraction * cycle;
-      loops.push(anim);
-    } catch {
-      // finish() throws for zero playback rates; such animations already sit still.
     }
   }
   return {

@@ -85,6 +85,30 @@ describe("html examples in Chromium", () => {
     }
   });
 
+  it("also freezes the transitions and animations its own poses set off", async () => {
+    // Half a cycle in, the box is 300 px wide and the container query starts a 60 s transition and a loop.
+    const page =
+      "<!DOCTYPE html><html><head><style>" +
+      "@keyframes grow{from{width:100px}to{width:500px}}@keyframes spin{to{transform:rotate(360deg)}}" +
+      ".box{container-type:inline-size;animation:grow 10s linear infinite}" +
+      "#bar{height:20px;width:0;transition:width 60s linear}#dot{width:20px;height:20px}" +
+      "@container (min-width:250px){#bar{width:100%}#dot{animation:spin 3s linear infinite}}" +
+      "</style></head><body><div class='box'><section id='bar'></section><section id='dot'></section></div></body></html>";
+    const live = createHtmlAdapter({ snapshot: probeSnapshot, keepLive: true });
+    const loaded = await live.load({ text: page }, ctx);
+    try {
+      expect(loaded.blueprint.layers.find((l) => l.id === "bar")?.box.w).toBe(300);
+      // Nothing is left running on wall time until go live.
+      const doc = loaded.live?.document;
+      expect(doc?.getAnimations().map((a) => [a.playState, a.currentTime])).toEqual([
+        ["paused", 5000],
+        ["paused", 1500],
+      ]);
+    } finally {
+      loaded.dispose?.();
+    }
+  });
+
   it("adds keyframe timelines under animated elements only when the host registers anim:timeline", async () => {
     const timeline: Plugin = {
       name: TIMELINE_PLUGIN,
