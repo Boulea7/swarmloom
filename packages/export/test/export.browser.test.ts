@@ -260,6 +260,39 @@ describe("export in the browser", () => {
     }
   });
 
+  it("paints the canvas colour under a live page without a background, so the stage's copy never shows through", async () => {
+    // A frame's canvas is transparent where a tab paints it: the frozen copy under it would show twice.
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc = '<body style="margin:0;height:200px"><p style="margin:0">Plain';
+    const host = document.createElement("div");
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.height = "200px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: frame.contentDocument as Document },
+        onWarning: (message) => {
+          throw new Error(message);
+        },
+      });
+      stage.goLive(0);
+      expect(getComputedStyle(frame).backgroundColor).toBe("rgb(255, 255, 255)");
+    } finally {
+      frame.remove();
+      host.remove();
+    }
+  });
+
   it("reads the live page's animations once a frame when no seek can start one there", async () => {
     // Reading them again is what a frame of thousands of CSS animations spends most on. Telling
     // that from the page's rules must take no declaration through `style` either: the in-browser

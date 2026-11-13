@@ -160,6 +160,13 @@ async function stillAttribute(el: Element, name: "poster" | "src", doc: Document
 /**
  * Shows the live page over the stage, scrolled so it covers exactly the part of the world the stage
  * shows (the frame keeps its size, so nothing reflows). Returns why it could not, or null.
+ *
+ * The frame's box is painted `Canvas`, the colour a browser tab paints under a page: a frame's
+ * canvas stays transparent where the page paints no background of its own (no html or body
+ * background), and the stage's frozen copy of the page under it would show through, every element
+ * twice. The box only shows when the page and the frame element use the same colour scheme; when
+ * they differ, the browser paints the canvas in the page's `Canvas` itself (CSS Color Adjust 1, as
+ * Chromium does). Either way the page sits on its own canvas colour.
  */
 function showLivePage(page: LivePage, world: HTMLElement | null, host: HTMLElement): string | null {
   const win = page.frame.contentWindow;
@@ -182,6 +189,7 @@ function showLivePage(page: LivePage, world: HTMLElement | null, host: HTMLEleme
   style.top = `${rect.top + win.scrollY * scale}px`;
   style.transformOrigin = "0 0";
   style.transform = scale === 1 ? "" : `scale(${scale})`;
+  style.backgroundColor = "Canvas";
   style.zIndex = "2147483647";
   return null;
 }
