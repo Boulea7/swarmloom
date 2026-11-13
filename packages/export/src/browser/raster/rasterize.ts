@@ -97,6 +97,10 @@ export class FrameRasterizer {
   #last: DrawnFrame | null = null;
   /** The boxes earlier snapshots wrote away from the viewport, written again while unchanged. */
   readonly #far = new FarCache<FarBox>();
+  /** Whether the last frame was walked as the page changed by itself ({@link StillWatch.busy}) or unwatched. */
+  #busy = false;
+  /** Whether the next watch reads the text of the rules (see {@link FrameRasterizer.draw}). */
+  #texts = true;
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -135,9 +139,10 @@ export class FrameRasterizer {
 
   /**
    * Draws the current frame into `ctx` at its origin, scaled to `ctx.canvas`, over white. While
-   * the document shows what the last snapshot read (no mutation, load, scroll, focus or animated
-   * value change since, in it or in the live page it shows, and the same pixels in each canvas drawn
-   * into the image; see {@link StillWatch}), the frame skips the snapshot and draws the last image
+   * the document shows what the last snapshot read (no mutation, load, scroll or focus change since,
+   * in it or in the live page it shows, the same text in the rules of their style sheets, the same
+   * from each Web Animation and the same pixels in each canvas drawn into the image; see
+   * {@link StillWatch}), the frame skips the snapshot and draws the last image
    * again with the overlays, such as the cursors, over it: an opening that holds the page, an
    * intro whose cursors move over a still stage, or the rest of a still page after going live. A
    * frame whose snapshot comes out the same as the last one's also reuses its decoded image.
@@ -161,10 +166,16 @@ export class FrameRasterizer {
   /** The last frame, when the document still shows it at this scale; else null, and its watch stops. */
   #still(scale: number): DrawnFrame | null {
     const last = this.#last;
-    if (!last?.watch) return null;
-    if (last.scale === scale && last.watch.still()) return last;
-    last.watch.stop();
-    last.watch = null;
+    const watch = last?.watch;
+    if (last && watch && last.scale === scale && watch.still()) return last;
+    // Two frames in a row that changed by themselves or were not watched, as while the stage builds
+    // or an animation runs: the next one most likely changes too, so its watch leaves the text of
+    // the rules unread.
+    const busy = !watch || watch.busy;
+    this.#texts = !(busy && this.#busy);
+    this.#busy = busy;
+    watch?.stop();
+    if (last) last.watch = null;
     return null;
   }
 
@@ -173,7 +184,8 @@ export class FrameRasterizer {
     const { document, shadows, fonts } = this.#o;
     // Its probe elements would count as a change.
     this.#baseline ??= readBaseline(document);
-    const watch = new StillWatch({ document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() });
+    const source = { document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() };
+    const watch = new StillWatch(source, this.#texts);
     try {
       const { parts, stats, overlays, settled, pixels } = await this.snapshot(signal, scale);
       let img = this.#last?.img;

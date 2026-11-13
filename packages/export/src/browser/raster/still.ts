@@ -1,5 +1,4 @@
-import { animationMark, animationsOf, same, sheetsOf } from "./reads";
-import { SheetMark, watchSheetEdits } from "./sheet-edits";
+import { animationMark, animationsOf, same, sheetState } from "./reads";
 import { type CanvasMark, canvasDataUrl, type ScrollMark, type SnapshotSource } from "./snapshot";
 
 /** What a {@link StillWatch} reads: the frame document, its watched shadow roots and FontFace faces. */
@@ -34,13 +33,10 @@ function frameDocuments(scopes: readonly (Document | ShadowRoot)[]): Document[] 
 }
 
 /**
- * What else the look of a frame depends on, besides its DOM, scroll offsets and rules edited in
- * place ({@link SheetMark}): FontFace faces, the font sets of its documents, focus, the style sheets
- * (whether each applies, and to what media) and Web Animations, read from each document and shadow
- * root. Null while a font loads or an animation runs, as both change the frame on the wall clock.
- * An animation counts by the values it animates ({@link animationMark}), not by its time: after
- * going live every frame seeks each animation, those holding their end state included. The far
- * cache reads the same animations right after, without reading them again.
+ * What else the look of a frame depends on, besides its DOM, scroll offsets and the text of its
+ * rules, read by value: FontFace faces, the font sets of its documents, and focus, the style sheets
+ * that apply and the Web Animations of each document and shadow root. Null while a font loads or an
+ * animation runs, as both change the frame on the wall clock.
  */
 function stateOf(
   source: StillSource,
@@ -54,10 +50,7 @@ function stateOf(
     state.push(fonts?.size);
   }
   for (const target of targets) {
-    state.push(target.activeElement);
-    const sheets = sheetsOf(target);
-    state.push(sheets.length);
-    for (const sheet of sheets) state.push(sheet, sheet.disabled, sheet.media?.mediaText);
+    state.push(target.activeElement, ...sheetState([target], false));
     const animations = animationsOf(target);
     state.push(animations.length);
     for (const animation of animations) {
@@ -70,20 +63,22 @@ function stateOf(
 }
 
 /**
- * Tells whether a frame document still shows what a snapshot of it read, without walking it
- * again. Created before the walk, so a change during it counts too. The frame shows the same while:
- * nothing in the document, its shadow roots or the documents of its same-origin frames (see
+ * Tells whether a frame document still shows what a snapshot of it read, without walking it again.
+ * Created before the walk, so a change during it counts too. Nothing of the page is intercepted:
+ * each change is either observed or read by value. The frame shows the same while nothing in the
+ * document, its shadow roots or the documents of its same-origin frames (see
  * {@link frameDocuments}) mutated; no image, style sheet or font loaded in any of them; no popover
- * or details element toggled; the shadow roots, frame documents, FontFace faces, focus, style
- * sheets and Web Animations (none running) are those of the start, each animation showing the
- * values it showed then, and no rule was edited in place through the CSSOM, which changes it without a
- * mutation ({@link StillWatch.sheets}; the watch wraps the CSSOM of each document's window to tell,
- * see watchSheetEdits); the scroll offsets the walk read have not moved; and each canvas whose
- * pixels went into the image gives the same data URL ({@link settle}). What the walk marks as
- * changing on its own (videos, frames of another origin, shadow roots the source does not list,
- * SMIL) the snapshot reports instead (`FrameSnapshot.settled`). Not watched: form control values,
- * which the render page never changes between frames, and the declarations watchSheetEdits does not
- * see (`@font-face` rules, one taken from a frame without scripts before its window was watched).
+ * or details element toggled; the shadow roots, frame documents, FontFace faces and focus are those
+ * of the start; each tree has the same style sheets with the same text in their rules (`sheetText`,
+ * so an edit through the CSSOM counts however it was made; read only when the watch is created with
+ * `texts`, else the frame never counts as still); each Web Animation (none running) shows what it
+ * showed then (`animationMark`); the scroll offsets the walk read have not moved; and each canvas
+ * whose pixels went into the image gives the same data URL ({@link settle}). What the walk
+ * marks as changing on its own (videos, frames of another origin, shadow roots the source does not
+ * list, SMIL) the snapshot reports instead (`FrameSnapshot.settled`). Not watched: what only a
+ * script of the page changes without a mutation (form control values, custom element states,
+ * registered custom properties); no page script runs in an export, and the render page changes none
+ * of them between frames.
  */
 export class StillWatch {
   readonly #source: StillSource;
@@ -93,8 +88,7 @@ export class StillWatch {
   readonly #frames: readonly Document[];
   readonly #observer: MutationObserver;
   readonly #state: unknown[] | null;
-  /** The style sheets at the start, as far as rules edited in place go. */
-  readonly sheets: SheetMark;
+  readonly #texts: unknown[] | null;
   #scrolls: readonly ScrollMark[] | null = null;
   #pixels: readonly CanvasMark[] = [];
   #changed = false;
@@ -102,7 +96,8 @@ export class StillWatch {
     this.#changed = true;
   };
 
-  constructor(source: StillSource) {
+  /** `texts`: read the text of the rules now (see {@link StillWatch}). */
+  constructor(source: StillSource, texts: boolean) {
     this.#source = source;
     const doc = source.document;
     this.#roots = Array.from(source.shadowRoots());
@@ -115,13 +110,9 @@ export class StillWatch {
       this.#observer.observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
       for (const type of CHANGE_EVENTS) target.addEventListener(type, this.#mark, true);
     }
-    for (const d of this.#docs) {
-      d.fonts?.addEventListener("loadingdone", this.#mark);
-      // Its scripts may have taken declarations from the sheets of its watched shadow roots too.
-      watchSheetEdits(d.defaultView, d === doc ? [d, ...this.#roots] : [d]);
-    }
+    for (const d of this.#docs) d.fonts?.addEventListener("loadingdone", this.#mark);
     this.#state = stateOf(source, this.#docs, this.#targets);
-    this.sheets = new SheetMark(this.#targets.flatMap(sheetsOf));
+    this.#texts = texts ? sheetState(this.#targets, true) : null;
   }
 
   /**
@@ -133,22 +124,27 @@ export class StillWatch {
     this.#pixels = pixels;
   }
 
+  /**
+   * Whether the frame changes by itself: a mutation, a load, a toggle or a font load happened since
+   * the start, or an animation was running or a font loading at the start.
+   */
+  get busy(): boolean {
+    if (!this.#changed && this.#observer.takeRecords().length > 0) this.#changed = true;
+    return this.#changed || !this.#state;
+  }
+
   /** Whether the document still shows what the snapshot read. */
   still(): boolean {
-    if (this.#changed || !this.#scrolls || !this.#state) return false;
-    if (this.#observer.takeRecords().length > 0) {
-      this.#changed = true;
-      return false;
-    }
+    if (this.busy || !this.#scrolls || !this.#state) return false;
     const roots = Array.from(this.#source.shadowRoots());
     if (!same(this.#roots, roots)) return false;
     if (!same(this.#frames, frameDocuments([this.#source.document, ...roots]))) return false;
     for (const { el, left, top } of this.#scrolls) {
       if (el.scrollLeft !== left || el.scrollTop !== top) return false;
     }
-    if (!this.sheets.holds()) return false;
     const state = stateOf(this.#source, this.#docs, this.#targets);
     if (state === null || !same(this.#state, state)) return false;
+    if (!this.#texts || !same(this.#texts, sheetState(this.#targets, true))) return false;
     // Last: encoding a canvas costs the most of these checks.
     return this.#pixels.every(({ canvas, url }) => canvasDataUrl(canvas) === url);
   }

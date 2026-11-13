@@ -476,8 +476,8 @@ it("lists the animations and reads each of them once per frame", async () => {
       for (const animation of animations) animation.currentTime = time;
       await pixel(rasterizer, 5, 5);
     }
-    const reads = { keyframes: keyframes.mock.calls.length, lists: lists.mock.calls.length };
     // The still check, the watch of the next frame and the far cache share one read.
+    const reads = { keyframes: keyframes.mock.calls.length, lists: lists.mock.calls.length };
     expect(reads).toEqual({ keyframes: 12, lists: 4 });
   } finally {
     keyframes.mockRestore();
@@ -597,34 +597,18 @@ it("walks the frame again after a script edits a rule declaration it took before
   expect(await frame()).toEqual([2, [0, 0, 255]]);
 });
 
-it("holds a still frame without serialising the rules of its sheets, in a frame that runs no scripts too", async () => {
-  // Long enough for boxes away from the viewport, whose cache reads what the frame's rules match.
+it("walks the frame again after its parent edits the rules of a frame that runs no scripts", async () => {
   const { win, rasterizer } = await frameOf(
-    `<style>p { color: red }</style><body style="margin:0"><iframe sandbox="allow-same-origin" ` +
-      `style="border:0;width:${SIZE}px;height:${SIZE}px" srcdoc="<style>div { background: rgb(255, 0, 0) }</style>` +
-      `<body style='margin:0'>${"<div style='height:100px'></div>".repeat(5)}</body>"></iframe></body>`,
+    `<body style="margin:0"><iframe sandbox="allow-same-origin" style="border:0;width:${SIZE}px;height:${SIZE}px" ` +
+      `srcdoc="<style>div { background: rgb(255, 0, 0) }</style><body style='margin:0'>` +
+      // Long enough for boxes away from the viewport, whose cache reads what the frame's rules match.
+      `${"<div style='height:100px'></div>".repeat(5)}"></iframe></body>`,
   );
   const inner = (win.document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document;
   await inner.fonts.ready;
-  // The text of every rule, read once per rule on every frame, cost 30 ms a frame on a page with 5,000 rules.
-  // Nor is a declaration of the frame without scripts (the live page) read: none of its scripts took one, and
-  // reading the frame's rules for the far cache must not take them either (48 ms a frame with 5,000 rules).
-  const realm = inner.defaultView as Window & typeof globalThis;
-  let serialised = 0;
-  for (const proto of [
-    (win as Window & typeof globalThis).CSSRule.prototype,
-    realm.CSSRule.prototype,
-    realm.CSSStyleDeclaration.prototype,
-  ]) {
-    const text = Object.getOwnPropertyDescriptor(proto, "cssText") as PropertyDescriptor;
-    Object.defineProperty(proto, "cssText", {
-      ...text,
-      get(this: object) {
-        serialised++;
-        return text.get?.call(this);
-      },
-    });
-  }
+  // The live page is edited from its parent, through the frame's own CSSOM: a rule's declaration
+  // taken before the first frame and set by property name later goes through no setter.
+  const kept = ((inner.styleSheets[0] as CSSStyleSheet).cssRules[0] as CSSStyleRule).style;
   const walk = vi.spyOn(rasterizer, "snapshot");
   const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
   const frame = async () => {
@@ -632,12 +616,8 @@ it("holds a still frame without serialising the rules of its sheets, in a frame 
     return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
   };
   expect(await frame()).toEqual([1, [255, 0, 0]]);
-  serialised = 0;
   expect(await frame()).toEqual([1, [255, 0, 0]]);
-  expect(await frame()).toEqual([1, [255, 0, 0]]);
-  expect(serialised).toBe(0);
-  // The page edits the rules of its frame through the frame's CSSOM.
-  ((inner.styleSheets[0] as CSSStyleSheet).cssRules[0] as CSSStyleRule).style.background = "rgb(0, 0, 255)";
+  kept.background = "rgb(0, 0, 255)";
   expect(await frame()).toEqual([2, [0, 0, 255]]);
   (inner.styleSheets[0] as CSSStyleSheet).insertRule("div { background: rgb(0, 255, 0) }", 1);
   expect(await frame()).toEqual([3, [0, 255, 0]]);
