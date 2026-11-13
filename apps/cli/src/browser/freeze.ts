@@ -38,15 +38,25 @@ export async function freezePageAnimations(phase: number): Promise<number> {
   const seen = new Set<Animation>();
   let frozen = 0;
   for (let pass = 0; pass < 5; pass++) {
-    const fresh = [...collect()].filter((anim) => !seen.has(anim));
-    if (fresh.length === 0) break;
-    for (const anim of fresh) {
+    const all = [...collect()];
+    const fresh = all.filter((anim) => !seen.has(anim));
+    // A finish handler can play the same Web Animation again. Finish() would just fire that handler
+    // once more, so a restarted one is paused at its end instead of finished a second time.
+    const restarted = all.filter((anim) => seen.has(anim) && anim.playState === "running");
+    if (fresh.length === 0 && restarted.length === 0) break;
+    for (const anim of [...fresh, ...restarted]) {
+      const again = seen.has(anim);
       seen.add(anim);
       const timing = anim.effect?.getComputedTiming();
       if (!timing) continue;
       try {
         if (Number.isFinite(timing.endTime)) {
-          anim.finish();
+          if (again) {
+            anim.pause();
+            anim.currentTime = anim.playbackRate < 0 ? 0 : (timing.endTime ?? 0);
+          } else {
+            anim.finish();
+          }
         } else {
           const cycle = typeof timing.duration === "number" && Number.isFinite(timing.duration) ? timing.duration : 0;
           anim.pause();
