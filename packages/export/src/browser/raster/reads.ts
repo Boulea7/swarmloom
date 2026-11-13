@@ -1,9 +1,9 @@
 /**
  * What the still check (`StillWatch`) and the far cache (`FarCache`) read of a document or shadow
  * root by value, for what changes a frame without a DOM mutation: its style sheets with the text of
- * their rules, and its Web Animations. Nothing of the page is wrapped or intercepted: however a
- * script edits a rule or an animation (whatever interface, whenever it took the object, from
- * whichever window), the next read gives another value.
+ * their rules, its focus and its Web Animations. Nothing of the page is wrapped or intercepted:
+ * however a script edits a rule or an animation (whatever interface, whenever it took the object,
+ * from whichever window), the next read gives another value.
  *
  * Each value is read once until the running script yields (the next microtask checkpoint): before a
  * walk, the still check of the last frame, the watch of the next one and the far cache read the same
@@ -19,8 +19,11 @@ export function sheetsOf(target: Document | ShadowRoot): CSSStyleSheet[] {
 export interface AnimationMark {
   /** What it shows, to compare frames by: null while it runs on the wall clock. */
   state: readonly unknown[] | null;
-  /** The CSS names of the properties its keyframes animate; null when they cannot be read. */
-  names: readonly string[] | null;
+  /**
+   * The CSS names of the properties its keyframes animate, null when they cannot be read: read when
+   * first asked for (the far cache asks only once the animation shows something else).
+   */
+  names(): readonly string[] | null;
 }
 
 interface Reads {
@@ -123,41 +126,63 @@ function cssName(member: string): string {
   return name.startsWith("webkit-") ? `-${name}` : name;
 }
 
+/** An effect's keyframes, or null when they cannot be read (another kind of effect). */
+function keyframesOf(effect: KeyframeEffect): ComputedKeyframe[] | null {
+  try {
+    return typeof effect.getKeyframes === "function" ? effect.getKeyframes() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The CSS names of the properties `keyframes` animate (see {@link AnimationMark.names}). */
+function namesOf(keyframes: readonly ComputedKeyframe[] | null): string[] | null {
+  if (!keyframes) return null;
+  const found = new Set<string>();
+  for (const frame of keyframes) for (const key of Object.keys(frame)) if (!KEYFRAME_TIMING.has(key)) found.add(key);
+  return Array.from(found, cssName);
+}
+
+/** Animations whose keyframes the style sheets give, by interface name: each frame has its own. */
+const STYLED = new Set(["CSSAnimation", "CSSTransition"]);
+
 /**
- * Reads an animation. What a keyframe effect shows follows from its target, its keyframes, how it
- * composites, and its iteration progress and iteration (`getComputedTiming()`), given the styles
- * under it, which the watches read themselves: compared by those rather than by time, a fill held
- * past its end or a `steps()` timing between two steps counts as unchanged, and keyframes set anew
- * count as a change. Another kind of effect is compared by its time.
+ * Reads an animation. What a keyframe effect shows follows from the effect, its target, its
+ * keyframes, how it composites, and its iteration progress and iteration (`getComputedTiming()`),
+ * given the styles under it, which the watches read themselves: compared by those rather than by
+ * time, a fill held past its end or a `steps()` timing between two steps counts as unchanged. The
+ * keyframes are compared where they come from: a script's animation by its keyframes, so keyframes
+ * set anew count as a change; a CSS animation (its `@keyframes` rule) or a CSS transition (the two
+ * values it runs between, fixed as it starts) through the text of the style sheets, which the
+ * watches compare, and the style that names it, a new name or transition being a new animation. A
+ * script that sets the keyframes of a CSS animation or transition goes unseen. Reading keyframes
+ * is the dearest part (about 15 us each for a CSS animation in Chromium), and a page that fades in
+ * every card holds hundreds. Another kind of effect is compared by its time.
  */
 function readMark(animation: Animation): AnimationMark {
   const effect = animation.effect as KeyframeEffect | null;
-  if (!effect) return { state: [], names: [] };
-  let keyframes: ComputedKeyframe[] | null = null;
-  try {
-    keyframes = typeof effect.getKeyframes === "function" ? effect.getKeyframes() : null;
-  } catch {
-    keyframes = null;
-  }
-  let names: string[] | null = null;
-  if (keyframes) {
-    const found = new Set<string>();
-    for (const frame of keyframes) for (const key of Object.keys(frame)) if (!KEYFRAME_TIMING.has(key)) found.add(key);
-    names = Array.from(found, cssName);
-  }
-  if (animation.playState === "running") return { state: null, names };
-  if (!keyframes) return { state: [animation.playState, animation.currentTime], names };
+  if (!effect) return { state: [], names: () => [] };
+  const styled = STYLED.has(Object.prototype.toString.call(animation).slice(8, -1));
+  const keyframes = styled ? null : keyframesOf(effect);
+  let names: readonly string[] | null | undefined = styled ? undefined : namesOf(keyframes);
+  const named = (): readonly string[] | null => {
+    if (names === undefined) names = namesOf(keyframesOf(effect));
+    return names;
+  };
+  if (animation.playState === "running") return { state: null, names: named };
+  if (!styled && !keyframes) return { state: [animation.playState, animation.currentTime], names: named };
   const { progress, currentIteration } = effect.getComputedTiming();
   const state = [
+    effect,
     effect.target,
     effect.pseudoElement,
     effect.composite,
     effect.iterationComposite,
     progress,
     currentIteration,
-    JSON.stringify(keyframes),
   ];
-  return { state, names };
+  if (keyframes) state.push(JSON.stringify(keyframes));
+  return { state, names: named };
 }
 
 /** An animation as {@link readMark} reads it, once while the script runs. */
@@ -169,6 +194,17 @@ export function animationMark(animation: Animation): AnimationMark {
     shares.marks.set(animation, mark);
   }
   return mark;
+}
+
+/**
+ * Focus in a document or shadow root as the styles see it: the focused element, whether it matches
+ * `:focus-visible` (a script focusing it again may change that alone), and for a document whether
+ * it has the system focus, without which `:focus` matches nothing in it.
+ */
+export function focusState(target: Document | ShadowRoot): unknown[] {
+  const el = target.activeElement;
+  const doc = target.nodeType === 9 ? (target as Document) : null;
+  return [el, el?.matches(":focus-visible") ?? false, doc?.hasFocus() ?? null];
 }
 
 /** Whether two lists hold the same values (`Object.is`), in order. */

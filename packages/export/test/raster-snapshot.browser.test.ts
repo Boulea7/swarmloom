@@ -468,6 +468,7 @@ it("lists the animations and reads each of them once per frame", async () => {
   );
   const animations = win.document.getAnimations();
   const realm = win as Window & typeof globalThis;
+  const timings = vi.spyOn(realm.AnimationEffect.prototype, "getComputedTiming");
   const keyframes = vi.spyOn(realm.KeyframeEffect.prototype, "getKeyframes");
   const lists = vi.spyOn(realm.Document.prototype, "getAnimations");
   try {
@@ -477,9 +478,14 @@ it("lists the animations and reads each of them once per frame", async () => {
       await pixel(rasterizer, 5, 5);
     }
     // The still check, the watch of the next frame and the far cache share one read.
-    const reads = { keyframes: keyframes.mock.calls.length, lists: lists.mock.calls.length };
-    expect(reads).toEqual({ keyframes: 12, lists: 4 });
+    const reads = { timings: timings.mock.calls.length, lists: lists.mock.calls.length };
+    expect(reads).toEqual({ timings: 12, lists: 4 });
+    // A CSS animation's keyframes follow the style sheets, whose text the still check compares.
+    keyframes.mockClear();
+    await pixel(rasterizer, 5, 5);
+    expect(keyframes).not.toHaveBeenCalled();
   } finally {
+    timings.mockRestore();
     keyframes.mockRestore();
     lists.mockRestore();
   }
@@ -540,10 +546,82 @@ it("walks the frame again when a popover opens without a DOM mutation", async ()
   };
   expect(await frame()).toEqual([1, [255, 255, 255]]);
   expect(await frame()).toEqual([1, [255, 255, 255]]);
-  const toggled = new Promise<void>((resolve) => popover.addEventListener("toggle", () => resolve(), { once: true }));
+  // In the same task as the next frame: its toggle event comes a task later.
   popover.showPopover();
-  await toggled;
   expect(await frame()).toEqual([2, [0, 0, 255]]);
+});
+
+it("walks the frame again when the focused element starts to show its focus", async ({ skip }) => {
+  const { win, rasterizer } = await frameOf(
+    "<style>button { display: block; width: 100px; height: 100px; border: 0; outline: none;" +
+      " background: rgb(255, 0, 0) } button:focus-visible { background: rgb(0, 0, 255) }</style>" +
+      '<body style="margin:0"><button id=b></button></body>',
+  );
+  const button = win.document.getElementById("b") as HTMLButtonElement;
+  button.focus({ focusVisible: false });
+  if (button.matches(":focus-visible")) skip("no focusVisible option");
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  // Focused again, it is the same active element, but now matches :focus-visible.
+  button.blur();
+  button.focus({ focusVisible: true });
+  if (!button.matches(":focus-visible")) skip("no focusVisible option");
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+});
+
+it("walks the frame again once a CSS image that lays out a box has loaded", async () => {
+  const square = new OffscreenCanvas(60, 60);
+  const paint = square.getContext("2d") as OffscreenCanvasRenderingContext2D;
+  paint.fillStyle = "rgb(255, 0, 0)";
+  paint.fillRect(0, 0, 60, 60);
+  const url = URL.createObjectURL(await square.convertToBlob({ type: "image/png" }));
+  try {
+    const { win, rasterizer } = await frameOf(
+      `<style>.on::before { content: url("${url}"); display: block }</style><body style="margin:0">` +
+        '<div id=h></div><div style="height:40px;background:rgb(0,0,255)"></div></body>',
+    );
+    const host = win.document.getElementById("h") as HTMLElement;
+    // Read while the page loads the image: once it has, the box below moves down, with no event.
+    host.className = "on";
+    expect(await pixel(rasterizer, 5, 70)).toEqual([255, 255, 255]);
+    await vi.waitFor(() => expect(host.offsetHeight).toBeGreaterThanOrEqual(60));
+    expect(await pixel(rasterizer, 5, 70)).toEqual([0, 0, 255]);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+});
+
+it("reads nothing of a frame the walk leaves out until it shows", async () => {
+  const { win, rasterizer } = await frameOf(
+    `<body style="margin:0"><iframe id=f style="position:fixed;left:-${SIZE + 10000}px;top:0;border:0;` +
+      `width:${SIZE}px;height:${SIZE}px" srcdoc="<style>body { margin: 0; background: rgb(255, 0, 0) }</style>">` +
+      "</iframe></body>",
+  );
+  const frame = win.document.getElementById("f") as HTMLIFrameElement;
+  const inner = frame.contentDocument as Document;
+  await inner.fonts.ready;
+  const texts = vi.spyOn((frame.contentWindow as Window & typeof globalThis).CSSRule.prototype, "cssText", "get");
+  try {
+    expect(await pixel(rasterizer, 5, 5)).toEqual([255, 255, 255]);
+    // An opening that holds the page while the live page waits out of view.
+    texts.mockClear();
+    expect(await pixel(rasterizer, 5, 5)).toEqual([255, 255, 255]);
+    expect(texts).not.toHaveBeenCalled();
+    frame.style.left = "0";
+    expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+    for (let i = 0; i < 3; i++) await pixel(rasterizer, 5, 5);
+    // Drawn now, it is watched like the page.
+    ((inner.styleSheets[0] as CSSStyleSheet).cssRules[0] as CSSStyleRule).style.background = "rgb(0, 0, 255)";
+    expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
+  } finally {
+    texts.mockRestore();
+  }
 });
 
 it("walks the frame again after a style sheet changes through the CSSOM without a mutation", async () => {

@@ -1,4 +1,13 @@
-import { type AnimationMark, animationMark, animationsOf, same, sheetState, sheetsOf, sheetText } from "./reads";
+import {
+  type AnimationMark,
+  animationMark,
+  animationsOf,
+  focusState,
+  same,
+  sheetState,
+  sheetsOf,
+  sheetText,
+} from "./reads";
 import type { InheritedValues } from "./styles";
 
 /** A box in CSS px of a document's viewport. */
@@ -94,8 +103,11 @@ const SHEET_OWNERS = new Set(["style", "link", "meta"]);
  * summary, a fieldset's first legend): a change of their children may restyle any of them.
  */
 const STRUCTURED = new Set(["details", "fieldset"]);
-/** Events that change a box without a mutation: loads, and popovers and details opening or closing. */
-const EVENTS = ["load", "error", "toggle"] as const;
+/**
+ * Events that change a box without a mutation: loads, and popovers and details opening or closing
+ * (`beforetoggle` in the task that opens or closes a popover, `toggle` in a later one).
+ */
+const EVENTS = ["load", "error", "beforetoggle", "toggle"] as const;
 
 /** One document as far as the boxes cached in it go, its watched shadow roots included. */
 interface Scope {
@@ -107,7 +119,7 @@ interface Scope {
   records: MutationRecord[];
   events: EventTarget[];
   fontsDone: boolean;
-  /** What `sheetState`, {@link fontState}, focus and Web Animations read at the last walk. */
+  /** What `sheetState`, {@link fontState}, `focusState` and Web Animations read at the last walk. */
   sheets: unknown[];
   fonts: string;
   focus: unknown[];
@@ -329,7 +341,7 @@ const DEEP = 1;
 const LAYOUT = 2;
 type AnimationReach = typeof SELF | typeof DEEP | typeof LAYOUT;
 
-/** How far a change of an animation of `names` reaches ({@link AnimationMark.names}). */
+/** How far a change of an animation of `names` reaches (`AnimationMark.names`). */
 function reachOf(names: readonly string[] | null): AnimationReach {
   if (!names) return LAYOUT;
   let reach: AnimationReach = SELF;
@@ -384,14 +396,16 @@ export interface FarSource {
  *   read;
  * - a change of the sheets, read by value (which apply, and the text of their rules, so an edit
  *   through the CSSOM counts however it was made, see `sheetText`), of the font sets, a font
- *   loading, or a change of focus: any box. What the sheets match is read again from them then.
+ *   loading, or a change of focus as the styles see it (`focusState`): any box. What the sheets
+ *   match is read again from them then.
  * The walk then checks each box itself: the same size and used margins (in percentages, container
  * units or `auto`, those follow a box outside it that such a change may have resized), and the
  * same place or, when what is in it all moves with it, an extent still away from the viewport; for
  * a box with something laid out against a box outside it, the same place and no change at all in
  * its document, scroll offsets included; for a box whose content flows around floats outside it
  * with a float before it, no change in its document but scrolling. Form control state, custom
- * element definitions and custom states are not seen, as by the still check (`StillWatch`).
+ * element definitions and custom states, and keyframes a script sets on a CSS animation or
+ * transition are not seen, as by the still check (`StillWatch`).
  */
 export class FarCache<T> {
   readonly #scopes = new Map<Document, Scope>();
@@ -564,7 +578,7 @@ export class FarCache<T> {
     // What is read without events starts here; the boxes cached so far in the scope go once.
     scope.sheets = sheetState(scope.targets, true);
     Object.assign(scope, scopeReach(scope.targets));
-    scope.focus = Array.from(scope.targets, (t) => t.activeElement);
+    scope.focus = Array.from(scope.targets, focusState).flat();
     for (const animation of animationsOf(target)) scope.animations.set(animation, animationMark(animation));
     scope.epoch++;
   }
@@ -598,7 +612,7 @@ export class FarCache<T> {
       scope.sheets = sheets;
       Object.assign(scope, scopeReach(scope.targets));
     }
-    const focus = Array.from(scope.targets, (t) => t.activeElement);
+    const focus = Array.from(scope.targets, focusState).flat();
     if (!same(focus, scope.focus)) all = true;
     scope.focus = focus;
     for (const record of records) {
@@ -643,10 +657,10 @@ export class FarCache<T> {
       const last = scope.animations.get(animation);
       if (mark.state && last?.state && same(mark.state, last.state)) continue;
       // The wider reach of what it animated and what it animates (keyframes set anew).
-      moved(animation, Math.max(reachOf(mark.names), last ? reachOf(last.names) : SELF) as AnimationReach);
+      moved(animation, Math.max(reachOf(mark.names()), last ? reachOf(last.names()) : SELF) as AnimationReach);
     }
     for (const [animation, last] of scope.animations)
-      if (!animations.has(animation)) moved(animation, reachOf(last.names));
+      if (!animations.has(animation)) moved(animation, reachOf(last.names()));
     scope.animations = animations;
     if (all) scope.epoch++;
     if (all || layout || records.length > 0 || events.length > 0) {

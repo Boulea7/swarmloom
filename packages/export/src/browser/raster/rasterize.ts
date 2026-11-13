@@ -41,6 +41,8 @@ interface DrawnFrame {
   stats: SnapshotStats;
   /** Device px per CSS px it was serialised for. */
   scale: number;
+  /** The documents of the same-origin frames it drew (`FrameSnapshot.frames`). */
+  frames: readonly Document[];
   /** Watches the document since its snapshot; null when it may change unseen (see {@link StillWatch}). */
   watch: StillWatch | null;
 }
@@ -139,10 +141,11 @@ export class FrameRasterizer {
 
   /**
    * Draws the current frame into `ctx` at its origin, scaled to `ctx.canvas`, over white. While
-   * the document shows what the last snapshot read (no mutation, load, scroll or focus change since,
-   * in it or in the live page it shows, the same text in the rules of their style sheets, the same
-   * from each Web Animation and the same pixels in each canvas drawn into the image; see
-   * {@link StillWatch}), the frame skips the snapshot and draws the last image
+   * the document shows what the last snapshot read (no mutation, load, toggle, scroll or focus
+   * change since, in it or in the live page it shows, the same text in the rules of their style
+   * sheets, the same from each Web Animation, the same size for each box written empty and the
+   * same pixels in each canvas drawn into the image; see {@link StillWatch}), the frame skips the
+   * snapshot and draws the last image
    * again with the overlays, such as the cursors, over it: an opening that holds the page, an
    * intro whose cursors move over a still stage, or the rest of a still page after going live. A
    * frame whose snapshot comes out the same as the last one's also reuses its decoded image.
@@ -185,9 +188,11 @@ export class FrameRasterizer {
     // Its probe elements would count as a change.
     this.#baseline ??= readBaseline(document);
     const source = { document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() };
-    const watch = new StillWatch(source, this.#texts);
+    // The frames the last snapshot left out stay out until the trees around them change.
+    const watch = new StillWatch(source, this.#texts, this.#last?.frames ?? null);
     try {
-      const { parts, stats, overlays, settled, pixels } = await this.snapshot(signal, scale);
+      const snapshot = await this.snapshot(signal, scale);
+      const { parts, stats, overlays, frames } = snapshot;
       let img = this.#last?.img;
       if (!img || !sameParts(parts, this.#last?.parts ?? [])) {
         img = new Image();
@@ -196,9 +201,8 @@ export class FrameRasterizer {
         img.src = this.#uri(parts);
         await decoded(img);
       }
-      if (settled) watch.settle(settled, pixels);
-      else watch.stop();
-      this.#last = { parts, img, overlays, stats, scale, watch: settled ? watch : null };
+      const settled = watch.settle(snapshot);
+      this.#last = { parts, img, overlays, stats, scale, frames, watch: settled ? watch : null };
       return this.#last;
     } catch (error) {
       watch.stop();

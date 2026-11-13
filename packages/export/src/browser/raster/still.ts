@@ -1,11 +1,22 @@
-import { animationMark, animationsOf, same, sheetState } from "./reads";
-import { type CanvasMark, canvasDataUrl, type ScrollMark, type SnapshotSource } from "./snapshot";
+import { animationMark, animationsOf, focusState, same, sheetState } from "./reads";
+import {
+  type CanvasMark,
+  canvasDataUrl,
+  type FrameSnapshot,
+  type ScrollMark,
+  type SizeMark,
+  type SnapshotSource,
+} from "./snapshot";
 
 /** What a {@link StillWatch} reads: the frame document, its watched shadow roots and FontFace faces. */
 export type StillSource = Pick<SnapshotSource, "document" | "shadowRoots" | "faces">;
 
-/** Events that can change a frame without a mutation: resource loads, popovers and details. */
-const CHANGE_EVENTS = ["load", "error", "toggle"] as const;
+/**
+ * Events that can change a frame without a mutation: resource loads, and popovers and details
+ * opening or closing. A popover sets no attribute: `beforetoggle` fires as it opens or closes, in
+ * the same task, while `toggle` only follows in a later one.
+ */
+const CHANGE_EVENTS = ["load", "error", "beforetoggle", "toggle"] as const;
 
 /**
  * Documents of the same-origin frames in `scopes` and, in turn, in those documents, in tree order:
@@ -32,32 +43,29 @@ function frameDocuments(scopes: readonly (Document | ShadowRoot)[]): Document[] 
   return docs;
 }
 
+/** A document or shadow root the watch reads. */
+type Tree = Document | ShadowRoot;
+
 /**
- * What else the look of a frame depends on, besides its DOM, scroll offsets and the text of its
- * rules, read by value: FontFace faces, the font sets of its documents, and focus, the style sheets
- * that apply and the Web Animations of each document and shadow root. Null while a font loads or an
- * animation runs, as both change the frame on the wall clock.
+ * What else the look of a tree depends on, besides its DOM, scroll offsets and the text of its
+ * rules, read by value: a document's font set, focus (`focusState`), the style sheets that apply
+ * and the Web Animations. Null while a font loads or an animation runs, as both change the frame on
+ * the wall clock.
  */
-function stateOf(
-  source: StillSource,
-  docs: readonly Document[],
-  targets: readonly (Document | ShadowRoot)[],
-): unknown[] | null {
-  const state: unknown[] = [source.faces().length];
-  for (const doc of docs) {
-    const fonts = doc.fonts;
+function treeState(tree: Tree): unknown[] | null {
+  const state: unknown[] = [];
+  if (tree.nodeType === 9) {
+    const fonts = (tree as Document).fonts;
     if (fonts?.status === "loading") return null;
     state.push(fonts?.size);
   }
-  for (const target of targets) {
-    state.push(target.activeElement, ...sheetState([target], false));
-    const animations = animationsOf(target);
-    state.push(animations.length);
-    for (const animation of animations) {
-      const look = animationMark(animation).state;
-      if (look === null) return null;
-      state.push(animation, look.length, ...look);
-    }
+  state.push(...focusState(tree), ...sheetState([tree], false));
+  const animations = animationsOf(tree);
+  state.push(animations.length);
+  for (const animation of animations) {
+    const look = animationMark(animation).state;
+    if (look === null) return null;
+    state.push(animation, look.length, ...look);
   }
   return state;
 }
@@ -65,63 +73,79 @@ function stateOf(
 /**
  * Tells whether a frame document still shows what a snapshot of it read, without walking it again.
  * Created before the walk, so a change during it counts too. Nothing of the page is intercepted:
- * each change is either observed or read by value. The frame shows the same while nothing in the
- * document, its shadow roots or the documents of its same-origin frames (see
- * {@link frameDocuments}) mutated; no image, style sheet or font loaded in any of them; no popover
- * or details element toggled; the shadow roots, frame documents, FontFace faces and focus are those
- * of the start; each tree has the same style sheets with the same text in their rules (`sheetText`,
- * so an edit through the CSSOM counts however it was made; read only when the watch is created with
- * `texts`, else the frame never counts as still); each Web Animation (none running) shows what it
- * showed then (`animationMark`); the scroll offsets the walk read have not moved; and each canvas
- * whose pixels went into the image gives the same data URL ({@link settle}). What the walk
- * marks as changing on its own (videos, frames of another origin, shadow roots the source does not
- * list, SMIL) the snapshot reports instead (`FrameSnapshot.settled`). Not watched: what only a
- * script of the page changes without a mutation (form control values, custom element states,
- * registered custom properties); no page script runs in an export, and the render page changes none
- * of them between frames.
+ * each change is either observed or read by value. It reads the document, its shadow roots and the
+ * documents of the same-origin frames (see {@link frameDocuments}) the walk drew, with their shadow
+ * roots: nothing of a frame left out shows, and it shows only after a change in the trees around
+ * it. Until the walk tells which ({@link settle}), it reads those the last walk drew. The frame
+ * shows the same while nothing in those trees mutated; no image, style sheet or font loaded in any
+ * of them; no popover or details element toggled; the shadow roots, frame documents and FontFace
+ * faces are those of the start; and these read the same: focus (`focusState`), the font sets, the
+ * style sheets of each tree with the text of their rules (`sheetText`, so an edit through the CSSOM
+ * counts however it was made; read only when the watch is created with `texts`, else the frame
+ * never counts as still), what each Web Animation shows (`animationMark`; none may run), and what
+ * the snapshot read: the scroll offsets, the size of each box written empty and the data URL of
+ * each canvas whose pixels went into the image. What the walk marks as changing on its own
+ * (videos, frames of another origin, shadow roots the source does not list, SMIL, images still
+ * loading) the snapshot reports instead (`FrameSnapshot.settled`). Not watched: what only a script
+ * of the page changes without a mutation (form control values, custom element states, registered
+ * custom properties, keyframes set on a CSS animation or transition); no page script runs in an
+ * export, and the render page changes none of them between frames.
  */
 export class StillWatch {
   readonly #source: StillSource;
-  readonly #docs: readonly Document[];
-  readonly #targets: readonly (Document | ShadowRoot)[];
   readonly #roots: readonly ShadowRoot[];
-  readonly #frames: readonly Document[];
+  /** The same-origin frame documents at the start, and those of them read. */
+  readonly #all: readonly Document[];
+  #frames: readonly Document[];
+  #trees: readonly Tree[];
   readonly #observer: MutationObserver;
-  readonly #state: unknown[] | null;
-  readonly #texts: unknown[] | null;
+  readonly #faces: number;
+  /** {@link treeState} and, with `texts`, `sheetState` with the rule text of each tree at the start. */
+  readonly #states = new Map<Tree, unknown[] | null>();
+  readonly #texts: Map<Tree, unknown[]> | null;
   #scrolls: readonly ScrollMark[] | null = null;
+  #sizes: readonly SizeMark[] = [];
   #pixels: readonly CanvasMark[] = [];
   #changed = false;
   readonly #mark = (): void => {
     this.#changed = true;
   };
 
-  /** `texts`: read the text of the rules now (see {@link StillWatch}). */
-  constructor(source: StillSource, texts: boolean) {
+  /**
+   * `texts`: read the text of the rules now (see {@link StillWatch}). `drawn`: the frame documents
+   * the last snapshot drew (`FrameSnapshot.frames`), null to read every one.
+   */
+  constructor(source: StillSource, texts: boolean, drawn: readonly Document[] | null) {
     this.#source = source;
     const doc = source.document;
     this.#roots = Array.from(source.shadowRoots());
-    this.#frames = frameDocuments([doc, ...this.#roots]);
-    this.#docs = [doc, ...this.#frames];
-    this.#targets = [doc, ...this.#roots, ...this.#frames];
+    this.#all = frameDocuments([doc, ...this.#roots]);
+    this.#frames = drawn ? this.#all.filter((frame) => drawn.includes(frame)) : this.#all;
+    this.#trees = this.#treesOf(this.#frames);
     const win = doc.defaultView as (Window & typeof globalThis) | null;
     this.#observer = new (win?.MutationObserver ?? MutationObserver)(this.#mark);
-    for (const target of this.#targets) {
-      this.#observer.observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
-      for (const type of CHANGE_EVENTS) target.addEventListener(type, this.#mark, true);
-    }
-    for (const d of this.#docs) d.fonts?.addEventListener("loadingdone", this.#mark);
-    this.#state = stateOf(source, this.#docs, this.#targets);
-    this.#texts = texts ? sheetState(this.#targets, true) : null;
+    this.#listen(this.#trees, true);
+    this.#faces = source.faces().length;
+    for (const tree of this.#trees) this.#states.set(tree, treeState(tree));
+    this.#texts = texts ? new Map(this.#trees.map((tree) => [tree, sheetState([tree], true)])) : null;
   }
 
   /**
-   * The scroll offsets and the canvas pixels the snapshot read; until this is called the frame
-   * never counts as still.
+   * Takes what the snapshot read by value, and stops reading the frames it left out; until this is
+   * called the frame never counts as still. False, and the watch stops, when the snapshot did not
+   * settle or drew a frame document the watch does not read.
    */
-  settle(scrolls: readonly ScrollMark[], pixels: readonly CanvasMark[]): void {
-    this.#scrolls = scrolls;
-    this.#pixels = pixels;
+  settle(snapshot: Pick<FrameSnapshot, "settled" | "sizes" | "pixels" | "frames">): boolean {
+    const { settled, frames } = snapshot;
+    if (!settled || frames.some((frame) => !this.#frames.includes(frame))) {
+      this.stop();
+      return false;
+    }
+    if (frames.length < this.#frames.length) this.#leave(frames);
+    this.#scrolls = settled;
+    this.#sizes = snapshot.sizes;
+    this.#pixels = snapshot.pixels;
+    return true;
   }
 
   /**
@@ -130,30 +154,78 @@ export class StillWatch {
    */
   get busy(): boolean {
     if (!this.#changed && this.#observer.takeRecords().length > 0) this.#changed = true;
-    return this.#changed || !this.#state;
+    if (this.#changed) return true;
+    for (const state of this.#states.values()) if (!state) return true;
+    return false;
   }
 
   /** Whether the document still shows what the snapshot read. */
   still(): boolean {
-    if (this.busy || !this.#scrolls || !this.#state) return false;
+    if (this.busy || !this.#scrolls) return false;
     const roots = Array.from(this.#source.shadowRoots());
     if (!same(this.#roots, roots)) return false;
-    if (!same(this.#frames, frameDocuments([this.#source.document, ...roots]))) return false;
+    if (!same(this.#all, frameDocuments([this.#source.document, ...roots]))) return false;
+    if (this.#source.faces().length !== this.#faces) return false;
     for (const { el, left, top } of this.#scrolls) {
       if (el.scrollLeft !== left || el.scrollTop !== top) return false;
     }
-    const state = stateOf(this.#source, this.#docs, this.#targets);
-    if (state === null || !same(this.#state, state)) return false;
-    if (!this.#texts || !same(this.#texts, sheetState(this.#targets, true))) return false;
+    for (const { el, width, height } of this.#sizes) {
+      const r = el.getBoundingClientRect();
+      if (r.width !== width || r.height !== height) return false;
+    }
+    for (const [tree, state] of this.#states) {
+      const now = treeState(tree);
+      if (!state || !now || !same(state, now)) return false;
+    }
+    if (!this.#texts) return false;
+    for (const [tree, text] of this.#texts) if (!same(text, sheetState([tree], true))) return false;
     // Last: encoding a canvas costs the most of these checks.
     return this.#pixels.every(({ canvas, url }) => canvasDataUrl(canvas) === url);
   }
 
   stop(): void {
     this.#observer.disconnect();
-    for (const target of this.#targets) {
-      for (const type of CHANGE_EVENTS) target.removeEventListener(type, this.#mark, true);
+    this.#listen(this.#trees, false);
+  }
+
+  /** The frame document, the shadow roots in it or in `frames`, then `frames`. */
+  #treesOf(frames: readonly Document[]): Tree[] {
+    const doc = this.#source.document;
+    const roots = this.#roots.filter((root) => root.ownerDocument === doc || frames.includes(root.ownerDocument));
+    return [doc, ...roots, ...frames];
+  }
+
+  /** Observes the DOM, events and font loads of `trees`, or stops listening to their events. */
+  #listen(trees: readonly Tree[], on: boolean): void {
+    for (const tree of trees) {
+      if (on) this.#observer.observe(tree, { subtree: true, childList: true, attributes: true, characterData: true });
+      for (const type of CHANGE_EVENTS) {
+        if (on) tree.addEventListener(type, this.#mark, true);
+        else tree.removeEventListener(type, this.#mark, true);
+      }
+      if (tree.nodeType !== 9) continue;
+      const fonts = (tree as Document).fonts;
+      if (on) fonts?.addEventListener("loadingdone", this.#mark);
+      else fonts?.removeEventListener("loadingdone", this.#mark);
     }
-    for (const d of this.#docs) d.fonts?.removeEventListener("loadingdone", this.#mark);
+  }
+
+  /** Reads only the frame documents in `frames` (and the trees in them) from now on. */
+  #leave(frames: readonly Document[]): void {
+    const kept = this.#treesOf(frames);
+    // A change in a tree left out shows nowhere.
+    for (const record of this.#observer.takeRecords()) {
+      if (kept.includes(record.target.getRootNode() as Tree)) this.#changed = true;
+    }
+    this.#observer.disconnect();
+    this.#listen(this.#trees, false);
+    this.#frames = frames;
+    this.#trees = kept;
+    this.#listen(kept, true);
+    for (const tree of Array.from(this.#states.keys())) {
+      if (kept.includes(tree)) continue;
+      this.#states.delete(tree);
+      this.#texts?.delete(tree);
+    }
   }
 }

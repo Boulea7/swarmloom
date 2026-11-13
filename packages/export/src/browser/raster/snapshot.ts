@@ -1,6 +1,7 @@
 import { yieldTask } from "../schedule";
 import type { FarCache } from "./far";
 import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
+import { cssImagePending } from "./image-loads";
 import { pickImageSets } from "./image-set";
 import { BLANK_IMAGE, LONG_PIECE, type ResourceCache } from "./resources";
 import { type InheritedValues, nativeControl, type StyleBaseline, styleText } from "./styles";
@@ -237,6 +238,16 @@ export interface ScrollMark {
   top: number;
 }
 
+/**
+ * A box the walk wrote empty, with the size its bounding box had then: all its content shows of it,
+ * changes in the content that come without a mutation (a CSS image loading) included.
+ */
+export interface SizeMark {
+  el: Element;
+  width: number;
+  height: number;
+}
+
 /** A canvas whose pixels went into the image, with the data URL read for it. */
 export interface CanvasMark {
   canvas: HTMLCanvasElement;
@@ -261,15 +272,20 @@ export interface FrameSnapshot {
    * The scroll offsets the image depends on: each scroll container written and each document
    * viewport (same-origin frames included), as the walk read them. Null when the image shows what
    * can change without a DOM mutation or a scroll: a video, a frame whose document cannot be read,
-   * a shadow root the source does not list, SMIL animations, an image still loading.
+   * a shadow root the source does not list, SMIL animations, an image still loading (an `<img>`,
+   * or a CSS image a box written in full is laid out by, see {@link SIZING_IMAGES}).
    */
   settled: readonly ScrollMark[] | null;
+  /** The boxes written empty, with their size: the image holds only while each keeps it. */
+  sizes: readonly SizeMark[];
   /**
    * The canvases whose pixels are in the image rather than drawn over it (one painted under a live
    * page, for one): they change without a mutation, so the image holds only while each gives the
    * same data URL again.
    */
   pixels: readonly CanvasMark[];
+  /** The documents of the same-origin frames drawn into the image (not those left out). */
+  frames: readonly Document[];
 }
 
 export interface Box {
@@ -483,6 +499,10 @@ interface Walk {
   columns: number;
   /** See {@link FrameSnapshot.settled}. */
   scrolls: ScrollMark[];
+  /** See {@link FrameSnapshot.sizes}. */
+  sizes: SizeMark[];
+  /** See {@link FrameSnapshot.frames}. */
+  frames: Document[];
   /** Something written can change without a DOM mutation or a scroll (see {@link FrameSnapshot.settled}). */
   unsettled: boolean;
   /** `performance.now()` at which the walk pauses. */
@@ -1878,6 +1898,7 @@ function pseudoRules(
     if (scroll) scrollWith(scroll, ps, item, override);
     const { text } = styleText(walk.baseline, ps, from, override, props);
     if (!hollow) useFonts(walk, ps);
+    if (text.includes("url(") || content.includes("url(")) noteImages(walk, el.ownerDocument, ps);
     walk.rules.push(`.${cls}${pseudo}{${embedCssUrls(walk, text, "s")};content:${embedCssUrls(walk, content, "s")}}`);
   }
   return cls;
@@ -1887,6 +1908,33 @@ function pseudoRules(
 function useFonts(walk: Walk, cs: CSSStyleDeclaration): void {
   const face = `${cs.getPropertyValue("font-style")}|${cs.getPropertyValue("font-weight")}|${cs.getPropertyValue("font-stretch")}`;
   walk.fonts.add(`${face}\n${cs.getPropertyValue("font-family")}`);
+}
+
+/**
+ * CSS properties whose image lays out the box it is on: as its content (an element's or a
+ * pseudo-element's), its list marker, or the shape its float wraps lines around. Other CSS images
+ * only paint, and the image embeds each itself.
+ */
+const SIZING_IMAGES = ["content", "list-style-image", "shape-outside"] as const;
+
+/**
+ * Marks the snapshot unsettled while the page loads an image a box written in full with style `cs`
+ * is laid out by ({@link SIZING_IMAGES}): the page fires no event once a CSS image has loaded, and
+ * the box, written at the size it has now, then takes the image's. A box written empty is compared
+ * by its size instead ({@link markSize}).
+ */
+function noteImages(walk: Walk, doc: Document, cs: CSSStyleDeclaration): void {
+  if (walk.unsettled) return;
+  for (const name of SIZING_IMAGES) {
+    const value = cs.getPropertyValue(name);
+    if (value.includes("url(") && cssImagePending(doc, value)) walk.unsettled = true;
+  }
+}
+
+/** Records the size of a box written empty (see {@link SizeMark}). */
+function markSize(walk: Walk, el: Element): void {
+  const r = el.getBoundingClientRect();
+  walk.sizes.push({ el, width: r.width, height: r.height });
 }
 
 /**
@@ -2167,6 +2215,9 @@ function* emitElement(
   const control = svg || bare ? null : nativeControl(walk.baseline, el, cs);
   if (control?.scheme) override["color-scheme"] = control.scheme;
   const { text: styleBody, inherited: own } = styleText(walk.baseline, cs, parent, override, props, control?.ua);
+  // An image the box is laid out by is in its style where its value first differs from the
+  // parent's (a box written empty has only layout values: it is compared by its size).
+  if (!svg && styleBody.includes("url(")) noteImages(walk, el.ownerDocument, cs);
   // A clone written with what places it only inherits everything else from its parent's clone.
   const handed = (): InheritedValues => (bare && parent ? new Map([...parent, ...own]) : own);
   if (!bare) useFonts(walk, cs);
@@ -2233,6 +2284,7 @@ function* emitElement(
     // What it hands on is merged only for the SVG elements it keeps (most such boxes keep none).
     if (emptied.kept.length > 0) keep(walk, emptied.kept, el, view, handed());
     walk.out.push(`</${tag}>`);
+    markSize(walk, el);
     const flow = size && flowBox(el, cs, context, emptied, size, walk.rules.slice(rulesFrom));
     if (far && key && probe && !probe.smil && !scrolled && !walk.onCanvas.has(el)) {
       const box: FarBox = {
@@ -2504,6 +2556,7 @@ function writeFar(walk: Walk, el: Element, view: DocView, parent: InheritedValue
     return;
   }
   walk.stats.elements++;
+  markSize(walk, el);
   if (view.top && box.z > 0) raise(walk, box.z);
   if (box.scrolls) walk.scrolls.push({ el, left: 0, top: 0 });
   let cls = "";
@@ -2648,6 +2701,7 @@ function* emitFrame(walk: Walk, frame: HTMLIFrameElement, cs: CSSStyleDeclaratio
     return;
   }
   walk.watch?.observe(doc);
+  walk.frames.push(doc);
   const width = frame.clientWidth;
   const height = frame.clientHeight;
   const at = {
@@ -3073,6 +3127,8 @@ async function walkFrame(
     flow: null,
     columns: 0,
     scrolls: [],
+    sizes: [],
+    frames: [],
     unsettled: false,
     deadline: 0,
     stats: { elements: 0, culled: 0, reused: 0, restarts },
@@ -3202,6 +3258,8 @@ export async function snapshotFrame(
     stats: walk.stats,
     overlays,
     settled,
+    sizes: walk.sizes,
     pixels: walk.pixels,
+    frames: walk.frames,
   };
 }
