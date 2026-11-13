@@ -83,7 +83,10 @@ const KEYFRAME_TIMING = new Set(["offset", "computedOffset", "easing", "composit
  * pseudo-classes. A false match (`[class~=a]`, `::first-line`) only makes the check stricter.
  */
 const NONLOCAL_SELECTOR = /[+~]|:(?:has|nth-|first-|last-|only-|empty|host-context)/;
-/** A length in container query units (`5cqi`, `calc(2cqw + 1px)`): it follows a container's size. */
+/**
+ * A length in container query units (`5cqi`, `calc(2cqw + 1px)`): it follows a container's size.
+ * Matched in a rule's whole text: a false match in a selector or a string only makes the check stricter.
+ */
 const CONTAINER_UNIT = /\dcq(?:[whib]|min|max)\b/;
 /** Elements whose content sheets or document-wide colours depend on. */
 const SHEET_OWNERS = new Set(["style", "link", "meta"]);
@@ -287,21 +290,20 @@ function sheetReach(sheet: CSSStyleSheet): SheetReach {
   return reach;
 }
 
-function readRules(rules: CSSRuleList, reach: SheetReach): void {
+/** Reads `rules` into `reach`; `nested` when the text of a rule holding them was read already. */
+function readRules(rules: CSSRuleList, reach: SheetReach, nested = false): void {
   for (const rule of Array.from(rules)) {
     if (!reach.local && reach.sized) return;
-    const r = rule as CSSRule & {
-      selectorText?: unknown;
-      cssRules?: CSSRuleList;
-      styleSheet?: CSSStyleSheet | null;
-      style?: CSSStyleDeclaration;
-    };
+    const r = rule as CSSRule & { selectorText?: unknown; cssRules?: CSSRuleList; styleSheet?: CSSStyleSheet | null };
     if (typeof r.selectorText === "string" && NONLOCAL_SELECTOR.test(r.selectorText)) reach.local = false;
     // Type tags, not instanceof: the rule may belong to another frame's realm.
     const kind = Object.prototype.toString.call(rule).slice(8, -1);
     // A container's size or a scope's limits may change without a mutation in what they style; so
-    // may a length in container units, with or without a container rule.
-    if (kind === "CSSContainerRule" || (r.style && CONTAINER_UNIT.test(r.style.cssText))) {
+    // may a length in container units, with or without a container rule. Those are found in the
+    // text of the outermost rule, which holds the rules nested in it, and not through `style`: the
+    // getter watchSheetEdits wrapped would hand each declaration to the still check, which would
+    // then read them all on every still frame of the live page.
+    if (kind === "CSSContainerRule" || (!nested && CONTAINER_UNIT.test(rule.cssText))) {
       reach.local = false;
       reach.sized = true;
     } else if (kind === "CSSScopeRule") reach.local = false;
@@ -310,7 +312,7 @@ function readRules(rules: CSSRuleList, reach: SheetReach): void {
       reach.local &&= inner.local;
       reach.sized ||= inner.sized;
     }
-    if (r.cssRules) readRules(r.cssRules, reach);
+    if (r.cssRules) readRules(r.cssRules, reach, true);
   }
 }
 
