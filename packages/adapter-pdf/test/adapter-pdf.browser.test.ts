@@ -69,6 +69,10 @@ describe("pdf adapter on the brochure sample", () => {
     expect(crops.find((c) => String(c.meta?.text).startsWith("Every cursor"))?.role).toBe("paragraph");
     expect(crops.find((c) => c.meta?.text === "example value")?.reveal).toBe("sweep");
     expect(crops.filter((c) => c.reveal === "type").length).toBeGreaterThan(40);
+    // The sample's own footer must not call the whole file MIT: it embeds GPL v2 (font exception) and OFL fonts.
+    const prose = all.replace(/\s+/g, " ");
+    expect(prose).not.toMatch(/released under the MIT license/i);
+    expect(prose).toContain("The fonts embedded in this file are not MIT");
 
     // Two-column notes build column by column (stream order), not interleaved row by row.
     const priorityOf = (start: string) => crops.find((c) => String(c.meta?.text).startsWith(start))?.priority ?? -1;

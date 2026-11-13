@@ -8,7 +8,8 @@
 // Chromium: --chrome, $SWARMLOOM_CHROME, ~/bin/chromium, else Playwright's own build.
 // Fonts come from the machine (Liberation/DejaVu/Noto CJK here), so other machines may
 // produce slightly different bytes; the committed file is the reference sample. Chromium
-// embeds subsets of those fonts: SOURCES.md must name every embedded font and its licence.
+// embeds subsets of those fonts: SOURCES.md must name every embedded font and its licence, and
+// the footer must not call the whole file MIT (the fonts are GPL v2 with an exception and OFL 1.1).
 
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -157,7 +158,9 @@ const html = `<!doctype html>
       <p>Exported films keep the sound in step with the picture, because both come from the same list of
       events recorded during the build.</p>
     </div>
-    <footer>SwarmLoom sample document. Written for the SwarmLoom repository and released under the MIT license.</footer>
+    <footer>SwarmLoom sample document, written for the SwarmLoom repository (github.com/Boulea7/swarmloom).
+    Text, chart values and artwork: MIT license. The fonts embedded in this file are not MIT: they keep their
+    own licences, listed in examples/pdf/SOURCES.md.</footer>
   </section>
 <script>
   // Raster figure: a deterministic woven pattern painted on a canvas and embedded as PNG.
