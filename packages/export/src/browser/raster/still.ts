@@ -1,4 +1,4 @@
-import { sheetsOf } from "./far";
+import { animationState, sheetsOf } from "./far";
 import { SheetMark, watchSheetEdits } from "./sheet-edits";
 import { type CanvasMark, canvasDataUrl, type ScrollMark, type SnapshotSource } from "./snapshot";
 
@@ -38,6 +38,8 @@ function frameDocuments(scopes: readonly (Document | ShadowRoot)[]): Document[] 
  * place ({@link SheetMark}): FontFace faces, the font sets of its documents, focus, the style sheets
  * (whether each applies, and to what media) and Web Animations, read from each document and shadow
  * root. Null while a font loads or an animation runs, as both change the frame on the wall clock.
+ * An animation counts by the values it animates ({@link animationState}), not by its time: after
+ * going live every frame seeks each animation, those holding their end state included.
  */
 function stateOf(
   source: StillSource,
@@ -58,8 +60,9 @@ function stateOf(
     const animations = typeof target.getAnimations === "function" ? target.getAnimations() : [];
     state.push(animations.length);
     for (const animation of animations) {
-      if (animation.playState === "running") return null;
-      state.push(animation, animation.playState, animation.currentTime);
+      const look = animationState(animation);
+      if (look === null) return null;
+      state.push(animation, look);
     }
   }
   return state;
@@ -74,8 +77,9 @@ function same(a: readonly unknown[], b: readonly unknown[]): boolean {
  * again. Created before the walk, so a change during it counts too. The frame shows the same while:
  * nothing in the document, its shadow roots or the documents of its same-origin frames (see
  * {@link frameDocuments}) mutated; no image, style sheet or font loaded in any of them; no popover
- * or details element toggled; the shadow roots, frame documents, FontFace faces, focus, style sheets and Web Animations (none running) are
- * those of the start, and no rule was edited in place through the CSSOM, which changes it without a
+ * or details element toggled; the shadow roots, frame documents, FontFace faces, focus, style
+ * sheets and Web Animations (none running) are those of the start, each animation showing the
+ * values it showed then, and no rule was edited in place through the CSSOM, which changes it without a
  * mutation ({@link StillWatch.sheets}; the watch wraps the CSSOM of each document's window to tell,
  * see watchSheetEdits); the scroll offsets the walk read have not moved; and each canvas whose
  * pixels went into the image gives the same data URL ({@link settle}). What the walk marks as

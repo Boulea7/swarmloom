@@ -424,7 +424,7 @@ it("decodes the image again only once the snapshot changed, reusing the encoding
   }
 });
 
-it("walks the frame again only after a mutation, a scroll, an animation seek or a change of canvas pixels in the image", async () => {
+it("walks the frame again only after a mutation, a scroll, an animation seek that changes a value or a change of canvas pixels in the image", async () => {
   const { win, rasterizer } = await frameOf(
     '<body style="margin:0"><div id=s style="height:100px;overflow:hidden">' +
       '<div style="height:100px;background:rgb(255,0,0)"></div><div style="height:100px;background:rgb(0,0,255)"></div>' +
@@ -447,6 +447,9 @@ it("walks the frame again only after a mutation, a scroll, an animation seek or 
   fade.pause();
   expect((await frame())[0]).toBe(3);
   fade.currentTime = 1000;
+  expect(await frame()).toEqual([4, [255, 255, 255]]);
+  // Past its end it holds its last value, as after going live, where every frame seeks it.
+  fade.currentTime = 1500;
   expect(await frame()).toEqual([4, [255, 255, 255]]);
   fade.cancel();
   // A canvas painted over is drawn into the image: its pixels change without a mutation.

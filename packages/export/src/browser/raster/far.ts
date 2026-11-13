@@ -393,11 +393,14 @@ function reachOf(names: readonly string[] | null): AnimationReach {
 
 /**
  * An animation's state for comparing frames, null while it runs on the wall clock: the computed
- * values of what it animates on its target, which the walk writes, so a frame that changes none of
- * them (a `steps()` timing between steps, a hold) changes nothing; its timing where one of them
- * reads empty.
+ * values of what it animates on its target (`names`, read from its keyframes by default), which
+ * the walk writes, so a frame that changes none of them (a `steps()` timing between steps, a fill
+ * held past its end) changes nothing; its timing where one of them reads empty.
  */
-function animationState(animation: Animation, names: readonly string[] | null): string | null {
+export function animationState(
+  animation: Animation,
+  names: readonly string[] | null = animatedNames(animation),
+): string | null {
   if (animation.playState === "running") return null;
   const timing = `@${animation.playState} ${String(animation.currentTime)} ${animation.playbackRate}`;
   const effect = animation.effect as KeyframeEffect | null;
