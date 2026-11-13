@@ -264,6 +264,33 @@ it.for<[string, string, string]>([
   },
 );
 
+it.for(["ul", "li"])(
+  "reads the list marker of no far item once the bullet a %s rule inlines has loaded",
+  async (tag) => {
+    // A bullet inlined as a data URL: each item read for it serialises the whole URL again.
+    const bullet = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'/>")`;
+    const list = `<section><ul>${"<li>far</li>".repeat(10)}</ul></section>`;
+    const { win, rasterizer } = await frameOf(
+      `<style>${tag}{list-style-image:${bullet}}</style><body style="margin:0"><p>near</p>` +
+        `<div style="height:2000px"></div>${list.repeat(20)}`,
+    );
+    // The first walk loads the bullet for the check; a new rasterizer reads every far box again.
+    await rasterizer.snapshot();
+    let reads = 0;
+    const proto = (win as Window & typeof globalThis).CSSStyleDeclaration.prototype;
+    const get = proto.getPropertyValue;
+    proto.getPropertyValue = function (this: CSSStyleDeclaration, name: string) {
+      if (name === "list-style-image") reads++;
+      return get.call(this, name);
+    };
+    const { svg } = await rasterizerOf(win).snapshot();
+    expect(svg).toContain(">near<");
+    expect(svg).not.toContain(">far<");
+    // The boxes written in full read it, as does the check of the rules; none of the 200 far items.
+    expect(reads).toBeLessThan(100);
+  },
+);
+
 it("writes far boxes empty around SVG ids, keeping the clip paths, gradients and symbols drawn elsewhere", async () => {
   // Cards as design tools export their icons: a clip path or gradient with an id inside each.
   const icon = (i: number) =>

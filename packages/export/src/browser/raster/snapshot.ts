@@ -1,7 +1,7 @@
 import { yieldTask } from "../schedule";
 import type { FarCache } from "./far";
 import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
-import { cssImagePending } from "./image-loads";
+import { cssImagePending, markerImagesLoaded } from "./image-loads";
 import { pickImageSets } from "./image-set";
 import { BLANK_IMAGE, LONG_PIECE, type ResourceCache } from "./resources";
 import { type InheritedValues, nativeControl, type StyleBaseline, styleText } from "./styles";
@@ -507,6 +507,8 @@ interface Walk {
   unsettled: boolean;
   /** CSS images still loading that the walk found laying out a box it read ({@link noteImages}). */
   loading: number;
+  /** By document, whether no list marker image its CSS gives still loads ({@link markersLoaded}). */
+  markers: Map<Document, boolean>;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
   stats: SnapshotStats;
@@ -827,7 +829,7 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
     const html = el.namespaceURI !== SVG_NS;
     if (html) {
       const item = display.includes("list-item");
-      noteImages(walk, el.ownerDocument, cs, item);
+      noteImages(walk, el.ownerDocument, cs, item && !markersLoaded(walk, el));
       if (item) noteMarker(walk, el, view);
     }
     const pseudos = html && !VOID.has(el.localName) ? PSEUDOS : [];
@@ -836,7 +838,8 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
       const content = ps.getPropertyValue("content");
       if (!content || content === "none" || content === "normal") continue;
       if (stepsCounter(ps, inList)) return true;
-      noteImages(walk, el.ownerDocument, ps, ps.getPropertyValue("display").includes("list-item"), content);
+      const item = ps.getPropertyValue("display").includes("list-item");
+      noteImages(walk, el.ownerDocument, ps, item && !markersLoaded(walk, el), content);
     }
     // A frame's document counts on its own.
     if (el.localName === "iframe") continue;
@@ -844,6 +847,26 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
     for (const child of flatChildren(walk, el)) if (child.nodeType === 1) stack.push([child as Element, childListed]);
   }
   return false;
+}
+
+/**
+ * Whether no list marker image the CSS of the document of `el` gives still loads, so the scan of a
+ * far subtree need not read the `list-style-image` of its list items ({@link markerImagesLoaded}):
+ * the value inherits, and each item of a list with an inlined bullet would serialise the whole data
+ * URL again. Read once per walk and document, from the document and the shadow roots the source
+ * lists; false for an element of a shadow root it does not list, whose sheets are not read.
+ */
+function markersLoaded(walk: Walk, el: Element): boolean {
+  const root = el.getRootNode();
+  if (root.nodeType !== 9 && !walk.listed.has(root as ShadowRoot)) return false;
+  const doc = el.ownerDocument;
+  let loaded = walk.markers.get(doc);
+  if (loaded === undefined) {
+    const roots = Array.from(walk.listed).filter((listed) => listed.ownerDocument === doc);
+    loaded = markerImagesLoaded(doc, [doc, ...roots]);
+    walk.markers.set(doc, loaded);
+  }
+  return loaded;
 }
 
 /**
@@ -3179,6 +3202,7 @@ async function walkFrame(
     frames: [],
     unsettled: false,
     loading: 0,
+    markers: new Map(),
     deadline: 0,
     stats: { elements: 0, culled: 0, reused: 0, restarts },
     nextClass: 0,
