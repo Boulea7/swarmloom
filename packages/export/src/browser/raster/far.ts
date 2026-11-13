@@ -88,6 +88,18 @@ const NONLOCAL_SELECTOR = /[+~]|:(?:has|nth-|first-|last-|only-|empty|host-conte
  * Matched in a rule's whole text: a false match in a selector or a string only makes the check stricter.
  */
 const CONTAINER_UNIT = /\dcq(?:[whib]|min|max)\b/;
+/**
+ * Rules whose own text holds no length a container sizes: a grouping rule (only the rules in it are
+ * read) and a font face, whose text holds its whole source (a data URL may run to megabytes).
+ */
+const UNSIZED_RULES = new Set([
+  "CSSFontFaceRule",
+  "CSSMediaRule",
+  "CSSSupportsRule",
+  "CSSLayerBlockRule",
+  "CSSScopeRule",
+  "CSSStartingStyleRule",
+]);
 /** Elements whose content sheets or document-wide colours depend on. */
 const SHEET_OWNERS = new Set(["style", "link", "meta"]);
 /**
@@ -300,10 +312,11 @@ function readRules(rules: CSSRuleList, reach: SheetReach, nested = false): void 
     const kind = Object.prototype.toString.call(rule).slice(8, -1);
     // A container's size or a scope's limits may change without a mutation in what they style; so
     // may a length in container units, with or without a container rule. Those are found in the
-    // text of the outermost rule, which holds the rules nested in it, and not through `style`: the
-    // getter watchSheetEdits wrapped would hand each declaration to the still check, which would
-    // then read them all on every still frame of the live page.
-    if (kind === "CSSContainerRule" || (!nested && CONTAINER_UNIT.test(rule.cssText))) {
+    // text of the outermost rule not in UNSIZED_RULES, which holds the rules nested in it, and not
+    // through `style`: the getter watchSheetEdits wrapped would hand each declaration to the still
+    // check, which would then read them all on every still frame of the live page.
+    const own = !nested && !UNSIZED_RULES.has(kind);
+    if (kind === "CSSContainerRule" || (own && CONTAINER_UNIT.test(rule.cssText))) {
       reach.local = false;
       reach.sized = true;
     } else if (kind === "CSSScopeRule") reach.local = false;
@@ -312,7 +325,7 @@ function readRules(rules: CSSRuleList, reach: SheetReach, nested = false): void 
       reach.local &&= inner.local;
       reach.sized ||= inner.sized;
     }
-    if (r.cssRules) readRules(r.cssRules, reach, true);
+    if (r.cssRules) readRules(r.cssRules, reach, nested || own);
   }
 }
 

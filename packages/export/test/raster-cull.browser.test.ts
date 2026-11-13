@@ -459,12 +459,13 @@ it.for<[string, (win: Window) => void, "all" | "even" | "none", ((win: Window) =
           section, div { width: 50px; margin-top: 10% } #near { width: 100px }</style>`,
       ),
   ],
-  // Container units resolve against a container another box may resize, as container queries do.
+  // Container units resolve against a container another box may resize, as container queries do;
+  // a grouping rule's own text is not read, the rules in it are.
   [
     "a layout animation under container units",
     (win) => paused(nearHeight(win), 500),
     "none",
-    (win) => win.document.head.insertAdjacentHTML("beforeend", "<style>h3 { margin-top: 1cqi }</style>"),
+    (win) => win.document.head.insertAdjacentHTML("beforeend", "<style>@media all { h3 { margin-top: 1cqi } }</style>"),
   ],
   ["the scroll", (win) => win.scrollBy(0, 60), "all"],
   [
