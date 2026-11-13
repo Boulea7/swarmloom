@@ -222,6 +222,15 @@ describe("rewriteCssUrls", () => {
     expect(performance.now() - started).toBeLessThan(5000);
     expect(out).toBe(`a{b:${"f(".repeat(n)}invalid(var(--a) 1x)${")".repeat(n)}}`);
   });
+
+  it("reads an unquoted url( of hex escapes without its ) in linear time", () => {
+    // Each `\a` also read as one escaped character, so 28 of them took 2^28 tries, ~5 s.
+    const escapes = "\\a".repeat(28);
+    const started = performance.now();
+    const out = rewriteCssUrls(`p{background:url(${escapes}"x") red}`, "https", "https://x.dev/");
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(out).toBe(`p{background:invalid(${escapes}"x") red}`);
+  });
 });
 
 describe("htmlAdapter.load (fragments)", () => {

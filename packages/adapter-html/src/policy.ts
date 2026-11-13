@@ -52,11 +52,14 @@ const CSS_TOKEN =
 /**
  * What follows `url(` when the browser reads a URL from it: a string (groups 1 and 2) or an unquoted
  * URL (group 3), then `)` or the end of the text (an unclosed `url(` at the end still loads). In an
- * unquoted URL a hex escape takes one whitespace after it, as in `url(a\3c b.png)`.
+ * unquoted URL a hex escape takes one whitespace after it, as in `url(a\3c b.png)`. Its digits are
+ * read whole (group 4, a lookahead then a backreference) and never as one escaped character: with
+ * two readings per escape, a URL not followed by `)` would backtrack through all of them, in time
+ * exponential in its length.
  */
 const CSS_URL_REST =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: an unquoted URL ends at a control character, as in the CSS tokenizer.
-  /[ \t\n]*(?:(["'])((?:(?!\1)[^\\\n]|\\[\s\S])*)(?:\1|\\?$|(?=\n))|((?:[^\x00-\x20"'()\\\x7f]|\\(?:[0-9a-fA-F]{1,6}[ \t\n]?|[^\n]))*))[ \t\n]*(?:\)|$)/y;
+  /[ \t\n]*(?:(["'])((?:(?!\1)[^\\\n]|\\[\s\S])*)(?:\1|\\?$|(?=\n))|((?:[^\x00-\x20"'()\\\x7f]|\\(?:(?=([0-9a-fA-F]{1,6}))\4[ \t\n]?|[^\n0-9a-fA-F]))*))[ \t\n]*(?:\)|$)/y;
 /** Functions that take a plain string as an image URL, as in `image-set("a.png" 1x)`. */
 const URL_STRING_FUNCTIONS = new Set(["image-set", "-webkit-image-set", "image", "src"]);
 /**
