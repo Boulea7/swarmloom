@@ -175,7 +175,7 @@ export function createWatch(ctx: AppContext): View {
   });
   /** Bumped per QR code shown, so a link that is read late never replaces a newer one. */
   let qrRequest = 0;
-  /** What the open dialog shows (null: the link is still read), drawn again when the face resizes. */
+  /** What the open dialog shows (null: the link is still read), drawn again when its room changes. */
   let qrShown: { url: string } | { notice: string } | null = null;
   /** Ends the reads of sources still running when the face goes. */
   const lifetime = new AbortController();
@@ -497,6 +497,20 @@ export function createWatch(ctx: AppContext): View {
         })
       : null;
   qrResize?.observe(qr);
+
+  // The code is sized in device pixels: a window moved to a screen with another pixel ratio has the
+  // same room in CSS pixels (no resize) but more or fewer pixels for each module. A resolution query
+  // matches one ratio, so each change listens again for the new one.
+  const watchPixelRatio = (): void => {
+    if (typeof window.matchMedia !== "function") return;
+    const ratio = window.matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+    const changed = () => {
+      if (qr.open) drawQr(qrShown);
+      watchPixelRatio();
+    };
+    ratio.addEventListener("change", changed, { once: true, signal: lifetime.signal });
+  };
+  watchPixelRatio();
 
   const first = items[0];
   if (first) load(first, engaged);
