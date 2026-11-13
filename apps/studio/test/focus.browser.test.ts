@@ -99,3 +99,30 @@ describe("switch", () => {
     expect(contrast(knob, paint(under, style.backgroundColor))).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe("switch in forced colours", () => {
+  // Forcing repaints the knob in Canvas and drops its shadow, the same colour as the panel.
+  it.each(["off", "on"])("keeps the %s knob apart from its track", async (state) => {
+    await cdp().send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
+    try {
+      const panel = document.createElement("div");
+      panel.className = "panel";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.className = "switch";
+      input.checked = state === "on";
+      panel.append(input);
+      document.body.append(panel);
+
+      const track = paint(getComputedStyle(panel).backgroundColor, getComputedStyle(input).backgroundColor);
+      const knob = paint(
+        getComputedStyle(panel).backgroundColor,
+        getComputedStyle(input).backgroundColor,
+        getComputedStyle(input, "::before").backgroundColor,
+      );
+      expect(contrast(knob, track)).toBeGreaterThanOrEqual(3);
+    } finally {
+      await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+    }
+  });
+});
