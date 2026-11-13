@@ -176,9 +176,13 @@ export class FrameRasterizer {
     const { document, shadows, fonts } = this.#o;
     // Its probe elements would count as a change.
     this.#baseline ??= readBaseline(document);
+    // The far cache does not read rules edited in place through the CSSOM, nor keyframes set anew;
+    // the still watch does. Forgotten before the next watch reads what each animation animates, or
+    // after it when it watched a new window, which hands the rules (see watchSheetEdits).
+    const edited = !this.#sheets?.holds();
+    if (edited) this.#far.forget();
     const watch = new StillWatch({ document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() });
-    // The far cache does not read rules edited in place through the CSSOM; the still watch does.
-    if (!this.#sheets?.holds()) this.#far.forget();
+    if (!edited && !this.#sheets?.holds()) this.#far.forget();
     this.#sheets = watch.sheets;
     try {
       const { parts, stats, overlays, settled, pixels } = await this.snapshot(signal, scale);

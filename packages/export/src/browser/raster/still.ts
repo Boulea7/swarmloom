@@ -1,4 +1,4 @@
-import { animationState, sheetsOf } from "./far";
+import { animationMark, animationsOf, sheetsOf } from "./far";
 import { SheetMark, watchSheetEdits } from "./sheet-edits";
 import { type CanvasMark, canvasDataUrl, type ScrollMark, type SnapshotSource } from "./snapshot";
 
@@ -38,8 +38,9 @@ function frameDocuments(scopes: readonly (Document | ShadowRoot)[]): Document[] 
  * place ({@link SheetMark}): FontFace faces, the font sets of its documents, focus, the style sheets
  * (whether each applies, and to what media) and Web Animations, read from each document and shadow
  * root. Null while a font loads or an animation runs, as both change the frame on the wall clock.
- * An animation counts by the values it animates ({@link animationState}), not by its time: after
- * going live every frame seeks each animation, those holding their end state included.
+ * An animation counts by the values it animates ({@link animationMark}), not by its time: after
+ * going live every frame seeks each animation, those holding their end state included. The far
+ * cache reads the same animations right after, without reading them again.
  */
 function stateOf(
   source: StillSource,
@@ -57,10 +58,10 @@ function stateOf(
     const sheets = sheetsOf(target);
     state.push(sheets.length);
     for (const sheet of sheets) state.push(sheet, sheet.disabled, sheet.media?.mediaText);
-    const animations = typeof target.getAnimations === "function" ? target.getAnimations() : [];
+    const animations = animationsOf(target);
     state.push(animations.length);
     for (const animation of animations) {
-      const look = animationState(animation);
+      const look = animationMark(animation).state;
       if (look === null) return null;
       state.push(animation, look);
     }

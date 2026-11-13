@@ -360,16 +360,79 @@ const DEEP = 1;
 const LAYOUT = 2;
 type AnimationReach = typeof SELF | typeof DEEP | typeof LAYOUT;
 
-/** What a walk read of a Web Animation: {@link animationState}, and how far a change of it reaches. */
-interface AnimationMark {
+/** What a read of a Web Animation gives: {@link animationState}, and how far a change of it reaches. */
+export interface AnimationMark {
   state: string | null;
   reach: AnimationReach;
 }
 
-/** The CSS names of the properties an animation animates; null when its keyframes cannot be read. */
-function animatedNames(animation: Animation): string[] | null {
-  const effect = animation.effect as KeyframeEffect | null;
-  if (!effect || typeof effect.getKeyframes !== "function") return null;
+/** What an effect animates: the CSS names of the properties (null when unreadable), and their reach. */
+interface Animated {
+  names: readonly string[] | null;
+  reach: AnimationReach;
+}
+
+/**
+ * {@link Animated} by keyframe effect, read from its keyframes once: `getKeyframes()` on every frame
+ * cost about 10 ms per 1000 animations. Read anew ({@link forgetKeyframes}) once keyframes may have
+ * changed without a new effect: a style sheet added, removed or switched ({@link animationsOf}), a
+ * rule edited in place or keyframes set anew (the rasterizer then calls {@link FarCache.forget}).
+ */
+let animatedByEffect = new WeakMap<AnimationEffect, Animated>();
+
+/**
+ * Reads shared until the running script yields (the next microtask checkpoint): before a walk, the
+ * still check of the last frame, the one of the next frame (`StillWatch`) and the far cache read
+ * the same animations one after the other, and `getAnimations()` sorts them in tree order (about
+ * 12 ms per 1000 animations each time). Nothing between those reads changes the page.
+ */
+interface Reads {
+  lists: Map<Document | ShadowRoot, readonly Animation[]>;
+  marks: Map<Animation, AnimationMark>;
+}
+
+let reads: Reads | null = null;
+
+function shared(): Reads {
+  if (reads) return reads;
+  const fresh: Reads = { lists: new Map(), marks: new Map() };
+  reads = fresh;
+  queueMicrotask(() => {
+    if (reads === fresh) reads = null;
+  });
+  return fresh;
+}
+
+/** Reads what each effect animates anew, from now on. */
+function forgetKeyframes(): void {
+  animatedByEffect = new WeakMap();
+  reads?.marks.clear();
+}
+
+/** The style sheets of each document or shadow root at its last {@link animationsOf}. */
+const listedSheets = new WeakMap<Document | ShadowRoot, unknown[]>();
+
+/**
+ * The Web Animations of a document or shadow root, `getAnimations()` read once while the script
+ * runs ({@link Reads}). Its style sheets changed since the last read: the keyframes of its CSS
+ * animations may have too, so what every effect animates is read anew.
+ */
+export function animationsOf(target: Document | ShadowRoot): readonly Animation[] {
+  const shares = shared();
+  let list = shares.lists.get(target);
+  if (list) return list;
+  const sheets = sheetState([target]);
+  const known = listedSheets.get(target);
+  if (known && !same(known, sheets)) forgetKeyframes();
+  listedSheets.set(target, sheets);
+  list = typeof target.getAnimations === "function" ? target.getAnimations() : [];
+  shares.lists.set(target, list);
+  return list;
+}
+
+/** The CSS names of the properties an effect animates; null when its keyframes cannot be read. */
+function animatedNames(effect: KeyframeEffect): string[] | null {
+  if (typeof effect.getKeyframes !== "function") return null;
   try {
     const names = new Set<string>();
     for (const frame of effect.getKeyframes()) {
@@ -391,16 +454,26 @@ function reachOf(names: readonly string[] | null): AnimationReach {
   return reach;
 }
 
+/** What an animation's effect animates ({@link animatedByEffect}). */
+function animated(animation: Animation): Animated {
+  const effect = animation.effect as KeyframeEffect | null;
+  if (!effect) return { names: null, reach: LAYOUT };
+  let known = animatedByEffect.get(effect);
+  if (!known) {
+    const names = animatedNames(effect);
+    known = { names, reach: reachOf(names) };
+    animatedByEffect.set(effect, known);
+  }
+  return known;
+}
+
 /**
  * An animation's state for comparing frames, null while it runs on the wall clock: the computed
- * values of what it animates on its target (`names`, read from its keyframes by default), which
- * the walk writes, so a frame that changes none of them (a `steps()` timing between steps, a fill
- * held past its end) changes nothing; its timing where one of them reads empty.
+ * values of what it animates on its target (`names`), which the walk writes, so a frame that
+ * changes none of them (a `steps()` timing between steps, a fill held past its end) changes
+ * nothing; its timing where one of them reads empty.
  */
-export function animationState(
-  animation: Animation,
-  names: readonly string[] | null = animatedNames(animation),
-): string | null {
+function animationState(animation: Animation, names: readonly string[] | null): string | null {
   if (animation.playState === "running") return null;
   const timing = `@${animation.playState} ${String(animation.currentTime)} ${animation.playbackRate}`;
   const effect = animation.effect as KeyframeEffect | null;
@@ -417,9 +490,19 @@ export function animationState(
   return state;
 }
 
-function markOf(animation: Animation): AnimationMark {
-  const names = animatedNames(animation);
-  return { state: animationState(animation, names), reach: reachOf(names) };
+/**
+ * What an animation shows and how far a change of it reaches, read once while the script runs
+ * ({@link Reads}): the still check compares its state too.
+ */
+export function animationMark(animation: Animation): AnimationMark {
+  const shares = shared();
+  let mark = shares.marks.get(animation);
+  if (!mark) {
+    const { names, reach } = animated(animation);
+    mark = { state: animationState(animation, names), reach };
+    shares.marks.set(animation, mark);
+  }
+  return mark;
 }
 
 /** Whether a mutation adds, removes or edits a style sheet or a colour-scheme meta element. */
@@ -598,13 +681,15 @@ export class FarCache<T> {
   }
 
   /**
-   * Drops every box kept, for a change it does not read itself (rules edited in place), and reads
-   * anew what the sheets match: an edit that keeps the rule count may match beyond the boxes a
-   * mutation reaches by itself, or query container sizes, from now on.
+   * Drops every box kept, for a change it does not read itself (rules edited in place, keyframes
+   * set anew), and reads anew what the sheets match and what each animation animates: an edit that
+   * keeps the rule count may match beyond the boxes a mutation reaches by itself, or query
+   * container sizes, from now on.
    */
   forget(): void {
     this.#entries.clear();
     sheetReaches = new WeakMap();
+    forgetKeyframes();
     for (const scope of this.#scopes.values()) Object.assign(scope, scopeReach(scope.targets));
   }
 
@@ -657,7 +742,7 @@ export class FarCache<T> {
     scope.sheets = sheetState(scope.targets);
     Object.assign(scope, scopeReach(scope.targets));
     scope.focus = Array.from(scope.targets, (t) => t.activeElement);
-    for (const animation of target.getAnimations?.() ?? []) scope.animations.set(animation, markOf(animation));
+    for (const animation of animationsOf(target)) scope.animations.set(animation, animationMark(animation));
     scope.epoch++;
   }
 
@@ -716,7 +801,7 @@ export class FarCache<T> {
     }
     const animations = new Map<Animation, AnimationMark>();
     for (const target of scope.targets) {
-      for (const animation of target.getAnimations?.() ?? []) animations.set(animation, markOf(animation));
+      for (const animation of animationsOf(target)) animations.set(animation, animationMark(animation));
     }
     let layout = false;
     const moved = (animation: Animation, reach: AnimationReach) => {

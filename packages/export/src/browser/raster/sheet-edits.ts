@@ -1,10 +1,12 @@
 /**
  * Edits made to style sheets in place through the CSSOM, which change a frame without a DOM
  * mutation: a rule inserted or deleted, a sheet replaced, a new selector, media or key, or a
- * declaration of a rule set through its `style`. {@link watchSheetEdits} wraps the CSSOM of a window
- * so that they are counted, and {@link SheetMark} tells whether any happened since it was taken:
- * neither serialises a rule, so a still frame costs the same whatever the size of the page's CSS
- * (but for a window whose own scripts ran before it was watched, see {@link watchSheetEdits}).
+ * declaration of a rule set through its `style`; also keyframes set anew on an effect
+ * (`setKeyframes()`), as an edited `@keyframes` rule would. {@link watchSheetEdits} wraps the
+ * CSSOM of a window so that they are counted, and {@link SheetMark} tells whether any happened
+ * since it was taken: neither serialises a rule, so a still frame costs the same whatever the size
+ * of the page's CSS (but for a window whose own scripts ran before it was watched, see
+ * {@link watchSheetEdits}).
  * The count is per window, not per sheet: an edit to a sheet no document uses (a constructed sheet
  * not adopted) counts too.
  */
@@ -32,6 +34,7 @@ const WRITERS = new Set([
   "append",
   "delete",
   "clear",
+  "setKeyframes",
 ]);
 
 /** Edits counted so far, in every window watched. */
@@ -167,9 +170,10 @@ function wrap(name: string, proto: object, key: string, descriptor: PropertyDesc
  * Counts the edits made through the CSSOM to the style sheets of `win`'s documents from now on,
  * by any script (the sheets of a frame without scripts are edited from its parent through its
  * prototypes too): the setters and the writing methods of its sheets, rules, media lists and rule
- * declarations are wrapped, and so is the `style` of its rules, whose declarations are compared by
- * text from then on (see {@link handed}). Writes to an element's inline style map do not count
- * ({@link inlineMaps}). Once per window; the wrappers stay with the window. A script of `win` may
+ * declarations are wrapped, as is `setKeyframes()` of its keyframe effects, and so is the `style`
+ * of its rules, whose declarations are compared by text from then on (see {@link handed}). Writes
+ * to an element's inline style map do not count ({@link inlineMaps}). Once per window; the
+ * wrappers stay with the window. A script of `win` may
  * have taken a rule's declaration before, to set it by property name later: unless no script runs
  * there ({@link scripted}), every declaration in the sheets of `scopes` (its document by default)
  * is handed at once, so a still frame of such a window costs one read of each. Not seen: a
@@ -202,6 +206,10 @@ export function watchSheetEdits(win: Window | null, scopes?: Iterable<Document |
     };
     Object.defineProperty(proto, "attributeStyleMap", descriptor);
   }
+  // What an effect animates is read once (the far cache's `animationMark`) until an edit counts.
+  const effect = realm.KeyframeEffect?.prototype;
+  const setKeyframes = effect && Object.getOwnPropertyDescriptor(effect, "setKeyframes");
+  if (effect && setKeyframes?.configurable) wrap("KeyframeEffect", effect, "setKeyframes", setKeyframes);
   if (!scripted(win)) return;
   for (const scope of scopes ?? [win.document]) {
     for (const sheet of sheetsOf(scope)) takeSheet(sheet);

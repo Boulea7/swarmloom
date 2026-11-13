@@ -461,6 +461,70 @@ it("walks the frame again only after a mutation, a scroll, an animation seek tha
   expect((await frame())[0]).toBe(6);
 });
 
+it("lists the animations once per frame and reads what each animates once", async () => {
+  const { win, rasterizer } = await frameOf(
+    "<style>@keyframes k { to { opacity: 0.5 } } i { display: block; height: 10px; animation: k 1s both paused }</style>" +
+      '<body style="margin:0"><i></i><i></i><i></i></body>',
+  );
+  const animations = win.document.getAnimations();
+  const realm = win as Window & typeof globalThis;
+  const keyframes = vi.spyOn(realm.KeyframeEffect.prototype, "getKeyframes");
+  const lists = vi.spyOn(realm.Document.prototype, "getAnimations");
+  try {
+    // Every frame seeks each animation, as after going live, and so walks again.
+    for (let time = 0; time < 400; time += 100) {
+      for (const animation of animations) animation.currentTime = time;
+      await pixel(rasterizer, 5, 5);
+    }
+    const reads = { keyframes: keyframes.mock.calls.length, lists: lists.mock.calls.length };
+    expect(reads).toEqual({ keyframes: 3, lists: 4 });
+  } finally {
+    keyframes.mockRestore();
+    lists.mockRestore();
+  }
+});
+
+const COLOURS = "from { background-color: rgb(255, 0, 0) } to { background-color: rgb(0, 0, 255) }";
+
+// The same effect animates something else from then on: a seek after the next frame is seen.
+it.for<[string, (box: HTMLElement) => Animation, (animation: Animation, doc: Document) => unknown]>([
+  [
+    "keyframes set anew",
+    (box) => box.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 1000, fill: "both" }),
+    (animation) =>
+      (animation.effect as KeyframeEffect).setKeyframes([
+        { backgroundColor: "rgb(255, 0, 0)" },
+        { backgroundColor: "rgb(0, 0, 255)" },
+      ]),
+  ],
+  [
+    "a style sheet that redefines its keyframes",
+    (box) => {
+      box.style.animation = "k 1s linear both";
+      return box.getAnimations()[0] as Animation;
+    },
+    // Once loaded: the load itself would count as a change of the next frame too.
+    (_, doc) => {
+      const style = doc.createElement("style");
+      style.textContent = `@keyframes k { ${COLOURS} }`;
+      const loaded = new Promise((resolve) => style.addEventListener("load", resolve, { once: true }));
+      doc.head.append(style);
+      return loaded;
+    },
+  ],
+])("sees what an animation animates anew after %s", async ([, start, change]) => {
+  const { win, rasterizer } = await frameOf(
+    '<style>@keyframes k { to { opacity: 1 } }</style><body style="margin:0"><div id=b style="height:100px"></div>',
+  );
+  const animation = start(win.document.getElementById("b") as HTMLElement);
+  animation.pause();
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 255, 255]);
+  await change(animation, win.document);
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+  animation.currentTime = 1000;
+  expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
+});
+
 it("walks the frame again when a popover opens without a DOM mutation", async () => {
   const { win, rasterizer } = await frameOf(
     '<body style="margin:0"><div id=p popover style="inset:0;margin:0;border:0;width:100px;height:100px;' +
