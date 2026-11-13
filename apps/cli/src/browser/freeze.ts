@@ -12,11 +12,20 @@ export interface AnimationFreeze {
   endEvents: string;
 }
 
+/** What {@link catchEndEvents} puts at its global in the page. */
+interface EndEventCatcher {
+  /** Hands every end event caught at the window or at a hooked shadow root to `filter`. */
+  filter(filter: (event: Event) => void): void;
+  /** Catches the end events of `root` too; nothing changes at a root the page listens at, hooked then. */
+  hook(root: ShadowRoot): void;
+}
+
 /**
  * Runs in the captured page before its own scripts (a Playwright init script): listens for
- * `animationend` and `transitionend` at the window in the capture phase, so ahead of every listener
- * the page adds there, and hands them to the filters that {@link freezePageAnimations} registers
- * through the global `name`. Without it a page listening at the window in the capture phase saw the
+ * `animationend` and `transitionend` in the capture phase at the window, and at every shadow root just
+ * before the page adds its first listener for them there, so ahead of every listener the page adds at
+ * either, and hands them to the filters that {@link freezePageAnimations} registers through the global
+ * `name`. Without it a page listening at the window or at a shadow root in the capture phase saw the
  * end events the freeze must keep from it, and restarted the animation on wall time.
  *
  * Self-contained: Playwright sends its source to the page.
@@ -26,9 +35,28 @@ export function catchEndEvents(name: string): void {
   const pass = (event: Event) => {
     for (const filter of filters) filter(event);
   };
-  addEventListener("animationend", pass, true);
-  addEventListener("transitionend", pass, true);
-  Object.defineProperty(globalThis, name, { value: (filter: (event: Event) => void) => void filters.push(filter) });
+  const listen = EventTarget.prototype.addEventListener;
+  const hooked = new WeakSet<EventTarget>();
+  const hook = (at: EventTarget) => {
+    if (hooked.has(at)) return;
+    hooked.add(at);
+    listen.call(at, "animationend", pass, true);
+    listen.call(at, "transitionend", pass, true);
+  };
+  hook(window);
+  // End events in a shadow root do not leave it, so hook a root as the page adds its first listener
+  // for them there, through the method it calls for that: a root a script attached and one the parser
+  // made from a template alike.
+  Object.defineProperty(ShadowRoot.prototype, "addEventListener", {
+    configurable: true,
+    writable: true,
+    value: function addEventListener(this: ShadowRoot, ...args: Parameters<EventTarget["addEventListener"]>) {
+      if (args[0] === "animationend" || args[0] === "transitionend") hook(this);
+      return listen.apply(this, args);
+    },
+  });
+  const catcher: EndEventCatcher = { filter: (filter) => void filters.push(filter), hook };
+  Object.defineProperty(globalThis, name, { value: catcher });
 }
 
 /**
@@ -48,10 +76,10 @@ export function catchEndEvents(name: string): void {
  * Finishing it again would only start it again, and the last restart would run on wall time. So when
  * one of these comes back in a later pass, and for every finite animation of the last pass, it is
  * paused at its end instead, and the end event that this seek still fires is kept from the page: by
- * the window listener of {@link catchEndEvents}, which runs before all of the page's, or, when that
- * init script did not run, by a capture listener added at the window now, which a capture listener
- * the page put on the window earlier still precedes. In an open shadow root, whose end events do not
- * reach the window, the freeze listens at the root, after a capture listener the page put there.
+ * the listeners of {@link catchEndEvents} at the window and at shadow roots, whose end events do not
+ * reach the window, which run before all of the page's there. When that init script did not run, the
+ * freeze adds capture listeners at the window and the roots now, which capture listeners the page put
+ * on the same targets earlier still precede.
  *
  * Self-contained: Playwright sends its source to the page. Open shadow roots are frozen too; closed
  * roots and child frames are out of reach. Animations a later scroll or a later event starts still
@@ -95,6 +123,10 @@ export async function freezePageAnimations({ phase, endEvents }: AnimationFreeze
   };
   // Caught on the way down at the window, or at the shadow root since end events do not leave it,
   // so listeners on the element and its ancestors never see it.
+  const found = (globalThis as unknown as Record<string, Partial<EndEventCatcher> | undefined>)[endEvents];
+  const early =
+    typeof found?.filter === "function" && typeof found.hook === "function" ? (found as EndEventCatcher) : undefined;
+  early?.filter(swallow);
   const hooked = new Set<EventTarget>();
   const hold = (target: Element, key: string) => {
     held.set(target, (held.get(target) ?? new Set()).add(key));
@@ -102,9 +134,8 @@ export async function freezePageAnimations({ phase, endEvents }: AnimationFreeze
     const at = root instanceof ShadowRoot ? root : window;
     if (hooked.has(at)) return;
     hooked.add(at);
-    const early = at === window ? (globalThis as unknown as Record<string, unknown>)[endEvents] : undefined;
-    if (typeof early === "function") {
-      early(swallow);
+    if (early) {
+      if (at instanceof ShadowRoot) early.hook(at);
       return;
     }
     at.addEventListener("animationend", swallow, true);
