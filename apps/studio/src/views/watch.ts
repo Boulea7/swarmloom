@@ -393,11 +393,25 @@ export function createWatch(ctx: AppContext): View {
     return { notice: i18n.t(shareRefusalKey(link.reason)) };
   }
 
-  /** The width in device pixels the open dialog draws a code at: its light box less the padding. */
+  /**
+   * The width in device pixels the open dialog draws a code at: its light box less the padding.
+   * Lays the dialog out as for a code (box shown and empty, no notice, a caption that reads "scan")
+   * to measure that room, and leaves it so for the caller to draw in. The caption is a status: its
+   * words are written only when they change, or a screen reader hears them again. So it keeps them
+   * and leaves the flow while an unspoken stand-in that reads "scan" takes its place.
+   */
   function codeSide(): number {
+    qrBox.hidden = false;
+    qrBox.replaceChildren();
+    qrCaption.removeAttribute("data-notice");
+    qrCaption.style.position = "absolute";
+    const ruler = h("p", { class: "watch-qr-caption", text: i18n.t("watch.scan"), attrs: { "aria-hidden": "true" } });
+    qrCaption.after(ruler);
     const box = qrBox.getBoundingClientRect();
     const style = getComputedStyle(qrBox);
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    ruler.remove();
+    qrCaption.style.removeProperty("position");
     return (Math.min(box.width, box.height) - padding) * devicePixelRatio;
   }
 
@@ -410,13 +424,7 @@ export function createWatch(ctx: AppContext): View {
    */
   function drawQr(shown: { url: string } | { notice: string } | null): void {
     qrShown = shown;
-    // Lay the dialog out as for a code (box shown, no notice) to measure that room. The caption is
-    // a status: its words are written only when they change, or a screen reader hears them again.
-    qrBox.hidden = false;
-    qrBox.replaceChildren();
     const scan = i18n.t("watch.scan");
-    if (qrCaption.textContent !== scan) qrCaption.textContent = scan;
-    qrCaption.removeAttribute("data-notice");
     const code = shown && "url" in shown ? qrCode(shown.url, scan, codeSide()) : null;
     const notice = shown && "notice" in shown ? shown.notice : shown && !code ? i18n.t("watch.tooLong") : null;
     // "Getting ready" while the link is read, then the outcome. Any words but "scan" stand in the

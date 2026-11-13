@@ -3,6 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
+import type { StudioKey } from "../src/i18n";
 import { routeToUrl } from "../src/route";
 import type { OpenedSource } from "../src/source";
 import { MIN_MODULE_PX, qrCode } from "../src/views/qr";
@@ -380,6 +381,52 @@ it("tells a screen reader when the QR code of a link read late is ready", async 
   const dialog = (await axTree()).find((n) => !n.ignored && n.role?.value === "dialog");
   expect([dialog?.name?.value, dialog?.description?.value]).toEqual([t("watch.phone"), t("watch.scan")]);
   expect(document.activeElement?.getAttribute("aria-label")).toBe(t("watch.back"));
+});
+
+// The caption is a status: the dialog drawn again (a frame after it opens, when the face resizes)
+// leaves its words alone unless they change, or a screen reader says them twice.
+it.each<{ shows: string; src: string; says: StudioKey[] }>([
+  { shows: "a link too long for a code", src: `http://example.invalid/${"a".repeat(3000)}`, says: ["watch.tooLong"] },
+  { shows: "a local file's link read late", src: "", says: ["watch.preparing", "watch.scan"] },
+])("writes the QR caption once per change for $shows", async ({ src, says }) => {
+  const query = src ? `?watch=1&src=${encodeURIComponent(src)}` : "?watch=1";
+  history.replaceState(null, "", `${location.pathname}${query}`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  const fetch = async () => new Response("", { status: 404 });
+  app = await mountStudio(
+    root,
+    fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
+  );
+  const local = { name: "notes.md", text: "# Notes\n" };
+  if (!src) app.context.navigate({ source: { kind: "file", name: local.name }, autoplay: true }, { local });
+  const caption = root.querySelector<HTMLElement>(".watch-qr-caption");
+  if (!caption) throw new Error("no caption");
+  const written: string[] = [];
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === "characterData") written.push(record.target.textContent ?? "");
+      for (const node of record.addedNodes) written.push(node.textContent ?? "");
+    }
+  });
+  observer.observe(caption, { childList: true, subtree: true, characterData: true });
+  const frames = async (n: number) => {
+    for (let i = 0; i < n; i++) await new Promise((resolve) => requestAnimationFrame(resolve));
+  };
+  try {
+    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+    const { t } = app.context.i18n;
+    await expect.poll(() => caption.textContent).toBe(t(says[says.length - 1] ?? "watch.scan"));
+    await frames(3);
+    await page.viewport(300, 300);
+    await frames(3);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(written).toEqual(says.map((key) => t(key)));
+  } finally {
+    observer.disconnect();
+    await page.viewport(414, 896);
+  }
 });
 
 // The smallest round face holds three lines of notice above the close button: the rest scrolls.
