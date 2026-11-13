@@ -99,7 +99,7 @@ export class FrameRasterizer {
   #last: DrawnFrame | null = null;
   /** The boxes earlier snapshots wrote away from the viewport, written again while unchanged. */
   readonly #far = new FarCache<FarBox>();
-  /** Whether the last frame was walked as the page changed by itself ({@link StillWatch.busy}) or unwatched. */
+  /** Whether the last frame was walked as the page changed ({@link StillWatch.busy}) or unwatched. */
   #busy = false;
   /** Whether the next watch reads the text of the rules (see {@link FrameRasterizer.draw}). */
   #texts = true;
@@ -171,9 +171,9 @@ export class FrameRasterizer {
     const last = this.#last;
     const watch = last?.watch;
     if (last && watch && last.scale === scale && watch.still()) return last;
-    // Two frames in a row that changed by themselves or were not watched, as while the stage builds
-    // or an animation runs: the next one most likely changes too, so its watch leaves the text of
-    // the rules unread.
+    // Two frames in a row that changed or were not watched, as while the stage builds, an animation
+    // runs or, after going live, every frame seeks the animations: the next one most likely changes
+    // too, so its watch leaves the text of the rules unread.
     const busy = !watch || watch.busy;
     this.#texts = !(busy && this.#busy);
     this.#busy = busy;

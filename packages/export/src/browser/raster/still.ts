@@ -149,8 +149,10 @@ export class StillWatch {
   }
 
   /**
-   * Whether the frame changes by itself: a mutation, a load, a toggle or a font load happened since
-   * the start, or an animation was running or a font loading at the start.
+   * Whether the frame changed since the start: a mutation, a load, a toggle or a font load happened,
+   * {@link still} read a value that differs (scroll offsets, sizes, what an animation shows, as a
+   * seeked one does on every frame after going live, rule text, canvas pixels), or an animation
+   * was running or a font loading at the start.
    */
   get busy(): boolean {
     if (!this.#changed && this.#observer.takeRecords().length > 0) this.#changed = true;
@@ -159,14 +161,32 @@ export class StillWatch {
     return false;
   }
 
-  /** Whether the document still shows what the snapshot read. */
+  /**
+   * Whether the document still shows what the snapshot read; once a value reads differently, the
+   * frame is {@link busy}.
+   */
   still(): boolean {
     if (this.busy || !this.#scrolls) return false;
+    const reads = this.#reads();
+    if (reads === false) this.#changed = true;
+    return reads === true;
+  }
+
+  stop(): void {
+    this.#observer.disconnect();
+    this.#listen(this.#trees, false);
+  }
+
+  /**
+   * Whether what the watch reads by value reads the same again; null when nothing differs but the
+   * watch has no rule text to compare.
+   */
+  #reads(): boolean | null {
     const roots = Array.from(this.#source.shadowRoots());
     if (!same(this.#roots, roots)) return false;
     if (!same(this.#all, frameDocuments([this.#source.document, ...roots]))) return false;
     if (this.#source.faces().length !== this.#faces) return false;
-    for (const { el, left, top } of this.#scrolls) {
+    for (const { el, left, top } of this.#scrolls ?? []) {
       if (el.scrollLeft !== left || el.scrollTop !== top) return false;
     }
     for (const { el, width, height } of this.#sizes) {
@@ -177,15 +197,10 @@ export class StillWatch {
       const now = treeState(tree);
       if (!state || !now || !same(state, now)) return false;
     }
-    if (!this.#texts) return false;
+    if (!this.#texts) return null;
     for (const [tree, text] of this.#texts) if (!same(text, sheetState([tree], true))) return false;
     // Last: encoding a canvas costs the most of these checks.
     return this.#pixels.every(({ canvas, url }) => canvasDataUrl(canvas) === url);
-  }
-
-  stop(): void {
-    this.#observer.disconnect();
-    this.#listen(this.#trees, false);
   }
 
   /** The frame document, the shadow roots in it or in `frames`, then `frames`. */

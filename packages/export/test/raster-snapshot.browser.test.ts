@@ -491,6 +491,31 @@ it("lists the animations and reads each of them once per frame", async () => {
   }
 });
 
+it("leaves the rule text unread after two frames in a row that changed by value, as after going live", async () => {
+  const { win, rasterizer } = await frameOf(
+    `<body style="margin:0"><iframe style="border:0;width:${SIZE}px;height:${SIZE}px" srcdoc="<style>@keyframes k ` +
+      '{ to { opacity: 0.5 } } i { display: block; height: 10px; animation: k 1s both paused }</style><i></i>">' +
+      "</iframe></body>",
+  );
+  const frame = win.document.querySelector("iframe") as HTMLIFrameElement;
+  const inner = frame.contentDocument as Document;
+  await inner.fonts.ready;
+  const texts = vi.spyOn((frame.contentWindow as Window & typeof globalThis).CSSRule.prototype, "cssText", "get");
+  try {
+    // The live page fits the view (no box away from it, whose cache reads the rules), and every
+    // frame seeks its animation: each frame walks, and reading the rules buys nothing.
+    const animation = inner.getAnimations()[0] as Animation;
+    for (let time = 0; time < 400; time += 100) {
+      animation.currentTime = time;
+      if (time === 200) texts.mockClear();
+      await pixel(rasterizer, 5, 5);
+    }
+    expect(texts).not.toHaveBeenCalled();
+  } finally {
+    texts.mockRestore();
+  }
+});
+
 const COLOURS = "from { background-color: rgb(255, 0, 0) } to { background-color: rgb(0, 0, 255) }";
 
 // The same effect animates something else from then on: a seek after the next frame is seen.
