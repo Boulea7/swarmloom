@@ -624,6 +624,23 @@ it("walks the frame after a change once the rendering update that follows it, wh
   expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
 });
 
+it("waits for the rendering update after a change once a rule edited into a sheet read before takes state there", async ({
+  skip,
+}) => {
+  const { win, rasterizer } = await frameOf(
+    "<style>header { position: fixed; top: 0; left: 0; right: 0; height: 20px; background: rgb(255, 0, 0) }</style>" +
+      '<body style="margin:0"><header></header><div style="height:2000px"></div></body>',
+  );
+  if (!(win as Window & typeof globalThis).CSS.supports("container-type", "scroll-state")) skip("no scroll-state");
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+  // The same sheet object, read for the first frame, now holds a scroll-state query.
+  const sheet = win.document.styleSheets[0] as CSSStyleSheet;
+  sheet.insertRule("html { container-type: scroll-state }", 0);
+  sheet.insertRule("@container scroll-state(scrollable: top) { header { background: rgb(0, 0, 255) } }", 2);
+  win.scrollTo(0, 300);
+  expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
+});
+
 it.for<[string, string, boolean]>([
   ["CSS that takes no such state", "<style>div { background: rgb(255, 0, 0) }</style>", false],
   ["a style sheet with content-visibility", "<style>div { content-visibility: auto }</style>", true],
