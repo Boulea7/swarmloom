@@ -60,12 +60,12 @@ const CSS_URL_REST =
 const URL_STRING_FUNCTIONS = new Set(["image-set", "-webkit-image-set", "image", "src"]);
 /**
  * Functions an image function may hold directly that never compute one of its URL strings: image
- * functions, `type()`, gradients, colors and math. Any other function there (`var()`, `env()`,
- * `attr()`, `if()`, a custom `--fn()`) can put a string in place when the browser computes the
- * value, after this check, so the image function around it is refused whole.
+ * functions, `type()`, gradients, colors (`light-dark()` included) and math. Any other function
+ * there (`var()`, `env()`, `attr()`, `if()`, a custom `--fn()`) can put a string in place when the
+ * browser computes the value, after this check, so the image function around it is refused whole.
  */
 const IMAGE_ARGUMENT_FUNCTION =
-  /^(?:(?:-webkit-)?(?:image-set|(?:repeating-)?(?:linear|radial|conic)-gradient)|image|src|type|rgba?|hsla?|hwb|(?:ok)?(?:lab|lch)|color(?:-mix)?|calc|min|max|clamp)$/;
+  /^(?:(?:-webkit-)?(?:image-set|(?:repeating-)?(?:linear|radial|conic)-gradient)|image|src|type|rgba?|hsla?|hwb|(?:ok)?(?:lab|lch)|color(?:-mix)?|light-dark|contrast-color|calc|min|max|clamp|round|mod|rem|abs|sign|a?(?:sin|cos|tan)|atan2|pow|sqrt|hypot|log|exp)$/;
 /** SVG presentation attributes the browser reads as CSS, where a `url()` can name another document. */
 const CSS_ATTRIBUTES = [
   "style",

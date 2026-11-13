@@ -148,9 +148,11 @@ describe("rewriteCssUrls", () => {
   });
 
   it("keeps an image-set whose functions cannot compute a URL string", () => {
-    const css = 'p{background:image-set(linear-gradient(rgb(0 0 0),red) 1x,"a.png" type("image/png") 2x)}';
+    // light-dark() takes images or colors, never strings; round() gives a resolution.
+    const css =
+      'p{background:image-set(light-dark(linear-gradient(rgb(0 0 0),red),url(d.png)) 1x,"a.png" type("image/png") round(2.4x,1x))}';
     expect(rewriteCssUrls(css, "https", "https://x.dev/")).toBe(
-      'p{background:image-set(linear-gradient(rgb(0 0 0),red) 1x,url("https://x.dev/a.png") type("image/png") 2x)}',
+      'p{background:image-set(light-dark(linear-gradient(rgb(0 0 0),red),url("https://x.dev/d.png")) 1x,url("https://x.dev/a.png") type("image/png") round(2.4x,1x))}',
     );
   });
 
