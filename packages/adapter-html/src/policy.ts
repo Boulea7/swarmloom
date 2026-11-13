@@ -59,7 +59,7 @@ const CSS_URL_REST =
 /** Functions that take a plain string as an image URL, as in `image-set("a.png" 1x)`. */
 const URL_STRING_FUNCTIONS = new Set(["image-set", "-webkit-image-set", "image", "src"]);
 /**
- * Functions an image function may contain that never compute one of its URL strings: image
+ * Functions an image function may hold directly that never compute one of its URL strings: image
  * functions, `type()`, gradients, colors and math. Any other function there (`var()`, `env()`,
  * `attr()`, `if()`, a custom `--fn()`) can put a string in place when the browser computes the
  * value, after this check, so the image function around it is refused whole.
@@ -140,7 +140,8 @@ function cssUrl(url: string): string {
  * and every string an image function takes as a URL (`image-set("a.png" 1x)`) becomes an absolute
  * allowed URL or an empty data: URL, `@import` rules are removed, and a `url(` the browser would
  * not read as one URL becomes `invalid(`, as does an image function holding a function that could
- * compute a URL string later (`image-set(var(--a) 1x)`). The text is read token by token like the
+ * compute one of its URL strings later (`image-set(var(--a) 1x)`, not
+ * `image-set(linear-gradient(var(--a),red) 1x)`). The text is read token by token like the
  * browser does, so CSS escapes (`\75rl(`, `@\69mport`) cannot hide a request; the rest of the
  * text, escapes in selectors included, is kept as written. `local` is as in {@link allowedResource}.
  */
@@ -203,7 +204,11 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
           open(-1);
         }
       } else if (paren) {
-        if (images > 0 && !atSign && !IMAGE_ARGUMENT_FUNCTION.test(id)) out[outerImage] = "invalid(";
+        // Only a function written right where an image function reads URL strings can put one
+        // there: deeper down, in a gradient or a color, what var() and the like put in has balanced
+        // parentheses, so it stays among that function's own arguments.
+        const urlStrings = (parens.at(-1) ?? -1) >= 0;
+        if (urlStrings && !atSign && !IMAGE_ARGUMENT_FUNCTION.test(id)) out[outerImage] = "invalid(";
         // Inside a removed @import nothing is written, so there is no name to refuse later.
         open(!atSign && !dropping && URL_STRING_FUNCTIONS.has(id) ? out.length : -1);
       }
