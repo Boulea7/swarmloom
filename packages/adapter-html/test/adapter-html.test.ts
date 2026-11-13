@@ -132,6 +132,11 @@ describe("sanitizeDocument", () => {
       "p{background:url(data:image/svg+xml,\\3c svg/>)}",
     ],
     [
+      "a hex escape and then a < in an unquoted URL",
+      "p{background:url(data:image/svg+xml,\\3c svg\\3e <g/>)}",
+      "p{background:url(data:image/svg+xml,\\3c svg\\3e \\3c g/>)}",
+    ],
+    [
       "markup-like text, so it never reads as markup",
       "</textarea><img src=x onerror=e()>",
       "< /textarea>< img src=x onerror=e()>",
@@ -140,6 +145,13 @@ describe("sanitizeDocument", () => {
     const doc = parse(sanitizeDocument(`<!DOCTYPE html><style>${css}</style><h1>T</h1>`, window));
     expect(doc.querySelector("style")?.textContent).toBe(escaped);
     expect(doc.querySelector("img")).toBeNull();
+  });
+
+  it("keeps an escaped < in an unquoted URL a URL for the network policy", () => {
+    const html = "<!DOCTYPE html><style>p{background:url(data:image/svg+xml,<svg/>)}</style><p>T</p>";
+    const out = prepareDocument(html, window, { baseUrl: "https://x.dev/" });
+    const css = Array.from(parse(out.html).querySelectorAll("style"), (el) => el.textContent);
+    expect(css).toContain('p{background:url("data:image/svg+xml,%3Csvg/%3E")}');
   });
 });
 

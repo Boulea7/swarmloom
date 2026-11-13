@@ -40,11 +40,12 @@ const MARKUP_LT = /<[/\w!]/;
 
 /**
  * The places a `<` can sit in CSS text, read like the CSS tokenizer: a comment; a string (an
- * unterminated one ends at a newline or the end); an unquoted `url(`; an escape; a brace; a CDO
- * `<!--`; or a bare `<` before `/`, `!` or a word character. Everything else is kept as it is.
+ * unterminated one ends at a newline or the end); an unquoted `url(` (a hex escape there takes the
+ * whitespace after it); an escape; a brace; a CDO `<!--`; or a bare `<` before `/`, `!` or a word
+ * character. Everything else is kept as it is.
  */
 const CSS_LT_PLACES =
-  /\/\*[\s\S]*?(?:\*\/|$)|(["'])(?:(?!\1)[^\\\n\r\f]|\\[\s\S])*(?:\1|\\?$|(?=[\n\r\f]))|(?<![\w\x80-\uffff\\-])url\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^\\)"'( \t\n\r\f]|\\[\s\S])*|\\[\s\S]?|[{}]|<!--|<(?=[/\w!])/gi;
+  /\/\*[\s\S]*?(?:\*\/|$)|(["'])(?:(?!\1)[^\\\n\r\f]|\\[\s\S])*(?:\1|\\?$|(?=[\n\r\f]))|(?<![\w\x80-\uffff\\-])url\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^\\)"'( \t\n\r\f]|\\(?:[0-9a-f]{1,6}(?:\r\n|[ \t\n\r\f])?|[\s\S]))*|\\[\s\S]?|[{}]|<!--|<(?=[/\w!])/gi;
 /** An escape (kept whole, so `\\<` stays a backslash then `<`) or a markup-like `<`. */
 const QUOTED_LT = /\\[\s\S]|<(?=[/\w!])/g;
 
