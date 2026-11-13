@@ -170,7 +170,7 @@ h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
     // whose finish handler plays the same object again must stay at its end too (+300 px), and so
     // must a CSS animation that its animationend handler restarts as a new object by a class toggle,
     // also when that handler listens in the capture phase ahead of the freeze: at the window, or at
-    // an open shadow root, which its end events do not leave.
+    // an open shadow root, which its end events do not leave, through EventTarget's own method.
     const page = `<!doctype html><title>t</title><style>
 @keyframes enter { from { transform: translateX(0) } to { transform: translateX(10px) } }
 @keyframes slide { from { transform: translateX(0) } to { transform: translateX(300px) } }
@@ -204,7 +204,7 @@ addEventListener("animationend", (e) => {
 }, true);
 const shadow = document.getElementById("host").attachShadow({ mode: "open" });
 shadow.innerHTML = "<style>" + document.querySelector("style").textContent + "</style><div class=pop><slot></slot></div>";
-shadow.addEventListener("animationend", (e) => {
+EventTarget.prototype.addEventListener.call(shadow, "animationend", (e) => {
   e.target.classList.remove("pop");
   void e.target.offsetWidth;
   e.target.classList.add("pop");
