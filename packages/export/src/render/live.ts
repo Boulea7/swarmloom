@@ -1,5 +1,12 @@
-import { holdAllCssImages, holdSvgImages, stillImageSource } from "@swarmloom/core";
-import { AnimationSeeker } from "./seek";
+import {
+  holdAllCssImages,
+  holdSvgImages,
+  mayStartAnimations,
+  readStyleFacts,
+  type StyleFacts,
+  stillImageSource,
+} from "@swarmloom/core";
+import { AnimationSeeker, freezeRunning } from "./seek";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const SMIL = new Set(["animate", "animateTransform", "animateMotion", "animateColor", "set"]);
@@ -10,6 +17,13 @@ const SIZE_SLACK = 2;
  * round starts is seeked on the next frame, from its start then.
  */
 const SETTLE_ROUNDS = 3;
+
+/**
+ * Pose of the live page's infinite loops, as a fraction of one cycle: the render page's HTML adapter
+ * freezes them there for the capture (its `infinitePhase`, see renderFormats), and go live freezes
+ * the loops the page started since at the same pose.
+ */
+export const LIVE_LOOP_PHASE = 0.5;
 
 /** The live page an adapter kept behind its capture (`LoadedHtml.live` of @swarmloom/adapter-html). */
 export interface LivePage {
@@ -152,6 +166,13 @@ async function stillAttribute(el: Element, name: "poster" | "src", doc: Document
 /**
  * Shows the live page over the stage, scrolled so it covers exactly the part of the world the stage
  * shows (the frame keeps its size, so nothing reflows). Returns why it could not, or null.
+ *
+ * The frame's box is painted `Canvas`, the colour a browser tab paints under a page: a frame's
+ * canvas stays transparent where the page paints no background of its own (no html or body
+ * background), and the stage's frozen copy of the page under it would show through, every element
+ * twice. The box only shows when the page and the frame element use the same colour scheme; when
+ * they differ, the browser paints the canvas in the page's `Canvas` itself (CSS Color Adjust 1, as
+ * Chromium does). Either way the page sits on its own canvas colour.
  */
 function showLivePage(page: LivePage, world: HTMLElement | null, host: HTMLElement): string | null {
   const win = page.frame.contentWindow;
@@ -174,6 +195,7 @@ function showLivePage(page: LivePage, world: HTMLElement | null, host: HTMLEleme
   style.top = `${rect.top + win.scrollY * scale}px`;
   style.transformOrigin = "0 0";
   style.transform = scale === 1 ? "" : `scale(${scale})`;
+  style.backgroundColor = "Canvas";
   style.zIndex = "2147483647";
   return null;
 }
@@ -193,12 +215,13 @@ export interface LiveStageOptions {
 
 /**
  * The render page's side of go live. Once the stage is live (`PlayerOptions.onLive`) it shows the
- * live page an adapter kept (the real HTML page, its animations frozen at the captured pose) over
- * the stage, and from then on every frame pauses all Web Animations (document, stage subtrees, live
- * page) and the live page's SVG documents and seeks them to the transport time, so frames never
- * depend on wall time. The live page's `<marquee>` elements, which no seek reaches, stay still at
- * their captured resting pose, and its animated images show still copies ({@link LiveStage.holdImages}).
- * Plugin players (SMIL replay, Lottie) follow player time on their own.
+ * live page an adapter kept (the real HTML page, its animations frozen at the captured pose, and any
+ * it started since frozen by the same rule then) over the stage, and from then on every frame pauses
+ * all Web Animations (document, stage subtrees, live page) and the live page's SVG documents and
+ * seeks them to the transport time, so frames never depend on wall time. The live page's `<marquee>`
+ * elements, which no seek reaches, stay still at their captured resting pose, and its animated images
+ * show still copies ({@link LiveStage.holdImages}). Plugin players (SMIL replay, Lottie) follow
+ * player time on their own.
  */
 export class LiveStage {
   readonly #seeker = new AnimationSeeker();
@@ -206,6 +229,8 @@ export class LiveStage {
   #page: LivePage | null;
   #svgs: SVGSVGElement[] = [];
   #live = false;
+  /** What the styles of each document and shadow root let a seek start ({@link LiveStage.sync}). */
+  readonly #facts = new WeakMap<Document | ShadowRoot, StyleFacts>();
 
   constructor(options: LiveStageOptions) {
     this.#o = options;
@@ -238,6 +263,10 @@ export class LiveStage {
       } else {
         restMarquees(page.document);
         this.#svgs = animatedSvgs(page.document);
+        // The capture froze every animation of the page, but the page may have started more since
+        // (sections with `content-visibility: auto` the browser laid out later, the marquees just
+        // replaced) that run on wall time: freeze those by the same rule before the seek anchors them.
+        freezeRunning(page.document.getAnimations(), LIVE_LOOP_PHASE);
       }
     }
     this.sync(t);
@@ -251,14 +280,24 @@ export class LiveStage {
    * next style and layout update, and until a seek reaches them they would run on wall time (the
    * screenshot, the rasterizer's reads of the frame). So the seek makes that update right away, reads
    * the animations again and seeks what started at `t` as well, from its start, a few rounds deep.
+   * Reading them is the costly part of a seek (Chromium sorts them by tree order), so only a
+   * document whose styles let a seek start something ({@link mayStartAnimations}: its keyframes
+   * animate a value that a transition or a container there can take, which fades and pulses do
+   * not) is read again: the render page with its stage roots, or the live page (also when it
+   * holds SMIL animation, whose seek can render elements again).
    */
   sync(t: number): void {
     if (!this.#live) return;
     this.#seeker.seekAnimations(this.#animations(), t);
     this.#seeker.seekSvgs(this.#svgs, t);
+    const scopes = [this.#o.document, ...this.#o.shadows.roots()];
+    const stage = mayStartAnimations(scopes.map((scope) => this.#styles(scope)));
+    const page =
+      this.#page !== null && (this.#svgs.length > 0 || mayStartAnimations([this.#styles(this.#page.document)]));
+    if (!stage && !page) return;
     for (let round = 0; round < SETTLE_ROUNDS; round++) {
       this.#layout();
-      if (this.#seeker.seekNew(this.#animations(), t) === 0) break;
+      if (this.#seeker.seekNew(this.#animations(stage, page), t) === 0) break;
     }
   }
 
@@ -283,9 +322,22 @@ export class LiveStage {
     return (inner?.host as HTMLElement | undefined) ?? null;
   }
 
-  *#animations(): Iterable<Animation> {
-    yield* this.#o.document.getAnimations();
-    for (const root of this.#o.shadows.roots()) yield* root.getAnimations();
-    if (this.#page) yield* this.#page.document.getAnimations();
+  /** What the styles of `scope` let a seek start, read the first time it is asked. */
+  #styles(scope: Document | ShadowRoot): StyleFacts {
+    let facts = this.#facts.get(scope);
+    if (!facts) {
+      facts = readStyleFacts(scope);
+      this.#facts.set(scope, facts);
+    }
+    return facts;
+  }
+
+  /** The animations of the render page and its stage roots (`stage`) and of the live page (`page`). */
+  *#animations(stage = true, page = true): Iterable<Animation> {
+    if (stage) {
+      yield* this.#o.document.getAnimations();
+      for (const root of this.#o.shadows.roots()) yield* root.getAnimations();
+    }
+    if (page && this.#page) yield* this.#page.document.getAnimations();
   }
 }

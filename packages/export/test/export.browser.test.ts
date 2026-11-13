@@ -1,6 +1,7 @@
-import { createPlayer } from "@swarmloom/core";
+import { createPlayer, mayStartAnimations, readStyleFacts } from "@swarmloom/core";
 import { describe, expect, it } from "vitest";
 import { server } from "vitest/browser";
+import { SheetMark, watchSheetEdits } from "../src/browser/raster/sheet-edits";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
 import { LiveStage, watchShadowRoots } from "../src/render/live";
 
@@ -145,6 +146,45 @@ describe("export in the browser", () => {
     }
   });
 
+  it("freezes live-page animations started after the capture by the capture's rule on go live, however long they ran", async () => {
+    // The capture froze the page; these started since (as in a content-visibility section laid out later).
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc =
+      "<style>@keyframes slide{to{transform:translateX(200px)}}@keyframes rise{from{opacity:0}}" +
+      ".dot{animation:slide 1.3s linear infinite}.rise{animation:rise 1.5s}</style>" +
+      '<body style="margin:0;height:200px"><div class="dot">a</div><div class="rise">b</div>';
+    const host = document.createElement("div");
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.height = "200px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument as Document;
+      const [slide, rise] = doc.getAnimations();
+      await new Promise((resolve) => setTimeout(resolve, 200)); // a slow build
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: doc },
+      });
+      stage.goLive(3000);
+      // The loop at half a cycle (LIVE_LOOP_PHASE), the entrance at its end, then on with transport time.
+      expect([slide?.currentTime, rise?.currentTime]).toEqual([650, 1500]);
+      stage.sync(3400);
+      expect(slide?.currentTime).toBe(1050);
+    } finally {
+      frame.remove();
+      host.remove();
+    }
+  });
+
   it("shows an animated GIF on the live page as its first frame: an <img> at the same size, a background, an SVG <image>, a video poster, an image button", async () => {
     // 1x1 GIF, red then blue, looping.
     const gif =
@@ -217,5 +257,130 @@ describe("export in the browser", () => {
       frame.remove();
       host.remove();
     }
+  });
+
+  it("paints the canvas colour under a live page without a background, so the stage's copy never shows through", async () => {
+    // A frame's canvas is transparent where a tab paints it: the frozen copy under it would show twice.
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc = '<body style="margin:0;height:200px"><p style="margin:0">Plain';
+    const host = document.createElement("div");
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.height = "200px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: frame.contentDocument as Document },
+        onWarning: (message) => {
+          throw new Error(message);
+        },
+      });
+      stage.goLive(0);
+      expect(getComputedStyle(frame).backgroundColor).toBe("rgb(255, 255, 255)");
+    } finally {
+      frame.remove();
+      host.remove();
+    }
+  });
+
+  it("reads the live page's animations once a frame when no seek can start one there", async () => {
+    // Reading them again is what a frame of thousands of CSS animations spends most on. A pulse of
+    // opacity reaches no transition or container, whatever the page declares. Telling that from the
+    // page's rules must take no declaration through `style` either: the in-browser exporter's still
+    // check would compare the text of each one taken on every frame after.
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc =
+      "<style>@keyframes pulse{50%{opacity:.4}}span{animation:pulse 1.5s infinite}" +
+      "a{transition:color .2s;border-radius:inherit}.c{container-type:inline-size}</style>" +
+      '<body style="margin:0;height:200px"><span>a</span><span>b</span>';
+    const host = document.createElement("div");
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.height = "200px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument as Document;
+      watchSheetEdits(frame.contentWindow, [doc]);
+      const sheets = new SheetMark(Array.from(doc.styleSheets));
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: doc },
+      });
+      stage.goLive(0);
+      expect(sheets.holds()).toBe(true);
+      let reads = 0;
+      const read = doc.getAnimations.bind(doc);
+      doc.getAnimations = () => {
+        reads++;
+        return read();
+      };
+      stage.sync(100);
+      stage.sync(200);
+      expect(reads).toBe(2);
+      expect(read().map((anim) => anim.playState)).toEqual(["paused", "paused"]);
+    } finally {
+      frame.remove();
+      host.remove();
+    }
+  });
+
+  it("tells which styles let a seek start a transition or an animation", () => {
+    const glow = "@keyframes glow{to{color:red}}"; // an inherited value
+    const cases: [css: string, html: string, starts: boolean][] = [
+      ["@keyframes pulse{50%{opacity:.4}}a{transition:color .2s}a:hover{transition:all 1s}", "", false],
+      [`${glow}`, "", false],
+      [`${glow}.a{transition-duration:0s,0ms;transition-delay:-1s}`, "", false],
+      [`${glow}.a{transition:opacity .3s}`, "", true],
+      [`${glow}@media screen{.a{transition-delay:1s}}`, "", true],
+      [`${glow}.a{color:red;&:hover{transition-duration:1s}}`, "", true],
+      [`${glow}.a{&:hover{color:red}transition:color 1s}`, "", true],
+      [`${glow}.a{transition:opacity var(--t)}`, "", true],
+      [glow, '<p style="transition:color 1s"></p>', true],
+      ["@keyframes round{to{border-top-left-radius:9px}}.a{border-radius:inherit;transition:all 1s}", "", true],
+      ["@keyframes slide{to{transform:translateX(9px)}}.a{transition:color .2s}", "", false],
+      ["@keyframes slide{to{transform:translateX(9px)}}@container (width>9px){.a{color:red}}", "", true],
+      ["@keyframes wide{to{width:300px}}.box{container-type:inline-size}", "", true],
+      ["@keyframes hue{to{--hue:120}}", "", true],
+    ];
+    const facts = (css: string, html: string) => {
+      const root = document.createElement("div").attachShadow({ mode: "open" });
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(css);
+      root.adoptedStyleSheets = [sheet];
+      root.innerHTML = html;
+      return readStyleFacts(root);
+    };
+    const results = cases.map(([css, html]) => mayStartAnimations([facts(css, html)]));
+    expect(results).toEqual(cases.map(([, , starts]) => starts));
+    // A value inherits across a shadow boundary: keyframes in one root reach a transition in another.
+    expect(mayStartAnimations([facts(glow, ""), facts(".a{transition:color 1s}", "")])).toBe(true);
+  });
+
+  it("reads a long page-made transition time in linear time", () => {
+    // `var()` keeps the raw text, so a time check that backtracks over the digit run takes seconds.
+    const root = document.createElement("div").attachShadow({ mode: "open" });
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(`p{transition-duration:${"1".repeat(100_000)}x, var(--a)}`);
+    root.adoptedStyleSheets = [sheet];
+    const start = performance.now();
+    expect(readStyleFacts(root).transitions).toBe(true);
+    expect(performance.now() - start).toBeLessThan(1000);
   });
 });

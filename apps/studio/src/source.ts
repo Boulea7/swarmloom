@@ -63,6 +63,18 @@ function urlBaseName(url: string): string {
   }
 }
 
+/**
+ * What `ref` is called before it is read, as far as the reference and the session's local input
+ * tell: a URL's file name (or host), a local file's name. Empty when only reading the source can
+ * say (a `#d=` payload, a share, a stored input, a bookmarklet page). Examples take their manifest title.
+ */
+export function nameOfRef(ref: SourceRef, local: LocalInput | null): string {
+  if (ref.kind === "url") return urlBaseName(ref.url);
+  if (ref.kind === "file") return local?.name ?? ref.name;
+  if (ref.kind === "launch") return local?.name ?? "";
+  return "";
+}
+
 /** Reads a response body with a hard byte limit, so a huge download cannot exhaust memory. */
 export async function readLimited(response: Response, limit = MAX_INPUT_BYTES): Promise<Uint8Array> {
   const declared = Number(response.headers.get("content-length"));

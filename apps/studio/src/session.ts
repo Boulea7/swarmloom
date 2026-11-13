@@ -153,6 +153,11 @@ export class Session {
   private unsubscribe: Array<() => void> = [];
   private destroyed = false;
   private phase: SessionPhase = "opening";
+  /**
+   * Settings {@link apply} changed while the source was still being read: the user's, so the values
+   * a share link carries for them no longer apply when it opens.
+   */
+  private readonly changedBeforeOpen = new Set<keyof StudioSettings>();
 
   constructor(private readonly o: SessionOptions) {
     this.settings = o.settings;
@@ -181,7 +186,8 @@ export class Session {
       this.setPhase("opening");
       if (!this.opened) {
         const { services, local } = this.o;
-        this.opened = await (this.o.resolve?.(signal) ?? resolveSource(this.o.ref, { services, local, signal }));
+        const opened = await (this.o.resolve?.(signal) ?? resolveSource(this.o.ref, { services, local, signal }));
+        this.opened = this.withoutChanged(opened);
         // Settings carried by a share link apply to this visit only; they are never persisted. The
         // view hands them to Studio (AppContext.sourceSettings), so later apply() calls carry them.
         if (this.opened.settings) this.settings = { ...this.settings, ...this.opened.settings };
@@ -212,6 +218,17 @@ export class Session {
     }
   }
 
+  /** `opened` without the settings the user changed while it was read (see {@link changedBeforeOpen}). */
+  private withoutChanged(opened: OpenedSource): OpenedSource {
+    const carried = opened.settings;
+    if (!carried || !Object.keys(carried).some((key) => this.changedBeforeOpen.has(key as keyof StudioSettings))) {
+      return opened;
+    }
+    const settings: Partial<StudioSettings> = { ...carried };
+    for (const key of this.changedBeforeOpen) delete settings[key];
+    return { ...opened, settings };
+  }
+
   /** Starts the build (intro, then building). Safe to call once the phase is "ready". */
   start(): void {
     const player = this.player;
@@ -233,7 +250,8 @@ export class Session {
   /**
    * Applies new settings: Studio's, which include a share link's until the user changes them. Live
    * ones go straight to the player; the returned impact tells the caller whether a {@link rebuild}
-   * (new player) or {@link reload} (new adapter run) is still needed.
+   * (new player) or {@link reload} (new adapter run) is still needed. A setting changed while the
+   * source is still being read keeps the user's value when a share link carries another.
    * The language setting is not one of them: the resolved locale arrives through {@link setLocale}
    * once Studio's strings for it have loaded.
    * Turning sound on is live, but when the sound pack, volume or beat hits changed since the player
@@ -244,6 +262,11 @@ export class Session {
     const prev = this.settings;
     let impact = impactOf({ ...prev, locale: next.locale }, next);
     this.settings = next;
+    if (!this.opened) {
+      for (const key of Object.keys(next) as (keyof StudioSettings)[]) {
+        if (prev[key] !== next[key]) this.changedBeforeOpen.add(key);
+      }
+    }
     const unmuted = next.sound && !this.soundWasOn;
     this.soundWasOn = next.sound;
     const player = this.player;

@@ -32,11 +32,56 @@ function startOf(anim: SeekableAnimation, rate: number): number | null {
 }
 
 /**
+ * The capture's pose of an animation (decision C02): a finite one at its end (its start when it plays
+ * backwards), a loop `phase` of a cycle after its delay. Null when it has no effect, or a finite one
+ * plays at rate 0 (`finish()` refuses those, so the capture leaves them as they are).
+ */
+function capturePose(anim: SeekableAnimation, rate: number, phase: number): number | null {
+  const timing = anim.effect?.getComputedTiming();
+  if (!timing) return null;
+  const end = timing.endTime;
+  if (typeof end === "number" && Number.isFinite(end)) return rate > 0 ? end : rate < 0 ? 0 : null;
+  const cycle = typeof timing.duration === "number" && Number.isFinite(timing.duration) ? timing.duration : 0;
+  return (timing.delay ?? 0) + phase * cycle;
+}
+
+/**
+ * Freezes the animations of a captured page that still run, by the rule the capture froze the page
+ * with (decision C02, `freezeAnimations` of @swarmloom/adapter-html): a finite one at its end, a
+ * loop `phase` of a cycle after its delay. That freeze leaves no animation running (finite ones
+ * finish, loops pause), so a running one started after it, such as a CSS animation in a
+ * `content-visibility: auto` section the browser laid out later, and its time counts the wall time
+ * since. Animations on non-time timelines (scroll-driven) are left alone. Reads every animation
+ * before it writes any, as {@link AnimationSeeker.seekAnimations} does.
+ * @returns How many animations were frozen.
+ */
+export function freezeRunning(animations: Iterable<SeekableAnimation>, phase: number): number {
+  const poses: { anim: SeekableAnimation; time: number }[] = [];
+  for (const anim of animations) {
+    if (anim.playState !== "running" || typeof anim.currentTime !== "number") continue;
+    const time = capturePose(anim, anim.playbackRate, phase);
+    if (time !== null) poses.push({ anim, time });
+  }
+  let count = 0;
+  for (const { anim, time } of poses) {
+    try {
+      anim.pause();
+      anim.currentTime = time;
+      count++;
+    } catch {
+      // pause() refuses some reversed infinite animations; they keep their state.
+    }
+  }
+  return count;
+}
+
+/**
  * Drives animations from transport (video) time instead of wall time, so every frame is a pure
  * function of it. Each animation is anchored the first time it is seen, at a pose and the transport
  * time then; every seek pauses it and sets `currentTime = base + (t - t0) * playbackRate`, so it
  * plays on from that pose at its own speed, but only as far as the export clock moved. The first
- * seek (go live) anchors the animations it finds at their pose then, the frozen pose of the page.
+ * seek (go live) anchors the animations it finds at their pose then, the frozen pose of the page
+ * (the caller first freezes the ones the page started since its capture, see {@link freezeRunning}).
  * An animation first seen later is one that started since (a seeked value changed an inherited
  * value or a container's size, and a transition or a container query's animation began): it is
  * anchored at its start, since its time then counts the wall time since that style change. SVG
