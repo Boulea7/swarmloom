@@ -11,6 +11,7 @@ import {
   isFullDocument,
   prepareDocument,
   rewriteCssUrls,
+  sanitizeDocument,
 } from "../src/index";
 
 const parse = (html: string) => new DOMParser().parseFromString(html, "text/html");
@@ -108,6 +109,37 @@ describe("prepareDocument", () => {
   it("rejects documents over the element limit", () => {
     const big = `<!DOCTYPE html><body>${"<i></i>".repeat(50)}</body>`;
     expect(() => prepareDocument(big, window, { maxElements: 40 })).toThrow(/over the 40 limit/);
+  });
+});
+
+describe("sanitizeDocument", () => {
+  // DOMPurify removes a whole <style> whose text reads as markup (`<` before a letter, `/` or `!`).
+  it.each([
+    [
+      "an @property syntax string",
+      '@property --a{syntax:"<number>";inherits:true;initial-value:0}',
+      '@property --a{syntax:"\\3c number>";inherits:true;initial-value:0}',
+    ],
+    [
+      "a comment and a media range",
+      "/* <b> */@media (width<40em){p{margin:0}}",
+      "/* \\3c b> */@media (width< 40em){p{margin:0}}",
+    ],
+    ["a top-level CDO and an escaped <", "<!-- .a\\<b{} -->", "  .a\\3c b{} -->"],
+    [
+      "an unquoted data: URL",
+      "p{background:url(data:image/svg+xml,<svg/>)}",
+      "p{background:url(data:image/svg+xml,\\3c svg/>)}",
+    ],
+    [
+      "markup-like text, so it never reads as markup",
+      "</textarea><img src=x onerror=e()>",
+      "< /textarea>< img src=x onerror=e()>",
+    ],
+  ])("keeps a style sheet with %s, escaping the <", (_label, css, escaped) => {
+    const doc = parse(sanitizeDocument(`<!DOCTYPE html><style>${css}</style><h1>T</h1>`, window));
+    expect(doc.querySelector("style")?.textContent).toBe(escaped);
+    expect(doc.querySelector("img")).toBeNull();
   });
 });
 
