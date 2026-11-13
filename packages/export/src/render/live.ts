@@ -14,13 +14,22 @@ const SETTLE_ROUNDS = 3;
 /** Longest wait for the render page's next rendering update ({@link renderingUpdate}). */
 const UPDATE_WAIT_MS = 1000;
 /**
- * Rule text whose state the engine takes at its rendering updates, from the layout and scroll
- * offsets it sees then, not in a style or layout flush: scroll-state container queries and the
- * fallbacks of anchor positions (`position-try`, which `anchored()` container queries follow).
+ * A scroll-state container query, whose state the engine takes at its rendering updates, from the
+ * scroll offsets it sees then, not in a style or layout flush (see {@link cssTakesAtUpdate}).
  */
-const AT_UPDATE = /scroll-state|position-try/i;
-/** Inline styles that can hold {@link AT_UPDATE} declarations. */
-const AT_UPDATE_INLINE = '[style*="position-try" i]';
+const SCROLL_STATE_QUERY = /scroll-state\(/i;
+/**
+ * `position-try` and `position-try-fallbacks` declarations and their values: the fallback an anchor
+ * position takes (which `anchored()` container queries follow), also taken at a rendering update.
+ */
+const POSITION_TRY = /(?<![\w-])position-try(?:-fallbacks)?\s*:\s*([^;}]*)/gi;
+/**
+ * Values of {@link POSITION_TRY} that set no fallback: `none` and the CSS-wide keywords, which a reset
+ * such as `all: unset` writes for every longhand when Chromium serialises it.
+ */
+const NO_FALLBACKS = /^(?:none|normal\s+none|initial|inherit|unset|revert|revert-layer)$/i;
+/** Inline styles that can hold {@link POSITION_TRY} declarations. */
+const POSITION_TRY_INLINE = '[style*="position-try" i]';
 
 /**
  * Pose of the live page's infinite loops, as a fraction of one cycle: the render page's HTML adapter
@@ -172,7 +181,20 @@ function kind(rule: CSSRule): string {
   return Object.prototype.toString.call(rule).slice(8, -1);
 }
 
-/** Whether `sheet` or a sheet it imports holds {@link AT_UPDATE} rule text; true when it cannot be read. */
+/**
+ * Whether CSS text (rules or a `style` attribute) holds state the engine takes at its rendering
+ * updates: a scroll-state query or anchor position fallbacks. A match elsewhere, as in a string,
+ * only makes a step wait for nothing.
+ */
+function cssTakesAtUpdate(text: string): boolean {
+  if (SCROLL_STATE_QUERY.test(text)) return true;
+  for (const [, value = ""] of text.matchAll(POSITION_TRY)) {
+    if (!NO_FALLBACKS.test(value.replace(/!\s*important\s*$/i, "").trim())) return true;
+  }
+  return false;
+}
+
+/** Whether `sheet` or a sheet it imports holds {@link cssTakesAtUpdate} rule text; true when it cannot be read. */
 function sheetTakesAtUpdate(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boolean {
   if (seen.has(sheet)) return false;
   seen.add(sheet);
@@ -188,7 +210,7 @@ function sheetTakesAtUpdate(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boo
     if (type === "CSSImportRule") {
       const imported = (rule as CSSImportRule).styleSheet;
       if (imported && sheetTakesAtUpdate(imported, seen)) return true;
-    } else if (type !== "CSSFontFaceRule" && AT_UPDATE.test(rule.cssText)) {
+    } else if (type !== "CSSFontFaceRule" && cssTakesAtUpdate(rule.cssText)) {
       // A rule's text holds its prelude and the rules nested in it; a font face's holds its sources.
       return true;
     }
@@ -198,10 +220,11 @@ function sheetTakesAtUpdate(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boo
 
 /**
  * Whether the style sheets or inline styles of `doc` hold rules whose state the engine takes at its
- * rendering updates ({@link AT_UPDATE}).
+ * rendering updates ({@link cssTakesAtUpdate}).
  */
 function takesAtUpdate(doc: Document): boolean {
-  if (doc.querySelector(AT_UPDATE_INLINE)) return true;
+  const inline = Array.from(doc.querySelectorAll(POSITION_TRY_INLINE));
+  if (inline.some((el) => cssTakesAtUpdate(el.getAttribute("style") ?? ""))) return true;
   const seen = new Set<CSSStyleSheet>();
   const sheets = [...Array.from(doc.styleSheets), ...(doc.adoptedStyleSheets ?? [])];
   return sheets.some((sheet) => sheetTakesAtUpdate(sheet as CSSStyleSheet, seen));
@@ -380,15 +403,16 @@ export class LiveStage {
    * without the live page.
    *
    * Some state the engine takes only at a rendering update, from the layout and scroll offsets it
-   * sees then (AT_UPDATE: a scroll-state query that sticks a header once go live scrolls the page,
-   * the fallback an anchor-positioned tooltip flips to). A transition or animation that starts there
+   * sees then (a scroll-state query that sticks a header once go live scrolls the page, the
+   * fallback an anchor-positioned tooltip flips to). A transition or animation that starts there
    * is not there for {@link sync} to read: it would run on wall time through the screenshot or the
    * rasterizer's reads, then jump back to its start at the next frame's seek. So this waits for that
    * update, reads the live page's animations again and seeks what started, from its start at `t`,
    * as long as an update starts more (a few rounds); the stage under the live page is not read again.
    * It waits on the frame that went live, which showed and scrolled the page, and on later frames
-   * only while the live page's styles hold such rules (a seek that moves the layout can change that
-   * state too); otherwise it resolves at once, and so it does in a hidden document, which takes no
+   * only while the live page's styles hold such rules ({@link cssTakesAtUpdate}: a reset such as
+   * `all: unset` sets no fallback; a seek that moves the layout can change that state too);
+   * otherwise it resolves at once, and so it does in a hidden document, which takes no
    * rendering updates.
    */
   async settle(t: number): Promise<void> {

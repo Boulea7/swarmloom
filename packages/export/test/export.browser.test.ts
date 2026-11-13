@@ -1,6 +1,6 @@
 import { createPlayer } from "@swarmloom/core";
 import { mayStartAnimations, readStyleFacts } from "@swarmloom/core/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { server } from "vitest/browser";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
 import { LiveStage, watchShadowRoots } from "../src/render/live";
@@ -197,6 +197,53 @@ describe("export in the browser", () => {
         api.dispose();
         frame.remove();
       }
+    },
+  );
+
+  it.runIf(chromium)(
+    "waits for a rendering update after the go-live frame only on a page that sets position-try fallbacks",
+    async () => {
+      // Chromium writes `all: unset` out as every longhand, `position-try: unset` among them.
+      const cases: [css: string, waits: number][] = [
+        ["button{all:unset;cursor:pointer}", 0],
+        [".tip{position-try-fallbacks:flip-block}", 1],
+      ];
+      const host = document.createElement("div");
+      const outer = host.attachShadow({ mode: "open" });
+      const world = document.createElement("div");
+      world.style.height = "200px";
+      outer.append(world);
+      const roots = [outer, world.attachShadow({ mode: "open" })];
+      document.body.append(host);
+      const waits: number[] = [];
+      try {
+        for (const [css] of cases) {
+          const frame = document.createElement("iframe");
+          frame.setAttribute("sandbox", "allow-same-origin");
+          frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+          const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+          frame.srcdoc = `<style>${css}</style><body style="margin:0"><button class="tip">Go</button>`;
+          document.body.append(frame);
+          await loaded;
+          const stage = new LiveStage({
+            document,
+            host,
+            shadows: { roots: () => roots, stop() {} },
+            page: { frame, document: frame.contentDocument as Document },
+          });
+          stage.goLive(0);
+          await stage.settle(0); // the go-live frame waits on any page
+          const raf = vi.spyOn(window, "requestAnimationFrame");
+          stage.sync(40);
+          await stage.settle(40);
+          waits.push(raf.mock.calls.length);
+          raf.mockRestore();
+          frame.remove();
+        }
+      } finally {
+        host.remove();
+      }
+      expect(waits).toEqual(cases.map(([, count]) => count));
     },
   );
 
