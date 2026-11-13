@@ -4,7 +4,7 @@ import { server } from "vitest/browser";
 import { SheetMark, watchSheetEdits } from "../src/browser/raster/sheet-edits";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
 import { LiveStage, watchShadowRoots } from "../src/render/live";
-import { mayStartAnimations } from "../src/render/starts";
+import { mayStartAnimations, readStyleFacts } from "../src/render/starts";
 
 // These cases also run in Firefox; Region Capture and classic scrollbars are Chromium's.
 const chromium = server.browser === "chromium";
@@ -294,15 +294,17 @@ describe("export in the browser", () => {
   });
 
   it("reads the live page's animations once a frame when no seek can start one there", async () => {
-    // Reading them again is what a frame of thousands of CSS animations spends most on. Telling
-    // that from the page's rules must take no declaration through `style` either: the in-browser
-    // exporter's still check would compare the text of each one taken on every frame after.
+    // Reading them again is what a frame of thousands of CSS animations spends most on. A pulse of
+    // opacity reaches no transition or container, whatever the page declares. Telling that from the
+    // page's rules must take no declaration through `style` either: the in-browser exporter's still
+    // check would compare the text of each one taken on every frame after.
     const frame = document.createElement("iframe");
     frame.setAttribute("sandbox", "allow-same-origin");
     frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
     const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
     frame.srcdoc =
-      "<style>@keyframes pulse{50%{opacity:.4}}span{animation:pulse 1.5s infinite;transition:none}</style>" +
+      "<style>@keyframes pulse{50%{opacity:.4}}span{animation:pulse 1.5s infinite}" +
+      "a{transition:color .2s;border-radius:inherit}.c{container-type:inline-size}</style>" +
       '<body style="margin:0;height:200px"><span>a</span><span>b</span>';
     const host = document.createElement("div");
     const outer = host.attachShadow({ mode: "open" });
@@ -341,25 +343,34 @@ describe("export in the browser", () => {
   });
 
   it("tells which styles let a seek start a transition or an animation", () => {
+    const glow = "@keyframes glow{to{color:red}}"; // an inherited value
     const cases: [css: string, html: string, starts: boolean][] = [
-      ["@keyframes pulse{50%{opacity:.4}}.a{animation:pulse 1s infinite;transition:none}", "", false],
-      [".a{transition-duration:0s,0ms;transition-delay:-1s}", "", false],
-      [".a{transition:opacity .3s}", "", true],
-      ["@media screen{.a{transition-delay:1s}}", "", true],
-      [".a{color:red;&:hover{transition-duration:1s}}", "", true],
-      [".a{transition:opacity var(--t)}", "", true],
-      ["@supports (display:grid){@container (min-width:200px){.a{color:red}}}", "", true],
+      ["@keyframes pulse{50%{opacity:.4}}a{transition:color .2s}a:hover{transition:all 1s}", "", false],
+      [`${glow}`, "", false],
+      [`${glow}.a{transition-duration:0s,0ms;transition-delay:-1s}`, "", false],
+      [`${glow}.a{transition:opacity .3s}`, "", true],
+      [`${glow}@media screen{.a{transition-delay:1s}}`, "", true],
+      [`${glow}.a{color:red;&:hover{transition-duration:1s}}`, "", true],
+      [`${glow}.a{&:hover{color:red}transition:color 1s}`, "", true],
+      [`${glow}.a{transition:opacity var(--t)}`, "", true],
+      [glow, '<p style="transition:color 1s"></p>', true],
+      ["@keyframes round{to{border-top-left-radius:9px}}.a{border-radius:inherit;transition:all 1s}", "", true],
+      ["@keyframes slide{to{transform:translateX(9px)}}.a{transition:color .2s}", "", false],
+      ["@keyframes slide{to{transform:translateX(9px)}}@container (width>9px){.a{color:red}}", "", true],
+      ["@keyframes wide{to{width:300px}}.box{container-type:inline-size}", "", true],
       ["@keyframes hue{to{--hue:120}}", "", true],
-      ["", '<p style="transition:color 1s"></p>', true],
     ];
-    const results = cases.map(([css, html]) => {
+    const facts = (css: string, html: string) => {
       const root = document.createElement("div").attachShadow({ mode: "open" });
       const sheet = new CSSStyleSheet();
       sheet.replaceSync(css);
       root.adoptedStyleSheets = [sheet];
       root.innerHTML = html;
-      return mayStartAnimations(root);
-    });
+      return readStyleFacts(root);
+    };
+    const results = cases.map(([css, html]) => mayStartAnimations([facts(css, html)]));
     expect(results).toEqual(cases.map(([, , starts]) => starts));
+    // A value inherits across a shadow boundary: keyframes in one root reach a transition in another.
+    expect(mayStartAnimations([facts(glow, ""), facts(".a{transition:color 1s}", "")])).toBe(true);
   });
 });

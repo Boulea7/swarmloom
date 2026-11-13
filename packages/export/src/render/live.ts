@@ -1,6 +1,6 @@
 import { holdAllCssImages, holdSvgImages, stillImageSource } from "@swarmloom/core";
 import { AnimationSeeker, freezeRunning } from "./seek";
-import { mayStartAnimations } from "./starts";
+import { mayStartAnimations, readStyleFacts, type StyleFacts } from "./starts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const SMIL = new Set(["animate", "animateTransform", "animateMotion", "animateColor", "set"]);
@@ -223,8 +223,8 @@ export class LiveStage {
   #page: LivePage | null;
   #svgs: SVGSVGElement[] = [];
   #live = false;
-  /** Documents and shadow roots checked for what a seek can start ({@link LiveStage.sync}). */
-  readonly #starts = new WeakMap<Document | ShadowRoot, boolean>();
+  /** What the styles of each document and shadow root let a seek start ({@link LiveStage.sync}). */
+  readonly #facts = new WeakMap<Document | ShadowRoot, StyleFacts>();
 
   constructor(options: LiveStageOptions) {
     this.#o = options;
@@ -275,16 +275,19 @@ export class LiveStage {
    * screenshot, the rasterizer's reads of the frame). So the seek makes that update right away, reads
    * the animations again and seeks what started at `t` as well, from its start, a few rounds deep.
    * Reading them is the costly part of a seek (Chromium sorts them by tree order), so only a
-   * document whose styles let a seek start something ({@link mayStartAnimations}) is read again:
-   * the render page with its stage roots, or the live page (also when it holds SMIL animation,
-   * whose seek can render elements again).
+   * document whose styles let a seek start something ({@link mayStartAnimations}: its keyframes
+   * animate a value that a transition or a container there can take, which fades and pulses do
+   * not) is read again: the render page with its stage roots, or the live page (also when it
+   * holds SMIL animation, whose seek can render elements again).
    */
   sync(t: number): void {
     if (!this.#live) return;
     this.#seeker.seekAnimations(this.#animations(), t);
     this.#seeker.seekSvgs(this.#svgs, t);
-    const stage = this.#mayStart(this.#o.document) || this.#o.shadows.roots().some((root) => this.#mayStart(root));
-    const page = this.#page !== null && (this.#svgs.length > 0 || this.#mayStart(this.#page.document));
+    const scopes = [this.#o.document, ...this.#o.shadows.roots()];
+    const stage = mayStartAnimations(scopes.map((scope) => this.#styles(scope)));
+    const page =
+      this.#page !== null && (this.#svgs.length > 0 || mayStartAnimations([this.#styles(this.#page.document)]));
     if (!stage && !page) return;
     for (let round = 0; round < SETTLE_ROUNDS; round++) {
       this.#layout();
@@ -313,14 +316,14 @@ export class LiveStage {
     return (inner?.host as HTMLElement | undefined) ?? null;
   }
 
-  /** Whether a seek can start an animation in `scope`, worked out the first time it is asked. */
-  #mayStart(scope: Document | ShadowRoot): boolean {
-    let starts = this.#starts.get(scope);
-    if (starts === undefined) {
-      starts = mayStartAnimations(scope);
-      this.#starts.set(scope, starts);
+  /** What the styles of `scope` let a seek start, read the first time it is asked. */
+  #styles(scope: Document | ShadowRoot): StyleFacts {
+    let facts = this.#facts.get(scope);
+    if (!facts) {
+      facts = readStyleFacts(scope);
+      this.#facts.set(scope, facts);
     }
-    return starts;
+    return facts;
   }
 
   /** The animations of the render page and its stage roots (`stage`) and of the live page (`page`). */
