@@ -461,7 +461,7 @@ it("walks the frame again only after a mutation, a scroll, an animation seek tha
   expect((await frame())[0]).toBe(6);
 });
 
-it("lists the animations once per frame and reads what each animates once", async () => {
+it("lists the animations and reads each of them once per frame", async () => {
   const { win, rasterizer } = await frameOf(
     "<style>@keyframes k { to { opacity: 0.5 } } i { display: block; height: 10px; animation: k 1s both paused }</style>" +
       '<body style="margin:0"><i></i><i></i><i></i></body>',
@@ -477,7 +477,8 @@ it("lists the animations once per frame and reads what each animates once", asyn
       await pixel(rasterizer, 5, 5);
     }
     const reads = { keyframes: keyframes.mock.calls.length, lists: lists.mock.calls.length };
-    expect(reads).toEqual({ keyframes: 3, lists: 4 });
+    // The still check, the watch of the next frame and the far cache share one read.
+    expect(reads).toEqual({ keyframes: 12, lists: 4 });
   } finally {
     keyframes.mockRestore();
     lists.mockRestore();

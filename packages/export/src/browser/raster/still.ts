@@ -1,4 +1,4 @@
-import { animationMark, animationsOf, sheetsOf } from "./far";
+import { animationMark, animationsOf, same, sheetsOf } from "./reads";
 import { SheetMark, watchSheetEdits } from "./sheet-edits";
 import { type CanvasMark, canvasDataUrl, type ScrollMark, type SnapshotSource } from "./snapshot";
 
@@ -63,14 +63,10 @@ function stateOf(
     for (const animation of animations) {
       const look = animationMark(animation).state;
       if (look === null) return null;
-      state.push(animation, look);
+      state.push(animation, look.length, ...look);
     }
   }
   return state;
-}
-
-function same(a: readonly unknown[], b: readonly unknown[]): boolean {
-  return a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
 }
 
 /**

@@ -11,7 +11,7 @@
  * not adopted) counts too.
  */
 
-import { sheetsOf } from "./far";
+import { sheetsOf } from "./reads";
 
 /** The interfaces whose setters and writing methods {@link watchSheetEdits} wraps. */
 const INTERFACES =

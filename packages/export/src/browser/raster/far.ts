@@ -1,3 +1,4 @@
+import { type AnimationMark, animationMark, animationsOf, same, sheetState, sheetsOf, sheetText } from "./reads";
 import type { InheritedValues } from "./styles";
 
 /** A box in CSS px of a document's viewport. */
@@ -75,8 +76,6 @@ const PAINT_DEEP = new Set([
   "stroke-dasharray",
   "stroke-width",
 ]);
-/** Keyframe members that name no property. */
-const KEYFRAME_TIMING = new Set(["offset", "computedOffset", "easing", "composite"]);
 /**
  * Selector parts whose match on an element may change with a mutation that is neither in its
  * subtree nor on one of its ancestors: sibling combinators, structural and relational
@@ -85,21 +84,9 @@ const KEYFRAME_TIMING = new Set(["offset", "computedOffset", "easing", "composit
 const NONLOCAL_SELECTOR = /[+~]|:(?:has|nth-|first-|last-|only-|empty|host-context)/;
 /**
  * A length in container query units (`5cqi`, `calc(2cqw + 1px)`): it follows a container's size.
- * Matched in a rule's whole text: a false match in a selector or a string only makes the check stricter.
+ * Matched in a sheet's whole text: a false match in a selector or a string only makes the check stricter.
  */
 const CONTAINER_UNIT = /\dcq(?:[whib]|min|max)\b/;
-/**
- * Rules whose own text holds no length a container sizes: a grouping rule (only the rules in it are
- * read) and a font face, whose text holds its whole source (a data URL may run to megabytes).
- */
-const UNSIZED_RULES = new Set([
-  "CSSFontFaceRule",
-  "CSSMediaRule",
-  "CSSSupportsRule",
-  "CSSLayerBlockRule",
-  "CSSScopeRule",
-  "CSSStartingStyleRule",
-]);
 /** Elements whose content sheets or document-wide colours depend on. */
 const SHEET_OWNERS = new Set(["style", "link", "meta"]);
 /**
@@ -120,7 +107,7 @@ interface Scope {
   records: MutationRecord[];
   events: EventTarget[];
   fontsDone: boolean;
-  /** What {@link sheetState}, {@link fontState}, focus and Web Animations read at the last walk. */
+  /** What `sheetState`, {@link fontState}, focus and Web Animations read at the last walk. */
   sheets: unknown[];
   fonts: string;
   focus: unknown[];
@@ -230,10 +217,6 @@ function up(node: Node): Node | null {
   return node.nodeType === 11 ? (node as ShadowRoot).host : null;
 }
 
-function same(a: readonly unknown[], b: readonly unknown[]): boolean {
-  return a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
-}
-
 function sameArea(a: Area, b: Area): boolean {
   return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
 }
@@ -248,31 +231,6 @@ function away(r: DOMRectReadOnly, around: Area, area: Area): boolean {
   );
 }
 
-function ruleCount(sheet: CSSStyleSheet): number {
-  try {
-    return sheet.cssRules.length;
-  } catch {
-    return -1;
-  }
-}
-
-/** The style sheets of a document or shadow root: those of its elements, then the adopted ones. */
-export function sheetsOf(target: Document | ShadowRoot): CSSStyleSheet[] {
-  return [...Array.from(target.styleSheets ?? []), ...(target.adoptedStyleSheets ?? [])] as CSSStyleSheet[];
-}
-
-/**
- * The style sheets that apply in a scope, with what tells that one changed (not rules edited in
- * place, see {@link FarCache.forget}).
- */
-function sheetState(targets: Iterable<Document | ShadowRoot>): unknown[] {
-  const state: unknown[] = [];
-  for (const target of targets) {
-    for (const sheet of sheetsOf(target)) state.push(sheet, sheet.disabled, sheet.media.mediaText, ruleCount(sheet));
-  }
-  return state;
-}
-
 /** What the rules of a sheet may match beyond the boxes a change reaches by itself. */
 interface SheetReach {
   /** Its selectors match by an element and its ancestors only ({@link NONLOCAL_SELECTOR}). */
@@ -284,48 +242,53 @@ interface SheetReach {
   sized: boolean;
 }
 
-/**
- * The {@link SheetReach} of each sheet read, with its rule count then. A rule edited in place may
- * keep the count (one replaced, a new selector, one inserted into a grouping rule): those are read
- * anew on {@link FarCache.forget}.
- */
-let sheetReaches = new WeakMap<CSSStyleSheet, SheetReach & { count: number }>();
+/** The {@link SheetReach} of each sheet read, with the text it was read from ({@link sheetText}). */
+const sheetReaches = new WeakMap<CSSStyleSheet, SheetReach & { text: string }>();
 
-/** The {@link SheetReach} of a sheet: neither local nor free of container queries while unreadable. */
+/**
+ * The {@link SheetReach} of a sheet, read again whenever its text changed: neither local nor free of
+ * container queries while its rules cannot be read.
+ */
 function sheetReach(sheet: CSSStyleSheet): SheetReach {
-  const count = ruleCount(sheet);
+  const text = sheetText(sheet);
   const known = sheetReaches.get(sheet);
-  if (known?.count === count) return known;
-  const reach = { count, local: count >= 0, sized: count < 0 };
-  if (count >= 0) readRules(sheet.cssRules, reach);
+  if (known?.text === text) return known;
+  let rules: CSSRuleList | null = null;
+  try {
+    rules = sheet.cssRules;
+  } catch {
+    rules = null;
+  }
+  // A container's size may change without a mutation in what it styles; so may a length in
+  // container units, with or without a container rule.
+  const sized = !rules || CONTAINER_UNIT.test(text);
+  const reach = { text, local: !sized, sized };
+  if (rules) readRules(rules, reach);
   sheetReaches.set(sheet, reach);
   return reach;
 }
 
-/** Reads `rules` into `reach`; `nested` when the text of a rule holding them was read already. */
-function readRules(rules: CSSRuleList, reach: SheetReach, nested = false): void {
-  for (const rule of Array.from(rules)) {
-    if (!reach.local && reach.sized) return;
-    const r = rule as CSSRule & { selectorText?: unknown; cssRules?: CSSRuleList; styleSheet?: CSSStyleSheet | null };
-    if (typeof r.selectorText === "string" && NONLOCAL_SELECTOR.test(r.selectorText)) reach.local = false;
+/** Reads the selectors, container and scope rules and imported sheets of `rules` into `reach`. */
+function readRules(rules: CSSRuleList, reach: SheetReach): void {
+  for (let i = 0; i < rules.length && (reach.local || !reach.sized); i++) {
+    const rule = rules[i] as CSSRule & {
+      selectorText?: unknown;
+      cssRules?: CSSRuleList;
+      styleSheet?: CSSStyleSheet | null;
+    };
+    if (typeof rule.selectorText === "string" && NONLOCAL_SELECTOR.test(rule.selectorText)) reach.local = false;
     // Type tags, not instanceof: the rule may belong to another frame's realm.
     const kind = Object.prototype.toString.call(rule).slice(8, -1);
-    // A container's size or a scope's limits may change without a mutation in what they style; so
-    // may a length in container units, with or without a container rule. Those are found in the
-    // text of the outermost rule not in UNSIZED_RULES, which holds the rules nested in it, and not
-    // through `style`: the getter watchSheetEdits wrapped would hand each declaration to the still
-    // check, which would then read them all on every still frame of the live page.
-    const own = !nested && !UNSIZED_RULES.has(kind);
-    if (kind === "CSSContainerRule" || (own && CONTAINER_UNIT.test(rule.cssText))) {
+    if (kind === "CSSContainerRule") {
       reach.local = false;
       reach.sized = true;
     } else if (kind === "CSSScopeRule") reach.local = false;
-    if (r.styleSheet) {
-      const inner = sheetReach(r.styleSheet);
+    if (rule.styleSheet) {
+      const inner = sheetReach(rule.styleSheet);
       reach.local &&= inner.local;
       reach.sized ||= inner.sized;
     }
-    if (r.cssRules) readRules(r.cssRules, reach, nested || own);
+    if (rule.cssRules) readRules(rule.cssRules, reach);
   }
 }
 
@@ -357,15 +320,6 @@ function fontState(doc: Document, faces: number): string {
   return `${fonts?.status} ${fonts?.size} ${faces}`;
 }
 
-/** A CSS property name from a keyframe member (`backgroundColor`, `webkitTextFillColor`, `--x`). */
-function cssName(member: string): string {
-  if (member.startsWith("--")) return member;
-  if (member === "cssFloat") return "float";
-  if (member === "cssOffset") return "offset";
-  const name = member.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
-  return name.startsWith("webkit-") ? `-${name}` : name;
-}
-
 /**
  * How far a change of an animation may reach: how its target's own box looks ({@link PAINT_SELF}),
  * how the boxes in it look too ({@link PAINT_DEEP}), or where any box is laid out.
@@ -375,90 +329,7 @@ const DEEP = 1;
 const LAYOUT = 2;
 type AnimationReach = typeof SELF | typeof DEEP | typeof LAYOUT;
 
-/** What a read of a Web Animation gives: {@link animationState}, and how far a change of it reaches. */
-export interface AnimationMark {
-  state: string | null;
-  reach: AnimationReach;
-}
-
-/** What an effect animates: the CSS names of the properties (null when unreadable), and their reach. */
-interface Animated {
-  names: readonly string[] | null;
-  reach: AnimationReach;
-}
-
-/**
- * {@link Animated} by keyframe effect, read from its keyframes once: `getKeyframes()` on every frame
- * cost about 10 ms per 1000 animations. Read anew ({@link forgetKeyframes}) once keyframes may have
- * changed without a new effect: a style sheet added, removed or switched ({@link animationsOf}), a
- * rule edited in place or keyframes set anew (the rasterizer then calls {@link FarCache.forget}).
- */
-let animatedByEffect = new WeakMap<AnimationEffect, Animated>();
-
-/**
- * Reads shared until the running script yields (the next microtask checkpoint): before a walk, the
- * still check of the last frame, the one of the next frame (`StillWatch`) and the far cache read
- * the same animations one after the other, and `getAnimations()` sorts them in tree order (about
- * 12 ms per 1000 animations each time). Nothing between those reads changes the page.
- */
-interface Reads {
-  lists: Map<Document | ShadowRoot, readonly Animation[]>;
-  marks: Map<Animation, AnimationMark>;
-}
-
-let reads: Reads | null = null;
-
-function shared(): Reads {
-  if (reads) return reads;
-  const fresh: Reads = { lists: new Map(), marks: new Map() };
-  reads = fresh;
-  queueMicrotask(() => {
-    if (reads === fresh) reads = null;
-  });
-  return fresh;
-}
-
-/** Reads what each effect animates anew, from now on. */
-function forgetKeyframes(): void {
-  animatedByEffect = new WeakMap();
-  reads?.marks.clear();
-}
-
-/** The style sheets of each document or shadow root at its last {@link animationsOf}. */
-const listedSheets = new WeakMap<Document | ShadowRoot, unknown[]>();
-
-/**
- * The Web Animations of a document or shadow root, `getAnimations()` read once while the script
- * runs ({@link Reads}). Its style sheets changed since the last read: the keyframes of its CSS
- * animations may have too, so what every effect animates is read anew.
- */
-export function animationsOf(target: Document | ShadowRoot): readonly Animation[] {
-  const shares = shared();
-  let list = shares.lists.get(target);
-  if (list) return list;
-  const sheets = sheetState([target]);
-  const known = listedSheets.get(target);
-  if (known && !same(known, sheets)) forgetKeyframes();
-  listedSheets.set(target, sheets);
-  list = typeof target.getAnimations === "function" ? target.getAnimations() : [];
-  shares.lists.set(target, list);
-  return list;
-}
-
-/** The CSS names of the properties an effect animates; null when its keyframes cannot be read. */
-function animatedNames(effect: KeyframeEffect): string[] | null {
-  if (typeof effect.getKeyframes !== "function") return null;
-  try {
-    const names = new Set<string>();
-    for (const frame of effect.getKeyframes()) {
-      for (const key of Object.keys(frame)) if (!KEYFRAME_TIMING.has(key)) names.add(cssName(key));
-    }
-    return [...names];
-  } catch {
-    return null;
-  }
-}
-
+/** How far a change of an animation of `names` reaches ({@link AnimationMark.names}). */
 function reachOf(names: readonly string[] | null): AnimationReach {
   if (!names) return LAYOUT;
   let reach: AnimationReach = SELF;
@@ -467,57 +338,6 @@ function reachOf(names: readonly string[] | null): AnimationReach {
     else if (!PAINT_SELF.has(name)) return LAYOUT;
   }
   return reach;
-}
-
-/** What an animation's effect animates ({@link animatedByEffect}). */
-function animated(animation: Animation): Animated {
-  const effect = animation.effect as KeyframeEffect | null;
-  if (!effect) return { names: null, reach: LAYOUT };
-  let known = animatedByEffect.get(effect);
-  if (!known) {
-    const names = animatedNames(effect);
-    known = { names, reach: reachOf(names) };
-    animatedByEffect.set(effect, known);
-  }
-  return known;
-}
-
-/**
- * An animation's state for comparing frames, null while it runs on the wall clock: the computed
- * values of what it animates on its target (`names`), which the walk writes, so a frame that
- * changes none of them (a `steps()` timing between steps, a fill held past its end) changes
- * nothing; its timing where one of them reads empty.
- */
-function animationState(animation: Animation, names: readonly string[] | null): string | null {
-  if (animation.playState === "running") return null;
-  const timing = `@${animation.playState} ${String(animation.currentTime)} ${animation.playbackRate}`;
-  const effect = animation.effect as KeyframeEffect | null;
-  const target = effect?.target;
-  const win = target?.ownerDocument.defaultView;
-  if (!names || !effect || !target || !win) return timing;
-  const cs = win.getComputedStyle(target, effect.pseudoElement);
-  let state = "";
-  for (const name of names) {
-    const value = cs.getPropertyValue(name);
-    if (value === "") return timing;
-    state += `${value};`;
-  }
-  return state;
-}
-
-/**
- * What an animation shows and how far a change of it reaches, read once while the script runs
- * ({@link Reads}): the still check compares its state too.
- */
-export function animationMark(animation: Animation): AnimationMark {
-  const shares = shared();
-  let mark = shares.marks.get(animation);
-  if (!mark) {
-    const { names, reach } = animated(animation);
-    mark = { state: animationState(animation, names), reach };
-    shares.marks.set(animation, mark);
-  }
-  return mark;
 }
 
 /** Whether a mutation adds, removes or edits a style sheet or a colour-scheme meta element. */
@@ -556,21 +376,22 @@ export interface FarSource {
  *   that cannot be read), or when it adds or edits a style sheet;
  * - a load or error (images, frames), and a popover or details element opening or closing, as a
  *   mutation of its target; of a style sheet, as any change of the sheets;
- * - a Web Animation that runs, or changed a value it animates since: the boxes around its target
- *   when it only animates how its target's own box paints ({@link PAINT_SELF}), and those inside
- *   it too when it animates how they paint ({@link PAINT_DEEP}); otherwise, as a mutation of its
- *   target's style, those inside and around it, and any box where the sheets query container
- *   sizes (container rules or units, see {@link SheetReach.sized}) or cannot be read;
- * - a change of the sheets, the font sets, a font loading, or a change of focus: any box.
+ * - a Web Animation that runs, or shows anything else since (see `animationMark`): the boxes
+ *   around its target when it only animates how its target's own box paints ({@link PAINT_SELF}),
+ *   and those inside it too when it animates how they paint ({@link PAINT_DEEP}); otherwise, as a
+ *   mutation of its target's style, those inside and around it, and any box where the sheets
+ *   query container sizes (container rules or units, see {@link SheetReach.sized}) or cannot be
+ *   read;
+ * - a change of the sheets, read by value (which apply, and the text of their rules, so an edit
+ *   through the CSSOM counts however it was made, see `sheetText`), of the font sets, a font
+ *   loading, or a change of focus: any box. What the sheets match is read again from them then.
  * The walk then checks each box itself: the same size and used margins (in percentages, container
  * units or `auto`, those follow a box outside it that such a change may have resized), and the
  * same place or, when what is in it all moves with it, an extent still away from the viewport; for
  * a box with something laid out against a box outside it, the same place and no change at all in
  * its document, scroll offsets included; for a box whose content flows around floats outside it
  * with a float before it, no change in its document but scrolling. Form control state, custom
- * element definitions and custom states are not seen, as by the still check (`StillWatch`), nor
- * are rules edited in place through the CSSOM: the rasterizer reads those from the still check,
- * then drops every box and reads what the sheets match anew ({@link forget}).
+ * element definitions and custom states are not seen, as by the still check (`StillWatch`).
  */
 export class FarCache<T> {
   readonly #scopes = new Map<Document, Scope>();
@@ -695,19 +516,6 @@ export class FarCache<T> {
     this.#scrolls = scrolls;
   }
 
-  /**
-   * Drops every box kept, for a change it does not read itself (rules edited in place, keyframes
-   * set anew), and reads anew what the sheets match and what each animation animates: an edit that
-   * keeps the rule count may match beyond the boxes a mutation reaches by itself, or query
-   * container sizes, from now on.
-   */
-  forget(): void {
-    this.#entries.clear();
-    sheetReaches = new WeakMap();
-    forgetKeyframes();
-    for (const scope of this.#scopes.values()) Object.assign(scope, scopeReach(scope.targets));
-  }
-
   /** The boxes kept for the next walk (for tests and diagnostics). */
   get size(): number {
     return this.#entries.size;
@@ -754,7 +562,7 @@ export class FarCache<T> {
     scope.observer.observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
     for (const type of EVENTS) target.addEventListener(type, scope.listener, true);
     // What is read without events starts here; the boxes cached so far in the scope go once.
-    scope.sheets = sheetState(scope.targets);
+    scope.sheets = sheetState(scope.targets, true);
     Object.assign(scope, scopeReach(scope.targets));
     scope.focus = Array.from(scope.targets, (t) => t.activeElement);
     for (const animation of animationsOf(target)) scope.animations.set(animation, animationMark(animation));
@@ -784,7 +592,7 @@ export class FarCache<T> {
     const fonts = fontState(scope.doc, faces);
     if (fonts !== scope.fonts) all = true;
     scope.fonts = fonts;
-    const sheets = sheetState(scope.targets);
+    const sheets = sheetState(scope.targets, true);
     if (!same(sheets, scope.sheets)) {
       all = true;
       scope.sheets = sheets;
@@ -833,11 +641,12 @@ export class FarCache<T> {
     };
     for (const [animation, mark] of animations) {
       const last = scope.animations.get(animation);
-      if (mark.state !== null && last?.state === mark.state) continue;
+      if (mark.state && last?.state && same(mark.state, last.state)) continue;
       // The wider reach of what it animated and what it animates (keyframes set anew).
-      moved(animation, Math.max(mark.reach, last?.reach ?? SELF) as AnimationReach);
+      moved(animation, Math.max(reachOf(mark.names), last ? reachOf(last.names) : SELF) as AnimationReach);
     }
-    for (const [animation, last] of scope.animations) if (!animations.has(animation)) moved(animation, last.reach);
+    for (const [animation, last] of scope.animations)
+      if (!animations.has(animation)) moved(animation, reachOf(last.names));
     scope.animations = animations;
     if (all) scope.epoch++;
     if (all || layout || records.length > 0 || events.length > 0) {
