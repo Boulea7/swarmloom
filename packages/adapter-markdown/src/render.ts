@@ -104,8 +104,6 @@ export interface Rendered {
 
 const LINK_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
 const DATA_IMAGE = /^data:image\/(?:png|gif|jpeg|webp|avif|svg\+xml)[;,]/i;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: the URL parser strips C0 controls and spaces at both ends.
-const URL_EDGES = /^[\x00-\x20]+|[\x00-\x20]+$/g;
 
 const CALLOUTS: Record<string, Record<CalloutKind, string>> = {
   en: { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" },
@@ -148,10 +146,14 @@ export function safeHref(url: string, base?: string): string | undefined {
  * was checked.
  */
 function urlText(url: string): string {
-  return url
-    .trim()
-    .replace(URL_EDGES, "")
-    .replace(/[\t\n\r]/g, "");
+  const v = url.trim();
+  // Index scans, not an end-anchored regex: /[\x00-\x20]+$/ is quadratic on a long run of
+  // spaces inside the URL, which a short shared link can carry.
+  let start = 0;
+  let end = v.length;
+  while (start < end && v.charCodeAt(start) <= 0x20) start++;
+  while (end > start && v.charCodeAt(end - 1) <= 0x20) end--;
+  return v.slice(start, end).replace(/[\t\n\r]/g, "");
 }
 
 /**

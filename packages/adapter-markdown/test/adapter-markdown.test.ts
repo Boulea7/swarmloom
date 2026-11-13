@@ -188,6 +188,14 @@ describe("markdownToHtml: safety", () => {
     expect(on.html).not.toContain("v.mp4");
   });
 
+  it("cleans URL edges in linear time when spaces run inside the URL", () => {
+    // An end-anchored regex took seconds here; a ~1.4 KB share link could hang the tab for an hour.
+    const url = `a${" ".repeat(100_000)}b.png`;
+    const start = performance.now();
+    expect(safeImageSrc(` \u0001${url}\u0001 `, undefined, { remote: false })).toBe(url);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
   it("reads network paths as the URL parser does, without a base too", async () => {
     // Backslashes, tabs and leading control characters still name another host in the browser.
     const md = [
