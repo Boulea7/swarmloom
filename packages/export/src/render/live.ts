@@ -90,6 +90,26 @@ export function watchShadowRoots(win: Window & typeof globalThis): ShadowWatch {
   };
 }
 
+/**
+ * The open shadow roots of `doc`, the ones nested in them included. `Document.getAnimations()` and
+ * `document.styleSheets` leave shadow trees out, so a live page a loader gave with such roots has
+ * its animations and style sheets read from each root as well.
+ */
+function openShadowRoots(doc: Document): ShadowRoot[] {
+  const roots: ShadowRoot[] = [];
+  const scopes: (Document | ShadowRoot)[] = [doc];
+  for (let scope = scopes.pop(); scope; scope = scopes.pop()) {
+    for (const el of Array.from(scope.querySelectorAll("*"))) {
+      const root = el.shadowRoot;
+      if (root) {
+        roots.push(root);
+        scopes.push(root);
+      }
+    }
+  }
+  return roots;
+}
+
 /** Outermost `<svg>` elements of `doc` that hold SMIL animation (each is one time container). */
 function animatedSvgs(doc: Document): SVGSVGElement[] {
   const found: SVGSVGElement[] = [];
@@ -219,14 +239,14 @@ function sheetTakesAtUpdate(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boo
 }
 
 /**
- * Whether the style sheets or inline styles of `doc` hold rules whose state the engine takes at its
- * rendering updates ({@link cssTakesAtUpdate}).
+ * Whether the style sheets or inline styles of `scope` (a document or a shadow root) hold rules
+ * whose state the engine takes at its rendering updates ({@link cssTakesAtUpdate}).
  */
-function takesAtUpdate(doc: Document): boolean {
-  const inline = Array.from(doc.querySelectorAll(POSITION_TRY_INLINE));
+function takesAtUpdate(scope: Document | ShadowRoot): boolean {
+  const inline = Array.from(scope.querySelectorAll(POSITION_TRY_INLINE));
   if (inline.some((el) => cssTakesAtUpdate(el.getAttribute("style") ?? ""))) return true;
   const seen = new Set<CSSStyleSheet>();
-  const sheets = [...Array.from(doc.styleSheets), ...(doc.adoptedStyleSheets ?? [])];
+  const sheets = [...Array.from(scope.styleSheets), ...(scope.adoptedStyleSheets ?? [])];
   return sheets.some((sheet) => sheetTakesAtUpdate(sheet as CSSStyleSheet, seen));
 }
 
@@ -307,7 +327,8 @@ export interface LiveStageOptions {
  * The render page's side of go live. Once the stage is live (`PlayerOptions.onLive`) it shows the
  * live page an adapter kept (the real HTML page, its animations frozen at the captured pose, and any
  * it started since frozen by the same rule then) over the stage, and from then on every frame pauses
- * all Web Animations (document, stage subtrees, live page) and the live page's SVG documents and
+ * all Web Animations (document, stage subtrees, live page and its open shadow roots) and the live
+ * page's SVG documents and
  * seeks them to the transport time ({@link LiveStage.sync}), also the ones the page's next rendering
  * update starts ({@link LiveStage.settle}), so frames never depend on wall time. The live page's
  * `<marquee>` elements, which no seek reaches, stay still at their captured resting pose, and its
@@ -319,6 +340,11 @@ export class LiveStage {
   readonly #o: LiveStageOptions;
   #page: LivePage | null;
   #svgs: SVGSVGElement[] = [];
+  /**
+   * Open shadow roots of the live page, read at go live, whose animations and style sheets its
+   * document's leave out (an adapter's sandboxed page runs no script that could attach more later).
+   */
+  #pageRoots: ShadowRoot[] = [];
   #live = false;
   /** What the styles of each document and shadow root let a seek start ({@link LiveStage.sync}). */
   readonly #facts = new WeakMap<Document | ShadowRoot, StyleFacts>();
@@ -363,10 +389,11 @@ export class LiveStage {
         this.#shownAt = t;
         restMarquees(page.document);
         this.#svgs = animatedSvgs(page.document);
+        this.#pageRoots = openShadowRoots(page.document);
         // The capture froze every animation of the page, but the page may have started more since
         // (sections with `content-visibility: auto` the browser laid out later, the marquees just
         // replaced) that run on wall time: freeze those by the same rule before the seek anchors them.
-        freezeRunning(page.document.getAnimations(), LIVE_LOOP_PHASE);
+        freezeRunning(this.#animations(false, true), LIVE_LOOP_PHASE);
       }
     }
     this.sync(t);
@@ -404,7 +431,9 @@ export class LiveStage {
     const scopes = [this.#o.document, ...this.#o.shadows.roots()];
     const stage = mayStartAnimations(scopes.map((scope) => this.#styles(scope)));
     const page =
-      this.#page !== null && (this.#svgs.length > 0 || mayStartAnimations([this.#styles(this.#page.document)]));
+      this.#page !== null &&
+      (this.#svgs.length > 0 ||
+        mayStartAnimations([this.#page.document, ...this.#pageRoots].map((scope) => this.#styles(scope))));
     if (!stage && !page) return;
     for (let round = 0; round < SETTLE_ROUNDS; round++) {
       this.#layout();
@@ -438,7 +467,7 @@ export class LiveStage {
     if (!this.#live || !page) return;
     const shownAt = this.#shownAt;
     this.#shownAt = null;
-    this.#atUpdate ??= takesAtUpdate(page.document);
+    this.#atUpdate ??= [page.document, ...this.#pageRoots].some(takesAtUpdate);
     if (shownAt === null && !this.#atUpdate) return;
     const from = shownAt ?? t;
     for (let round = 0; round < SETTLE_ROUNDS; round++) {
@@ -478,12 +507,18 @@ export class LiveStage {
     return facts;
   }
 
-  /** The animations of the render page and its stage roots (`stage`) and of the live page (`page`). */
+  /**
+   * The animations of the render page and its stage roots (`stage`) and of the live page and its
+   * open shadow roots (`page`).
+   */
   *#animations(stage = true, page = true): Iterable<Animation> {
     if (stage) {
       yield* this.#o.document.getAnimations();
       for (const root of this.#o.shadows.roots()) yield* root.getAnimations();
     }
-    if (page && this.#page) yield* this.#page.document.getAnimations();
+    if (page && this.#page) {
+      yield* this.#page.document.getAnimations();
+      for (const root of this.#pageRoots) yield* root.getAnimations();
+    }
   }
 }

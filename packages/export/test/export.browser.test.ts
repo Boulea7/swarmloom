@@ -146,25 +146,34 @@ describe("export in the browser", () => {
     }
   });
 
-  it.runIf(chromium)(
-    "starts a transition the go-live scroll sets off at the next rendering update at the frame time",
-    async () => {
+  // The header sits in the document, or in an open shadow root, which Document.getAnimations() leaves out.
+  it.runIf(chromium).each([{ where: "the document" }, { where: "an open shadow root" }])(
+    "starts a transition the go-live scroll sets off at the next rendering update at the frame time in $where",
+    async ({ where }) => {
       // The live page waits scrolled down, its sticky header stuck and red. Going live scrolls it to
       // the stage's view at the top, and Chromium unsticks the header at its next rendering update.
       const frame = document.createElement("iframe");
       frame.setAttribute("sandbox", "allow-same-origin");
       frame.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;border:0";
       const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
-      frame.srcdoc =
-        "<style>body{margin:0}p{margin:0;height:150px}header{position:sticky;top:0;container-type:scroll-state}" +
+      const inShadow = where !== "the document";
+      const page =
+        "<style>p{margin:0;height:150px}header{position:sticky;top:0;container-type:scroll-state}" +
         "header div{height:20px;background:rgb(0,0,255);transition:background-color .6s linear}" +
         "@container scroll-state(stuck: top){header div{background:rgb(255,0,0)}}</style>" +
         "<p></p><header><div></div></header><p></p><p></p><p></p>";
+      frame.srcdoc = `<body style="margin:0">${inShadow ? "<div></div>" : page}`;
       document.body.append(frame);
+      let scope: Document | ShadowRoot = document;
       const api = createRenderApi({
         load: async () => {
           await loaded;
           const doc = frame.contentDocument as Document;
+          scope = doc;
+          if (inShadow) {
+            scope = (doc.body.firstElementChild as HTMLElement).attachShadow({ mode: "open" });
+            scope.innerHTML = page;
+          }
           frame.contentWindow?.scrollTo(0, 300);
           await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           const size = { w: 320, h: doc.documentElement.scrollHeight };
@@ -188,10 +197,9 @@ describe("export in the browser", () => {
         });
         await api.step(100); // goes live at 100 ms
         await new Promise((resolve) => setTimeout(resolve, 150)); // a slow screenshot
-        const doc = frame.contentDocument as Document;
         expect([
           frame.contentWindow?.scrollY,
-          doc.getAnimations().map((anim) => [anim.playState, anim.currentTime]),
+          scope.getAnimations().map((anim) => [anim.playState, anim.currentTime]),
         ]).toEqual([0, [["paused", 0]]]);
       } finally {
         api.dispose();
