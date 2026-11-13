@@ -21,12 +21,14 @@ const RENDERING = /^(?:--|display$|content-visibility$)/;
  * value reaches another element only through an explicit `inherit`.
  */
 const PAINT_ONLY =
-  /^(?:opacity|background(?:-.+)?|box-shadow|clip-path|clip|(?:-webkit-)?mask(?:-.+)?|outline(?:-color|-style|-width|-offset)?|border(?:-[a-z]+)*-radius|z-index|mix-blend-mode|isolation|object-position|transform-origin|perspective-origin)$/;
+  /^(?:opacity|background(?:-.+)?|box-shadow|clip-path|clip|(?:-webkit-)?mask(?:-.+)?|outline(?:-color|-style|-width|-offset)?|border(?:-[a-z]+)*-radius|z-index|mix-blend-mode|isolation|object-position)$/;
 /**
- * Keyframe properties that paint only too, but make the element a containing block for positioned
- * descendants and move its scrollable overflow (scrollbars), so they can resize a container.
+ * Keyframe properties that paint only too, but move the scrollable overflow (scrollbars) of a
+ * transformed box (the origins too, about which a transform turns or projects it) or make the
+ * element a containing block for positioned descendants, so they can resize a container.
  */
-const CONTAINING = /^(?:transform|translate|rotate|scale|perspective|filter|backdrop-filter|offset(?:-.+)?)$/;
+const CONTAINING =
+  /^(?:transform(?:-origin)?|translate|rotate|scale|perspective(?:-origin)?|filter|backdrop-filter|offset(?:-.+)?)$/;
 /** Keyframe descriptors that are not animated. */
 const NOT_ANIMATED = /^animation-(?:timing-function|composition)$/;
 /**
@@ -272,8 +274,8 @@ export function readStyleFacts(scope: Document | ShadowRoot): StyleFacts {
  *    a `var()` changes an animation name, a transition or a query),
  *  - paint-only properties (opacity, backgrounds, shadows, clips, masks, outlines, radii, z-index):
  *    only where an element with a transition takes one with `inherit`,
- *  - transforms, filters and motion paths: also where some element is a container, whose size a
- *    containing block or scrollbars that come and go can change,
+ *  - transforms and their origins, filters and motion paths: also where some element is a
+ *    container, whose size a containing block or scrollbars that come and go can change,
  *  - anything else (inherited values, sizes, em and lh units): wherever a transition or a container
  *    can take the change.
  * So fades, slides, spinners and skeleton pulses start nothing, whatever transitions the page

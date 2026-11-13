@@ -351,6 +351,8 @@ describe("export in the browser", () => {
       ["@keyframes round{to{border-top-left-radius:9px}}.a{border-radius:inherit;transition:all 1s}", "", true],
       ["@keyframes slide{to{transform:translateX(9px)}}.a{transition:color .2s}", "", false],
       ["@keyframes slide{to{transform:translateX(9px)}}@container (width>9px){.a{color:red}}", "", true],
+      // An origin moves a transformed box's scrollable overflow, so scrollbars can resize a container.
+      ["@keyframes swing{to{transform-origin:0 200%}}@container (width>9px){.a{color:red}}", "", true],
       ["@keyframes wide{to{width:300px}}.box{container-type:inline-size}", "", true],
       ["@keyframes hue{to{--hue:120}}", "", true],
     ];
