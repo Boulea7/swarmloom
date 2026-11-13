@@ -811,7 +811,8 @@ function stepsCounter(cs: CSSStyleDeclaration, listed: boolean): boolean {
  *
  * The subtrees are left out or written empty when it finds none, as away from the viewport by
  * their boxes now: on the way it notes each CSS image still loading that lays out one of those
- * boxes ({@link noteImages}), which may grow it into view once loaded, without an event.
+ * boxes ({@link noteImages}, {@link noteMarker}), which may grow it into view once loaded, without
+ * an event.
  */
 function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boolean {
   const stack: [Element, boolean][] = [];
@@ -824,7 +825,11 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
     if (stepsCounter(cs, inList)) return true;
     // SVG elements have no such boxes, and the snapshot writes none for void elements either.
     const html = el.namespaceURI !== SVG_NS;
-    if (html) noteImages(walk, el.ownerDocument, cs, display.includes("list-item"));
+    if (html) {
+      const item = display.includes("list-item");
+      noteImages(walk, el.ownerDocument, cs, item);
+      if (item) noteMarker(walk, el, view);
+    }
     const pseudos = html && !VOID.has(el.localName) ? PSEUDOS : [];
     for (const pseudo of pseudos) {
       const ps = view.win.getComputedStyle(el, pseudo);
@@ -1924,8 +1929,8 @@ function useFonts(walk: Walk, cs: CSSStyleDeclaration): void {
 
 /**
  * CSS properties whose image lays out the box it is on: as its content (an element's or a
- * pseudo-element's), its list marker, or the shape its float wraps lines around. Other CSS images
- * only paint, and the image embeds each itself.
+ * pseudo-element's, a list item's `::marker` included: {@link noteMarker}), its list marker, or the
+ * shape its float wraps lines around. Other CSS images only paint, and the image embeds each itself.
  */
 const SIZING_IMAGES = ["content", "list-style-image", "shape-outside"] as const;
 
@@ -1948,13 +1953,24 @@ function noteImages(
 ): void {
   for (const name of SIZING_IMAGES) {
     if (!marker && name === "list-style-image") continue;
-    const value = name === "content" ? content : cs.getPropertyValue(name);
-    if (value.includes("url(") && cssImagePending(doc, value)) {
-      walk.unsettled = true;
-      walk.loading++;
-      return;
-    }
+    if (notePending(walk, doc, name === "content" ? content : cs.getPropertyValue(name))) return;
   }
+}
+
+/**
+ * Notes the `::marker` image still loading of `el`, a list item, as {@link noteImages} does: the
+ * marker's `content` lays out the item's marker box, and no property of the item names it.
+ */
+function noteMarker(walk: Walk, el: Element, view: DocView): void {
+  notePending(walk, el.ownerDocument, view.win.getComputedStyle(el, "::marker").getPropertyValue("content"));
+}
+
+/** Marks the snapshot unsettled, and counts it, when `value` names an image `doc` still loads. */
+function notePending(walk: Walk, doc: Document, value: string): boolean {
+  if (!value.includes("url(") || !cssImagePending(doc, value)) return false;
+  walk.unsettled = true;
+  walk.loading++;
+  return true;
 }
 
 /** Records the size of a box written empty (see {@link SizeMark}). */
@@ -2247,6 +2263,9 @@ function* emitElement(
   // parent's (a box written empty has only layout values: those of its content were read in
   // hollowable, and one of its own sizes it, which is compared).
   if (!svg && styleBody.includes("url(")) noteImages(walk, el.ownerDocument, cs);
+  // A list item's custom marker is not written (see snapshotFrame), yet an image as its content
+  // lays the item out.
+  if (!svg && display.includes("list-item")) noteMarker(walk, el, view);
   // A clone written with what places it only inherits everything else from its parent's clone.
   const handed = (): InheritedValues => (bare && parent ? new Map([...parent, ...own]) : own);
   if (!bare) useFonts(walk, cs);
