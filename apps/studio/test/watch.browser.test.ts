@@ -4,7 +4,9 @@ import { page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import { routeToUrl } from "../src/route";
+import type { OpenedSource } from "../src/source";
 import { qrCode } from "../src/views/qr";
+import { buildShareLink } from "../src/views/share-link";
 import { fakeServices } from "./fakes";
 
 let app: StudioApp | null = null;
@@ -62,7 +64,18 @@ it("hands the phone the settings the watch plays with, not the wrist-only ones",
   app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
 
   root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
-  const overrides = { speed: 3, intro: "outline", opening: true, liveTop: true } as const;
+  // The rest at their defaults too: the phone's own saved settings must not replace them.
+  const overrides = {
+    agents: "auto",
+    speed: 3,
+    seed: 1,
+    labels: "names",
+    finale: "flock",
+    intro: "outline",
+    follow: "tour",
+    opening: true,
+    liveTop: true,
+  } as const;
   const url = routeToUrl(
     { source: { kind: "example", id: "notes" }, autoplay: true, overrides },
     `${location.origin}${location.pathname}`,
@@ -182,12 +195,13 @@ it.each([
   { size: 100, phase: "idle", titled: false },
   { size: 140, phase: "playing", titled: false },
   { size: 100, phase: "playing", titled: false },
-])("keeps every $phase control of a $size px round face inside its inscribed square", async (row) => {
+  { size: 100, phase: "idle", titled: false, square: true },
+])("keeps every $phase control of a $size px face inside its safe area", async (row) => {
   const { size, phase, titled } = row;
   await page.viewport(size, size);
   try {
     const title = "Willkommen bei SwarmLoom: so entsteht eine Seite";
-    const root = await mountWatch("?watch=1&round=1", phase === "playing", title);
+    const root = await mountWatch(row.square ? "?watch=1" : "?watch=1&round=1", phase === "playing", title);
     const face = root.querySelector<HTMLElement>(".view-watch");
     if (phase !== "idle") {
       root.querySelector<HTMLButtonElement>(".watch-play")?.click();
@@ -200,7 +214,6 @@ it.each([
     // all vanished would pass the bounds checks below (no rects: top Infinity, bottom -Infinity).
     const shown = (el: Element) => el.getClientRects().length > 0;
     const buttons = [...root.querySelectorAll<HTMLElement>(".watch-play, .watch-actions > *")];
-    expect([shown(heading), ...buttons.map(shown)]).toEqual([titled, true, true, true]);
     // A long title keeps to one line.
     const line = parseFloat(getComputedStyle(heading).lineHeight);
     if (titled) expect(heading.getBoundingClientRect().height).toBeLessThan(line * 2);
@@ -217,6 +230,7 @@ it.each([
     expect(bounds.right).toBeLessThanOrEqual(safe.right + 0.5);
     expect(bounds.bottom).toBeLessThanOrEqual(safe.bottom + 0.5);
     expect(bounds.left).toBeGreaterThanOrEqual(safe.left - 0.5);
+    expect([shown(heading), ...buttons.map(shown)]).toEqual([titled, true, true, true]);
   } finally {
     await page.viewport(414, 896);
   }
@@ -233,4 +247,94 @@ it("keeps the title and small buttons on a dark backing over a finished page", a
   const scrim = probe && getComputedStyle(probe).backgroundColor;
   const covered = [...root.querySelectorAll<HTMLElement>(".watch-title, .watch-actions .watch-icon-btn")];
   expect(covered.map((el) => getComputedStyle(el).backgroundColor)).toEqual(covered.map(() => scrim));
+});
+
+// A local file or pasted text has no address the phone could open: it travels in the link, as with Share.
+it("hands the phone a local file inside the link, not the bare Studio page", async () => {
+  history.replaceState(null, "", `${location.pathname}?watch=1`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
+  const local = { name: "notes.md", text: "# Notes\n" };
+  app.context.navigate({ source: { kind: "file", name: local.name }, autoplay: true }, { local });
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+  const opened = { ref: { kind: "file", name: local.name }, name: local.name, text: local.text } as OpenedSource;
+  const link = await buildShareLink(opened, app.context.settings, `${location.origin}${location.pathname}`);
+  if (!link.ok) throw new Error(link.reason);
+  const modules = (svg: Element | null | undefined) => svg?.querySelector("path")?.getAttribute("d");
+  await expect.poll(() => modules(root.querySelector(".watch-qr svg"))).toBe(modules(qrCode(link.url, "")));
+});
+
+// A source URL may run to 4096 characters and a #d= payload to 16 KB; a QR code holds about 2.3 KB.
+it("says a link is too long for a QR code instead of throwing", async () => {
+  const src = `http://example.invalid/${"a".repeat(3000)}`;
+  history.replaceState(null, "", `${location.pathname}?watch=1&round=1&src=${encodeURIComponent(src)}`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  const fetch = async () => new Response("", { status: 404 });
+  app = await mountStudio(
+    root,
+    fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
+  );
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+  expect(root.querySelector(".watch-qr")?.matches(":modal")).toBe(true);
+  expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
+  expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
+});
+
+// A QR code holds 2.3 KB, but past ~650 bytes its modules get too small to scan off a watch face.
+it("keeps the watch QR code small enough to scan, with a notice for a longer #d= link", async () => {
+  history.replaceState(null, "", `${location.pathname}?watch=1`);
+  const root = document.createElement("div");
+  document.body.append(root);
+  const manifest = { version: 1 as const, entries: [] };
+  app = await mountStudio(root, fakeServices({ manifest, examplesBase: `${location.origin}/examples/` }).services);
+  // 1000 characters that barely compress: a link of about 1.2 KB, a valid share but past the cap.
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let x = 1;
+  const text = Array.from({ length: 1000 }, () => {
+    x = (x * 48271) % 2147483647;
+    return chars[x % 62];
+  }).join("");
+  const local = { name: "notes.md", text };
+  const opened = { ref: { kind: "file", name: local.name }, name: local.name, text } as OpenedSource;
+  expect((await buildShareLink(opened, app.context.settings, `${location.origin}${location.pathname}`)).ok).toBe(true);
+  app.context.navigate({ source: { kind: "file", name: local.name }, autoplay: true }, { local });
+  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+
+  const caption = root.querySelector(".watch-qr-caption");
+  await expect.poll(() => caption?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
+  expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
+});
+
+it.each([
+  { size: 100, round: true },
+  { size: 140, round: true },
+  { size: 200, round: false },
+])("keeps the QR dialog of a $size px face (round: $round) inside its safe area", async ({ size, round }) => {
+  await page.viewport(size, size);
+  try {
+    const root = await mountWatch(round ? "?watch=1&round=1" : "?watch=1", false);
+    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+    const dialog = root.querySelector<HTMLElement>(".watch-qr");
+    const code = root.querySelector(".watch-qr svg")?.getBoundingClientRect();
+    if (!dialog || !code) throw new Error("no QR code");
+    const box = dialog.getBoundingClientRect();
+    const safe = parseFloat(getComputedStyle(dialog).paddingTop);
+    expect(dialog.scrollHeight).toBeLessThanOrEqual(dialog.clientHeight);
+    // Nothing reaches past the safe area, where the circle or the dialog would crop the finder patterns.
+    const parts = [code, ...[...dialog.children].map((el) => el.getBoundingClientRect())].filter((r) => r.height);
+    for (const part of parts) {
+      expect(part.top).toBeGreaterThanOrEqual(box.top + safe - 0.5);
+      expect(part.bottom).toBeLessThanOrEqual(box.bottom - safe + 0.5);
+    }
+    // ...and the code stays large enough to scan.
+    expect(code.width).toBeGreaterThanOrEqual(0.4 * (box.height - 2 * safe));
+  } finally {
+    await page.viewport(414, 896);
+  }
 });

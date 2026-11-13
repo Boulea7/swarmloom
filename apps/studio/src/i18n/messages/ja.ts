@@ -224,6 +224,7 @@ export const ja: StudioCatalog = {
   "watch.next": "次のサンプル",
   "watch.phone": "スマホで開く",
   "watch.scan": "スマホでスキャンして開く",
+  "watch.tooLong": "このリンクは長すぎて QR コードにできません。",
   "watch.back": "戻る",
   "watch.empty": "再生できるサンプルがありません",
   "watch.progress": "組み立ての進捗",

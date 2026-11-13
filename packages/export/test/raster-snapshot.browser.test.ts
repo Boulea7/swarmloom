@@ -458,6 +458,99 @@ it("walks the frame again only after a mutation, a scroll, an animation seek or 
   expect((await frame())[0]).toBe(6);
 });
 
+it("walks the frame again when a popover opens without a DOM mutation", async () => {
+  const { win, rasterizer } = await frameOf(
+    '<body style="margin:0"><div id=p popover style="inset:0;margin:0;border:0;width:100px;height:100px;' +
+      'background:rgb(0,0,255)"></div></body>',
+  );
+  const popover = win.document.getElementById("p") as HTMLElement;
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 255, 255]]);
+  expect(await frame()).toEqual([1, [255, 255, 255]]);
+  const toggled = new Promise<void>((resolve) => popover.addEventListener("toggle", () => resolve(), { once: true }));
+  popover.showPopover();
+  await toggled;
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+});
+
+it("walks the frame again after a style sheet changes through the CSSOM without a mutation", async () => {
+  const { win, rasterizer } = await frameOf(
+    '<style>div { background: rgb(255, 0, 0) }</style><body style="margin:0"><div style="height:100px"></div></body>',
+  );
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  // A rule edited in place keeps the rule count.
+  const rule = (win.document.styleSheets[0] as CSSStyleSheet).cssRules[0] as CSSStyleRule;
+  rule.style.background = "rgb(0, 0, 255)";
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  // Through the declaration taken before: no setter or method of the CSSOM runs.
+  const kept = rule.style;
+  kept.background = "rgb(0, 255, 255)";
+  expect(await frame()).toEqual([3, [0, 255, 255]]);
+  kept.background = "rgb(0, 0, 255)";
+  expect(await frame()).toEqual([4, [0, 0, 255]]);
+  const adopted = new (win as Window & typeof globalThis).CSSStyleSheet();
+  adopted.replaceSync("div { background: rgb(0, 255, 0) }");
+  win.document.adoptedStyleSheets = [adopted];
+  expect(await frame()).toEqual([5, [0, 255, 0]]);
+  // Replaced with as many rules, then switched off.
+  adopted.replaceSync("div { background: rgb(255, 255, 0) }");
+  expect(await frame()).toEqual([6, [255, 255, 0]]);
+  adopted.disabled = true;
+  expect(await frame()).toEqual([7, [0, 0, 255]]);
+});
+
+it("holds a still frame without serialising the rules of its sheets, in a frame that runs no scripts too", async () => {
+  const { win, rasterizer } = await frameOf(
+    `<style>p { color: red }</style><body style="margin:0"><iframe sandbox="allow-same-origin" ` +
+      `style="border:0;width:${SIZE}px;height:${SIZE}px" srcdoc="<style>div { background: rgb(255, 0, 0) }</style>` +
+      `<body style='margin:0'><div style='height:100px'></div></body>"></iframe></body>`,
+  );
+  const inner = (win.document.querySelector("iframe") as HTMLIFrameElement).contentDocument as Document;
+  await inner.fonts.ready;
+  // The text of every rule, read once per rule on every frame, cost 30 ms a frame on a page with 5,000 rules.
+  let serialised = 0;
+  for (const realm of [win, inner.defaultView] as (Window & typeof globalThis)[]) {
+    const text = Object.getOwnPropertyDescriptor(realm.CSSRule.prototype, "cssText") as PropertyDescriptor;
+    Object.defineProperty(realm.CSSRule.prototype, "cssText", {
+      ...text,
+      get(this: CSSRule) {
+        serialised++;
+        return text.get?.call(this);
+      },
+    });
+  }
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  serialised = 0;
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(serialised).toBe(0);
+  // The page edits the rules of its frame through the frame's CSSOM.
+  ((inner.styleSheets[0] as CSSStyleSheet).cssRules[0] as CSSStyleRule).style.background = "rgb(0, 0, 255)";
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  (inner.styleSheets[0] as CSSStyleSheet).insertRule("div { background: rgb(0, 255, 0) }", 1);
+  expect(await frame()).toEqual([3, [0, 255, 0]]);
+  expect(await frame()).toEqual([3, [0, 255, 0]]);
+});
+
 it("watches a same-origin frame's document rather than walking it every frame, unless it cannot read it", async () => {
   const { win, rasterizer } = await frameOf(
     `<body style="margin:0"><iframe style="border:0;width:${SIZE}px;height:${SIZE}px" srcdoc="<body style='margin:0'>` +

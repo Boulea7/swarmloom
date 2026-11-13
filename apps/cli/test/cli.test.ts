@@ -24,6 +24,7 @@ describe("swarmloom entry", () => {
     [["--help"], 0, "Usage: swarmloom <command>", ""],
     [[], 1, "", "Usage: swarmloom <command>"],
     [["render", "--help"], 0, "--max-duration", ""],
+    [["render", "--help"], 0, "fewer with a smaller --agents", ""],
     [["help", "doctor"], 0, "Usage: swarmloom doctor", ""],
     [["bogus"], 1, "", 'Unknown command "bogus"'],
     [["render"], 1, "", "Missing <file|url>"],
@@ -285,6 +286,22 @@ describe("documented examples", () => {
       expect(spans.length, file).toBeGreaterThan(0);
       const flags = spans.flatMap((m) => (m[1] ?? "").split(/\s+/));
       expect(() => parseRenderOptions(["a.md", ...flags], cwd), file).not.toThrow();
+    }
+  });
+
+  it("parse the cue examples in the CLI docs and the render help as written", async () => {
+    const root = path.resolve(import.meta.dirname, "../../..");
+    const docs = ["docs/cli.md", "docs/en/cli.md"].map((f) => readFileSync(path.join(root, f), "utf8"));
+    const texts = [...docs, (await capture(["render", "--help"])).out];
+    // A run of numeric flags around a concrete --cue, so a beat time brings the --bpm it needs.
+    const value = String.raw`\d[^\s\`)|\\]*`;
+    const run = new RegExp(`(?:--[a-z-]+ ${value} )*--cue ${value}(?: --[a-z-]+ ${value})*`, "g");
+    for (const text of texts) {
+      const examples = [...text.replace(/\\\n/g, " ").replace(/\s+/g, " ").matchAll(run)].map((m) => m[0]);
+      expect(examples.length).toBeGreaterThan(0);
+      for (const example of examples) {
+        expect(() => parseRenderOptions(["a.md", ...example.split(" ")], cwd), example).not.toThrow();
+      }
     }
   });
 });

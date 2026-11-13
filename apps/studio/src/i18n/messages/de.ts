@@ -262,6 +262,7 @@ export const de: StudioCatalog = {
   "watch.next": "Nächstes Beispiel",
   "watch.phone": "Auf dem Handy öffnen",
   "watch.scan": "Mit dem Handy scannen",
+  "watch.tooLong": "Dieser Link ist zu lang für einen QR-Code.",
   "watch.back": "Zurück",
   "watch.empty": "Keine Beispiele zum Abspielen",
   "watch.progress": "Baufortschritt",

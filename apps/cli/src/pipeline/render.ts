@@ -30,9 +30,9 @@ export type PlayerSettings = Omit<RenderInit, "input" | "width" | "height" | "fp
 export interface EvidenceRequest {
   /** Keep the soundtrack WAV bytes. */
   audio: boolean;
-  /** Read the sound events from the page. */
+  /** Read the sound events and the stretches of scrolling from the page. */
   events: boolean;
-  /** Capture lossless PNG frames, hash each one, and record browser and font details. */
+  /** Capture lossless PNG frames, hash each one, read the sound events, and record browser and font details. */
   manifest: boolean;
 }
 
@@ -204,10 +204,12 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
     // Stretches of scrolling are timed by the frames: read them before the clock runs past the last one.
     const scrolls = evidence?.events ? await driver.scrollLog() : undefined;
     const soundtrack = job.settings.sound && formatHasAudio(job.format);
+    // The manifest hashes the sound log too, so it reads the same log --events-out writes.
+    const readSoundLog = Boolean(evidence?.events || evidence?.manifest);
     // The last frame stays up until durationMs. Run the clock through that interval too (nothing is
     // captured) so the sounds raised in it are logged, and frame rates that divide the engine's tick
     // rate get one soundtrack.
-    if (soundtrack || evidence?.events) await driver.step(result.durationMs - result.elapsedMs);
+    if (soundtrack || readSoundLog) await driver.step(result.durationMs - result.elapsedMs);
 
     progress.phase("encoding");
     let output = await writer.finish();
@@ -222,7 +224,7 @@ export async function renderVideo(job: RenderJob, deps: RenderDeps): Promise<Ren
         audio = true;
       }
     }
-    const events = evidence?.events ? await driver.soundLog() : undefined;
+    const events = readSoundLog ? await driver.soundLog() : undefined;
     const browserVersion = browser.version();
     await driver.dispose();
     progress.clear();

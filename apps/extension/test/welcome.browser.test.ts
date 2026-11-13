@@ -1,3 +1,4 @@
+import { CATALOGS } from "@swarmloom/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import pagesCss from "../public/pages.css?raw";
@@ -64,6 +65,12 @@ describe("welcome page", () => {
     await vi.waitFor(() => expect(document.documentElement.lang).toBe("de"));
     const texts = [...document.querySelectorAll(".sample p, .sample li, .sample .button")].map((el) => el.textContent);
     expect(texts).toEqual(keys.map((key) => de.t(key)));
+  });
+
+  it("labels the demo toolbar in the extension's language, not navigator.language", async () => {
+    await vi.waitFor(() => expect(toolbarDock()).toBeTruthy(), { timeout: 20_000, interval: 50 });
+    const bar = toolbarDock()?.querySelector('[role="toolbar"]');
+    expect(bar?.getAttribute("aria-label")).toBe(CATALOGS.de["toolbar.label"]);
   });
 
   it("keeps the finished demo's toolbar below the sample card on a 390px phone", async () => {

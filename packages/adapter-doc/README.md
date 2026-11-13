@@ -55,7 +55,7 @@ The other error codes are `not-cfb`, `not-word`, `corrupt`, `too-large` and `no-
 `examples/doc/` contains three samples:
 
 - `report.doc`: written byte by byte by `examples/doc/generate.py`, using the Python standard library only. It has three sheets, the last one landscape.
-- `headers-footers-unicode.doc` and `table.doc`: real Word files from the MIT-licensed word-extractor test data.
+- `headers-footers-unicode.doc` and `table.doc`: real Word files from the word-extractor test data. `table.doc` is MIT; `headers-footers-unicode.doc` is Apache POI's test file `HeaderFooterUnicode.doc` (Apache-2.0, with POI's NOTICE).
 
 See `examples/doc/SOURCES.md` for where they come from and their licences.
 

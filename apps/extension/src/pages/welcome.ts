@@ -1,10 +1,10 @@
 /**
  * Welcome page, opened once on install: a live `<swarm-loom>` demo of a small card (following the
- * reduced-motion setting), how to start, how to pin the button in this browser, and links to the
- * demo page, Studio and settings.
+ * reduced-motion setting and the extension's language), how to start, how to pin the button in this
+ * browser, and links to the demo page, Studio and settings.
  */
 
-import { define } from "@swarmloom/element";
+import { configure, define } from "@swarmloom/element";
 import { BUILD_TARGET, type TargetId } from "../shared/build-info";
 import { detectBackgroundCapabilities } from "../shared/capabilities";
 import type { MessageKey } from "../shared/i18n";
@@ -29,6 +29,11 @@ onReady(async () => {
 
   // Set before define() so the first player already honours the setting instead of rebuilding.
   byId("demo").setAttribute("reduced-motion", motionAttribute(prefs.reducedMotion));
+  // The player would follow navigator.language; its toolbar speaks the extension's language instead.
+  // Core stays a lazy import, as in the element's default runtime.
+  configure({
+    createPlayer: async (options) => (await import("@swarmloom/core")).createPlayer({ ...options, locale: tr.locale }),
+  });
   try {
     define();
   } catch (e) {

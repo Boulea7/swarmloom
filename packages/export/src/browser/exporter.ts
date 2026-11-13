@@ -6,6 +6,7 @@ import { FRAME_ATTRIBUTE } from "./marker";
 import { type ColorScheme, type MediaPin, pinMediaFeatures } from "./media";
 import { type FontWatch, watchFontFaces } from "./raster/fonts";
 import { FrameRasterizer } from "./raster/rasterize";
+import { watchSheetEdits } from "./raster/sheet-edits";
 import { type FrameProgress, runFrameSchedule } from "./schedule";
 
 /** Player settings of an export: the CLI's `render` flags. */
@@ -185,7 +186,9 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * image again under the cursors; a frame whose snapshot equals the last one's also reuses its image.
  * Otherwise, as while one animation runs on a long live page, the snapshot writes each box away
  * from the viewport as the last one wrote it while nothing in it changed and it stayed away, without
- * reading it again.
+ * reading it again, so it costs about the same however long the page is; not when the animation
+ * transforms, filters or recolours an element those boxes are in, or changes layout under a style
+ * sheet that queries container sizes or cannot be read (see the README for the rest).
  *
  * @throws UnsupportedExportError when the browser cannot encode video; the signal's reason when
  *   cancelled; the render page's errors (unreadable input).
@@ -230,9 +233,11 @@ export async function exportVideo(o: BrowserExportOptions): Promise<BrowserExpor
   try {
     opened = await openFrame(o, container, scheme);
     const { win, api } = opened;
-    // Watch before init(): the stage attaches its closed shadow roots and adapters register fonts there.
+    // Watch before init(): the stage attaches its closed shadow roots and adapters register fonts there,
+    // and a rule declaration taken during it is compared from then on.
     shadows = watchShadowRoots(win);
     fonts = watchFontFaces(win);
+    watchSheetEdits(win);
     pinPixelRatio(win);
     const pinned = pinMediaFeatures(win, shadows, { scheme, width, height });
     media = pinned;

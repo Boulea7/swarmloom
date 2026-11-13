@@ -1,10 +1,12 @@
+import { sheetsOf } from "./far";
+import { SheetMark, watchSheetEdits } from "./sheet-edits";
 import { type CanvasMark, canvasDataUrl, type ScrollMark, type SnapshotSource } from "./snapshot";
 
 /** What a {@link StillWatch} reads: the frame document, its watched shadow roots and FontFace faces. */
 export type StillSource = Pick<SnapshotSource, "document" | "shadowRoots" | "faces">;
 
-/** Resource loads that can change a frame without a mutation (images, style sheets, frames). */
-const LOAD_EVENTS = ["load", "error"] as const;
+/** Events that can change a frame without a mutation: resource loads, popovers and details. */
+const CHANGE_EVENTS = ["load", "error", "toggle"] as const;
 
 /**
  * Documents of the same-origin frames in `scopes` and, in turn, in those documents, in tree order:
@@ -32,10 +34,10 @@ function frameDocuments(scopes: readonly (Document | ShadowRoot)[]): Document[] 
 }
 
 /**
- * What else the look of a frame depends on, besides its DOM and scroll offsets: FontFace faces,
- * the font sets of its documents, focus, adopted style sheets and Web Animations, read from each
- * document and shadow root. Null while a font loads or an animation runs, as both change the frame
- * on the wall clock.
+ * What else the look of a frame depends on, besides its DOM, scroll offsets and rules edited in
+ * place ({@link SheetMark}): FontFace faces, the font sets of its documents, focus, the style sheets
+ * (whether each applies, and to what media) and Web Animations, read from each document and shadow
+ * root. Null while a font loads or an animation runs, as both change the frame on the wall clock.
  */
 function stateOf(
   source: StillSource,
@@ -50,9 +52,9 @@ function stateOf(
   }
   for (const target of targets) {
     state.push(target.activeElement);
-    const sheets = target.adoptedStyleSheets ?? [];
+    const sheets = sheetsOf(target);
     state.push(sheets.length);
-    for (const sheet of sheets) state.push(sheet, ruleCount(sheet));
+    for (const sheet of sheets) state.push(sheet, sheet.disabled, sheet.media?.mediaText);
     const animations = typeof target.getAnimations === "function" ? target.getAnimations() : [];
     state.push(animations.length);
     for (const animation of animations) {
@@ -63,14 +65,6 @@ function stateOf(
   return state;
 }
 
-function ruleCount(sheet: CSSStyleSheet): number {
-  try {
-    return sheet.cssRules.length;
-  } catch {
-    return -1;
-  }
-}
-
 function same(a: readonly unknown[], b: readonly unknown[]): boolean {
   return a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
 }
@@ -79,14 +73,16 @@ function same(a: readonly unknown[], b: readonly unknown[]): boolean {
  * Tells whether a frame document still shows what a snapshot of it read, without walking it
  * again. Created before the walk, so a change during it counts too. The frame shows the same while:
  * nothing in the document, its shadow roots or the documents of its same-origin frames (see
- * {@link frameDocuments}) mutated; no image, style sheet or font loaded in any of them; the shadow
- * roots, frame documents, FontFace faces, focus, adopted style sheets and Web Animations (none
- * running) are those of the start; the scroll offsets the walk read have not moved; and each canvas
- * whose pixels went into the image gives the same data URL ({@link settle}). What the walk marks as
+ * {@link frameDocuments}) mutated; no image, style sheet or font loaded in any of them; no popover
+ * or details element toggled; the shadow roots, frame documents, FontFace faces, focus, style sheets and Web Animations (none running) are
+ * those of the start, and no rule was edited in place through the CSSOM, which changes it without a
+ * mutation ({@link StillWatch.sheets}; the watch wraps the CSSOM of each document's window to tell,
+ * see watchSheetEdits); the scroll offsets the walk read have not moved; and each canvas whose
+ * pixels went into the image gives the same data URL ({@link settle}). What the walk marks as
  * changing on its own (videos, frames of another origin, shadow roots the source does not list,
- * SMIL) the snapshot reports instead (`FrameSnapshot.settled`). Not watched: form control values
- * and rules edited inside a style sheet through the CSSOM, which the render page never changes
- * between frames.
+ * SMIL) the snapshot reports instead (`FrameSnapshot.settled`). Not watched: form control values,
+ * which the render page never changes between frames, and the declarations watchSheetEdits does not
+ * see (`@font-face` rules, one a script took before its window was watched).
  */
 export class StillWatch {
   readonly #source: StillSource;
@@ -96,6 +92,8 @@ export class StillWatch {
   readonly #frames: readonly Document[];
   readonly #observer: MutationObserver;
   readonly #state: unknown[] | null;
+  /** The style sheets at the start, as far as rules edited in place go. */
+  readonly sheets: SheetMark;
   #scrolls: readonly ScrollMark[] | null = null;
   #pixels: readonly CanvasMark[] = [];
   #changed = false;
@@ -114,10 +112,14 @@ export class StillWatch {
     this.#observer = new (win?.MutationObserver ?? MutationObserver)(this.#mark);
     for (const target of this.#targets) {
       this.#observer.observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
-      for (const type of LOAD_EVENTS) target.addEventListener(type, this.#mark, true);
+      for (const type of CHANGE_EVENTS) target.addEventListener(type, this.#mark, true);
     }
-    for (const d of this.#docs) d.fonts?.addEventListener("loadingdone", this.#mark);
+    for (const d of this.#docs) {
+      d.fonts?.addEventListener("loadingdone", this.#mark);
+      watchSheetEdits(d.defaultView);
+    }
     this.#state = stateOf(source, this.#docs, this.#targets);
+    this.sheets = new SheetMark(this.#targets.flatMap(sheetsOf));
   }
 
   /**
@@ -142,6 +144,7 @@ export class StillWatch {
     for (const { el, left, top } of this.#scrolls) {
       if (el.scrollLeft !== left || el.scrollTop !== top) return false;
     }
+    if (!this.sheets.holds()) return false;
     const state = stateOf(this.#source, this.#docs, this.#targets);
     if (state === null || !same(this.#state, state)) return false;
     // Last: encoding a canvas costs the most of these checks.
@@ -151,7 +154,7 @@ export class StillWatch {
   stop(): void {
     this.#observer.disconnect();
     for (const target of this.#targets) {
-      for (const type of LOAD_EVENTS) target.removeEventListener(type, this.#mark, true);
+      for (const type of CHANGE_EVENTS) target.removeEventListener(type, this.#mark, true);
     }
     for (const d of this.#docs) d.fonts?.removeEventListener("loadingdone", this.#mark);
   }

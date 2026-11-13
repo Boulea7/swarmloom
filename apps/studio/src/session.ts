@@ -39,6 +39,11 @@ export interface SessionOptions {
   scheme: "light" | "dark";
   /** Player options that override the settings (watch mode: fewer cursors, no toolbar, muted). */
   overrides?: Partial<PlayerOptions>;
+  /**
+   * Resolves `ref` in place of {@link resolveSource}: the watch reads a source once for its plays
+   * and its phone link, since a handoff cannot be read twice.
+   */
+  resolve?(signal: AbortSignal): Promise<OpenedSource>;
   onPhase(phase: SessionPhase, error?: unknown): void;
   onProgress?(built: number, total: number): void;
   onState?(state: PlayerState): void;
@@ -175,7 +180,8 @@ export class Session {
     try {
       this.setPhase("opening");
       if (!this.opened) {
-        this.opened = await resolveSource(this.o.ref, { services: this.o.services, local: this.o.local, signal });
+        const { services, local } = this.o;
+        this.opened = await (this.o.resolve?.(signal) ?? resolveSource(this.o.ref, { services, local, signal }));
         // Settings carried by a share link apply to this visit only; they are never persisted. The
         // view hands them to Studio (AppContext.sourceSettings), so later apply() calls carry them.
         if (this.opened.settings) this.settings = { ...this.settings, ...this.opened.settings };

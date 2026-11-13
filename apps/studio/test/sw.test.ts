@@ -52,11 +52,25 @@ const host = (release: Release) => {
   hosted = new Map([...release.shell, ...release.lazy].map((path) => [new URL(path, SCOPE).href, release.version]));
 };
 
-/** Loads, installs and activates the worker of `release` while the windows `open()` lists are open. */
-async function activateWorker(release: Release, open: () => string[]) {
+/** Serves the hosted release, and Cache Storage in memory, to the workers. */
+function stubHost() {
+  const caches = memoryCaches();
+  vi.stubGlobal("caches", caches);
+  vi.stubGlobal("fetch", async (key: Key) => {
+    const body = hosted.get(urlOf(key));
+    return body === undefined ? new Response("", { status: 404 }) : new Response(body);
+  });
+  return caches;
+}
+
+/** The one registration every release's worker shares; `waiting` stands for a newer installed worker. */
+const registration = { scope: SCOPE, installing: null, waiting: null as object | null };
+
+/** Loads the worker of `release` while the windows `open()` lists are open. */
+async function loadWorker(release: Release, open: () => string[]) {
   const handlers = new Map<string, (event: unknown) => void>();
   vi.stubGlobal("self", {
-    registration: { scope: SCOPE },
+    registration,
     clients: {
       matchAll: async () => open().map((id) => ({ id, url: SCOPE, type: "window" })),
       claim: async () => undefined,
@@ -77,31 +91,35 @@ async function activateWorker(release: Release, open: () => string[]) {
     handlers.get(type)?.({ ...event, waitUntil: (promise: unknown) => work.push(promise) });
     await Promise.all(work);
   };
-  await dispatch("install");
-  await dispatch("activate");
   return {
+    install: () => dispatch("install"),
+    activate: () => dispatch("activate"),
     /** A page's request for `path`: the response once the worker's follow-up work has finished too. */
-    async get(path: string): Promise<Response | undefined> {
+    async get(path: string, mode = "cors"): Promise<Response | undefined> {
       let response: Promise<Response> | undefined;
-      const request = { url: new URL(path, SCOPE).href, method: "GET", mode: "cors" };
+      const request = { url: new URL(path, SCOPE).href, method: "GET", mode };
       await dispatch("fetch", { request, respondWith: (value: Promise<Response>) => (response = value) });
       return response;
     },
   };
 }
 
+/** Loads, installs and activates the worker of `release` while the windows `open()` lists are open. */
+async function activateWorker(release: Release, open: () => string[]) {
+  const worker = await loadWorker(release, open);
+  await worker.install();
+  await worker.activate();
+  return worker;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  registration.waiting = null;
 });
 
 describe("Studio service worker", () => {
   it("keeps an older release's files until the windows open at the update are gone", async () => {
-    const caches = memoryCaches();
-    vi.stubGlobal("caches", caches);
-    vi.stubGlobal("fetch", async (key: Key) => {
-      const body = hosted.get(urlOf(key));
-      return body === undefined ? new Response("", { status: 404 }) : new Response(body);
-    });
+    const caches = stubHost();
     const a = { version: "a", shell: ["./", "assets/index-a.js"], lazy: ["assets/pdf-a.js"] };
     const b = { version: "b", shell: ["./", "assets/index-b.js"], lazy: ["assets/pdf-b.js"] };
     let windows = ["tab-1", "tab-2"];
@@ -121,5 +139,29 @@ describe("Studio service worker", () => {
     const assets = await caches.open("swarmloom-assets-v1");
     expect(await caches.keys()).not.toContain("swarmloom-shell-a");
     expect((await assets.keys()).map((request) => request.url)).toEqual([`${SCOPE}assets/pdf-b.js`]);
+  });
+
+  it("leaves a newer release waiting to take over its files", async () => {
+    stubHost();
+    const a = { version: "a", shell: ["./", "assets/index-a.js"], lazy: ["assets/pdf-a.js"] };
+    const b = { version: "b", shell: ["./", "assets/index-b.js"], lazy: ["assets/pdf-b.js"] };
+    let windows = ["tab-1"];
+    host(a);
+    const current = await activateWorker(a, () => windows);
+    // Release b installs and waits; tab-1 reloads without taking it, so release a runs its tidy-up.
+    host(b);
+    const next = await loadWorker(b, () => windows);
+    await next.install();
+    registration.waiting = {};
+    windows = ["tab-1b"];
+    await current.get("assets/index-a.js");
+    // Offline, tab-1b takes the update: release b opens and loads its lazy chunks from its own cache.
+    hosted = new Map();
+    registration.waiting = null;
+    await next.activate();
+    for (const path of ["./", "assets/index-b.js", "assets/pdf-b.js"]) {
+      const response = await next.get(path, path === "./" ? "navigate" : "cors");
+      expect([path, response?.status, await response?.text()]).toEqual([path, 200, "b"]);
+    }
   });
 });

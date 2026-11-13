@@ -367,40 +367,80 @@ it("walks in slices and starts over when the page changes meanwhile", async () =
   expect(svg).toContain("after");
 });
 
-// What changes between two walks of a long page: the far cards it leaves alone are written as the
-// last walk wrote them, and the frame comes out as a new rasterizer writes it. The even cards hold
-// their content in; the odd ones' content would flow around floats outside them, which any change
-// in the page may move.
-it.for<[string, (win: Window) => void, "all" | "even" | "none"]>([
+/** Pauses an animation `time` ms in. */
+function paused(animation: Animation, time: number): Animation {
+  animation.pause();
+  animation.currentTime = time;
+  return animation;
+}
+
+const nearHeight = (win: Window, timing: KeyframeAnimationOptions = { duration: 1000 }) =>
+  (win.document.getElementById("near") as HTMLElement).animate([{ height: "98px" }, { height: "40px" }], timing);
+
+// What changes between two walks of a long page (after `setup`, before both): the far cards it
+// leaves alone are written as the last walk wrote them, and the frame comes out as a new
+// rasterizer writes it. The even cards hold their content in; the odd ones' content would flow
+// around a float before them, which any change in the page may move.
+it.for<[string, (win: Window) => void, "all" | "even" | "none", ((win: Window) => void)?]>([
   ["nothing", () => {}, "all"],
   // A paint-only animation in view, as after going live: only its own box is read again.
   [
     "an animation in view",
+    (win) =>
+      paused((win.document.getElementById("near") as HTMLElement).animate([{ opacity: 0 }, { opacity: 1 }], 1000), 500),
+    "all",
+  ],
+  // It paints the body's own box only, not the cards in it.
+  [
+    "an animation of the page's background",
+    (win) =>
+      paused(
+        win.document.body.animate([{ backgroundColor: "rgb(255,255,255)" }, { backgroundColor: "rgb(0,0,255)" }], 1000),
+        500,
+      ),
+    "all",
+  ],
+  // Layout in view, as a mutation of its style: the far cards stay where they were.
+  ["a layout animation in view", (win) => paused(nearHeight(win), 500), "all"],
+  [
+    "a step of a stepped animation that changes no value",
     (win) => {
-      const animation = (win.document.getElementById("near") as HTMLElement).animate(
-        [{ opacity: 0 }, { opacity: 1 }],
-        1000,
-      );
-      animation.pause();
-      animation.currentTime = 500;
+      for (const animation of win.document.getAnimations()) animation.currentTime = 200;
     },
     "all",
+    (win) => paused(nearHeight(win, { duration: 1000, easing: "steps(2)" }), 100),
+  ],
+  // Container queries may restyle any box after a layout change.
+  [
+    "a layout animation under container queries",
+    (win) => paused(nearHeight(win), 500),
+    "none",
+    (win) =>
+      win.document.head.insertAdjacentHTML("beforeend", "<style>@container (width > 0) { h3 { color: red } }</style>"),
   ],
   ["the scroll", (win) => win.scrollBy(0, 60), "all"],
   [
     "a far card's text",
     (win) => ((win.document.getElementById("c3") as HTMLElement).textContent = "x".repeat(500)),
-    "even",
+    "all",
   ],
-  ["a far card's height", (win) => ((win.document.getElementById("c1") as HTMLElement).style.height = "220px"), "even"],
+  ["a far card's height", (win) => ((win.document.getElementById("c1") as HTMLElement).style.height = "220px"), "all"],
+  [
+    "a far card's height after a float",
+    (win) => ((win.document.getElementById("c1") as HTMLElement).style.height = "220px"),
+    "even",
+    (win) =>
+      win.document.body.insertAdjacentHTML("afterbegin", '<div style="float:left;width:10px;height:10px"></div>'),
+  ],
   // Every box inherits it.
   ["the page's color", (win) => (win.document.body.style.color = "rgb(0,0,255)"), "none"],
-])("writes far boxes again from the last walk until they change: %s", async ([name, change, reused]) => {
+])("writes far boxes again from the last walk until they change: %s", async ([name, change, reused, setup]) => {
   const card = (i: number) =>
     `<section id=c${i} style="height:100px;border:1px solid${i % 2 ? "" : ";display:flow-root"}"><h3>far ${i}</h3><p>text</p></section>`;
   const cards = Array.from({ length: 40 }, (_, i) => card(i)).join("");
   const { win, rasterizer } = await frameOf(`<!doctype html><body style="margin:0">${cards}
     <p id=near style="height:98px;margin:0;background:rgb(255,0,0)"></p><div style="height:2000px"></div>`);
+  setup?.(win);
   win.scrollTo(0, 4060);
   await rasterizer.snapshot();
   change(win);

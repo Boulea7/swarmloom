@@ -304,6 +304,13 @@ describe.skipIf(missing)(`render end to end${missing ? ` (skipped: ${missing})` 
       expect(code, stderr).toBe(0);
       const doc = JSON.parse(await readFile(path.join(work, "end/ev.json"), "utf8"));
       expect(doc.events.at(-1)).toMatchObject({ name: "chord", t: 500, frame: 4 });
+      // --manifest-out alone records the hash of the same log.
+      const again = ["render", path.join(FIXTURES, "page/index.html"), "-o", "end/m.mp4", "--duration", "0.5"];
+      const only = ["--fps", "10", "--width", "160", "--height", "90", "--manifest-out", "end/m.json", "--quiet"];
+      const take = await startCli([...again, ...only], fakePage).done;
+      expect(take.code, take.stderr).toBe(0);
+      const manifest = JSON.parse(await readFile(path.join(work, "end/m.json"), "utf8"));
+      expect(manifest.sound).toMatchObject({ events: doc.count, soundLogSha256: doc.soundLogSha256 });
     },
     TIMEOUT,
   );

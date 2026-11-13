@@ -28,9 +28,10 @@ export interface MarkdownToHtmlOptions {
    */
   loadMath?: () => Promise<MathEngine>;
   /**
-   * Allow `https:` images (loaded without a referrer), in `<img>` as well as in posters, SVG images,
-   * `background` attributes and CSS `url()`. Default true; false keeps only data:, blob: and local
-   * (file:, loopback http:) images. Video and audio files are never loaded.
+   * Allow `https:` images, in `<img>` as well as in posters, SVG images, `background` attributes and
+   * CSS `url()`. Default true; false keeps only data:, blob: and local (file:, loopback http:) images.
+   * Video and audio files are never loaded. `<img>` loads without a referrer; the other references
+   * have no referrer policy of their own and follow the host page's (Studio and the CLI send none).
    */
   remoteImages?: boolean;
   /** Maps relative image paths to URLs, e.g. blob: URLs of files dropped together with the document. */

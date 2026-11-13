@@ -144,7 +144,9 @@ export class RenderPageDriver implements FrameSource {
     const supported = await this.page.evaluate(
       () => typeof (globalThis as unknown as SwarmWindow).__swarmloom.soundLog === "function",
     );
-    if (!supported) throw new RenderError("This render page cannot report its sound log (--events-out)");
+    if (!supported) {
+      throw new RenderError("This render page cannot report its sound log (--events-out, --manifest-out)");
+    }
     const result = await this.call("Reading the sound log", AUDIO_MS, () =>
       this.page.evaluate(() => (globalThis as unknown as SwarmWindow).__swarmloom.soundLog?.() ?? []),
     );

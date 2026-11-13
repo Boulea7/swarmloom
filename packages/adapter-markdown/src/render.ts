@@ -104,6 +104,8 @@ export interface Rendered {
 
 const LINK_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
 const DATA_IMAGE = /^data:image\/(?:png|gif|jpeg|webp|avif|svg\+xml)[;,]/i;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the URL parser strips C0 controls and spaces at both ends.
+const URL_EDGES = /^[\x00-\x20]+|[\x00-\x20]+$/g;
 
 const CALLOUTS: Record<string, Record<CalloutKind, string>> = {
   en: { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" },
@@ -139,10 +141,40 @@ export function safeHref(url: string, base?: string): string | undefined {
   return LINK_SCHEMES.has(scheme) ? v : undefined;
 }
 
-/** True for a path without a scheme ("img/a.png", "../a.png", "/a.png"), false for "#x" and "//host/a". */
+/**
+ * A URL reference as the URL parser reads it: trimmed, without leading and trailing C0 controls
+ * and without tabs and newlines anywhere, so "ht\ttps://h/a" counts as https: and "\x01//h/a"
+ * as "//h/a". Checks run on this text and it is what the markup keeps, so the browser loads what
+ * was checked.
+ */
+function urlText(url: string): string {
+  return url
+    .trim()
+    .replace(URL_EDGES, "")
+    .replace(/[\t\n\r]/g, "");
+}
+
+/**
+ * True for a reference without a scheme that names another host: against an http(s) or file: base
+ * the URL parser reads any two leading slashes or backslashes as "//" ("//h/a", "\\h/a", "/\h/a").
+ */
+function isNetworkPath(v: string): boolean {
+  return /^[\\/]{2}/.test(v);
+}
+
+/** The https: URL a network-path reference names (it is held to the https: rules), or undefined if it does not parse. */
+function networkPathUrl(v: string): string | undefined {
+  try {
+    return new URL(v, "https://network-path.invalid/").href;
+  } catch {
+    return undefined;
+  }
+}
+
+/** True for a path without a scheme ("img/a.png", "../a.png", "/a.png"), false for "#x" and "//host/a" (or "\\host/a"). */
 export function isRelativeUrl(url: string): boolean {
-  const v = url.trim();
-  return v !== "" && !v.startsWith("#") && !v.startsWith("//") && schemeOf(v) === undefined;
+  const v = urlText(url);
+  return v !== "" && !v.startsWith("#") && !isNetworkPath(v) && schemeOf(v) === undefined;
 }
 
 /**
@@ -182,23 +214,38 @@ function onLocalOrigin(url: string, base: string | undefined): boolean {
   }
 }
 
+/** True for a `file:` URL without a host: a host ("file://server/share") is a network (UNC) path. */
+function isLocalFile(url: string): boolean {
+  try {
+    return new URL(url).host === "";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * An image source safe to load, or undefined. Allowed: raster/SVG data: URLs, blob: URLs,
- * `https:` (unless `policy.remote` is false), `file:` when the document itself is a local file and
- * `http:` on the loopback origin of a plain-http base (such as the CLI's local server for the input
- * folder), with remote images on or off. Other plain `http:` is refused, a remote http base's own
- * origin included: it is not local, would be mixed content in the Studio and leaks the reader's address.
+ * `https:` (unless `policy.remote` is false), `file:` without a host when the document itself is a
+ * local file and `http:` on the loopback origin of a plain-http base (such as the CLI's local server
+ * for the input folder), with remote images on or off. Other plain `http:` is refused, a remote http
+ * base's own origin included: it is not local, would be mixed content in the Studio and leaks the
+ * reader's address. A network-path reference ("//host/a", also written "\\host/a" or "/\host/a")
+ * becomes `https://host/a` whatever the base. Without a base, other relative paths are kept as
+ * written.
  */
 export function safeImageSrc(url: string, base?: string, policy: ImagePolicy = {}): string | undefined {
-  const v = url.trim();
+  const v = urlText(url);
   if (!v) return undefined;
-  const resolved = schemeOf(v) || v.startsWith("//") ? v : resolveRelative(v, base);
-  const scheme = schemeOf(resolved.startsWith("//") ? `https:${resolved}` : resolved);
+  const resolved = isNetworkPath(v) ? networkPathUrl(v) : schemeOf(v) ? v : resolveRelative(v, base);
+  if (resolved === undefined) return undefined;
+  const scheme = schemeOf(resolved);
   if (!scheme) return resolved;
   if (scheme === "data") return DATA_IMAGE.test(resolved) ? resolved : undefined;
   if (scheme === "blob") return resolved;
   if (scheme === "https") return policy.remote === false ? undefined : resolved;
-  if (scheme === "file") return base !== undefined && schemeOf(base) === "file" ? resolved : undefined;
+  if (scheme === "file") {
+    return base !== undefined && schemeOf(base) === "file" && isLocalFile(resolved) ? resolved : undefined;
+  }
   if (scheme === "http") return onLocalOrigin(resolved, base) ? resolved : undefined;
   return undefined;
 }

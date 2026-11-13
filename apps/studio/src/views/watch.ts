@@ -1,13 +1,15 @@
 import type { PlayerOptions, PlayerState } from "@swarmloom/core";
 import type { AppContext, View } from "../context";
+import { describeError } from "../errors";
 import { type ExampleEntry, entriesForLocale } from "../examples/manifest";
 import { formatById } from "../formats-meta";
 import { portable, routeToUrl, type SourceRef } from "../route";
 import { Session, type SessionPhase } from "../session";
+import { type OpenedSource, resolveSource } from "../source";
 import { h, s } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { qrCode } from "./qr";
-import { shareableSettings } from "./share-link";
+import { buildShareLink, shareableSettings } from "./share-link";
 import { thumbnail } from "./thumb";
 
 /**
@@ -31,7 +33,13 @@ const CONTROLS_IDLE_MS = 2600;
 /** Controls fade out this soon once playback starts or resumes: the wearer just asked to watch. */
 const PLAY_IDLE_MS = 600;
 
-type Item = { ref: SourceRef; title: string; entry?: ExampleEntry };
+type Item = {
+  ref: SourceRef;
+  title: string;
+  entry?: ExampleEntry;
+  /** The source read once, for a source no link can name (see openedOf in createWatch). */
+  opened?: Promise<OpenedSource>;
+};
 
 /** What the watch cycles through: the requested source first, then the light examples. */
 function playlist(ctx: AppContext): Item[] {
@@ -151,13 +159,18 @@ export function createWatch(ctx: AppContext): View {
   );
 
   const qrBox = h("div", { class: "watch-qr-code" });
+  const qrCaption = h("p", { class: "watch-qr-caption", text: i18n.t("watch.scan") });
+  /** Bumped per QR code shown, so a link that is read late never replaces a newer one. */
+  let qrRequest = 0;
+  /** Ends the reads of sources still running when the face goes. */
+  const lifetime = new AbortController();
   // A native modal <dialog>: while open, the covered player and the rest of the page are inert,
   // so Tab and screen readers stay inside it; Esc closes it like the Back button.
   const qr = h(
     "dialog",
     { class: "watch-qr", attrs: { "aria-label": i18n.t("watch.scan") } },
     qrBox,
-    h("p", { class: "watch-qr-caption", text: i18n.t("watch.scan") }),
+    qrCaption,
     h(
       "button",
       {
@@ -261,6 +274,21 @@ export function createWatch(ctx: AppContext): View {
     showControls(root.dataset.playing !== "true");
   }
 
+  /**
+   * Reads a source no link can name (a local file, pasted text, a handoff) once, for all its plays
+   * and its phone link: a handoff cannot be read twice. A failed read is tried again next time.
+   */
+  function openedOf(item: Item): Promise<OpenedSource> {
+    if (!item.opened) {
+      const opened = resolveSource(item.ref, { services: ctx.services, local: ctx.local, signal: lifetime.signal });
+      item.opened = opened;
+      opened.catch(() => {
+        if (item.opened === opened) item.opened = undefined;
+      });
+    }
+    return item.opened;
+  }
+
   function load(item: Item, autostart: boolean): void {
     session?.destroy();
     host.replaceChildren();
@@ -284,6 +312,7 @@ export function createWatch(ctx: AppContext): View {
       locale: i18n.locale,
       scheme: ctx.scheme,
       overrides: WATCH_OVERRIDES,
+      resolve: portable(item.ref) ? undefined : () => openedOf(item),
       onPhase: (next) => {
         phase = next;
         if (next === "ready") current.start();
@@ -333,18 +362,52 @@ export function createWatch(ctx: AppContext): View {
     if (byUser) engaged = true;
   }
 
-  function phoneUrl(): string {
-    const item = items[index];
-    const ref = item?.ref;
-    if (!ref || !portable(ref)) return ctx.shareUrl;
-    // The phone plays the same show: every performance setting in effect here (saved or from this
-    // link), not the wrist-only WATCH_OVERRIDES. A `#d=` payload's own settings win there as here.
-    const overrides = shareableSettings(ctx.settings);
-    return routeToUrl({ source: ref, autoplay: true, overrides }, ctx.shareUrl);
+  /**
+   * The phone link for a source no link can name: like Share, small text travels in `#d=`. A
+   * notice instead says why it cannot (binary, too large, unreadable).
+   */
+  async function carriedLink(item: Item): Promise<{ url: string } | { notice: string }> {
+    let opened: OpenedSource;
+    try {
+      opened = await openedOf(item);
+    } catch (error) {
+      return { notice: describeError(error, i18n, { formats: ctx.formatList(), label: item.title }) };
+    }
+    const link = await buildShareLink(opened, ctx.settings, ctx.shareUrl);
+    if (link.ok) return { url: link.url };
+    const key =
+      link.reason === "tooLarge" ? "share.tooLarge" : link.reason === "binary" ? "share.binary" : "share.failed";
+    return { notice: i18n.t(key) };
+  }
+
+  /**
+   * Shows the code for a link, a notice in its place, or (null) an empty code while the link is
+   * read. A link too long for any QR code (a long source URL, a large `#d=`) gets a notice too.
+   */
+  function drawQr(shown: { url: string } | { notice: string } | null): void {
+    const code = shown && "url" in shown ? qrCode(shown.url, i18n.t("watch.scan")) : null;
+    const notice = shown && "notice" in shown ? shown.notice : shown && !code ? i18n.t("watch.tooLong") : null;
+    qrBox.hidden = notice !== null;
+    qrBox.replaceChildren(...(code ? [code] : []));
+    qrCaption.textContent = notice ?? i18n.t("watch.scan");
+    qrCaption.toggleAttribute("data-notice", notice !== null);
   }
 
   function showQr(): void {
-    qrBox.replaceChildren(qrCode(phoneUrl(), i18n.t("watch.scan")));
+    const item = items[index];
+    const request = ++qrRequest;
+    // The phone plays the same show: every performance setting in effect here (saved or from this
+    // link), not the wrist-only WATCH_OVERRIDES. A `#d=` payload's own settings win there as here.
+    if (!item) drawQr({ url: ctx.shareUrl });
+    else if (portable(item.ref)) {
+      const overrides = shareableSettings(ctx.settings);
+      drawQr({ url: routeToUrl({ source: item.ref, autoplay: true, overrides }, ctx.shareUrl) });
+    } else {
+      drawQr(null);
+      void carriedLink(item).then((shown) => {
+        if (request === qrRequest && qr.open) drawQr(shown);
+      });
+    }
     if (!qr.open) qr.showModal();
     root.dataset.qr = "true";
     session?.player?.pause();
@@ -384,6 +447,7 @@ export function createWatch(ctx: AppContext): View {
       return false;
     },
     destroy() {
+      lifetime.abort();
       window.clearTimeout(cycleTimer);
       window.clearTimeout(idleTimer);
       session?.destroy();

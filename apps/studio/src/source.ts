@@ -321,6 +321,8 @@ async function fromHandoff(ref: { kind: "handoff" }, ctx: ResolveContext): Promi
     name,
     title: page.title || urlBaseName(page.url),
     format: "html",
+    // The captured markup, not the page's address (often behind a login), is what Share carries.
+    text: page.html,
     cliTarget: page.url,
     cliTargetKind: "url",
     layoutWidth: page.width,

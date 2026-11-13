@@ -2,6 +2,7 @@ import type { ShadowWatch } from "../../render/live";
 import { FarCache } from "./far";
 import { FontFaceCache, type FontWatch } from "./fonts";
 import { LONG_PIECE, networkGate, ResourceCache, type ResourcePolicy } from "./resources";
+import type { SheetMark } from "./sheet-edits";
 import { type CanvasOverlay, type FarBox, type FrameSnapshot, type SnapshotStats, snapshotFrame } from "./snapshot";
 import { StillWatch } from "./still";
 import { readBaseline, type StyleBaseline } from "./styles";
@@ -97,6 +98,8 @@ export class FrameRasterizer {
   #last: DrawnFrame | null = null;
   /** The boxes earlier snapshots wrote away from the viewport, written again while unchanged. */
   readonly #far = new FarCache<FarBox>();
+  /** The style sheets before the last capture ({@link StillWatch.sheets}). */
+  #sheets: SheetMark | null = null;
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -174,6 +177,9 @@ export class FrameRasterizer {
     // Its probe elements would count as a change.
     this.#baseline ??= readBaseline(document);
     const watch = new StillWatch({ document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() });
+    // The far cache does not read rules edited in place through the CSSOM; the still watch does.
+    if (!this.#sheets?.holds()) this.#far.forget();
+    this.#sheets = watch.sheets;
     try {
       const { parts, stats, overlays, settled, pixels } = await this.snapshot(signal, scale);
       let img = this.#last?.img;

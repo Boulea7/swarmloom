@@ -1,6 +1,6 @@
 import { portable, routeToUrl } from "../route";
 import type { StudioTarget } from "../services";
-import { DEFAULT_SETTINGS, type StudioSettings } from "../settings";
+import type { StudioSettings } from "../settings";
 import { encodeShare, MAX_SHARE_LENGTH, SHARE_SETTING_KEYS, sanitizeShareName } from "../share";
 import type { OpenedSource } from "../source";
 
@@ -21,12 +21,14 @@ export type ShareRefusal = "binary" | "tooLarge" | "unsupported";
 
 export type ShareLink = { ok: true; url: string } | { ok: false; reason: ShareRefusal };
 
-/** Settings worth carrying in a link: the ones that change the performance, when not default. */
+/**
+ * Settings a link carries: every one that shapes the performance, defaults included. The receiving
+ * Studio puts a link's settings over its own saved ones, so a key left out would play with the
+ * recipient's value, not the sender's.
+ */
 export function shareableSettings(s: StudioSettings): Partial<StudioSettings> {
   const out: Partial<StudioSettings> = {};
-  for (const key of SHARE_SETTING_KEYS) {
-    if (s[key] !== DEFAULT_SETTINGS[key]) (out as Record<string, unknown>)[key] = s[key];
-  }
+  for (const key of SHARE_SETTING_KEYS) (out as Record<string, unknown>)[key] = s[key];
   return out;
 }
 
