@@ -209,12 +209,14 @@ describe("export in the browser", () => {
   );
 
   it.runIf(chromium)(
-    "waits for a rendering update after the go-live frame only on a page that sets position-try fallbacks",
+    "waits for a rendering update after the go-live frame only on a page whose styles take state there",
     async () => {
       // Chromium writes `all: unset` out as every longhand, `position-try: unset` among them.
       const cases: [css: string, waits: number][] = [
         ["button{all:unset;cursor:pointer}", 0],
         [".tip{position-try-fallbacks:flip-block}", 1],
+        // A scroll spy: the link marked current changes only at a rendering update.
+        ["a:target-current{color:rgb(255,0,0)}", 1],
       ];
       const host = document.createElement("div");
       const outer = host.attachShadow({ mode: "open" });

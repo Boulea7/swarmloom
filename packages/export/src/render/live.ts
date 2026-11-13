@@ -19,6 +19,14 @@ const UPDATE_WAIT_MS = 1000;
  */
 const SCROLL_STATE_QUERY = /scroll-state\(/i;
 /**
+ * Selectors for state the engine also takes only at a rendering update: the link or scroll marker a
+ * scroll spy marks current (`:target-current`, and `:target-before` and `:target-after` around it,
+ * for the links of a `scroll-target-group` and the `::scroll-marker`s of a `scroll-marker-group`)
+ * and whether a `::scroll-button()` is disabled. Engine styles mark no current target, so without
+ * such a selector that state shows nothing; they dim a disabled scroll button.
+ */
+const SCROLL_TARGET_SELECTOR = /:target-(?:current|before|after)|::scroll-button\(/i;
+/**
  * `position-try` and `position-try-fallbacks` declarations and their values: the fallback an anchor
  * position takes (which `anchored()` container queries follow), also taken at a rendering update.
  */
@@ -203,11 +211,12 @@ function kind(rule: CSSRule): string {
 
 /**
  * Whether CSS text (rules or a `style` attribute) holds state the engine takes at its rendering
- * updates: a scroll-state query or anchor position fallbacks. A match elsewhere, as in a string,
- * only makes a step wait for nothing.
+ * updates: a scroll-state query, anchor position fallbacks, or a selector for the target a scroll
+ * spy marks current or a disabled scroll button ({@link SCROLL_TARGET_SELECTOR}). A match
+ * elsewhere, as in a string, only makes a step wait for nothing.
  */
 function cssTakesAtUpdate(text: string): boolean {
-  if (SCROLL_STATE_QUERY.test(text)) return true;
+  if (SCROLL_STATE_QUERY.test(text) || SCROLL_TARGET_SELECTOR.test(text)) return true;
   for (const [, value = ""] of text.matchAll(POSITION_TRY)) {
     if (!NO_FALLBACKS.test(value.replace(/!\s*important\s*$/i, "").trim())) return true;
   }
@@ -448,9 +457,10 @@ export class LiveStage {
    *
    * Some state the engine takes only at a rendering update, from the layout and scroll offsets it
    * sees then (a scroll-state query that sticks a header once go live scrolls the page, the
-   * fallback an anchor-positioned tooltip flips to). A transition or animation that starts there
-   * is not there for {@link sync} to read: it would run on wall time through the screenshot or the
-   * rasterizer's reads, then jump back to its start at the next frame's seek. So this waits for that
+   * fallback an anchor-positioned tooltip flips to, the link a scroll spy marks current once a seek
+   * moves the sections). A transition or animation that starts there is not there for {@link sync}
+   * to read: it would run on wall time through the screenshot or the rasterizer's reads, then jump
+   * back to its start at the next frame's seek. So this waits for that
    * update, reads the live page's animations again and seeks what started, from its start at `t`,
    * as long as an update starts more (a few rounds); the stage under the live page is not read again.
    * On the frame that went live, the go-live scroll set them off, so they start at the go-live time,

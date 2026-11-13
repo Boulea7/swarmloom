@@ -122,10 +122,13 @@ export function sheetText(sheet: CSSStyleSheet): string {
 /**
  * CSS whose effect the engine takes at a rendering update, from the layout and scroll offsets it
  * sees then, and keeps until the next one, wherever it is written: scroll-state container queries,
- * and anchor positioning (the scroll offsets an anchored box follows, the `@position-try` fallback
- * it took).
+ * anchor positioning (the scroll offsets an anchored box follows, the `@position-try` fallback it
+ * took), the link or scroll marker a scroll spy marks current (`:target-current`, and
+ * `:target-before` and `:target-after` around it; engine styles mark none, so only such a selector
+ * shows it) and whether a `::scroll-button()` is disabled.
  */
-const UPDATE_NAMES = /scroll-state\(|anchor(?:-size)?\(|anchor-center|@position-try/i;
+const UPDATE_NAMES =
+  /scroll-state\(|anchor(?:-size)?\(|anchor-center|@position-try|:target-(?:current|before|after)|::scroll-button\(/i;
 
 /**
  * Declarations of the rest of that CSS: anchor positioning by area and fallbacks, whether a

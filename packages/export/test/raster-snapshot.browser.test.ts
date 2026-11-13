@@ -647,6 +647,7 @@ it.for<[string, string, boolean]>([
   // As Studio's export frame mutes the app's sheets a bundler links into it.
   ["a style sheet that does not apply", '<style media="not all">div { animation-timeline: scroll() }</style>', false],
   ["a style attribute with position-area", '<i style="position: absolute; position-area: bottom"></i>', true],
+  ["a scroll-spy link", "<style>a:target-current { color: rgb(255, 0, 0) }</style>", true],
 ])("waits for a rendering update before a walk only where the page takes state there: %s", async ([, css, waits]) => {
   const { win, rasterizer } = await frameOf(`${css}<body style="margin:0"><div style="height:100px"></div></body>`);
   // Animation frames run only when the test lets them; a wait for one holds the walk until then.
