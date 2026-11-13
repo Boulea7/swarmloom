@@ -60,7 +60,25 @@ const crossBrowserTests = [
 const emulateMedia: BrowserCommand<[Parameters<Page["emulateMedia"]>[0]]> = async ({ page }, media) => {
   await page.emulateMedia(media);
 };
-const commands = { emulateMedia };
+/** What lets the image loads `holdImage` holds go on, by URL. */
+const heldImages = new Map<string, () => void>();
+/**
+ * `commands.holdImage(url, svg)` for browser tests: serves the SVG `svg` at `url`, but the test page
+ * and its frames load it as an image only once `commands.releaseImage(url)` is called, as from a slow
+ * server, in every engine. Other requests for it (the rasteriser's fetch) get it at once.
+ */
+const holdImage: BrowserCommand<[url: string, svg: string]> = async ({ page }, url, svg) => {
+  const released = new Promise<void>((resolve) => heldImages.set(url, resolve));
+  await page.route(url, async (route) => {
+    if (route.request().resourceType() === "image") await released;
+    await route.fulfill({ body: svg, contentType: "image/svg+xml" });
+  });
+};
+const releaseImage: BrowserCommand<[url: string]> = (_, url) => {
+  heldImages.get(url)?.();
+  heldImages.delete(url);
+};
+const commands = { emulateMedia, holdImage, releaseImage };
 
 export default defineConfig({
   resolve: {

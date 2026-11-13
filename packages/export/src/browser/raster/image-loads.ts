@@ -4,6 +4,8 @@ const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
 /** Image elements loading what CSS values of a document name, by document and URL. */
 const probes = new WeakMap<Document, Map<string, HTMLImageElement>>();
+/** By document, the last value whose images had all loaded or failed: they stay so. */
+const lastLoaded = new WeakMap<Document, string>();
 
 /**
  * Whether `doc` still loads an image that `value`, a computed CSS value, names. A CSS image fires no
@@ -13,6 +15,8 @@ const probes = new WeakMap<Document, Map<string, HTMLImageElement>>();
  * size. Each such element stays for the document's life and answers at once from then on.
  */
 export function cssImagePending(doc: Document, value: string): boolean {
+  // An inherited value comes again and again: each item of a list with an inlined bullet names it.
+  if (lastLoaded.get(doc) === value) return false;
   let known = probes.get(doc);
   for (const [, raw = ""] of value.matchAll(CSS_URL)) {
     const url = raw.includes("\\") ? raw.replace(/\\(.)/g, "$1") : raw;
@@ -29,5 +33,6 @@ export function cssImagePending(doc: Document, value: string): boolean {
     }
     if (!probe.complete) return true;
   }
+  lastLoaded.set(doc, value);
   return false;
 }

@@ -273,8 +273,7 @@ export interface FrameSnapshot {
    * viewport (same-origin frames included), as the walk read them. Null when the image shows what
    * can change without a DOM mutation or a scroll: a video, a frame whose document cannot be read,
    * a shadow root the source does not list, SMIL animations, an image still loading (an `<img>`
-   * written, or a CSS image that lays out a box the walk read, a list marker only where written in
-   * full, see {@link SIZING_IMAGES}).
+   * written, or a CSS image that lays out a box the walk read, see {@link SIZING_IMAGES}).
    */
   settled: readonly ScrollMark[] | null;
   /** The boxes written empty, with their size: the image holds only while each keeps it. */
@@ -812,9 +811,7 @@ function stepsCounter(cs: CSSStyleDeclaration, listed: boolean): boolean {
  *
  * The subtrees are left out or written empty when it finds none, as away from the viewport by
  * their boxes now: on the way it notes each CSS image still loading that lays out one of those
- * boxes ({@link noteImages}), which may grow it into view once loaded, without an event. List
- * markers are not checked: `list-style-image` inherits, so every item of a list styled with an
- * inlined image would read its whole data URL again on each walk.
+ * boxes ({@link noteImages}), which may grow it into view once loaded, without an event.
  */
 function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boolean {
   const stack: [Element, boolean][] = [];
@@ -822,18 +819,19 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
   for (let next = stack.pop(); next; next = stack.pop()) {
     const [el, inList] = next;
     const cs = view.win.getComputedStyle(el);
-    if (cs.getPropertyValue("display") === "none") continue;
+    const display = cs.getPropertyValue("display");
+    if (display === "none") continue;
     if (stepsCounter(cs, inList)) return true;
     // SVG elements have no such boxes, and the snapshot writes none for void elements either.
     const html = el.namespaceURI !== SVG_NS;
-    if (html) noteImages(walk, el.ownerDocument, cs, false);
+    if (html) noteImages(walk, el.ownerDocument, cs, display.includes("list-item"));
     const pseudos = html && !VOID.has(el.localName) ? PSEUDOS : [];
     for (const pseudo of pseudos) {
       const ps = view.win.getComputedStyle(el, pseudo);
       const content = ps.getPropertyValue("content");
       if (!content || content === "none" || content === "normal") continue;
       if (stepsCounter(ps, inList)) return true;
-      noteImages(walk, el.ownerDocument, ps, false, content);
+      noteImages(walk, el.ownerDocument, ps, ps.getPropertyValue("display").includes("list-item"), content);
     }
     // A frame's document counts on its own.
     if (el.localName === "iframe") continue;

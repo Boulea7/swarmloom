@@ -1,6 +1,14 @@
-import { afterEach, expect, it } from "vitest";
-import { server } from "vitest/browser";
+import { afterEach, expect, it, vi } from "vitest";
+import { commands, server } from "vitest/browser";
 import { FrameRasterizer } from "../src/browser/raster/rasterize";
+
+declare module "vitest/browser" {
+  interface BrowserCommands {
+    /** Serves `svg` at `url`, loaded as an image only after {@link releaseImage} (vitest.config.ts). */
+    holdImage(url: string, svg: string): Promise<void>;
+    releaseImage(url: string): Promise<void>;
+  }
+}
 
 const SIZE = 100;
 const frames: HTMLIFrameElement[] = [];
@@ -207,27 +215,38 @@ it("reads what overflows a far box once for the boxes in flow in it, drawing wha
   expect((await drawn(rasterizer))(25, 30)).toEqual([255, 0, 0]);
 });
 
-it("reads the inherited list marker of no item in a far box", async () => {
-  // A bullet inlined as a data URL: every item inherits the whole URL, read anew per item.
-  const bullet = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'/>")`;
-  const list = `<section><ul>${"<li>far</li>".repeat(10)}</ul></section>`;
+const LIST = '<ul style="margin:0;padding:0;list-style-position:inside"><li>x</li></ul>';
+
+it.for<[string, string]>([
+  // Out of flow above the view: the item grows down into it.
+  ["left out", `<div id=h style="position:absolute;left:0;top:-400px">${LIST}</div>`],
+  // At the foot of a box of fixed height below the view: the item overflows up into it.
+  [
+    "written empty",
+    '<div style="height:400px"></div><div style="height:50px;display:flex;flex-direction:column;' +
+      `justify-content:flex-end"><div id=h>${LIST}</div></div><div style="height:2000px"></div>`,
+  ],
+])("walks the frame again once the list marker image of an item in a box %s has loaded", async ([, body]) => {
+  const url = `${location.origin}/held-${Math.random().toString(36).slice(2)}.svg`;
+  await commands.holdImage(url, '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="500"/>');
   const { win, rasterizer } = await frameOf(
-    `<style>ul{list-style-image:${bullet}}</style><body style="margin:0"><p>near</p>` +
-      `<div style="height:2000px"></div>${list.repeat(20)}`,
+    `<style>.on { list-style-image: url("${url}") } li { background: rgb(255, 0, 0) }</style>` +
+      `<body style="margin:0">${body}</body>`,
   );
-  let reads = 0;
-  const proto = (win as Window & typeof globalThis).CSSStyleDeclaration.prototype;
-  const get = proto.getPropertyValue;
-  proto.getPropertyValue = function (this: CSSStyleDeclaration, name: string) {
-    if (name === "list-style-image") reads++;
-    return get.call(this, name);
-  };
-  const { svg } = await rasterizer.snapshot();
-  expect(svg).toContain(">near<");
-  expect(svg).not.toContain(">far<");
-  // The boxes written in full read it (in Firefox each list too: it counts a list item in
-  // `counter-increment`, so no list is written empty); none of the 200 far items.
-  expect(reads).toBeLessThan(100);
+  // The item inherits the marker; the page fires no event once it has loaded.
+  const host = win.document.getElementById("h") as HTMLElement;
+  host.className = "on";
+  try {
+    expect((await drawn(rasterizer))(5, 70)).toEqual([255, 255, 255]);
+    // Walked after the rendering update that follows the change, the same markup would hold.
+    await new Promise((resolve) => win.requestAnimationFrame(() => setTimeout(resolve)));
+    expect((await drawn(rasterizer))(5, 70)).toEqual([255, 255, 255]);
+    expect(host.offsetHeight).toBeLessThan(500);
+  } finally {
+    await commands.releaseImage(url);
+  }
+  await vi.waitFor(() => expect(host.offsetHeight).toBeGreaterThanOrEqual(500));
+  expect((await drawn(rasterizer))(5, 70)).toEqual([255, 0, 0]);
 });
 
 it("writes far boxes empty around SVG ids, keeping the clip paths, gradients and symbols drawn elsewhere", async () => {
