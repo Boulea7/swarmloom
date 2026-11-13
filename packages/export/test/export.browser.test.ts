@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { server } from "vitest/browser";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
 import { LiveStage, watchShadowRoots } from "../src/render/live";
+import { mayStartAnimations } from "../src/render/starts";
 
 // These cases also run in Firefox; Region Capture and classic scrollbars are Chromium's.
 const chromium = server.browser === "chromium";
@@ -256,5 +257,69 @@ describe("export in the browser", () => {
       frame.remove();
       host.remove();
     }
+  });
+
+  it("reads the live page's animations once a frame when no seek can start one there", async () => {
+    // Reading them again is what a frame of thousands of CSS animations spends most on.
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    frame.srcdoc =
+      "<style>@keyframes pulse{50%{opacity:.4}}span{animation:pulse 1.5s infinite;transition:none}</style>" +
+      '<body style="margin:0;height:200px"><span>a</span><span>b</span>';
+    const host = document.createElement("div");
+    const outer = host.attachShadow({ mode: "open" });
+    const world = document.createElement("div");
+    world.style.height = "200px";
+    outer.append(world);
+    const roots = [outer, world.attachShadow({ mode: "open" })];
+    document.body.append(host, frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument as Document;
+      const stage = new LiveStage({
+        document,
+        host,
+        shadows: { roots: () => roots, stop() {} },
+        page: { frame, document: doc },
+      });
+      stage.goLive(0);
+      let reads = 0;
+      const read = doc.getAnimations.bind(doc);
+      doc.getAnimations = () => {
+        reads++;
+        return read();
+      };
+      stage.sync(100);
+      stage.sync(200);
+      expect(reads).toBe(2);
+      expect(read().map((anim) => anim.playState)).toEqual(["paused", "paused"]);
+    } finally {
+      frame.remove();
+      host.remove();
+    }
+  });
+
+  it("tells which styles let a seek start a transition or an animation", () => {
+    const cases: [css: string, html: string, starts: boolean][] = [
+      ["@keyframes pulse{50%{opacity:.4}}.a{animation:pulse 1s infinite;transition:none}", "", false],
+      [".a{transition-duration:0s,0ms;transition-delay:-1s}", "", false],
+      [".a{transition:opacity .3s}", "", true],
+      ["@media screen{.a{transition-delay:1s}}", "", true],
+      [".a{transition:opacity var(--t)}", "", true],
+      ["@supports (display:grid){@container (min-width:200px){.a{color:red}}}", "", true],
+      ["@keyframes hue{to{--hue:120}}", "", true],
+      ["", '<p style="transition:color 1s"></p>', true],
+    ];
+    const results = cases.map(([css, html]) => {
+      const root = document.createElement("div").attachShadow({ mode: "open" });
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(css);
+      root.adoptedStyleSheets = [sheet];
+      root.innerHTML = html;
+      return mayStartAnimations(root);
+    });
+    expect(results).toEqual(cases.map(([, , starts]) => starts));
   });
 });
