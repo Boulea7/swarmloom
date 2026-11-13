@@ -88,11 +88,16 @@ function frameDocuments(scopes: readonly (Document | ShadowRoot)[]): Document[] 
  * scroll timelines): whether the CSS of the document, of its shadow roots or of a same-origin frame
  * document in them uses it (`takesUpdates`). A frame the walk leaves out counts too: a change can
  * bring it into view (the live page, as the page goes live), and the frame after that change shows
- * what the update after it takes.
+ * what the update after it takes. The rules of the document and its shadow roots are read as they
+ * are now, as the walk reads them right after (the far cache reads them on every walk), so a rule
+ * a script edits into one of their sheets makes the next frame wait. Those of a frame document
+ * follow the text last read (by a watch, the far cache, or when first seen), as nothing else reads
+ * them on every frame: an edit there counts once one of those reads it. No page script runs in an
+ * export (the live page and the HTML adapter's frames are sandboxed without scripts).
  */
 export function takesRenderingState(source: Pick<StillSource, "document" | "shadowRoots">): boolean {
   const scopes = [source.document, ...source.shadowRoots()];
-  return takesUpdates([...scopes, ...frameDocuments(scopes)]);
+  return takesUpdates(scopes, frameDocuments(scopes));
 }
 
 /** A document or shadow root the watch reads. */

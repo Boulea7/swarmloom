@@ -41,8 +41,8 @@ export interface FrozenAnimations {
   /** Infinite animations paused at the chosen phase. */
   paused: number;
   /**
-   * False when the last pass ({@link FREEZE_PASSES}) still found new animations: what their poses
-   * start is not frozen and runs on wall time, so captures of the page may differ.
+   * False when the poses of the last pass ({@link FREEZE_PASSES}) still started new animations: those
+   * are not frozen and run on wall time, so captures of the page may differ.
    */
   settled: boolean;
   /** Lets the paused infinite animations run again from their pose (used after go live). */
@@ -132,10 +132,11 @@ async function imagesSettled(doc: Document, ms: number, signal?: AbortSignal): P
 }
 
 /**
- * Most passes (reads of the animation list) of one freeze. The poses a pass sets can start
- * transitions and animations of their own, which the next pass finds; a chain of them (nested
- * container queries) takes one pass per link, and a pass that finds nothing new ends the freeze. The
- * cap only stops a page that is still starting new ones then ({@link FrozenAnimations.settled}).
+ * Most passes (reads of the animation list that freeze what they find) of one freeze. The poses a
+ * pass sets can start transitions and animations of their own, which the next pass finds; a chain of
+ * them (nested container queries) takes one pass per link, and a pass that finds nothing new ends the
+ * freeze. After the last pass one more read only checks for new ones, so the cap only stops a page
+ * that is still starting new ones then ({@link FrozenAnimations.settled}).
  */
 export const FREEZE_PASSES = 32;
 
@@ -240,10 +241,13 @@ function freezeShown(doc: Document, phase = 0.5): FrozenAnimations {
   const loops: Animation[] = [];
   let finished = 0;
   let settled = typeof doc.getAnimations !== "function";
-  for (let pass = 0; pass < FREEZE_PASSES && !settled; pass++) {
+  // One read more than the passes: the read after the last pass only checks whether its poses
+  // started anything, so a chain exactly FREEZE_PASSES long counts as settled.
+  for (let pass = 0; pass <= FREEZE_PASSES && !settled; pass++) {
     if (pass > 0) void doc.documentElement?.getBoundingClientRect();
     const fresh = doc.getAnimations().filter((anim) => !seen.has(anim));
     settled = fresh.length === 0;
+    if (pass === FREEZE_PASSES) break;
     for (const anim of fresh) {
       seen.add(anim);
       const timing = anim.effect?.getComputedTiming();

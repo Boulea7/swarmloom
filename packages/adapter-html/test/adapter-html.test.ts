@@ -231,6 +231,15 @@ describe("rewriteCssUrls", () => {
     expect(performance.now() - started).toBeLessThan(1000);
     expect(out).toBe(`p{background:invalid(${escapes}"x") red}`);
   });
+
+  it("reads whitespace after a url( that is not one URL in linear time", () => {
+    // The run was split every way between the leading and trailing whitespace: ~6 s at 80,000.
+    const spaces = " ".repeat(100_000);
+    const started = performance.now();
+    const out = rewriteCssUrls(`p{background:url(${spaces}x y) red}`, "https", "https://x.dev/");
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(out).toBe(`p{background:invalid(${spaces}x y) red}`);
+  });
 });
 
 describe("htmlAdapter.load (fragments)", () => {

@@ -119,7 +119,8 @@ describe("html examples in Chromium", () => {
       `<div id='b0' class='box'>${"<div class='box'>".repeat(depth - 1)}${"</div>".repeat(depth)}</body></html>`;
     const live = createHtmlAdapter({ snapshot: probeSnapshot, keepLive: true });
     const results: [number, boolean][] = [];
-    for (const depth of [9, FREEZE_PASSES + 3]) {
+    // A chain exactly as long as the passes is frozen whole, so it must not warn.
+    for (const depth of [9, FREEZE_PASSES, FREEZE_PASSES + 3]) {
       const loaded = await live.load({ text: nested(depth) }, ctx);
       try {
         const paused = loaded.live?.document.getAnimations().filter((a) => a.playState === "paused") ?? [];
@@ -130,6 +131,7 @@ describe("html examples in Chromium", () => {
     }
     expect(results).toEqual([
       [9, false],
+      [FREEZE_PASSES, false],
       [FREEZE_PASSES, true],
     ]);
   });

@@ -1,6 +1,6 @@
 import { createPlayer } from "@swarmloom/core";
 import { mayStartAnimations, readStyleFacts } from "@swarmloom/core/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { server } from "vitest/browser";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
 import { LiveStage, watchShadowRoots } from "../src/render/live";
@@ -146,25 +146,34 @@ describe("export in the browser", () => {
     }
   });
 
-  it.runIf(chromium)(
-    "starts a transition the go-live scroll sets off at the next rendering update at the frame time",
-    async () => {
+  // The header sits in the document, or in an open shadow root, which Document.getAnimations() leaves out.
+  it.runIf(chromium).each([{ where: "the document" }, { where: "an open shadow root" }])(
+    "starts a transition the go-live scroll sets off at the next rendering update at the frame time in $where",
+    async ({ where }) => {
       // The live page waits scrolled down, its sticky header stuck and red. Going live scrolls it to
       // the stage's view at the top, and Chromium unsticks the header at its next rendering update.
       const frame = document.createElement("iframe");
       frame.setAttribute("sandbox", "allow-same-origin");
       frame.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;border:0";
       const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
-      frame.srcdoc =
-        "<style>body{margin:0}p{margin:0;height:150px}header{position:sticky;top:0;container-type:scroll-state}" +
+      const inShadow = where !== "the document";
+      const page =
+        "<style>p{margin:0;height:150px}header{position:sticky;top:0;container-type:scroll-state}" +
         "header div{height:20px;background:rgb(0,0,255);transition:background-color .6s linear}" +
         "@container scroll-state(stuck: top){header div{background:rgb(255,0,0)}}</style>" +
         "<p></p><header><div></div></header><p></p><p></p><p></p>";
+      frame.srcdoc = `<body style="margin:0">${inShadow ? "<div></div>" : page}`;
       document.body.append(frame);
+      let scope: Document | ShadowRoot = document;
       const api = createRenderApi({
         load: async () => {
           await loaded;
           const doc = frame.contentDocument as Document;
+          scope = doc;
+          if (inShadow) {
+            scope = (doc.body.firstElementChild as HTMLElement).attachShadow({ mode: "open" });
+            scope.innerHTML = page;
+          }
           frame.contentWindow?.scrollTo(0, 300);
           await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           const size = { w: 320, h: doc.documentElement.scrollHeight };
@@ -188,15 +197,63 @@ describe("export in the browser", () => {
         });
         await api.step(100); // goes live at 100 ms
         await new Promise((resolve) => setTimeout(resolve, 150)); // a slow screenshot
-        const doc = frame.contentDocument as Document;
         expect([
           frame.contentWindow?.scrollY,
-          doc.getAnimations().map((anim) => [anim.playState, anim.currentTime]),
+          scope.getAnimations().map((anim) => [anim.playState, anim.currentTime]),
         ]).toEqual([0, [["paused", 0]]]);
       } finally {
         api.dispose();
         frame.remove();
       }
+    },
+  );
+
+  it.runIf(chromium)(
+    "waits for a rendering update after the go-live frame only on a page whose styles take state there",
+    async () => {
+      // Chromium writes `all: unset` out as every longhand, `position-try: unset` among them.
+      const cases: [css: string, waits: number][] = [
+        ["button{all:unset;cursor:pointer}", 0],
+        [".tip{position-try-fallbacks:flip-block}", 1],
+        // A scroll spy: the link marked current changes only at a rendering update.
+        ["a:target-current{color:rgb(255,0,0)}", 1],
+      ];
+      const host = document.createElement("div");
+      const outer = host.attachShadow({ mode: "open" });
+      const world = document.createElement("div");
+      world.style.height = "200px";
+      outer.append(world);
+      const roots = [outer, world.attachShadow({ mode: "open" })];
+      document.body.append(host);
+      const waits: number[] = [];
+      try {
+        for (const [css] of cases) {
+          const frame = document.createElement("iframe");
+          frame.setAttribute("sandbox", "allow-same-origin");
+          frame.style.cssText = "position:fixed;left:-2000px;top:0;width:320px;height:200px;border:0";
+          const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+          frame.srcdoc = `<style>${css}</style><body style="margin:0"><button class="tip">Go</button>`;
+          document.body.append(frame);
+          await loaded;
+          const stage = new LiveStage({
+            document,
+            host,
+            shadows: { roots: () => roots, stop() {} },
+            page: { frame, document: frame.contentDocument as Document },
+          });
+          stage.goLive(0);
+          await stage.settle(0); // the go-live frame waits on any page
+          const raf = vi.spyOn(window, "requestAnimationFrame");
+          stage.sync(40);
+          await stage.settle(40);
+          waits.push(raf.mock.calls.length);
+          raf.mockRestore();
+          frame.remove();
+        }
+      } finally {
+        host.remove();
+      }
+      expect(waits).toEqual(cases.map(([, count]) => count));
     },
   );
 
@@ -238,6 +295,61 @@ describe("export in the browser", () => {
       host.remove();
     }
   });
+
+  it.runIf(chromium)(
+    "starts what the go-live scroll sets off at the go-live time on a frame ticks later, before or after its sync",
+    async () => {
+      // Go live at 100 ms, an engine tick before the frame at 125 ms (a frame rate below the tick
+      // rate). The scroll unsticks the header at the next rendering update, which comes between the
+      // ticks or only in settle(); at the same time the transition is as far as at any frame rate.
+      const times: unknown[] = [];
+      for (const updateFirst of [true, false]) {
+        const frame = document.createElement("iframe");
+        frame.setAttribute("sandbox", "allow-same-origin");
+        frame.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;border:0";
+        const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc =
+          "<style>body{margin:0}p{margin:0;height:150px}header{position:sticky;top:0;container-type:scroll-state}" +
+          "header div{height:20px;background:rgb(0,0,255);transition:background-color .6s linear}" +
+          "@container scroll-state(stuck: top){header div{background:rgb(255,0,0)}}</style>" +
+          "<p></p><header><div></div></header><p></p><p></p><p></p>";
+        const host = document.createElement("div");
+        host.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;overflow:hidden";
+        const outer = host.attachShadow({ mode: "open" });
+        const world = document.createElement("div");
+        world.style.height = "620px";
+        outer.append(world);
+        const roots = [outer, world.attachShadow({ mode: "open" })];
+        document.body.append(host, frame);
+        const update = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+        try {
+          await loaded;
+          const doc = frame.contentDocument as Document;
+          frame.contentWindow?.scrollTo(0, 300);
+          await update();
+          await update();
+          const stage = new LiveStage({
+            document,
+            host,
+            shadows: { roots: () => roots, stop() {} },
+            page: { frame, document: doc },
+          });
+          stage.goLive(100);
+          if (updateFirst) {
+            await update();
+            await update();
+          }
+          stage.sync(125);
+          await stage.settle(125);
+          times.push(doc.getAnimations().map((anim) => [anim.playState, anim.currentTime]));
+        } finally {
+          frame.remove();
+          host.remove();
+        }
+      }
+      expect(times).toEqual([[["paused", 25]], [["paused", 25]]]);
+    },
+  );
 
   it("shows an animated GIF on the live page as its first frame: an <img> at the same size, a background, an SVG <image>, a video poster, an image button", async () => {
     // 1x1 GIF, red then blue, looping.

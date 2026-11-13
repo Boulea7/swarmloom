@@ -126,6 +126,45 @@ it.each([
   expect(await pixel(rasterizer, x, y)).toEqual(expected);
 });
 
+const anchor = (style: string) => `<b style="display:block;anchor-name:--a;width:10px;height:10px;${style}"></b>`;
+const tip = (style: string) =>
+  `<i style="position-anchor:--a;width:20px;height:20px;background:rgb(0,255,0);${style}"></i>`;
+
+it.for<[string, string, (win: Window) => void]>([
+  // Chromium moves it by the scroll offsets after layout: its computed insets stay where it was.
+  [
+    "a fixed box anchored in the scrolled document",
+    `<div style="height:300px"></div>${anchor("")}<div style="height:300px"></div>` +
+      tip("position:fixed;top:anchor(bottom);left:anchor(right)"),
+    (win) => win.scrollTo(0, 250),
+  ],
+  [
+    "an absolute box anchored in a scroller beside it",
+    `<div style="position:relative;border:5px solid rgb(0,0,255)"><div id=s style="height:80px;overflow:hidden">` +
+      `<div style="height:120px"></div>${anchor("")}<div style="height:200px"></div></div>` +
+      `${tip("position:absolute;top:anchor(bottom);left:anchor(right)")}</div>`,
+    (win) => {
+      (win.document.getElementById("s") as HTMLElement).scrollTop = 100;
+    },
+  ],
+  // Its insets are from the cell, which the clone, without anchors, does not take.
+  [
+    "a box in a position-area cell",
+    anchor("position:absolute;left:20px;top:20px") + tip("position:absolute;position-area:bottom right"),
+    () => {},
+  ],
+])("draws %s where the page shows it", async ([, body, scroll], { skip }) => {
+  const { win, rasterizer } = await frameOf(`<body style="margin:0">${body}</body>`);
+  if (!(win as Window & typeof globalThis).CSS.supports("position-area", "bottom")) skip("no anchor positioning");
+  // Laid out before the scroll, as a page that scrolls (going live) is.
+  await pixel(rasterizer, 0, 0);
+  scroll(win);
+  await pixel(rasterizer, 0, 0);
+  const r = (win.document.querySelector("i") as HTMLElement).getBoundingClientRect();
+  if (r.bottom > SIZE || r.top < 0) skip("the engine shows it out of view");
+  expect(await pixel(rasterizer, Math.round(r.left + 10), Math.round(r.top + 10))).toEqual([0, 255, 0]);
+});
+
 it.each([
   ["a zero border width with a style", '<div style="border:0 solid rgb(255,0,0);width:60px;height:60px">', [0, 0, 255]],
   [
@@ -624,10 +663,30 @@ it("walks the frame after a change once the rendering update that follows it, wh
   expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
 });
 
+it("waits for the rendering update after a change once a rule edited into a sheet read before takes state there", async ({
+  skip,
+}) => {
+  const { win, rasterizer } = await frameOf(
+    "<style>header { position: fixed; top: 0; left: 0; right: 0; height: 20px; background: rgb(255, 0, 0) }</style>" +
+      '<body style="margin:0"><header></header><div style="height:2000px"></div></body>',
+  );
+  if (!(win as Window & typeof globalThis).CSS.supports("container-type", "scroll-state")) skip("no scroll-state");
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+  // The same sheet object, read for the first frame, now holds a scroll-state query.
+  const sheet = win.document.styleSheets[0] as CSSStyleSheet;
+  sheet.insertRule("html { container-type: scroll-state }", 0);
+  sheet.insertRule("@container scroll-state(scrollable: top) { header { background: rgb(0, 0, 255) } }", 2);
+  win.scrollTo(0, 300);
+  expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
+});
+
 it.for<[string, string, boolean]>([
   ["CSS that takes no such state", "<style>div { background: rgb(255, 0, 0) }</style>", false],
   ["a style sheet with content-visibility", "<style>div { content-visibility: auto }</style>", true],
+  // As Studio's export frame mutes the app's sheets a bundler links into it.
+  ["a style sheet that does not apply", '<style media="not all">div { animation-timeline: scroll() }</style>', false],
   ["a style attribute with position-area", '<i style="position: absolute; position-area: bottom"></i>', true],
+  ["a scroll-spy link", "<style>a:target-current { color: rgb(255, 0, 0) }</style>", true],
 ])("waits for a rendering update before a walk only where the page takes state there: %s", async ([, css, waits]) => {
   const { win, rasterizer } = await frameOf(`${css}<body style="margin:0"><div style="height:100px"></div></body>`);
   // Animation frames run only when the test lets them; a wait for one holds the walk until then.

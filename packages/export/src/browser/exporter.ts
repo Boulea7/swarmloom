@@ -184,13 +184,14 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * the same pixels in each canvas drawn into the image, and no video, frame of another origin, SMIL
  * or image still loading that sizes a box in it), as through an opening or after going live, a
  * frame skips the snapshot and draws the last image again under the cursors; a frame whose
- * snapshot equals the last one's also reuses its image. On a page whose CSS uses what the engine
- * takes at its rendering updates (scroll-state container queries, anchor positions,
- * `content-visibility: auto`, scroll timelines), a frame that walks after a change first waits for
- * the page's next rendering update, up to a display frame, which may show more of the change
- * without a mutation or event, as the CLI's screenshot comes after it; on any page the next frame
- * walks once more after the update that follows. A hidden tab takes no rendering updates: there
- * such state stays as the engine last took it.
+ * snapshot equals the last one's also reuses its image. On a page whose CSS (in sheets that apply)
+ * uses what the engine takes at its rendering updates (scroll-state container queries, anchor
+ * positions, `content-visibility: auto`, scroll timelines, the link a scroll spy marks current), a
+ * frame that walks after a change first waits for the page's next rendering update, up to a
+ * display frame, which may show more of the change without a mutation or event, as the CLI's
+ * screenshot comes after it; on any page the next frame walks once more after the update that
+ * follows. A hidden tab takes no rendering updates: there such state stays as the engine last took
+ * it.
  * Otherwise, as while one animation runs on a long live page, the snapshot writes each box away
  * from the viewport as the last one wrote it while nothing in it changed, it kept its size and
  * margins and it stayed away, without reading it again; not when the animation transforms, filters

@@ -6,13 +6,28 @@
  * from whichever window), the next read gives another value.
  *
  * Each value is read once until the running script yields (the next microtask checkpoint): before a
- * walk, the still check of the last frame, the watch of the next one and the far cache read the same
- * sheets and animations one after the other, and nothing between those reads changes the page.
+ * walk, the still check of the last frame, whether the page takes state at a rendering update
+ * ({@link takesUpdates}), the watch of the next one and the far cache read the same sheets and
+ * animations one after the other, and nothing between those reads changes the page.
  */
 
 /** The style sheets of a document or shadow root: those of its elements, then the adopted ones. */
 export function sheetsOf(target: Document | ShadowRoot): CSSStyleSheet[] {
   return [...Array.from(target.styleSheets ?? []), ...(target.adoptedStyleSheets ?? [])] as CSSStyleSheet[];
+}
+
+/**
+ * Whether a style sheet of `target` applies: it is not switched off and its media, if it has any,
+ * match in the window of `target` (where that cannot be told, it counts as applying). A sheet that
+ * does not apply styles nothing, as the host app's sheets Studio's export frame links with
+ * `media="not all"`, whatever its rules hold.
+ */
+export function sheetApplies(sheet: CSSStyleSheet, target: Document | ShadowRoot): boolean {
+  if (sheet.disabled) return false;
+  const media = sheet.media?.mediaText;
+  if (!media) return true;
+  const view = (target.nodeType === 9 ? (target as Document) : (target as ShadowRoot).ownerDocument).defaultView;
+  return !view || typeof view.matchMedia !== "function" || view.matchMedia(media).matches;
 }
 
 /** What a read of a Web Animation gives (see {@link animationMark}). */
@@ -107,10 +122,13 @@ export function sheetText(sheet: CSSStyleSheet): string {
 /**
  * CSS whose effect the engine takes at a rendering update, from the layout and scroll offsets it
  * sees then, and keeps until the next one, wherever it is written: scroll-state container queries,
- * and anchor positioning (the scroll offsets an anchored box follows, the `@position-try` fallback
- * it took).
+ * anchor positioning (the scroll offsets an anchored box follows, the `@position-try` fallback it
+ * took), the link or scroll marker a scroll spy marks current (`:target-current`, and
+ * `:target-before` and `:target-after` around it; engine styles mark none, so only such a selector
+ * shows it) and whether a `::scroll-button()` is disabled.
  */
-const UPDATE_NAMES = /scroll-state\(|anchor(?:-size)?\(|anchor-center|@position-try/i;
+const UPDATE_NAMES =
+  /scroll-state\(|anchor(?:-size)?\(|anchor-center|@position-try|:target-(?:current|before|after)|::scroll-button\(/i;
 
 /**
  * Declarations of the rest of that CSS: anchor positioning by area and fallbacks, whether a
@@ -146,43 +164,61 @@ function cssTakesUpdates(text: string): boolean {
 
 /**
  * Whether the rules of a style sheet may use what the engine takes at a rendering update
- * ({@link cssTakesUpdates}); true when some of them cannot be read (another origin's). Reads the
- * text of a sheet not read before (an element given new CSS gets a new sheet object); after that it
- * follows the text {@link sheetText} last read for the watches, so an edit through the CSSOM counts
- * from the next frame that reads the text (no page script runs in an export).
+ * ({@link cssTakesUpdates}); true when some of them cannot be read (another origin's). With `now`,
+ * reads the rules as they are ({@link sheetText}), so a rule edited through the CSSOM into a sheet
+ * read before counts in the frame right after the edit; else it follows the text read last, or
+ * reads a sheet not read before (an element given new CSS gets a new sheet object). The text is
+ * searched again only when it changed.
  */
-export function sheetTakesUpdates(sheet: CSSStyleSheet): boolean {
-  let read = lastReads.get(sheet);
-  if (!read) {
-    sheetText(sheet);
-    read = lastReads.get(sheet) as SheetRead;
-  }
+export function sheetTakesUpdates(sheet: CSSStyleSheet, now: boolean): boolean {
+  if (now || !lastReads.has(sheet)) sheetText(sheet);
+  const read = lastReads.get(sheet) as SheetRead;
   read.updates ??= read.opaque || cssTakesUpdates(read.text);
   return read.updates;
 }
 
 /**
  * Whether the CSS of documents and shadow roots may use what the engine takes at a rendering update
- * ({@link cssTakesUpdates}): in a rule of their style sheets ({@link sheetTakesUpdates}) or in a
- * `style` attribute of their elements (read after all the sheets, which are mostly known).
+ * ({@link cssTakesUpdates}): in a rule of their style sheets that apply ({@link sheetApplies},
+ * {@link sheetTakesUpdates}: read as they are now in `current`, as last read in `known`) or in a
+ * `style` attribute of their elements (read after all the sheets, which are mostly known). A sheet
+ * whose text read last uses it counts before any sheet is read, as the page then waits anyway:
+ * should an edit have taken that CSS out since, the frame only waits for nothing until a read gives
+ * the new text.
  */
-export function takesUpdates(targets: readonly (Document | ShadowRoot)[]): boolean {
-  if (targets.some((target) => sheetsOf(target).some(sheetTakesUpdates))) return true;
-  return targets.some((target) =>
+export function takesUpdates(
+  current: readonly (Document | ShadowRoot)[],
+  known: readonly (Document | ShadowRoot)[] = [],
+): boolean {
+  const applied = (target: Document | ShadowRoot) => sheetsOf(target).filter((s) => sheetApplies(s, target));
+  const now = current.flatMap(applied);
+  const last = known.flatMap(applied);
+  if (now.some(tookUpdates) || last.some(tookUpdates)) return true;
+  if (now.some((sheet) => sheetTakesUpdates(sheet, true))) return true;
+  if (last.some((sheet) => sheetTakesUpdates(sheet, false))) return true;
+  return [...current, ...known].some((target) =>
     Array.from(target.querySelectorAll("[style]")).some((el) => cssTakesUpdates(el.getAttribute("style") ?? "")),
   );
 }
 
+/** Whether the text last read of a sheet was found to use what the engine takes at a rendering update. */
+function tookUpdates(sheet: CSSStyleSheet): boolean {
+  return lastReads.get(sheet)?.updates === true;
+}
+
 /**
- * Which style sheets apply in `targets` (each sheet, whether it is switched off, its media) and,
- * with `texts`, the text of their rules ({@link sheetText}), in a list to compare with `same`.
+ * Which style sheets apply in `targets` (each sheet, whether it is switched off, its media and
+ * whether it applies: {@link sheetApplies}) and, with `texts`, the text of the rules of those that
+ * apply ({@link sheetText}; the rules of one that does not style nothing), in a list to compare
+ * with `same`.
  */
 export function sheetState(targets: Iterable<Document | ShadowRoot>, texts: boolean): unknown[] {
   const state: unknown[] = [];
   for (const target of targets) {
     for (const sheet of sheetsOf(target)) {
-      state.push(sheet, sheet.disabled, sheet.media?.mediaText);
-      if (texts) state.push(sheetText(sheet));
+      const applies = sheetApplies(sheet, target);
+      state.push(sheet, sheet.disabled, sheet.media?.mediaText, applies);
+      if (texts && applies) state.push(sheetText(sheet));
     }
   }
   return state;

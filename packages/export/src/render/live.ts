@@ -14,13 +14,30 @@ const SETTLE_ROUNDS = 3;
 /** Longest wait for the render page's next rendering update ({@link renderingUpdate}). */
 const UPDATE_WAIT_MS = 1000;
 /**
- * Rule text whose state the engine takes at its rendering updates, from the layout and scroll
- * offsets it sees then, not in a style or layout flush: scroll-state container queries and the
- * fallbacks of anchor positions (`position-try`, which `anchored()` container queries follow).
+ * A scroll-state container query, whose state the engine takes at its rendering updates, from the
+ * scroll offsets it sees then, not in a style or layout flush (see {@link cssTakesAtUpdate}).
  */
-const AT_UPDATE = /scroll-state|position-try/i;
-/** Inline styles that can hold {@link AT_UPDATE} declarations. */
-const AT_UPDATE_INLINE = '[style*="position-try" i]';
+const SCROLL_STATE_QUERY = /scroll-state\(/i;
+/**
+ * Selectors for state the engine also takes only at a rendering update: the link or scroll marker a
+ * scroll spy marks current (`:target-current`, and `:target-before` and `:target-after` around it,
+ * for the links of a `scroll-target-group` and the `::scroll-marker`s of a `scroll-marker-group`)
+ * and whether a `::scroll-button()` is disabled. Engine styles mark no current target, so without
+ * such a selector that state shows nothing; they dim a disabled scroll button.
+ */
+const SCROLL_TARGET_SELECTOR = /:target-(?:current|before|after)|::scroll-button\(/i;
+/**
+ * `position-try` and `position-try-fallbacks` declarations and their values: the fallback an anchor
+ * position takes (which `anchored()` container queries follow), also taken at a rendering update.
+ */
+const POSITION_TRY = /(?<![\w-])position-try(?:-fallbacks)?\s*:\s*([^;}]*)/gi;
+/**
+ * Values of {@link POSITION_TRY} that set no fallback: `none` and the CSS-wide keywords, which a reset
+ * such as `all: unset` writes for every longhand when Chromium serialises it.
+ */
+const NO_FALLBACKS = /^(?:none|normal\s+none|initial|inherit|unset|revert|revert-layer)$/i;
+/** Inline styles that can hold {@link POSITION_TRY} declarations. */
+const POSITION_TRY_INLINE = '[style*="position-try" i]';
 
 /**
  * Pose of the live page's infinite loops, as a fraction of one cycle: the render page's HTML adapter
@@ -79,6 +96,26 @@ export function watchShadowRoots(win: Window & typeof globalThis): ShadowWatch {
       roots = [];
     },
   };
+}
+
+/**
+ * The open shadow roots of `doc`, the ones nested in them included. `Document.getAnimations()` and
+ * `document.styleSheets` leave shadow trees out, so a live page a loader gave with such roots has
+ * its animations and style sheets read from each root as well.
+ */
+function openShadowRoots(doc: Document): ShadowRoot[] {
+  const roots: ShadowRoot[] = [];
+  const scopes: (Document | ShadowRoot)[] = [doc];
+  for (let scope = scopes.pop(); scope; scope = scopes.pop()) {
+    for (const el of Array.from(scope.querySelectorAll("*"))) {
+      const root = el.shadowRoot;
+      if (root) {
+        roots.push(root);
+        scopes.push(root);
+      }
+    }
+  }
+  return roots;
 }
 
 /** Outermost `<svg>` elements of `doc` that hold SMIL animation (each is one time container). */
@@ -172,7 +209,21 @@ function kind(rule: CSSRule): string {
   return Object.prototype.toString.call(rule).slice(8, -1);
 }
 
-/** Whether `sheet` or a sheet it imports holds {@link AT_UPDATE} rule text; true when it cannot be read. */
+/**
+ * Whether CSS text (rules or a `style` attribute) holds state the engine takes at its rendering
+ * updates: a scroll-state query, anchor position fallbacks, or a selector for the target a scroll
+ * spy marks current or a disabled scroll button ({@link SCROLL_TARGET_SELECTOR}). A match
+ * elsewhere, as in a string, only makes a step wait for nothing.
+ */
+function cssTakesAtUpdate(text: string): boolean {
+  if (SCROLL_STATE_QUERY.test(text) || SCROLL_TARGET_SELECTOR.test(text)) return true;
+  for (const [, value = ""] of text.matchAll(POSITION_TRY)) {
+    if (!NO_FALLBACKS.test(value.replace(/!\s*important\s*$/i, "").trim())) return true;
+  }
+  return false;
+}
+
+/** Whether `sheet` or a sheet it imports holds {@link cssTakesAtUpdate} rule text; true when it cannot be read. */
 function sheetTakesAtUpdate(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boolean {
   if (seen.has(sheet)) return false;
   seen.add(sheet);
@@ -188,7 +239,7 @@ function sheetTakesAtUpdate(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boo
     if (type === "CSSImportRule") {
       const imported = (rule as CSSImportRule).styleSheet;
       if (imported && sheetTakesAtUpdate(imported, seen)) return true;
-    } else if (type !== "CSSFontFaceRule" && AT_UPDATE.test(rule.cssText)) {
+    } else if (type !== "CSSFontFaceRule" && cssTakesAtUpdate(rule.cssText)) {
       // A rule's text holds its prelude and the rules nested in it; a font face's holds its sources.
       return true;
     }
@@ -197,13 +248,14 @@ function sheetTakesAtUpdate(sheet: CSSStyleSheet, seen: Set<CSSStyleSheet>): boo
 }
 
 /**
- * Whether the style sheets or inline styles of `doc` hold rules whose state the engine takes at its
- * rendering updates ({@link AT_UPDATE}).
+ * Whether the style sheets or inline styles of `scope` (a document or a shadow root) hold rules
+ * whose state the engine takes at its rendering updates ({@link cssTakesAtUpdate}).
  */
-function takesAtUpdate(doc: Document): boolean {
-  if (doc.querySelector(AT_UPDATE_INLINE)) return true;
+function takesAtUpdate(scope: Document | ShadowRoot): boolean {
+  const inline = Array.from(scope.querySelectorAll(POSITION_TRY_INLINE));
+  if (inline.some((el) => cssTakesAtUpdate(el.getAttribute("style") ?? ""))) return true;
   const seen = new Set<CSSStyleSheet>();
-  const sheets = [...Array.from(doc.styleSheets), ...(doc.adoptedStyleSheets ?? [])];
+  const sheets = [...Array.from(scope.styleSheets), ...(scope.adoptedStyleSheets ?? [])];
   return sheets.some((sheet) => sheetTakesAtUpdate(sheet as CSSStyleSheet, seen));
 }
 
@@ -284,7 +336,8 @@ export interface LiveStageOptions {
  * The render page's side of go live. Once the stage is live (`PlayerOptions.onLive`) it shows the
  * live page an adapter kept (the real HTML page, its animations frozen at the captured pose, and any
  * it started since frozen by the same rule then) over the stage, and from then on every frame pauses
- * all Web Animations (document, stage subtrees, live page) and the live page's SVG documents and
+ * all Web Animations (document, stage subtrees, live page and its open shadow roots) and the live
+ * page's SVG documents and
  * seeks them to the transport time ({@link LiveStage.sync}), also the ones the page's next rendering
  * update starts ({@link LiveStage.settle}), so frames never depend on wall time. The live page's
  * `<marquee>` elements, which no seek reaches, stay still at their captured resting pose, and its
@@ -296,11 +349,20 @@ export class LiveStage {
   readonly #o: LiveStageOptions;
   #page: LivePage | null;
   #svgs: SVGSVGElement[] = [];
+  /**
+   * Open shadow roots of the live page, read at go live, whose animations and style sheets its
+   * document's leave out (an adapter's sandboxed page runs no script that could attach more later).
+   */
+  #pageRoots: ShadowRoot[] = [];
   #live = false;
   /** What the styles of each document and shadow root let a seek start ({@link LiveStage.sync}). */
   readonly #facts = new WeakMap<Document | ShadowRoot, StyleFacts>();
-  /** The live page was just shown and scrolled: the next {@link LiveStage.settle} waits whatever its styles. */
-  #shown = false;
+  /**
+   * Transport time the live page was shown and scrolled at, until the {@link LiveStage.settle} of
+   * that frame: it waits whatever the page's styles, and what the frame finds the page started is
+   * anchored at this time.
+   */
+  #shownAt: number | null = null;
   /** Whether the live page's styles hold rules the engine takes at its rendering updates, once read. */
   #atUpdate: boolean | null = null;
 
@@ -333,13 +395,14 @@ export class LiveStage {
         this.#page = null;
         this.#o.onWarning?.(`the live page stays hidden: ${problem}`);
       } else {
-        this.#shown = true;
+        this.#shownAt = t;
         restMarquees(page.document);
         this.#svgs = animatedSvgs(page.document);
+        this.#pageRoots = openShadowRoots(page.document);
         // The capture froze every animation of the page, but the page may have started more since
         // (sections with `content-visibility: auto` the browser laid out later, the marquees just
         // replaced) that run on wall time: freeze those by the same rule before the seek anchors them.
-        freezeRunning(page.document.getAnimations(), LIVE_LOOP_PHASE);
+        freezeRunning(this.#animations(false, true), LIVE_LOOP_PHASE);
       }
     }
     this.sync(t);
@@ -358,15 +421,28 @@ export class LiveStage {
    * animate a value that a transition or a container there can take, which fades and pulses do
    * not) is read again: the render page with its stage roots, or the live page (also when it
    * holds SMIL animation, whose seek can render elements again).
+   *
+   * On the frame that went live, when it comes engine ticks after go live, a rendering update between
+   * those ticks may already have taken the go-live scroll: what the live page started since is first
+   * seeked from its start at the go-live time, as {@link settle} seeks it (from the same read).
    */
   sync(t: number): void {
     if (!this.#live) return;
-    this.#seeker.seekAnimations(this.#animations(), t);
+    const shownAt = this.#shownAt;
+    if (shownAt !== null && t > shownAt) {
+      const page = [...this.#animations(false, true)];
+      this.#seeker.seekNew(page, t, shownAt);
+      this.#seeker.seekAnimations([...this.#animations(true, false), ...page], t);
+    } else {
+      this.#seeker.seekAnimations(this.#animations(), t);
+    }
     this.#seeker.seekSvgs(this.#svgs, t);
     const scopes = [this.#o.document, ...this.#o.shadows.roots()];
     const stage = mayStartAnimations(scopes.map((scope) => this.#styles(scope)));
     const page =
-      this.#page !== null && (this.#svgs.length > 0 || mayStartAnimations([this.#styles(this.#page.document)]));
+      this.#page !== null &&
+      (this.#svgs.length > 0 ||
+        mayStartAnimations([this.#page.document, ...this.#pageRoots].map((scope) => this.#styles(scope))));
     if (!stage && !page) return;
     for (let round = 0; round < SETTLE_ROUNDS; round++) {
       this.#layout();
@@ -380,27 +456,33 @@ export class LiveStage {
    * without the live page.
    *
    * Some state the engine takes only at a rendering update, from the layout and scroll offsets it
-   * sees then (AT_UPDATE: a scroll-state query that sticks a header once go live scrolls the page,
-   * the fallback an anchor-positioned tooltip flips to). A transition or animation that starts there
-   * is not there for {@link sync} to read: it would run on wall time through the screenshot or the
-   * rasterizer's reads, then jump back to its start at the next frame's seek. So this waits for that
+   * sees then (a scroll-state query that sticks a header once go live scrolls the page, the
+   * fallback an anchor-positioned tooltip flips to, the link a scroll spy marks current once a seek
+   * moves the sections). A transition or animation that starts there is not there for {@link sync}
+   * to read: it would run on wall time through the screenshot or the rasterizer's reads, then jump
+   * back to its start at the next frame's seek. So this waits for that
    * update, reads the live page's animations again and seeks what started, from its start at `t`,
    * as long as an update starts more (a few rounds); the stage under the live page is not read again.
+   * On the frame that went live, the go-live scroll set them off, so they start at the go-live time,
+   * which can be engine ticks before `t`: a frame then shows what the same time shows at any frame
+   * rate.
    * It waits on the frame that went live, which showed and scrolled the page, and on later frames
-   * only while the live page's styles hold such rules (a seek that moves the layout can change that
-   * state too); otherwise it resolves at once, and so it does in a hidden document, which takes no
+   * only while the live page's styles hold such rules ({@link cssTakesAtUpdate}: a reset such as
+   * `all: unset` sets no fallback; a seek that moves the layout can change that state too);
+   * otherwise it resolves at once, and so it does in a hidden document, which takes no
    * rendering updates.
    */
   async settle(t: number): Promise<void> {
     const page = this.#page;
     if (!this.#live || !page) return;
-    const shown = this.#shown;
-    this.#shown = false;
-    this.#atUpdate ??= takesAtUpdate(page.document);
-    if (!shown && !this.#atUpdate) return;
+    const shownAt = this.#shownAt;
+    this.#shownAt = null;
+    this.#atUpdate ??= [page.document, ...this.#pageRoots].some(takesAtUpdate);
+    if (shownAt === null && !this.#atUpdate) return;
+    const from = shownAt ?? t;
     for (let round = 0; round < SETTLE_ROUNDS; round++) {
       await renderingUpdate(this.#o.document);
-      if (this.#seeker.seekNew(this.#animations(false, true), t) === 0) break;
+      if (this.#seeker.seekNew(this.#animations(false, true), t, from) === 0) break;
     }
   }
 
@@ -435,12 +517,18 @@ export class LiveStage {
     return facts;
   }
 
-  /** The animations of the render page and its stage roots (`stage`) and of the live page (`page`). */
+  /**
+   * The animations of the render page and its stage roots (`stage`) and of the live page and its
+   * open shadow roots (`page`).
+   */
   *#animations(stage = true, page = true): Iterable<Animation> {
     if (stage) {
       yield* this.#o.document.getAnimations();
       for (const root of this.#o.shadows.roots()) yield* root.getAnimations();
     }
-    if (page && this.#page) yield* this.#page.document.getAnimations();
+    if (page && this.#page) {
+      yield* this.#page.document.getAnimations();
+      for (const root of this.#pageRoots) yield* root.getAnimations();
+    }
   }
 }

@@ -120,14 +120,16 @@ export class AnimationSeeker {
   /**
    * Seeks, as {@link seekAnimations} does, only the animations no seek has seen yet: the ones a
    * seek's writes started, once the caller made the style and layout update that creates them.
-   * Anchored at their start, they play from `t` on.
+   * Anchored at their start at transport time `from` (`t` by default, at most `t`), they play from
+   * then on: one that an earlier transport time set off (the go-live scroll) is seeked `t - from`
+   * past its start.
    * @returns How many animations were seeked.
    */
-  seekNew(animations: Iterable<SeekableAnimation>, t: number): number {
-    return this.#seek(animations, t, true);
+  seekNew(animations: Iterable<SeekableAnimation>, t: number, from = t): number {
+    return this.#seek(animations, t, true, Math.min(from, t));
   }
 
-  #seek(animations: Iterable<SeekableAnimation>, t: number, onlyNew: boolean): number {
+  #seek(animations: Iterable<SeekableAnimation>, t: number, onlyNew: boolean, from = t): number {
     const seeks: { anim: SeekableAnimation; paused: boolean; time: number }[] = [];
     for (const anim of animations) {
       // Checked before any getter, so passing the animations seen before costs no style flush.
@@ -139,7 +141,9 @@ export class AnimationSeeker {
       const rate = anim.playbackRate;
       let anchor = this.#anchors.get(anim);
       if (!anchor) {
-        anchor = { base: (this.#started ? startOf(anim, rate) : null) ?? current ?? 0, t0: t };
+        // Before the first seek, an animation is anchored at its pose; `from` only moves a start.
+        const start = this.#started ? startOf(anim, rate) : null;
+        anchor = { base: start ?? current ?? 0, t0: start === null ? t : from };
         this.#anchors.set(anim, anchor);
       }
       seeks.push({ anim, paused: state === "paused", time: anchor.base + (t - anchor.t0) * rate });

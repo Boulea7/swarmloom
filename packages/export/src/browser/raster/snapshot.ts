@@ -1,7 +1,7 @@
 import { yieldTask } from "../schedule";
 import type { FarCache } from "./far";
 import { cssString, type FaceSource, type FontFaceCache, familiesOf, fontFaceRules, type WatchedFace } from "./fonts";
-import { cssImagePending } from "./image-loads";
+import { cssImagePending, markerImagesLoaded } from "./image-loads";
 import { pickImageSets } from "./image-set";
 import { BLANK_IMAGE, LONG_PIECE, type ResourceCache } from "./resources";
 import { type InheritedValues, nativeControl, type StyleBaseline, styleText } from "./styles";
@@ -507,6 +507,8 @@ interface Walk {
   unsettled: boolean;
   /** CSS images still loading that the walk found laying out a box it read ({@link noteImages}). */
   loading: number;
+  /** By document, whether no list marker image its CSS gives still loads ({@link markersLoaded}). */
+  markers: Map<Document, boolean>;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
   stats: SnapshotStats;
@@ -811,7 +813,8 @@ function stepsCounter(cs: CSSStyleDeclaration, listed: boolean): boolean {
  *
  * The subtrees are left out or written empty when it finds none, as away from the viewport by
  * their boxes now: on the way it notes each CSS image still loading that lays out one of those
- * boxes ({@link noteImages}), which may grow it into view once loaded, without an event.
+ * boxes ({@link noteImages}, {@link noteMarker}), which may grow it into view once loaded, without
+ * an event.
  */
 function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boolean {
   const stack: [Element, boolean][] = [];
@@ -824,14 +827,19 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
     if (stepsCounter(cs, inList)) return true;
     // SVG elements have no such boxes, and the snapshot writes none for void elements either.
     const html = el.namespaceURI !== SVG_NS;
-    if (html) noteImages(walk, el.ownerDocument, cs, display.includes("list-item"));
+    if (html) {
+      const item = display.includes("list-item");
+      noteImages(walk, el.ownerDocument, cs, item && !markersLoaded(walk, el));
+      if (item) noteMarker(walk, el, view);
+    }
     const pseudos = html && !VOID.has(el.localName) ? PSEUDOS : [];
     for (const pseudo of pseudos) {
       const ps = view.win.getComputedStyle(el, pseudo);
       const content = ps.getPropertyValue("content");
       if (!content || content === "none" || content === "normal") continue;
       if (stepsCounter(ps, inList)) return true;
-      noteImages(walk, el.ownerDocument, ps, ps.getPropertyValue("display").includes("list-item"), content);
+      const item = ps.getPropertyValue("display").includes("list-item");
+      noteImages(walk, el.ownerDocument, ps, item && !markersLoaded(walk, el), content);
     }
     // A frame's document counts on its own.
     if (el.localName === "iframe") continue;
@@ -839,6 +847,26 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
     for (const child of flatChildren(walk, el)) if (child.nodeType === 1) stack.push([child as Element, childListed]);
   }
   return false;
+}
+
+/**
+ * Whether no list marker image the CSS of the document of `el` gives still loads, so the scan of a
+ * far subtree need not read the `list-style-image` of its list items ({@link markerImagesLoaded}):
+ * the value inherits, and each item of a list with an inlined bullet would serialise the whole data
+ * URL again. Read once per walk and document, from the document and the shadow roots the source
+ * lists; false for an element of a shadow root it does not list, whose sheets are not read.
+ */
+function markersLoaded(walk: Walk, el: Element): boolean {
+  const root = el.getRootNode();
+  if (root.nodeType !== 9 && !walk.listed.has(root as ShadowRoot)) return false;
+  const doc = el.ownerDocument;
+  let loaded = walk.markers.get(doc);
+  if (loaded === undefined) {
+    const roots = Array.from(walk.listed).filter((listed) => listed.ownerDocument === doc);
+    loaded = markerImagesLoaded(doc, [doc, ...roots]);
+    walk.markers.set(doc, loaded);
+  }
+  return loaded;
 }
 
 /**
@@ -1540,13 +1568,13 @@ function pixelsToken(walk: Walk, url: string): string {
   return token(walk, "k", walk.canvases.push(url) - 1);
 }
 
-/** `translate` value that adds an offset to the element's own `translate`. */
+/** `translate` value that adds an offset to the element's own `translate` (px or a percentage). */
 function shiftedTranslate(current: string, dx: number, dy: number): string {
   const parts = current === "none" ? [] : current.split(/\s+/);
-  const x = Number.parseFloat(parts[0] ?? "0") || 0;
-  const y = Number.parseFloat(parts[1] ?? "0") || 0;
+  const add = (part: string | undefined, by: number) =>
+    part?.endsWith("%") ? `calc(${part} + ${by}px)` : `${(Number.parseFloat(part ?? "0") || 0) + by}px`;
   const z = parts[2] ? ` ${parts[2]}` : "";
-  return `${x + dx}px ${y + dy}px${z}`;
+  return `${add(parts[0], dx)} ${add(parts[1], dy)}${z}`;
 }
 
 /** The data URL of a canvas written into the image, noted in {@link Walk.pixels}. */
@@ -1924,8 +1952,8 @@ function useFonts(walk: Walk, cs: CSSStyleDeclaration): void {
 
 /**
  * CSS properties whose image lays out the box it is on: as its content (an element's or a
- * pseudo-element's), its list marker, or the shape its float wraps lines around. Other CSS images
- * only paint, and the image embeds each itself.
+ * pseudo-element's, a list item's `::marker` included: {@link noteMarker}), its list marker, or the
+ * shape its float wraps lines around. Other CSS images only paint, and the image embeds each itself.
  */
 const SIZING_IMAGES = ["content", "list-style-image", "shape-outside"] as const;
 
@@ -1948,13 +1976,24 @@ function noteImages(
 ): void {
   for (const name of SIZING_IMAGES) {
     if (!marker && name === "list-style-image") continue;
-    const value = name === "content" ? content : cs.getPropertyValue(name);
-    if (value.includes("url(") && cssImagePending(doc, value)) {
-      walk.unsettled = true;
-      walk.loading++;
-      return;
-    }
+    if (notePending(walk, doc, name === "content" ? content : cs.getPropertyValue(name))) return;
   }
+}
+
+/**
+ * Notes the `::marker` image still loading of `el`, a list item, as {@link noteImages} does: the
+ * marker's `content` lays out the item's marker box, and no property of the item names it.
+ */
+function noteMarker(walk: Walk, el: Element, view: DocView): void {
+  notePending(walk, el.ownerDocument, view.win.getComputedStyle(el, "::marker").getPropertyValue("content"));
+}
+
+/** Marks the snapshot unsettled, and counts it, when `value` names an image `doc` still loads. */
+function notePending(walk: Walk, doc: Document, value: string): boolean {
+  if (!value.includes("url(") || !cssImagePending(doc, value)) return false;
+  walk.unsettled = true;
+  walk.loading++;
+  return true;
 }
 
 /** Records the size of a box written empty (see {@link SizeMark}). */
@@ -2024,6 +2063,137 @@ function scrollWith(
   override.bottom = "auto";
   // A static box takes its z-index only as a flex or grid item; once positioned it would anyway.
   if (position === "static" && zIndex(cs) !== null && !item()) override["z-index"] = "auto";
+}
+
+/**
+ * Moves an out-of-flow box with a default anchor (styles `cs`) to where the page draws it, into
+ * `override`'s `translate`. Its computed insets, which its clone is written with, leave out two
+ * things: the scroll offsets between the anchor and the box's containing block, which the engine
+ * applies after layout from the offsets it takes at a rendering update, and the cell of a
+ * `position-area`, which the clone, written without anchors, does not take. The shift is where the
+ * page draws the box less where its clone lays out (moved by `scroll` as {@link scrollWith} does).
+ * The box stays where its insets put it when the snapshot cannot tell: a box it is in transforms or
+ * zooms it, its own transforms do more than move it in 2D, or its containing block is inline, not
+ * one the snapshot is sure of ({@link anchorHolder}), scrolled where the clone does not move it,
+ * or (without `position-area`) not the box its insets span.
+ */
+function anchorShift(
+  el: Element,
+  cs: CSSStyleDeclaration,
+  view: DocView,
+  scroll: Scroll | null,
+  override: Record<string, string>,
+): void {
+  const position = cs.getPropertyValue("position");
+  if (position !== "absolute" && position !== "fixed") return;
+  // `auto` takes the implicit anchor, which only a popover (its invoker) or an `anchor` attribute gives.
+  const anchor = cs.getPropertyValue("position-anchor");
+  const implicit =
+    (anchor === "auto" || anchor === "normal") && (el.hasAttribute("popover") || el.hasAttribute("anchor"));
+  if ((!anchor.startsWith("--") && !implicit) || view.transformed > 0) return;
+  const r = el.getBoundingClientRect();
+  const own = ownTranslation(cs, r.width, r.height);
+  const holder = own ? anchorHolder(el, position, view) : undefined;
+  if (!own || holder === undefined) return;
+  // The clone moves by the scroll offset of a scrolled containing block only as its child.
+  const moved = scroll && (position === "absolute" ? scroll.absolute : scroll.fixed) ? scroll : null;
+  const doc = el.ownerDocument;
+  let x = r.left - own.x - px(cs, "left") - px(cs, "margin-left");
+  let y = r.top - own.y - px(cs, "top") - px(cs, "margin-top");
+  let span: Element;
+  if (holder) {
+    const hs = view.win.getComputedStyle(holder);
+    if (hs.getPropertyValue("display") === "inline") return;
+    const scrolls = holder !== doc.scrollingElement;
+    if ((scrolls ? -holder.scrollLeft : 0) !== (moved?.x ?? 0)) return;
+    if ((scrolls ? -holder.scrollTop : 0) !== (moved?.y ?? 0)) return;
+    const hr = holder.getBoundingClientRect();
+    const left = px(hs, "border-left-width");
+    // A vertical scrollbar on the left, right to left, is part of clientLeft.
+    const bar = holder.clientLeft - left;
+    x -= hr.left + left + (bar >= 1 ? bar : 0) + (moved?.x ?? 0);
+    y -= hr.top + px(hs, "border-top-width") + (moved?.y ?? 0);
+    span = holder;
+  } else {
+    // The viewport, or the initial containing block, which scrolls with the document.
+    if (position === "absolute") {
+      x += view.win.scrollX;
+      y += view.win.scrollY;
+    }
+    span = doc.scrollingElement ?? doc.documentElement;
+  }
+  if (Math.abs(x) < 0.5) x = 0;
+  if (Math.abs(y) < 0.5) y = 0;
+  if (x === 0 && y === 0) return;
+  const area = cs.getPropertyValue("position-area");
+  if (!area || area === "none") {
+    // Insets measured from another box than the one taken: it is not the containing block.
+    const width = px(cs, "left") + px(cs, "margin-left") + r.width + px(cs, "margin-right") + px(cs, "right");
+    const height = px(cs, "top") + px(cs, "margin-top") + r.height + px(cs, "margin-bottom") + px(cs, "bottom");
+    if (Math.abs(width - span.clientWidth) > 1.5 || Math.abs(height - span.clientHeight) > 1.5) return;
+  } else {
+    // Its insets are from the cell. Placed by `left` and `top` alone, the clone lands where measured.
+    override["position-area"] = "none";
+    override.right = "auto";
+    override.bottom = "auto";
+  }
+  override.translate = shiftedTranslate(override.translate ?? cs.getPropertyValue("translate"), x, y);
+}
+
+/**
+ * The containing block of an out-of-flow box positioned `position`: the nearest box around it that
+ * surely is one ({@link holdsFixed}, or positioned for an absolutely positioned box), null for the
+ * viewport or the initial containing block, undefined when a box on the way may be one without the
+ * computed values the snapshot reads saying so (`will-change`, size containers, `content-visibility`,
+ * `transform-style: preserve-3d`).
+ */
+function anchorHolder(el: Element, position: string, view: DocView): Element | null | undefined {
+  for (let up = flatParent(el); up?.nodeType === 1; up = flatParent(up)) {
+    const cs = view.win.getComputedStyle(up as Element);
+    if (holdsFixed(cs) || (position === "absolute" && cs.getPropertyValue("position") !== "static")) {
+      return up as Element;
+    }
+    if (
+      /\b(?:transform|perspective|filter|translate|rotate|scale|contain)\b/.test(cs.getPropertyValue("will-change")) ||
+      /size/.test(cs.getPropertyValue("container-type")) ||
+      /auto|hidden/.test(cs.getPropertyValue("content-visibility")) ||
+      cs.getPropertyValue("transform-style") === "preserve-3d"
+    ) {
+      return undefined;
+    }
+  }
+  return null;
+}
+
+/**
+ * How far a box's own transforms move it, CSS px (`width` and `height` its border box, which a
+ * percentage of `translate` takes); null when they do more than move it in 2D.
+ */
+function ownTranslation(cs: CSSStyleDeclaration, width: number, height: number): { x: number; y: number } | null {
+  const zoom = cs.getPropertyValue("zoom");
+  if (zoom !== "" && zoom !== "1") return null;
+  if (["rotate", "scale", "offset-path"].some((name) => (cs.getPropertyValue(name) || "none") !== "none")) return null;
+  let x = 0;
+  let y = 0;
+  const transform = cs.getPropertyValue("transform") || "none";
+  if (transform !== "none") {
+    const m = /^matrix\(1, 0, 0, 1, ([^,]+), ([^)]+)\)$/.exec(transform);
+    if (!m) return null;
+    x += Number(m[1]);
+    y += Number(m[2]);
+  }
+  const translate = cs.getPropertyValue("translate") || "none";
+  if (translate !== "none") {
+    const [tx = "0px", ty = "0px", tz] = translate.split(/\s+/);
+    if (tz && tz !== "0px") return null;
+    const length = (value: string, base: number) => {
+      if (value.endsWith("%")) return (Number.parseFloat(value) / 100) * base;
+      return /^[-+.\de]+(?:px)?$/.test(value) ? Number.parseFloat(value) : Number.NaN;
+    };
+    x += length(tx, width);
+    y += length(ty, height);
+  }
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
 /** Whether a textarea's look is drawn from `name`: its border, background, shadow and their colour. */
@@ -2193,6 +2363,7 @@ function* emitElement(
   // An element without a box of its own hands the scroll offset on to its children.
   const boxless = !svg && display === "contents";
   if (scroll && !boxless) scrollWith(scroll, cs, () => !inBlockFlow(el, view), override);
+  if (!svg && !boxless && !bare) anchorShift(el, cs, view, scroll, override);
   if (walk.onCanvas.has(el)) {
     override["background-color"] = "transparent";
     override["background-image"] = "none";
@@ -2247,6 +2418,9 @@ function* emitElement(
   // parent's (a box written empty has only layout values: those of its content were read in
   // hollowable, and one of its own sizes it, which is compared).
   if (!svg && styleBody.includes("url(")) noteImages(walk, el.ownerDocument, cs);
+  // A list item's custom marker is not written (see snapshotFrame), yet an image as its content
+  // lays the item out.
+  if (!svg && display.includes("list-item")) noteMarker(walk, el, view);
   // A clone written with what places it only inherits everything else from its parent's clone.
   const handed = (): InheritedValues => (bare && parent ? new Map([...parent, ...own]) : own);
   if (!bare) useFonts(walk, cs);
@@ -3160,6 +3334,7 @@ async function walkFrame(
     frames: [],
     unsettled: false,
     loading: 0,
+    markers: new Map(),
     deadline: 0,
     stats: { elements: 0, culled: 0, reused: 0, restarts },
     nextClass: 0,
@@ -3209,7 +3384,8 @@ async function walkFrame(
  * WebGL canvases show what `toDataURL` (in the image) or `drawImage` (as overlays) returns at
  * capture time; `position: sticky` does not stick; the children of a scrolled box are offset
  * relatively ({@link scrollWith}), so an absolutely positioned box nested in a static one of them
- * lays out against that child;
+ * lays out against that child; an anchor-positioned box keeps the place its insets give where
+ * {@link anchorShift} cannot tell where its clone lays out, and a pseudo-element always does;
  * SMIL animations of keyword attributes (enumerations, `preserveAspectRatio`, `orient`) show the
  * base value; ink reaching more than {@link INK_MARGIN} px past the boxes of a subtree away from
  * the viewport (a huge shadow, a fixed-position pseudo-element) is not drawn; in Firefox, which

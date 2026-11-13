@@ -170,7 +170,7 @@ h1 { animation: a 60s linear forwards } p { animation: b 1s linear infinite }
     // whose finish handler plays the same object again must stay at its end too (+300 px), and so
     // must a CSS animation that its animationend handler restarts as a new object by a class toggle,
     // also when that handler listens in the capture phase ahead of the freeze: at the window, or at
-    // an open shadow root, which its end events do not leave.
+    // an open shadow root, which its end events do not leave, through EventTarget's own method.
     const page = `<!doctype html><title>t</title><style>
 @keyframes enter { from { transform: translateX(0) } to { transform: translateX(10px) } }
 @keyframes slide { from { transform: translateX(0) } to { transform: translateX(300px) } }
@@ -204,7 +204,7 @@ addEventListener("animationend", (e) => {
 }, true);
 const shadow = document.getElementById("host").attachShadow({ mode: "open" });
 shadow.innerHTML = "<style>" + document.querySelector("style").textContent + "</style><div class=pop><slot></slot></div>";
-shadow.addEventListener("animationend", (e) => {
+EventTarget.prototype.addEventListener.call(shadow, "animationend", (e) => {
   e.target.classList.remove("pop");
   void e.target.offsetWidth;
   e.target.classList.add("pop");
@@ -233,6 +233,40 @@ shadow.addEventListener("animationend", (e) => {
         ["windowed", 308],
         ["shadowed", 308],
       ]);
+    } finally {
+      server.close();
+    }
+  }, 120_000);
+
+  it("leaves the page's addEventListener wrapper in the path of its shadow root listeners", async () => {
+    // zone.js and error trackers wrap EventTarget.prototype.addEventListener after the init script ran;
+    // a listener the page adds at a shadow root must still go through that wrapper.
+    const page = `<!doctype html><title>t</title><div id="host"></div><p id="out"></p>
+<script>
+const native = EventTarget.prototype.addEventListener;
+let wrapped = 0;
+EventTarget.prototype.addEventListener = function (...args) { wrapped++; return native.apply(this, args); };
+const root = document.getElementById("host").attachShadow({ mode: "open" });
+root.addEventListener("animationend", () => {});
+root.addEventListener("click", () => {});
+document.getElementById("out").textContent = "wrapped " + wrapped;
+</script>`;
+    const server = createServer((_req, res) => res.setHeader("content-type", "text/html").end(page));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const out: string[] = [];
+      const io = { out: (line: string) => out.push(line), err: () => {} };
+      const argv = [url, "-o", "-", "--chrome", chrome as string, "--quiet"];
+      const code = await snapshotCommand.run(argv, {
+        io,
+        cwd: tmpdir(),
+        env: {},
+        assets: { snapshotBundle: SNAPSHOT_DOUBLE },
+      });
+      expect(code).toBe(0);
+      const { layers } = JSON.parse(out.join("\n")) as { layers: { text: string }[] };
+      expect(layers.map((l) => l.text)).toEqual(["wrapped 2"]);
     } finally {
       server.close();
     }
