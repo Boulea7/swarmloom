@@ -322,8 +322,12 @@ export class LiveStage {
   #live = false;
   /** What the styles of each document and shadow root let a seek start ({@link LiveStage.sync}). */
   readonly #facts = new WeakMap<Document | ShadowRoot, StyleFacts>();
-  /** The live page was just shown and scrolled: the next {@link LiveStage.settle} waits whatever its styles. */
-  #shown = false;
+  /**
+   * Transport time the live page was shown and scrolled at, until the {@link LiveStage.settle} of
+   * that frame: it waits whatever the page's styles, and what the frame finds the page started is
+   * anchored at this time.
+   */
+  #shownAt: number | null = null;
   /** Whether the live page's styles hold rules the engine takes at its rendering updates, once read. */
   #atUpdate: boolean | null = null;
 
@@ -356,7 +360,7 @@ export class LiveStage {
         this.#page = null;
         this.#o.onWarning?.(`the live page stays hidden: ${problem}`);
       } else {
-        this.#shown = true;
+        this.#shownAt = t;
         restMarquees(page.document);
         this.#svgs = animatedSvgs(page.document);
         // The capture froze every animation of the page, but the page may have started more since
@@ -381,10 +385,21 @@ export class LiveStage {
    * animate a value that a transition or a container there can take, which fades and pulses do
    * not) is read again: the render page with its stage roots, or the live page (also when it
    * holds SMIL animation, whose seek can render elements again).
+   *
+   * On the frame that went live, when it comes engine ticks after go live, a rendering update between
+   * those ticks may already have taken the go-live scroll: what the live page started since is first
+   * seeked from its start at the go-live time, as {@link settle} seeks it (from the same read).
    */
   sync(t: number): void {
     if (!this.#live) return;
-    this.#seeker.seekAnimations(this.#animations(), t);
+    const shownAt = this.#shownAt;
+    if (shownAt !== null && t > shownAt) {
+      const page = [...this.#animations(false, true)];
+      this.#seeker.seekNew(page, t, shownAt);
+      this.#seeker.seekAnimations([...this.#animations(true, false), ...page], t);
+    } else {
+      this.#seeker.seekAnimations(this.#animations(), t);
+    }
     this.#seeker.seekSvgs(this.#svgs, t);
     const scopes = [this.#o.document, ...this.#o.shadows.roots()];
     const stage = mayStartAnimations(scopes.map((scope) => this.#styles(scope)));
@@ -409,6 +424,9 @@ export class LiveStage {
    * rasterizer's reads, then jump back to its start at the next frame's seek. So this waits for that
    * update, reads the live page's animations again and seeks what started, from its start at `t`,
    * as long as an update starts more (a few rounds); the stage under the live page is not read again.
+   * On the frame that went live, the go-live scroll set them off, so they start at the go-live time,
+   * which can be engine ticks before `t`: a frame then shows what the same time shows at any frame
+   * rate.
    * It waits on the frame that went live, which showed and scrolled the page, and on later frames
    * only while the live page's styles hold such rules ({@link cssTakesAtUpdate}: a reset such as
    * `all: unset` sets no fallback; a seek that moves the layout can change that state too);
@@ -418,13 +436,14 @@ export class LiveStage {
   async settle(t: number): Promise<void> {
     const page = this.#page;
     if (!this.#live || !page) return;
-    const shown = this.#shown;
-    this.#shown = false;
+    const shownAt = this.#shownAt;
+    this.#shownAt = null;
     this.#atUpdate ??= takesAtUpdate(page.document);
-    if (!shown && !this.#atUpdate) return;
+    if (shownAt === null && !this.#atUpdate) return;
+    const from = shownAt ?? t;
     for (let round = 0; round < SETTLE_ROUNDS; round++) {
       await renderingUpdate(this.#o.document);
-      if (this.#seeker.seekNew(this.#animations(false, true), t) === 0) break;
+      if (this.#seeker.seekNew(this.#animations(false, true), t, from) === 0) break;
     }
   }
 

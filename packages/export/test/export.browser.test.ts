@@ -286,6 +286,61 @@ describe("export in the browser", () => {
     }
   });
 
+  it.runIf(chromium)(
+    "starts what the go-live scroll sets off at the go-live time on a frame ticks later, before or after its sync",
+    async () => {
+      // Go live at 100 ms, an engine tick before the frame at 125 ms (a frame rate below the tick
+      // rate). The scroll unsticks the header at the next rendering update, which comes between the
+      // ticks or only in settle(); at the same time the transition is as far as at any frame rate.
+      const times: unknown[] = [];
+      for (const updateFirst of [true, false]) {
+        const frame = document.createElement("iframe");
+        frame.setAttribute("sandbox", "allow-same-origin");
+        frame.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;border:0";
+        const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc =
+          "<style>body{margin:0}p{margin:0;height:150px}header{position:sticky;top:0;container-type:scroll-state}" +
+          "header div{height:20px;background:rgb(0,0,255);transition:background-color .6s linear}" +
+          "@container scroll-state(stuck: top){header div{background:rgb(255,0,0)}}</style>" +
+          "<p></p><header><div></div></header><p></p><p></p><p></p>";
+        const host = document.createElement("div");
+        host.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;overflow:hidden";
+        const outer = host.attachShadow({ mode: "open" });
+        const world = document.createElement("div");
+        world.style.height = "620px";
+        outer.append(world);
+        const roots = [outer, world.attachShadow({ mode: "open" })];
+        document.body.append(host, frame);
+        const update = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+        try {
+          await loaded;
+          const doc = frame.contentDocument as Document;
+          frame.contentWindow?.scrollTo(0, 300);
+          await update();
+          await update();
+          const stage = new LiveStage({
+            document,
+            host,
+            shadows: { roots: () => roots, stop() {} },
+            page: { frame, document: doc },
+          });
+          stage.goLive(100);
+          if (updateFirst) {
+            await update();
+            await update();
+          }
+          stage.sync(125);
+          await stage.settle(125);
+          times.push(doc.getAnimations().map((anim) => [anim.playState, anim.currentTime]));
+        } finally {
+          frame.remove();
+          host.remove();
+        }
+      }
+      expect(times).toEqual([[["paused", 25]], [["paused", 25]]]);
+    },
+  );
+
   it("shows an animated GIF on the live page as its first frame: an <img> at the same size, a background, an SVG <image>, a video poster, an image button", async () => {
     // 1x1 GIF, red then blue, looping.
     const gif =
