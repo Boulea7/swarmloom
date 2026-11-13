@@ -219,12 +219,12 @@ const LIST = '<ul style="margin:0;padding:0;list-style-position:inside"><li>x</l
 
 it.for<[string, string]>([
   // Out of flow above the view: the item grows down into it.
-  ["left out", `<div id=h style="position:absolute;left:0;top:-400px">${LIST}</div>`],
+  ["left out", '<div id=h style="position:absolute;left:0;top:-400px"></div>'],
   // At the foot of a box of fixed height below the view: the item overflows up into it.
   [
     "written empty",
     '<div style="height:400px"></div><div style="height:50px;display:flex;flex-direction:column;' +
-      `justify-content:flex-end"><div id=h>${LIST}</div></div><div style="height:2000px"></div>`,
+      'justify-content:flex-end"><div id=h></div></div><div style="height:2000px"></div>',
   ],
 ])("walks the frame again once the list marker image of an item in a box %s has loaded", async ([, body]) => {
   const url = `${location.origin}/held-${Math.random().toString(36).slice(2)}.svg`;
@@ -233,9 +233,12 @@ it.for<[string, string]>([
     `<style>.on { list-style-image: url("${url}") } li { background: rgb(255, 0, 0) }</style>` +
       `<body style="margin:0">${body}</body>`,
   );
-  // The item inherits the marker; the page fires no event once it has loaded.
+  // The item inherits the marker; the page fires no event once it has loaded. The list comes in
+  // after the frame's load, which would wait for the image: WebKit keeps the marker an item was
+  // laid out with when its list-style-image changes.
   const host = win.document.getElementById("h") as HTMLElement;
   host.className = "on";
+  host.innerHTML = LIST;
   try {
     expect((await drawn(rasterizer))(5, 70)).toEqual([255, 255, 255]);
     // Walked after the rendering update that follows the change, the same markup would hold.
