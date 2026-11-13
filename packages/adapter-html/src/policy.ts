@@ -50,16 +50,19 @@ const EMPTY_URL = 'url("data:,")';
 const CSS_TOKEN =
   /\/\*[\s\S]*?(?:\*\/|$)|(["'])((?:(?!\1)[^\\\n]|\\[\s\S])*)(?:\1|\\?$|(?=\n))|(@?)((?:[\w-]|[\x80-\uffff]|\\(?:[0-9a-f]{1,6}[ \t\n]?|[^\n0-9a-f]))+)(\(?)|[^"'/@\\();{}\w\x80-\uffff-]+|[\s\S]/giy;
 /**
- * What follows `url(` when the browser reads a URL from it: a string (groups 1 and 2) or an unquoted
- * URL (group 3), then `)` or the end of the text (an unclosed `url(` at the end still loads). In an
- * unquoted URL a hex escape takes one whitespace after it, as in `url(a\3c b.png)`. Its digits are
- * read whole (group 4, a lookahead then a backreference) and never as one escaped character: with
- * two readings per escape, a URL not followed by `)` would backtrack through all of them, in time
- * exponential in its length.
+ * What follows `url(` when the browser reads a URL from it: whitespace, a string (groups 2 and 3) or
+ * an unquoted URL (group 4), then `)` or the end of the text (an unclosed `url(` at the end still
+ * loads). The leading whitespace is read whole (group 1, a lookahead then a backreference): the
+ * unquoted URL may be empty, so a run the pattern could split between the leading and the trailing
+ * whitespace would be tried at every split when no `)` follows, in time quadratic in its length. In
+ * an unquoted URL a hex escape takes one whitespace after it, as in `url(a\3c b.png)`. Its digits
+ * are read whole the same way (group 5) and never as one escaped character: with two readings per
+ * escape, a URL not followed by `)` would backtrack through all of them, in time exponential in its
+ * length.
  */
 const CSS_URL_REST =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: an unquoted URL ends at a control character, as in the CSS tokenizer.
-  /[ \t\n]*(?:(["'])((?:(?!\1)[^\\\n]|\\[\s\S])*)(?:\1|\\?$|(?=\n))|((?:[^\x00-\x20"'()\\\x7f]|\\(?:(?=([0-9a-fA-F]{1,6}))\4[ \t\n]?|[^\n0-9a-fA-F]))*))[ \t\n]*(?:\)|$)/y;
+  /(?=([ \t\n]*))\1(?:(["'])((?:(?!\2)[^\\\n]|\\[\s\S])*)(?:\2|\\?$|(?=\n))|((?:[^\x00-\x20"'()\\\x7f]|\\(?:(?=([0-9a-fA-F]{1,6}))\5[ \t\n]?|[^\n0-9a-fA-F]))*))[ \t\n]*(?:\)|$)/y;
 /** Functions that take a plain string as an image URL, as in `image-set("a.png" 1x)`. */
 const URL_STRING_FUNCTIONS = new Set(["image-set", "-webkit-image-set", "image", "src"]);
 /**
@@ -202,7 +205,7 @@ export function rewriteCssUrls(css: string, policy: NetworkPolicy, base?: string
         const u = rest.exec(text);
         if (u) {
           at = rest.lastIndex;
-          emit = url(u[2] ?? u[3] ?? "");
+          emit = url(u[3] ?? u[4] ?? "");
         } else {
           emit = "invalid(";
           open(-1);
