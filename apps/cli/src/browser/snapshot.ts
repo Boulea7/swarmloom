@@ -2,7 +2,7 @@ import type { Blueprint } from "@swarmloom/core";
 import type { BrowserContext, Page } from "playwright-core";
 import { briefMessage, CliError, errorMessage, InterruptedError, RenderError } from "../errors";
 import { guard } from "../util/async";
-import { freezePageAnimations, freezePageVideos, LOOP_PHASE } from "./freeze";
+import { catchEndEvents, END_EVENTS_GLOBAL, freezePageAnimations, freezePageVideos, LOOP_PHASE } from "./freeze";
 import type { PageLog } from "./launch";
 
 /** Global installed by dist/snapshot.js (src/inject/snapshot.ts). */
@@ -104,6 +104,8 @@ export async function snapshotPage(context: BrowserContext, opts: PageSnapshotOp
     return new RenderError(`${what}: ${briefMessage(error)}${details}`, undefined, { cause: error });
   };
   try {
+    // Before the page's scripts, so the freeze's end-event filter runs ahead of all their listeners.
+    await page.addInitScript(catchEndEvents, END_EVENTS_GLOBAL);
     let status = 0;
     try {
       const response = await guard(
@@ -143,7 +145,7 @@ export async function snapshotPage(context: BrowserContext, opts: PageSnapshotOp
     // `pause` events that may start new animations. Best effort: a page that stops its own timers and
     // frames is captured as it is.
     const freezeAnimations = () => {
-      const freeze = page.evaluate(freezePageAnimations, LOOP_PHASE);
+      const freeze = page.evaluate(freezePageAnimations, { phase: LOOP_PHASE, endEvents: END_EVENTS_GLOBAL });
       return bestEffort(freeze, "Freezing animations", ANIMATION_FREEZE_TIMEOUT_MS, opts.signal);
     };
     await freezeAnimations();
