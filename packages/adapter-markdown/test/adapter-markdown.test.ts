@@ -266,6 +266,14 @@ describe("helpers", () => {
     expect(splitFrontMatter("---\n\nText\n---\n").body).toBe("---\n\nText\n---\n");
   });
 
+  it("reads a front matter title in linear time when spaces run inside it", () => {
+    // A lazy (.+?)\s*$ took seconds here; a ~1.4 KB share link could hang the tab for most of an hour.
+    const title = `a${" ".repeat(100_000)}b`;
+    const start = performance.now();
+    expect(splitFrontMatter(`---\ntitle: "${title}"  \n---\nx`).title).toBe(title);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
   it("slugifies like GitHub", () => {
     expect(slugify("What's new in v2.0?")).toBe("whats-new-in-v20");
   });

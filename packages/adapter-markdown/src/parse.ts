@@ -27,7 +27,8 @@ export function splitFrontMatter(source: string): FrontMatter {
   const yaml = m[1] ?? "";
   const first = yaml.split(/\r?\n/).find((l) => l.trim() !== "") ?? "";
   if (!YAML_KEY.test(first)) return { body: text };
-  const titleLine = /^title\s*:\s*(.+?)\s*$/m.exec(yaml)?.[1];
+  // Greedy capture, then trimEnd: a lazy (.+?)\s*$ is quadratic on a long run of spaces in the line.
+  const titleLine = /^title\s*:\s*(.+)$/m.exec(yaml)?.[1]?.trimEnd();
   const title = titleLine?.replace(/^(["'])(.*)\1$/, "$2").trim();
   return { body: text.slice(m[0].length), ...(title ? { title } : {}) };
 }
