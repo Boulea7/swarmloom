@@ -5,8 +5,8 @@ import { type CanvasMark, canvasDataUrl, type ScrollMark, type SnapshotSource } 
 /** What a {@link StillWatch} reads: the frame document, its watched shadow roots and FontFace faces. */
 export type StillSource = Pick<SnapshotSource, "document" | "shadowRoots" | "faces">;
 
-/** Resource loads that can change a frame without a mutation (images, style sheets, frames). */
-const LOAD_EVENTS = ["load", "error"] as const;
+/** Events that can change a frame without a mutation: resource loads, popovers and details. */
+const CHANGE_EVENTS = ["load", "error", "toggle"] as const;
 
 /**
  * Documents of the same-origin frames in `scopes` and, in turn, in those documents, in tree order:
@@ -73,8 +73,8 @@ function same(a: readonly unknown[], b: readonly unknown[]): boolean {
  * Tells whether a frame document still shows what a snapshot of it read, without walking it
  * again. Created before the walk, so a change during it counts too. The frame shows the same while:
  * nothing in the document, its shadow roots or the documents of its same-origin frames (see
- * {@link frameDocuments}) mutated; no image, style sheet or font loaded in any of them; the shadow
- * roots, frame documents, FontFace faces, focus, style sheets and Web Animations (none running) are
+ * {@link frameDocuments}) mutated; no image, style sheet or font loaded in any of them; no popover
+ * or details element toggled; the shadow roots, frame documents, FontFace faces, focus, style sheets and Web Animations (none running) are
  * those of the start, and no rule was edited in place through the CSSOM, which changes it without a
  * mutation ({@link StillWatch.sheets}; the watch wraps the CSSOM of each document's window to tell,
  * see watchSheetEdits); the scroll offsets the walk read have not moved; and each canvas whose
@@ -112,7 +112,7 @@ export class StillWatch {
     this.#observer = new (win?.MutationObserver ?? MutationObserver)(this.#mark);
     for (const target of this.#targets) {
       this.#observer.observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
-      for (const type of LOAD_EVENTS) target.addEventListener(type, this.#mark, true);
+      for (const type of CHANGE_EVENTS) target.addEventListener(type, this.#mark, true);
     }
     for (const d of this.#docs) {
       d.fonts?.addEventListener("loadingdone", this.#mark);
@@ -154,7 +154,7 @@ export class StillWatch {
   stop(): void {
     this.#observer.disconnect();
     for (const target of this.#targets) {
-      for (const type of LOAD_EVENTS) target.removeEventListener(type, this.#mark, true);
+      for (const type of CHANGE_EVENTS) target.removeEventListener(type, this.#mark, true);
     }
     for (const d of this.#docs) d.fonts?.removeEventListener("loadingdone", this.#mark);
   }

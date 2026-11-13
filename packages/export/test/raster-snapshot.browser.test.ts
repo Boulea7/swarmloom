@@ -458,6 +458,26 @@ it("walks the frame again only after a mutation, a scroll, an animation seek or 
   expect((await frame())[0]).toBe(6);
 });
 
+it("walks the frame again when a popover opens without a DOM mutation", async () => {
+  const { win, rasterizer } = await frameOf(
+    '<body style="margin:0"><div id=p popover style="inset:0;margin:0;border:0;width:100px;height:100px;' +
+      'background:rgb(0,0,255)"></div></body>',
+  );
+  const popover = win.document.getElementById("p") as HTMLElement;
+  const walk = vi.spyOn(rasterizer, "snapshot");
+  const ctx = new OffscreenCanvas(SIZE, SIZE).getContext("2d") as OffscreenCanvasRenderingContext2D;
+  const frame = async () => {
+    await rasterizer.draw(ctx);
+    return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
+  };
+  expect(await frame()).toEqual([1, [255, 255, 255]]);
+  expect(await frame()).toEqual([1, [255, 255, 255]]);
+  const toggled = new Promise<void>((resolve) => popover.addEventListener("toggle", () => resolve(), { once: true }));
+  popover.showPopover();
+  await toggled;
+  expect(await frame()).toEqual([2, [0, 0, 255]]);
+});
+
 it("walks the frame again after a style sheet changes through the CSSOM without a mutation", async () => {
   const { win, rasterizer } = await frameOf(
     '<style>div { background: rgb(255, 0, 0) }</style><body style="margin:0"><div style="height:100px"></div></body>',
