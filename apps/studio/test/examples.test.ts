@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanExamples } from "../build/examples";
-import { isSupportingAsset, pageDirsOf } from "../src/examples/manifest";
+import { isNotice, isSupportingAsset, pageDirsOf } from "../src/examples/manifest";
 
 describe("examples manifest", () => {
   it("lists every sample of the repository's examples folder and ships no generators", () => {
@@ -107,6 +107,26 @@ describe("examples manifest", () => {
       const missing = [...fonts].filter((font) => !text.includes(`${font}\``));
       expect(missing, notice).toEqual([]);
     }
+  });
+
+  it("links a licence note only to files that ship with it", () => {
+    // Notes ship without the folder README or generators, so a relative link to those is dead in the build.
+    const root = resolve(import.meta.dirname, "../../../examples");
+    const { files } = scanExamples(root);
+    const notes = files.filter((f) => isNotice(f));
+    expect(notes).toContain("pdf/SOURCES.md");
+    const dead: string[] = [];
+    for (const note of notes) {
+      const text = readFileSync(join(root, note), "utf8");
+      // Inline links `[text](target)` and reference definitions `[label]: target`.
+      for (const m of text.matchAll(/\]\(<?([^)\s>]+)|^\s*\[[^\]]+\]:\s*<?([^\s>]+)/gm)) {
+        const target = (m[1] ?? m[2] ?? "").split("#")[0] ?? "";
+        if (!target || /^[a-z][a-z\d+.-]*:/i.test(target)) continue;
+        const path = posix.join(posix.dirname(note), decodeURI(target));
+        if (!files.includes(path)) dead.push(`${note} -> ${path}`);
+      }
+    }
+    expect(dead).toEqual([]);
   });
 
   it("lists the second-wave formats and draws snippets from text only", () => {

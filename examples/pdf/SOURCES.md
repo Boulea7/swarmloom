@@ -1,9 +1,9 @@
 # PDF sample: embedded fonts
 
 The content of `brochure.pdf` (text, invented chart values, artwork) is this project's own and MIT like the
-rest of the repository; see [`README.md`](README.md). The fonts in it are not. Chromium printed the page with
-the fonts installed on the machine and embedded subsets of them (only the glyphs the document uses), so the
-file carries third-party font data under the fonts' own licences:
+rest of the repository. The fonts in it are not. Chromium printed the page with the fonts installed on the
+machine and embedded subsets of them (only the glyphs the document uses), so the file carries third-party
+font data under the fonts' own licences:
 
 | Font name in the PDF | Font | Licence |
 | --- | --- | --- |
