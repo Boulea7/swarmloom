@@ -4,6 +4,8 @@
  * All public types live in `./types` (the contract shared by every package).
  */
 
+export type { StyleFacts } from "./animation-starts";
+export { mayStartAnimations, readStyleFacts } from "./animation-starts";
 export type { RealtimeClockOptions } from "./clock";
 export { RealtimeClock, VirtualClock } from "./clock";
 export { missingFonts } from "./font-probe";

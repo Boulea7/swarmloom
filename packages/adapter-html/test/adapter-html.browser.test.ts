@@ -165,6 +165,48 @@ describe("html examples in Chromium", () => {
     }
   });
 
+  it("reads the animations again only where the page's rules let a pose start one", async () => {
+    // Each read sorts every animation of the page: entrances on thousands of cards took a third longer.
+    const cases: [css: string, html: string, counts: number[]][] = [
+      // Fades and slides start nothing, whatever transitions the page declares.
+      [
+        "@keyframes rise{from{opacity:0;transform:translateY(9px)}}p{animation:rise 1s;transition:color 1s}",
+        "<p>a</p><p>b</p>",
+        [1, 2, 0],
+      ],
+      // A finished transition changes its own property: the box's full width starts the dot's glow.
+      [
+        "@keyframes glow{to{opacity:.5}}.box{container-type:inline-size;width:500px;transition:width 60s linear}" +
+          "@starting-style{.box{width:100px}}@container (min-width:250px){#dot{animation:glow 2s infinite}}",
+        "<div class='box'><i id='dot'></i></div>",
+        [3, 1, 1],
+      ],
+    ];
+    const results: number[][] = [];
+    for (const [css, html] of cases) {
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "position:fixed;left:-20000px;top:0;width:800px;height:600px;border:0";
+      frame.srcdoc = `<!DOCTYPE html><style>${css}</style>${html}`;
+      const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+      document.body.append(frame);
+      try {
+        await loaded;
+        const doc = frame.contentDocument as Document;
+        const read = doc.getAnimations.bind(doc);
+        let reads = 0;
+        doc.getAnimations = () => {
+          reads++;
+          return read();
+        };
+        const frozen = freezeAnimations(doc);
+        results.push([reads, frozen.finished, frozen.paused]);
+      } finally {
+        frame.remove();
+      }
+    }
+    expect(results).toEqual(cases.map(([, , counts]) => counts));
+  });
+
   it("adds keyframe timelines under animated elements only when the host registers anim:timeline", async () => {
     const timeline: Plugin = {
       name: TIMELINE_PLUGIN,

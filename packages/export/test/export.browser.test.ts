@@ -1,10 +1,9 @@
-import { createPlayer } from "@swarmloom/core";
+import { createPlayer, mayStartAnimations, readStyleFacts } from "@swarmloom/core";
 import { describe, expect, it } from "vitest";
 import { server } from "vitest/browser";
 import { SheetMark, watchSheetEdits } from "../src/browser/raster/sheet-edits";
 import { base64ToBytes, bytesToBase64, canRecordElement, createRenderApi, recordElement } from "../src/index";
 import { LiveStage, watchShadowRoots } from "../src/render/live";
-import { mayStartAnimations, readStyleFacts } from "../src/render/starts";
 
 // These cases also run in Firefox; Region Capture and classic scrollbars are Chromium's.
 const chromium = server.browser === "chromium";

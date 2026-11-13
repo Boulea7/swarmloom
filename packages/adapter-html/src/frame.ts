@@ -1,3 +1,4 @@
+import { mayStartAnimations, readStyleFacts } from "@swarmloom/core";
 import { type KeyframeTimeline, placeKeyframes, readKeyframes } from "./timeline";
 
 /** Options of {@link renderInFrame}. */
@@ -127,7 +128,8 @@ async function imagesSettled(doc: Document, ms: number, signal?: AbortSignal): P
 
 /**
  * Reads of the animation list after the first pass: the poses a pass sets can start transitions and
- * animations of their own, which a later read finds.
+ * animations of their own, which a later read finds. Only where the page's rules let a pose start one
+ * ({@link posesMayStart}).
  */
 const FREEZE_ROUNDS = 4;
 
@@ -143,7 +145,8 @@ const FREEZE_ROUNDS = 4;
  * a container takes a new size and a container query now starts an animation. Those would run on
  * wall time through the snapshot and on until go live. So after each pass the document is laid out
  * (container queries resolve in layout), the animations are read again and the new ones are frozen
- * the same way, up to {@link FREEZE_ROUNDS} more passes.
+ * the same way, up to {@link FREEZE_ROUNDS} more passes. Only on pages whose rules let a pose start
+ * something: fades, slides and pulses start nothing, and their pages are read once.
  *
  * The contents of `content-visibility: auto` elements count too: they show while the passes run (see
  * {@link withSkippedContents}), as an off-screen capture frame leaves them all unstyled.
@@ -251,6 +254,7 @@ function freezeShown(doc: Document, phase = 0.5): FrozenAnimations {
         // finish() throws for zero playback rates; such animations already sit still.
       }
     }
+    if (round === 0 && !posesMayStart(doc, fresh)) break;
   }
   return {
     finished,
@@ -265,6 +269,23 @@ function freezeShown(doc: Document, phase = 0.5): FrozenAnimations {
       }
     },
   };
+}
+
+/**
+ * Whether the poses the first pass gave `frozen` can start transitions or animations in `doc`
+ * ({@link mayStartAnimations} on the document's rules). Reading the animations again is the costly
+ * part of the freeze (Chromium sorts them by tree order), so only such a page is read again. A
+ * transition the pass finished changes its own property, which no `@keyframes` rule names; a
+ * script-made animation's keyframes are in no rule at all, so it counts as starting something.
+ */
+function posesMayStart(doc: Document, frozen: readonly Animation[]): boolean {
+  const facts = readStyleFacts(doc);
+  for (const anim of frozen) {
+    // Duck-typed: the frame's animations come from another realm.
+    if ("transitionProperty" in anim) facts.animated.add(String(anim.transitionProperty));
+    else if (!("animationName" in anim)) return true;
+  }
+  return mayStartAnimations([facts]);
 }
 
 /**

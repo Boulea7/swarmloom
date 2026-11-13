@@ -1,6 +1,12 @@
-import { holdAllCssImages, holdSvgImages, stillImageSource } from "@swarmloom/core";
+import {
+  holdAllCssImages,
+  holdSvgImages,
+  mayStartAnimations,
+  readStyleFacts,
+  type StyleFacts,
+  stillImageSource,
+} from "@swarmloom/core";
 import { AnimationSeeker, freezeRunning } from "./seek";
-import { mayStartAnimations, readStyleFacts, type StyleFacts } from "./starts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const SMIL = new Set(["animate", "animateTransform", "animateMotion", "animateColor", "set"]);

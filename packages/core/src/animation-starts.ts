@@ -1,4 +1,7 @@
 /*
+ * Whether putting animations into a pose can start others, from the rules of a page: the HTML
+ * adapter's capture freeze and the export's go-live seek read the animations again only then.
+ *
  * Rules are read from their text (`cssText`), never through `style`: the in-browser exporter wraps
  * that getter (watchSheetEdits) to hand each declaration read to its still check, which would then
  * compare the text of every declaration of the page on each frame after go live.
@@ -260,9 +263,9 @@ export function readStyleFacts(scope: Document | ShadowRoot): StyleFacts {
 }
 
 /**
- * Whether seeking animations can start a transition or a CSS animation in the scopes the facts were
- * read from ({@link readStyleFacts}), taken together, since values inherit across shadow boundaries.
- * A seek changes animated values only, so that turns on what keyframes animate:
+ * Whether seeking or freezing animations can start a transition or a CSS animation in the scopes the
+ * facts were read from ({@link readStyleFacts}), taken together, since values inherit across shadow
+ * boundaries. A seek changes animated values only, so that turns on what keyframes animate:
  *  - `display`, `content-visibility` or a custom property: always (elements are rendered again, or
  *    a `var()` changes an animation name, a transition or a query),
  *  - paint-only properties (opacity, backgrounds, shadows, clips, masks, outlines, radii, z-index):
