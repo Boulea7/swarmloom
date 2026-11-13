@@ -184,7 +184,9 @@ async function sha256(bytes: Uint8ClampedArray<ArrayBuffer>): Promise<string | n
  * the same pixels in each canvas drawn into the image, and no video, frame of another origin, SMIL
  * or image still loading that sizes a box in it), as through an opening or after going live, a
  * frame skips the snapshot and draws the last image again under the cursors; a frame whose
- * snapshot equals the last one's also reuses its image.
+ * snapshot equals the last one's also reuses its image. The first frame after a change walks once
+ * more after the page's next rendering update, which may show more of the change (scroll-state
+ * container queries, anchor positions) without a mutation or event.
  * Otherwise, as while one animation runs on a long live page, the snapshot writes each box away
  * from the viewport as the last one wrote it while nothing in it changed, it kept its size and
  * margins and it stayed away, without reading it again; not when the animation transforms, filters

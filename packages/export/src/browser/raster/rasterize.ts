@@ -45,6 +45,13 @@ interface DrawnFrame {
   frames: readonly Document[];
   /** Watches the document since its snapshot; null when it may change unseen (see {@link StillWatch}). */
   watch: StillWatch | null;
+  /**
+   * Whether it shows what the engine took at the page's last rendering update for the page as it
+   * is: its walk came after a rendering update with nothing changed since the frame before it, and
+   * gave the same markup. A frame walked after a change shows what the engine took before it (see
+   * {@link FrameRasterizer.draw}).
+   */
+  final: boolean;
 }
 
 /** Whether two snapshots are made of the same pieces. */
@@ -103,6 +110,8 @@ export class FrameRasterizer {
   #busy = false;
   /** Whether the next watch reads the text of the rules (see {@link FrameRasterizer.draw}). */
   #texts = true;
+  /** Whether the next walk reads again a frame the document still shows, after a rendering update. */
+  #again = false;
 
   constructor(options: RasterizerOptions) {
     this.#o = options;
@@ -150,6 +159,14 @@ export class FrameRasterizer {
    * intro whose cursors move over a still stage, or the rest of a still page after going live. A
    * frame whose snapshot comes out the same as the last one's also reuses its decoded image.
    *
+   * What the engine takes at a rendering update from the layout and scroll offsets it sees then
+   * (scroll-state container queries, the scroll offsets anchor positions follow, the fallbacks they
+   * take) follows a change only at the page's next rendering update, without a mutation or event.
+   * So the first frame, and the first after each change, holds only until that update: the next
+   * frame then waits for it if it has not come and walks again, and the frame holds once the walk
+   * gives the same markup ({@link DrawnFrame.final}). A frame walked right after a change shows
+   * that state as the engine had it then, from before or after the update, as the timing falls.
+   *
    * @throws The signal's reason when it aborts while the snapshot walk pauses.
    */
   async draw(
@@ -158,7 +175,11 @@ export class FrameRasterizer {
   ): Promise<SnapshotStats> {
     const { width, height } = ctx.canvas;
     const scale = Math.max(width / this.#o.width, height / this.#o.height);
-    const { img, overlays, stats } = this.#still(scale) ?? (await this.#capture(scale, signal));
+    let held = this.#still(scale);
+    // Awaited only when it waits for a rendering update: an await would end the reads the still
+    // check shares with the next watch and the far cache (see reads.ts).
+    if (held instanceof Promise) held = await held;
+    const { img, overlays, stats } = held ?? (await this.#capture(scale, signal));
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
@@ -166,11 +187,28 @@ export class FrameRasterizer {
     return stats;
   }
 
-  /** The last frame, when the document still shows it at this scale; else null, and its watch stops. */
-  #still(scale: number): DrawnFrame | null {
+  /**
+   * The last frame, when the document still shows it at this scale; else null, and its watch stops.
+   * A promise when the last frame waits for the page's next rendering update ({@link DrawnFrame.final}).
+   */
+  #still(scale: number): DrawnFrame | null | Promise<DrawnFrame | null> {
     const last = this.#last;
     const watch = last?.watch;
-    if (last && watch && last.scale === scale && watch.still()) return last;
+    // Null: nothing changed as far as the watch can tell without the rule text, which a walk reads.
+    const same = last && watch && last.scale === scale ? watch.still() : false;
+    if (!last || !watch || same === false) return this.#release(last, watch);
+    if (same && last.final) return last;
+    // Until the page's next rendering update, the engine keeps what the last walk read; a walk
+    // after it, with nothing changed, reads what the engine took for the page as it is.
+    return watch.rendered().then((rendered) => {
+      if (same && !rendered) return last;
+      this.#again = rendered;
+      return this.#release(last, watch);
+    });
+  }
+
+  /** Stops the last frame's watch before a walk, and tells whether the next watch reads the rule text. */
+  #release(last: DrawnFrame | null, watch: StillWatch | null | undefined): null {
     // Two frames in a row that changed or were not watched, as while the stage builds, an animation
     // runs or, after going live, every frame seeks the animations: the next one most likely changes
     // too, so its watch leaves the text of the rules unread.
@@ -190,11 +228,15 @@ export class FrameRasterizer {
     const source = { document, shadowRoots: () => shadows.roots(), faces: () => fonts.faces() };
     // The frames the last snapshot left out stay out until the trees around them change.
     const watch = new StillWatch(source, this.#texts, this.#last?.frames ?? null);
+    const again = this.#again;
+    this.#again = false;
     try {
       const snapshot = await this.snapshot(signal, scale);
       const { parts, stats, overlays, frames } = snapshot;
-      let img = this.#last?.img;
-      if (!img || !sameParts(parts, this.#last?.parts ?? [])) {
+      const last = this.#last;
+      const same = last !== null && sameParts(parts, last.parts);
+      let img = last?.img;
+      if (!img || !same) {
         img = new Image();
         // A data URL, not a blob URL: Chromium taints canvases with blob-URL SVG images that hold a
         // foreignObject, and a tainted canvas cannot be read back for hashing and encoding.
@@ -202,7 +244,8 @@ export class FrameRasterizer {
         await decoded(img);
       }
       const settled = watch.settle(snapshot);
-      this.#last = { parts, img, overlays, stats, scale, frames, watch: settled ? watch : null };
+      const final = again && same;
+      this.#last = { parts, img, overlays, stats, scale, frames, watch: settled ? watch : null, final };
       return this.#last;
     } catch (error) {
       watch.stop();

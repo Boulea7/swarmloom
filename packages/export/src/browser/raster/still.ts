@@ -18,6 +18,9 @@ export type StillSource = Pick<SnapshotSource, "document" | "shadowRoots" | "fac
  */
 const CHANGE_EVENTS = ["load", "error", "beforetoggle", "toggle"] as const;
 
+/** Longest wait for the page's next rendering update ({@link StillWatch.rendered}). */
+const RENDER_WAIT_MS = 1000;
+
 /**
  * Documents of the same-origin frames in `scopes` and, in turn, in those documents, in tree order:
  * the walk draws each into its frame's box (a live page shown on go live, for one). Frames of
@@ -89,7 +92,10 @@ function treeState(tree: Tree): unknown[] | null {
  * loading) the snapshot reports instead (`FrameSnapshot.settled`). Not watched: what only a script
  * of the page changes without a mutation (form control values, custom element states, registered
  * custom properties, keyframes set on a CSS animation or transition); no page script runs in an
- * export, and the render page changes none of them between frames.
+ * export, and the render page changes none of them between frames. Nor what the engine takes at a
+ * rendering update from the layout and scroll offsets it sees then (scroll-state container
+ * queries, anchor positions): it changes only at a rendering update after one of the changes
+ * above, which the watch tells ({@link rendered}) for the caller to read the frame again.
  */
 export class StillWatch {
   readonly #source: StillSource;
@@ -110,6 +116,11 @@ export class StillWatch {
   readonly #mark = (): void => {
     this.#changed = true;
   };
+  /** The animation frame request that tells a rendering update (see {@link rendered}), 0 without one. */
+  readonly #frame: number = 0;
+  #updated = false;
+  #waited = false;
+  #onUpdate: (() => void) | null = null;
 
   /**
    * `texts`: read the text of the rules now (see {@link StillWatch}). `drawn`: the frame documents
@@ -128,6 +139,16 @@ export class StillWatch {
     this.#faces = source.faces().length;
     for (const tree of this.#trees) this.#states.set(tree, treeState(tree));
     this.#texts = texts ? new Map(this.#trees.map((tree) => [tree, sheetState([tree], true)])) : null;
+    if (typeof win?.requestAnimationFrame === "function") {
+      // The engine lays the page out after the animation frame callbacks and takes what it keeps
+      // until the next update; a task queued from one runs once all that is done.
+      this.#frame = win.requestAnimationFrame(() => {
+        win.setTimeout(() => {
+          this.#updated = true;
+          this.#onUpdate?.();
+        }, 0);
+      });
+    }
   }
 
   /**
@@ -162,19 +183,41 @@ export class StillWatch {
   }
 
   /**
-   * Whether the document still shows what the snapshot read; once a value reads differently, the
-   * frame is {@link busy}.
+   * Whether the document still shows what the snapshot read: false once something changed or a
+   * value reads differently (the frame is then {@link busy}), null when nothing did but the watch
+   * has no rule text to compare.
    */
-  still(): boolean {
+  still(): boolean | null {
     if (this.busy || !this.#scrolls) return false;
     const reads = this.#reads();
     if (reads === false) this.#changed = true;
-    return reads === true;
+    return reads;
+  }
+
+  /**
+   * Whether the page took a rendering update since the start. The first call waits for the next
+   * one (up to {@link RENDER_WAIT_MS}) unless the document is hidden, which takes none.
+   */
+  async rendered(): Promise<boolean> {
+    if (this.#updated || this.#waited) return this.#updated;
+    this.#waited = true;
+    const doc = this.#source.document;
+    if (!doc.defaultView || !this.#frame || doc.visibilityState === "hidden") return false;
+    await new Promise<void>((resolve) => {
+      // This realm's timer: a frame removed meanwhile runs neither its animation frames nor its timers.
+      const timer = setTimeout(resolve, RENDER_WAIT_MS);
+      this.#onUpdate = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+    return this.#updated;
   }
 
   stop(): void {
     this.#observer.disconnect();
     this.#listen(this.#trees, false);
+    if (this.#frame && !this.#updated) this.#source.document.defaultView?.cancelAnimationFrame(this.#frame);
   }
 
   /**

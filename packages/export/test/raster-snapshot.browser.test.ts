@@ -438,27 +438,31 @@ it("walks the frame again only after a mutation, a scroll, an animation seek tha
     return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
   };
   expect(await frame()).toEqual([1, [255, 0, 0]]);
-  // Nothing changed: no walk.
-  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  // The first frame, and the first after each change, walks once more after the page's next
+  // rendering update (see FrameRasterizer.draw); then nothing changed: no walk.
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
   // Neither a scroll nor a seek of a paused animation mutates the DOM.
   box.scrollTop = 100;
-  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  expect(await frame()).toEqual([3, [0, 0, 255]]);
   const fade = box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1000, fill: "forwards" });
   fade.pause();
-  expect((await frame())[0]).toBe(3);
+  expect((await frame())[0]).toBe(4);
   fade.currentTime = 1000;
-  expect(await frame()).toEqual([4, [255, 255, 255]]);
+  expect(await frame()).toEqual([5, [255, 255, 255]]);
+  expect(await frame()).toEqual([6, [255, 255, 255]]);
   // Past its end it holds its last value, as after going live, where every frame seeks it.
   fade.currentTime = 1500;
-  expect(await frame()).toEqual([4, [255, 255, 255]]);
+  expect(await frame()).toEqual([6, [255, 255, 255]]);
   fade.cancel();
   // A canvas painted over is drawn into the image: its pixels change without a mutation.
   box.innerHTML = '<canvas width=10 height=10></canvas><p style="margin:0;height:10px;background:#fff"></p>';
-  expect((await frame())[0]).toBe(5);
-  expect((await frame())[0]).toBe(5);
+  expect((await frame())[0]).toBe(7);
+  expect((await frame())[0]).toBe(8);
+  expect((await frame())[0]).toBe(8);
   const canvas = box.querySelector("canvas") as HTMLCanvasElement;
   (canvas.getContext("2d") as CanvasRenderingContext2D).fillRect(0, 0, 1, 1);
-  expect((await frame())[0]).toBe(6);
+  expect((await frame())[0]).toBe(9);
 });
 
 it("lists the animations and reads each of them once per frame", async () => {
@@ -570,10 +574,11 @@ it("walks the frame again when a popover opens without a DOM mutation", async ()
     return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
   };
   expect(await frame()).toEqual([1, [255, 255, 255]]);
-  expect(await frame()).toEqual([1, [255, 255, 255]]);
+  expect(await frame()).toEqual([2, [255, 255, 255]]);
+  expect(await frame()).toEqual([2, [255, 255, 255]]);
   // In the same task as the next frame: its toggle event comes a task later.
   popover.showPopover();
-  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  expect(await frame()).toEqual([3, [0, 0, 255]]);
 });
 
 it("walks the frame again when the focused element starts to show its focus", async ({ skip }) => {
@@ -592,12 +597,30 @@ it("walks the frame again when the focused element starts to show its focus", as
     return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
   };
   expect(await frame()).toEqual([1, [255, 0, 0]]);
-  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
   // Focused again, it is the same active element, but now matches :focus-visible.
   button.blur();
   button.focus({ focusVisible: true });
   if (!button.matches(":focus-visible")) skip("no focusVisible option");
-  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  expect(await frame()).toEqual([3, [0, 0, 255]]);
+});
+
+it("walks the frame again after the rendering update that follows a change, which the engine shows only then", async ({
+  skip,
+}) => {
+  const { win, rasterizer } = await frameOf(
+    "<style>html { container-type: scroll-state }" +
+      " header { position: fixed; top: 0; left: 0; right: 0; height: 20px; background: rgb(255, 0, 0) }" +
+      " @container scroll-state(scrollable: top) { header { background: rgb(0, 0, 255) } }</style>" +
+      '<body style="margin:0"><header></header><div style="height:2000px"></div></body>',
+  );
+  if (!(win as Window & typeof globalThis).CSS.supports("container-type", "scroll-state")) skip("no scroll-state");
+  expect(await pixel(rasterizer, 5, 5)).toEqual([255, 0, 0]);
+  // The engine takes the root's scroll state at its next rendering update, with no mutation or event.
+  win.scrollTo(0, 300);
+  await pixel(rasterizer, 5, 5);
+  expect(await pixel(rasterizer, 5, 5)).toEqual([0, 0, 255]);
 });
 
 it.for<[string, string, number, number[]]>([
@@ -676,27 +699,29 @@ it("walks the frame again after a style sheet changes through the CSSOM without 
     return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
   };
   expect(await frame()).toEqual([1, [255, 0, 0]]);
-  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
   // A rule edited in place keeps the rule count.
   const rule = (win.document.styleSheets[0] as CSSStyleSheet).cssRules[0] as CSSStyleRule;
   rule.style.background = "rgb(0, 0, 255)";
-  expect(await frame()).toEqual([2, [0, 0, 255]]);
-  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  expect(await frame()).toEqual([3, [0, 0, 255]]);
+  expect(await frame()).toEqual([4, [0, 0, 255]]);
+  expect(await frame()).toEqual([4, [0, 0, 255]]);
   // A declaration kept after the watch, set by name: no setter or method of the CSSOM runs.
   const kept = rule.style;
   kept.background = "rgb(0, 255, 255)";
-  expect(await frame()).toEqual([3, [0, 255, 255]]);
+  expect(await frame()).toEqual([5, [0, 255, 255]]);
   kept.background = "rgb(0, 0, 255)";
-  expect(await frame()).toEqual([4, [0, 0, 255]]);
+  expect(await frame()).toEqual([6, [0, 0, 255]]);
   const adopted = new (win as Window & typeof globalThis).CSSStyleSheet();
   adopted.replaceSync("div { background: rgb(0, 255, 0) }");
   win.document.adoptedStyleSheets = [adopted];
-  expect(await frame()).toEqual([5, [0, 255, 0]]);
+  expect(await frame()).toEqual([7, [0, 255, 0]]);
   // Replaced with as many rules, then switched off.
   adopted.replaceSync("div { background: rgb(255, 255, 0) }");
-  expect(await frame()).toEqual([6, [255, 255, 0]]);
+  expect(await frame()).toEqual([8, [255, 255, 0]]);
   adopted.disabled = true;
-  expect(await frame()).toEqual([7, [0, 0, 255]]);
+  expect(await frame()).toEqual([9, [0, 0, 255]]);
 });
 
 it("walks the frame again after a script edits a rule declaration it took before the watch", async () => {
@@ -711,9 +736,10 @@ it("walks the frame again after a script edits a rule declaration it took before
     return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
   };
   expect(await frame()).toEqual([1, [255, 0, 0]]);
-  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
   (win as Window & { kept: CSSStyleDeclaration }).kept.background = "rgb(0, 0, 255)";
-  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  expect(await frame()).toEqual([3, [0, 0, 255]]);
 });
 
 it("walks the frame again after its parent edits the rules of a frame that runs no scripts", async () => {
@@ -735,12 +761,14 @@ it("walks the frame again after its parent edits the rules of a frame that runs 
     return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
   };
   expect(await frame()).toEqual([1, [255, 0, 0]]);
-  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
   kept.background = "rgb(0, 0, 255)";
-  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  expect(await frame()).toEqual([3, [0, 0, 255]]);
   (inner.styleSheets[0] as CSSStyleSheet).insertRule("div { background: rgb(0, 255, 0) }", 1);
-  expect(await frame()).toEqual([3, [0, 255, 0]]);
-  expect(await frame()).toEqual([3, [0, 255, 0]]);
+  expect(await frame()).toEqual([4, [0, 255, 0]]);
+  expect(await frame()).toEqual([5, [0, 255, 0]]);
+  expect(await frame()).toEqual([5, [0, 255, 0]]);
 });
 
 it("watches a same-origin frame's document rather than walking it every frame, unless it cannot read it", async () => {
@@ -760,21 +788,23 @@ it("watches a same-origin frame's document rather than walking it every frame, u
     return [walk.mock.calls.length, Array.from(ctx.getImageData(5, 5, 1, 1).data.slice(0, 3))];
   };
   expect(await frame()).toEqual([1, [255, 0, 0]]);
-  expect(await frame()).toEqual([1, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
+  expect(await frame()).toEqual([2, [255, 0, 0]]);
   box.scrollTop = 100;
-  expect(await frame()).toEqual([2, [0, 0, 255]]);
+  expect(await frame()).toEqual([3, [0, 0, 255]]);
   (box.lastElementChild as HTMLElement).style.background = "rgb(0, 255, 0)";
-  expect(await frame()).toEqual([3, [0, 255, 0]]);
+  expect(await frame()).toEqual([4, [0, 255, 0]]);
   const fade = box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1000, fill: "forwards" });
   fade.pause();
-  expect((await frame())[0]).toBe(4);
+  expect((await frame())[0]).toBe(5);
   fade.currentTime = 1000;
-  expect(await frame()).toEqual([5, [255, 255, 255]]);
+  expect(await frame()).toEqual([6, [255, 255, 255]]);
   fade.cancel();
   // A frame of another origin is drawn empty and may show a document later: every frame walks.
   box.innerHTML = '<iframe sandbox style="border:0;width:10px;height:10px"></iframe>';
-  expect((await frame())[0]).toBe(6);
   expect((await frame())[0]).toBe(7);
+  expect((await frame())[0]).toBe(8);
+  expect((await frame())[0]).toBe(9);
 });
 
 it("walks every frame that reads a shadow root the source does not list", async () => {
