@@ -41,11 +41,12 @@ const MARKUP_LT = /<[/\w!]/;
 /**
  * The places a `<` can sit in CSS text, read like the CSS tokenizer: a comment; a string (an
  * unterminated one ends at a newline or the end); an unquoted `url(` (a hex escape there takes the
- * whitespace after it); an escape; a brace; a CDO `<!--`; or a bare `<` before `/`, `!` or a word
- * character. Everything else is kept as it is.
+ * whitespace after it); an escape; a brace; a CDO `<!--`; a bare `<` before `/`, `!`, a digit or
+ * `url(` (not taken, so `url(` is still read as a URL); or a bare `<` with the letter or `_` after
+ * it. Everything else is kept as it is.
  */
 const CSS_LT_PLACES =
-  /\/\*[\s\S]*?(?:\*\/|$)|(["'])(?:(?!\1)[^\\\n\r\f]|\\[\s\S])*(?:\1|\\?$|(?=[\n\r\f]))|(?<![\w\x80-\uffff\\-])url\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^\\)"'( \t\n\r\f]|\\(?:[0-9a-f]{1,6}(?:\r\n|[ \t\n\r\f])?|[\s\S]))*|\\[\s\S]?|[{}]|<!--|<(?=[/\w!])/gi;
+  /\/\*[\s\S]*?(?:\*\/|$)|(["'])(?:(?!\1)[^\\\n\r\f]|\\[\s\S])*(?:\1|\\?$|(?=[\n\r\f]))|(?<![\w\x80-\uffff\\-])url\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^\\)"'( \t\n\r\f]|\\(?:[0-9a-f]{1,6}(?:\r\n|[ \t\n\r\f])?|[\s\S]))*|\\[\s\S]?|[{}]|<!--|<(?=[/\d!]|url\()|<[a-z_]/gi;
 /** An escape (kept whole, so `\\<` stays a backslash then `<`) or a markup-like `<`. */
 const QUOTED_LT = /\\[\s\S]|<(?=[/\w!])/g;
 
@@ -53,9 +54,12 @@ const QUOTED_LT = /\\[\s\S]|<(?=[/\w!])/g;
  * Rewrites CSS so that no `<` is followed by `/`, `!` or a word character, so the text can never
  * open a tag or a `<!` comment wherever it is parsed, while the style sheet keeps its meaning. In
  * strings, comments, unquoted URLs and names, `<` (or `\<`) becomes the escape `\3c ` (its space
- * ends the escape). A CDO `<!--` at the top level, where it is ignored, becomes a space. Any other
- * `<` gets a space after it, which media and container ranges such as `(width<40em)` allow; only a
- * custom property holding a bare `<` (`--v:<a>`) reads differently, as `< a`.
+ * ends the escape). A CDO `<!--` at the top level, where it is ignored, becomes a space. A bare `<`
+ * before a letter or `_` stays where it is and that character becomes a hex escape: `<length>`
+ * becomes `<\6c ength>`, the same tokens, so the type syntax of `@function` and
+ * `attr(x type(<length>))`, which allows no space after the `<`, still parses, as do ranges like
+ * `(400px<width)`. Any other bare `<` (before a digit, `/`, `!` or `url(`) gets a space after it,
+ * which ranges such as `(width<40em)` allow; there only a custom property (`--v:<4`) keeps the space.
  */
 function escapeCssMarkup(css: string): string {
   if (!MARKUP_LT.test(css)) return css;
@@ -74,6 +78,8 @@ function escapeCssMarkup(css: string): string {
       case "<":
         return "< ";
       default:
+        // A bare `<` and the letter after it: the letter as a hex escape, whose space ends it.
+        if (m[0] === "<") return `<\\${m.charCodeAt(1).toString(16)} `;
         return m.replace(QUOTED_LT, (e) => (e.endsWith("<") ? "\\3c " : e));
     }
   });

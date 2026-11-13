@@ -127,6 +127,13 @@ describe("sanitizeDocument", () => {
     ],
     ["a top-level CDO and an escaped <", "<!-- .a\\<b{} -->", "  .a\\3c b{} -->"],
     [
+      "type syntax and a range before a name, where no space may follow the <",
+      "@function --d(--a <length>) returns <length>{result:var(--a)}p{width:attr(data-w type(<length>))}" +
+        "@media (400px<width){p{margin:0}}",
+      "@function --d(--a <\\6c ength>) returns <\\6c ength>{result:var(--a)}p{width:attr(data-w type(<\\6c ength>))}" +
+        "@media (400px<\\77 idth){p{margin:0}}",
+    ],
+    [
       "an unquoted data: URL",
       "p{background:url(data:image/svg+xml,<svg/>)}",
       "p{background:url(data:image/svg+xml,\\3c svg/>)}",
@@ -139,7 +146,7 @@ describe("sanitizeDocument", () => {
     [
       "markup-like text, so it never reads as markup",
       "</textarea><img src=x onerror=e()>",
-      "< /textarea>< img src=x onerror=e()>",
+      "< /textarea><\\69 mg src=x onerror=e()>",
     ],
   ])("keeps a style sheet with %s, escaping the <", (_label, css, escaped) => {
     const doc = parse(sanitizeDocument(`<!DOCTYPE html><style>${css}</style><h1>T</h1>`, window));
