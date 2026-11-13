@@ -575,23 +575,35 @@ it("walks the frame again when the focused element starts to show its focus", as
   expect(await frame()).toEqual([2, [0, 0, 255]]);
 });
 
-it("walks the frame again once a CSS image that lays out a box has loaded", async () => {
-  const square = new OffscreenCanvas(60, 60);
-  const paint = square.getContext("2d") as OffscreenCanvasRenderingContext2D;
+it.for<[string, string, number, number[]]>([
+  // In flow: the box below moves down.
+  ["a box written in full", '<div id=h></div><div style="height:40px;background:rgb(0,0,255)"></div>', 60, [0, 0, 255]],
+  // Out of flow above the view: it grows down into it.
+  ["a box left out", '<div id=h style="position:absolute;left:0;top:-400px"></div>', 500, [255, 0, 0]],
+  // At the foot of a box of fixed height below the view: it overflows up into it.
+  [
+    "a box written empty",
+    '<div style="height:400px"></div><div style="height:50px;display:flex;flex-direction:column;' +
+      'justify-content:flex-end"><div id=h></div></div><div style="height:2000px"></div>',
+    500,
+    [255, 0, 0],
+  ],
+])("walks the frame again once a CSS image that lays out %s has loaded", async ([, body, height, loaded]) => {
+  const image = new OffscreenCanvas(60, height);
+  const paint = image.getContext("2d") as OffscreenCanvasRenderingContext2D;
   paint.fillStyle = "rgb(255, 0, 0)";
-  paint.fillRect(0, 0, 60, 60);
-  const url = URL.createObjectURL(await square.convertToBlob({ type: "image/png" }));
+  paint.fillRect(0, 0, 60, height);
+  const url = URL.createObjectURL(await image.convertToBlob({ type: "image/png" }));
   try {
     const { win, rasterizer } = await frameOf(
-      `<style>.on::before { content: url("${url}"); display: block }</style><body style="margin:0">` +
-        '<div id=h></div><div style="height:40px;background:rgb(0,0,255)"></div></body>',
+      `<style>.on::before { content: url("${url}"); display: block }</style><body style="margin:0">${body}</body>`,
     );
     const host = win.document.getElementById("h") as HTMLElement;
-    // Read while the page loads the image: once it has, the box below moves down, with no event.
+    // Read while the page loads the image, which fires no event once it has.
     host.className = "on";
     expect(await pixel(rasterizer, 5, 70)).toEqual([255, 255, 255]);
-    await vi.waitFor(() => expect(host.offsetHeight).toBeGreaterThanOrEqual(60));
-    expect(await pixel(rasterizer, 5, 70)).toEqual([0, 0, 255]);
+    await vi.waitFor(() => expect(host.offsetHeight).toBeGreaterThanOrEqual(height));
+    expect(await pixel(rasterizer, 5, 70)).toEqual(loaded);
   } finally {
     URL.revokeObjectURL(url);
   }

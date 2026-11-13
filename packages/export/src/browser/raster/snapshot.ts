@@ -239,8 +239,8 @@ export interface ScrollMark {
 }
 
 /**
- * A box the walk wrote empty, with the size its bounding box had then: all its content shows of it,
- * changes in the content that come without a mutation (a CSS image loading) included.
+ * A box the walk wrote empty, with the size its bounding box had then: the size written, which
+ * places what follows it.
  */
 export interface SizeMark {
   el: Element;
@@ -272,8 +272,8 @@ export interface FrameSnapshot {
    * The scroll offsets the image depends on: each scroll container written and each document
    * viewport (same-origin frames included), as the walk read them. Null when the image shows what
    * can change without a DOM mutation or a scroll: a video, a frame whose document cannot be read,
-   * a shadow root the source does not list, SMIL animations, an image still loading (an `<img>`,
-   * or a CSS image a box written in full is laid out by, see {@link SIZING_IMAGES}).
+   * a shadow root the source does not list, SMIL animations, an image still loading (an `<img>`
+   * written, or a CSS image that lays out a box the walk read, see {@link SIZING_IMAGES}).
    */
   settled: readonly ScrollMark[] | null;
   /** The boxes written empty, with their size: the image holds only while each keeps it. */
@@ -505,6 +505,8 @@ interface Walk {
   frames: Document[];
   /** Something written can change without a DOM mutation or a scroll (see {@link FrameSnapshot.settled}). */
   unsettled: boolean;
+  /** CSS images still loading that the walk found laying out a box it read ({@link noteImages}). */
+  loading: number;
   /** `performance.now()` at which the walk pauses. */
   deadline: number;
   stats: SnapshotStats;
@@ -806,6 +808,10 @@ function stepsCounter(cs: CSSStyleDeclaration, listed: boolean): boolean {
  * again: leaving them out would change the numbers. Resets are not looked at: a reset reaches the
  * boxes after it under the same parent only, so one inside the subtrees is not seen after them.
  * One on `nodes` themselves is, and is for the caller to check ({@link resetsCounter}).
+ *
+ * The subtrees are left out or written empty when it finds none, as away from the viewport by
+ * their boxes now: on the way it notes each CSS image still loading that lays out one of those
+ * boxes ({@link noteImages}), which may grow it into view once loaded, without an event.
  */
 function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boolean {
   const stack: [Element, boolean][] = [];
@@ -813,14 +819,19 @@ function stepsCounters(walk: Walk, nodes: readonly Node[], view: DocView): boole
   for (let next = stack.pop(); next; next = stack.pop()) {
     const [el, inList] = next;
     const cs = view.win.getComputedStyle(el);
-    if (cs.getPropertyValue("display") === "none") continue;
+    const display = cs.getPropertyValue("display");
+    if (display === "none") continue;
     if (stepsCounter(cs, inList)) return true;
     // SVG elements have no such boxes, and the snapshot writes none for void elements either.
-    const pseudos = el.namespaceURI === SVG_NS || VOID.has(el.localName) ? [] : PSEUDOS;
+    const html = el.namespaceURI !== SVG_NS;
+    if (html) noteImages(walk, el.ownerDocument, cs, display.includes("list-item"));
+    const pseudos = html && !VOID.has(el.localName) ? PSEUDOS : [];
     for (const pseudo of pseudos) {
       const ps = view.win.getComputedStyle(el, pseudo);
       const content = ps.getPropertyValue("content");
-      if (content && content !== "none" && content !== "normal" && stepsCounter(ps, inList)) return true;
+      if (!content || content === "none" || content === "normal") continue;
+      if (stepsCounter(ps, inList)) return true;
+      noteImages(walk, el.ownerDocument, ps, ps.getPropertyValue("display").includes("list-item"));
     }
     // A frame's document counts on its own.
     if (el.localName === "iframe") continue;
@@ -843,7 +854,8 @@ function resetsCounter(el: Element, cs: CSSStyleDeclaration): boolean {
  * An absolutely positioned subtree that cannot show: fully transparent, or with nothing in it near
  * the viewport. Leaving it out cannot move anything else (it is out of flow), unless it counts:
  * it steps a counter, or resets one for the boxes after it. Returns null when it may show, else the
- * SVG elements with an id in it ({@link offscreen}).
+ * SVG elements with an id in it ({@link offscreen}). A CSS image still loading in it may grow it
+ * into view: the walk notes it ({@link stepsCounters}).
  */
 function culled(walk: Walk, el: Element, cs: CSSStyleDeclaration, view: DocView): Element[] | null {
   const position = cs.getPropertyValue("position");
@@ -1918,16 +1930,22 @@ function useFonts(walk: Walk, cs: CSSStyleDeclaration): void {
 const SIZING_IMAGES = ["content", "list-style-image", "shape-outside"] as const;
 
 /**
- * Marks the snapshot unsettled while the page loads an image a box written in full with style `cs`
- * is laid out by ({@link SIZING_IMAGES}): the page fires no event once a CSS image has loaded, and
- * the box, written at the size it has now, then takes the image's. A box written empty is compared
- * by its size instead ({@link markSize}).
+ * Marks the snapshot unsettled while the page loads an image a box with style `cs` is laid out by
+ * ({@link SIZING_IMAGES}), and counts it (`Walk.loading`): the page fires no event once a CSS image
+ * has loaded, and the box then takes the image's size. That holds for a box written in full, at
+ * the size it has now, as for one in a subtree left out or written empty, found away from the
+ * viewport by its size now ({@link stepsCounters}); the far cache keeps no such subtree. Without
+ * `marker` the box is no list item, and its `list-style-image` (inherited) lays out nothing.
  */
-function noteImages(walk: Walk, doc: Document, cs: CSSStyleDeclaration): void {
-  if (walk.unsettled) return;
+function noteImages(walk: Walk, doc: Document, cs: CSSStyleDeclaration, marker = true): void {
   for (const name of SIZING_IMAGES) {
+    if (!marker && name === "list-style-image") continue;
     const value = cs.getPropertyValue(name);
-    if (value.includes("url(") && cssImagePending(doc, value)) walk.unsettled = true;
+    if (value.includes("url(") && cssImagePending(doc, value)) {
+      walk.unsettled = true;
+      walk.loading++;
+      return;
+    }
   }
 }
 
@@ -2129,12 +2147,14 @@ function* emitElement(
   if (!svg && cs.getPropertyValue("float") !== "none") view.floats++;
   const probe: FarProbe | null = far ? farProbe() : null;
   walk.probe = probe;
+  // A box with a CSS image still loading in it, which may grow it, is read again by the next walk.
+  const loading = walk.loading;
   const cut = svg ? null : culled(walk, el, cs, view);
   if (cut) {
     walk.probe = null;
     walk.stats.culled++;
     keep(walk, cut, el, view, parent);
-    if (far && key && probe && !probe.smil) {
+    if (far && key && probe && !probe.smil && walk.loading === loading) {
       const box: FarBox = { ...CUT, kept: cut, unlisted: probe.unlisted };
       const extent = farExtent(el, cs, probe);
       far.record(el, { ...key, extent, loose: probe.loose, open: false, scrolls: false }, box);
@@ -2216,7 +2236,8 @@ function* emitElement(
   if (control?.scheme) override["color-scheme"] = control.scheme;
   const { text: styleBody, inherited: own } = styleText(walk.baseline, cs, parent, override, props, control?.ua);
   // An image the box is laid out by is in its style where its value first differs from the
-  // parent's (a box written empty has only layout values: it is compared by its size).
+  // parent's (a box written empty has only layout values: those of its content were read in
+  // hollowable, and one of its own sizes it, which is compared).
   if (!svg && styleBody.includes("url(")) noteImages(walk, el.ownerDocument, cs);
   // A clone written with what places it only inherits everything else from its parent's clone.
   const handed = (): InheritedValues => (bare && parent ? new Map([...parent, ...own]) : own);
@@ -2286,7 +2307,7 @@ function* emitElement(
     walk.out.push(`</${tag}>`);
     markSize(walk, el);
     const flow = size && flowBox(el, cs, context, emptied, size, walk.rules.slice(rulesFrom));
-    if (far && key && probe && !probe.smil && !scrolled && !walk.onCanvas.has(el)) {
+    if (far && key && probe && !probe.smil && walk.loading === loading && !scrolled && !walk.onCanvas.has(el)) {
       const box: FarBox = {
         cut: false,
         kept: emptied.kept,
@@ -3130,6 +3151,7 @@ async function walkFrame(
     sizes: [],
     frames: [],
     unsettled: false,
+    loading: 0,
     deadline: 0,
     stats: { elements: 0, culled: 0, reused: 0, restarts },
     nextClass: 0,
