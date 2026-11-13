@@ -238,6 +238,40 @@ shadow.addEventListener("animationend", (e) => {
     }
   }, 120_000);
 
+  it("leaves the page's addEventListener wrapper in the path of its shadow root listeners", async () => {
+    // zone.js and error trackers wrap EventTarget.prototype.addEventListener after the init script ran;
+    // a listener the page adds at a shadow root must still go through that wrapper.
+    const page = `<!doctype html><title>t</title><div id="host"></div><p id="out"></p>
+<script>
+const native = EventTarget.prototype.addEventListener;
+let wrapped = 0;
+EventTarget.prototype.addEventListener = function (...args) { wrapped++; return native.apply(this, args); };
+const root = document.getElementById("host").attachShadow({ mode: "open" });
+root.addEventListener("animationend", () => {});
+root.addEventListener("click", () => {});
+document.getElementById("out").textContent = "wrapped " + wrapped;
+</script>`;
+    const server = createServer((_req, res) => res.setHeader("content-type", "text/html").end(page));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const out: string[] = [];
+      const io = { out: (line: string) => out.push(line), err: () => {} };
+      const argv = [url, "-o", "-", "--chrome", chrome as string, "--quiet"];
+      const code = await snapshotCommand.run(argv, {
+        io,
+        cwd: tmpdir(),
+        env: {},
+        assets: { snapshotBundle: SNAPSHOT_DOUBLE },
+      });
+      expect(code).toBe(0);
+      const { layers } = JSON.parse(out.join("\n")) as { layers: { text: string }[] };
+      expect(layers.map((l) => l.text)).toEqual(["wrapped 2"]);
+    } finally {
+      server.close();
+    }
+  }, 120_000);
+
   it("stops playing videos in the same pose as animations", async () => {
     const page = `<!doctype html><title>t</title>
 <video id="loop" autoplay muted loop playsinline src="${CLIP}"></video>

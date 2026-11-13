@@ -46,13 +46,16 @@ export function catchEndEvents(name: string): void {
   hook(window);
   // End events in a shadow root do not leave it, so hook a root as the page adds its first listener
   // for them there, through the method it calls for that: a root a script attached and one the parser
-  // made from a template alike.
+  // made from a template alike. The page's listener itself goes to the method the root inherits, read
+  // at call time, so a wrapper the page put on EventTarget.prototype later (zone.js, error trackers)
+  // still sees every listener added at a shadow root; only `pass` goes straight to the native one.
+  const inherited = Object.getPrototypeOf(ShadowRoot.prototype) as object;
   Object.defineProperty(ShadowRoot.prototype, "addEventListener", {
     configurable: true,
     writable: true,
     value: function addEventListener(this: ShadowRoot, ...args: Parameters<EventTarget["addEventListener"]>) {
       if (args[0] === "animationend" || args[0] === "transitionend") hook(this);
-      return listen.apply(this, args);
+      return Reflect.apply(Reflect.get(inherited, "addEventListener") as typeof listen, this, args);
     },
   });
   const catcher: EndEventCatcher = { filter: (filter) => void filters.push(filter), hook };
