@@ -29,8 +29,11 @@ async function until<T>(probe: () => T | null | undefined): Promise<T> {
 const shared = { seed: 42, speed: 2, finale: "halo" } as const;
 const { seed, speed, finale } = DEFAULT_SETTINGS;
 
-/** Mounts Studio on a `#d=` link carrying {@link shared}, with the saved settings at their defaults. */
-async function openLink(target?: StudioTarget) {
+/**
+ * Mounts Studio on a `#d=` link carrying {@link shared}, with the saved settings at their defaults.
+ * `opening` runs while the link is still being read.
+ */
+async function openLink(target?: StudioTarget, opening?: (studio: StudioApp, root: HTMLElement) => void) {
   const payload = await encodeShare({ name: "notes.md", text: "# N", settings: shared });
   history.replaceState(null, "", `/?lang=en#d=${payload}`);
   const root = document.createElement("div");
@@ -42,6 +45,7 @@ async function openLink(target?: StudioTarget) {
   });
   const studio = await mountStudio(root, services);
   app = studio;
+  opening?.(studio, root);
   await until(() => root.querySelector(".play-big"));
   const byLabel = (label: string) => [...root.querySelectorAll("button")].find((b) => b.textContent === label);
   return { studio, log, byLabel };
@@ -144,6 +148,16 @@ it("keeps a setting changed on a #d= link's entry on Back: it leaves the payload
   await until(() => location.hash !== link);
   const payload = new URLSearchParams(location.hash.slice(1)).get("d") ?? "";
   expect((await decodeShare(payload)).settings).toEqual({ seed: 42, finale: "halo" });
+});
+
+// Changed while the link is still read: its value must not come back over the user's once it opens.
+it("keeps a setting changed while a #d= link is read over the link's value", async () => {
+  const { studio, log } = await openLink(undefined, (studio, root) => {
+    expect(root.querySelector<HTMLElement>(".view-player")?.dataset.phase).toBe("opening");
+    studio.context.updateSettings({ speed: 3 });
+  });
+  expect(studio.context.settings).toMatchObject({ ...shared, speed: 3 });
+  expect(log.players.at(-1)).toMatchObject({ seed: 42, speed: 3 });
 });
 
 it("takes speed, sound and tour changed on the player's toolbar into the panel, a share link and the next player", async () => {
