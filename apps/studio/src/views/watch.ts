@@ -378,12 +378,27 @@ export function createWatch(ctx: AppContext): View {
     return { notice: i18n.t(shareRefusalKey(link.reason)) };
   }
 
+  /** The width in device pixels the open dialog draws a code at: its light box less the padding. */
+  function codeSide(): number {
+    const box = qrBox.getBoundingClientRect();
+    const style = getComputedStyle(qrBox);
+    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    return (Math.min(box.width, box.height) - padding) * devicePixelRatio;
+  }
+
   /**
    * Shows the code for a link, a notice in its place, or (null) an empty code while the link is
-   * read. A link too long for any QR code (a long source URL, a large `#d=`) gets a notice too.
+   * read. A link too long for a code this face draws with modules a phone can scan (a long source
+   * URL, a large `#d=`, or a shorter link on a small face) gets a notice too. Call with the dialog
+   * open: the code is sized to the room it gets there.
    */
   function drawQr(shown: { url: string } | { notice: string } | null): void {
-    const code = shown && "url" in shown ? qrCode(shown.url, i18n.t("watch.scan")) : null;
+    // Lay the dialog out as for a code (box shown, no notice) to measure that room.
+    qrBox.hidden = false;
+    qrBox.replaceChildren();
+    qrCaption.textContent = i18n.t("watch.scan");
+    qrCaption.removeAttribute("data-notice");
+    const code = shown && "url" in shown ? qrCode(shown.url, i18n.t("watch.scan"), codeSide()) : null;
     const notice = shown && "notice" in shown ? shown.notice : shown && !code ? i18n.t("watch.tooLong") : null;
     qrBox.hidden = notice !== null;
     qrBox.replaceChildren(...(code ? [code] : []));
@@ -394,6 +409,7 @@ export function createWatch(ctx: AppContext): View {
   function showQr(): void {
     const item = items[index];
     const request = ++qrRequest;
+    if (!qr.open) qr.showModal();
     // The phone plays the same show: every performance setting in effect here (saved or from this
     // link), not the wrist-only WATCH_OVERRIDES. A `#d=` payload's own settings win there as here.
     if (!item) drawQr({ url: ctx.shareUrl });
@@ -406,7 +422,6 @@ export function createWatch(ctx: AppContext): View {
         if (request === qrRequest && qr.open) drawQr(shown);
       });
     }
-    if (!qr.open) qr.showModal();
     root.dataset.qr = "true";
     session?.player?.pause();
     qr.querySelector("button")?.focus();

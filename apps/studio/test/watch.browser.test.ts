@@ -1,11 +1,11 @@
 import type { PlayerEvent } from "@swarmloom/core";
 import { afterEach, expect, it } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import "../src/styles/studio.css";
 import { mountStudio, type StudioApp } from "../src/app";
 import { routeToUrl } from "../src/route";
 import type { OpenedSource } from "../src/source";
-import { qrCode } from "../src/views/qr";
+import { MIN_MODULE_PX, qrCode } from "../src/views/qr";
 import { buildShareLink } from "../src/views/share-link";
 import { fakeServices } from "./fakes";
 
@@ -268,22 +268,42 @@ it("hands the phone a local file inside the link, not the bare Studio page", asy
 });
 
 // A source URL may run to 4096 characters and a #d= payload to 16 KB; a QR code holds about 2.3 KB.
-it("says a link is too long for a QR code instead of throwing", async () => {
-  const src = `http://example.invalid/${"a".repeat(3000)}`;
-  history.replaceState(null, "", `${location.pathname}?watch=1&round=1&src=${encodeURIComponent(src)}`);
-  const root = document.createElement("div");
-  document.body.append(root);
-  const manifest = { version: 1 as const, entries: [] };
-  const fetch = async () => new Response("", { status: 404 });
-  app = await mountStudio(
-    root,
-    fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
-  );
-  root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
+// A small face draws a code too small to scan sooner: 400 characters fit a code, not its 37 px there.
+it.each([
+  { length: 3000, size: 0, dpr: 1 },
+  { length: 400, size: 100, dpr: 2 },
+])("says a $length-character link is too long for a QR code instead of throwing", async ({ length, size, dpr }) => {
+  if (size) {
+    await page.viewport(size, size);
+    await cdp().send("Emulation.setDeviceMetricsOverride", {
+      width: size,
+      height: size,
+      deviceScaleFactor: dpr,
+      mobile: false,
+    });
+  }
+  try {
+    const src = `http://example.invalid/${"a".repeat(length)}`;
+    history.replaceState(null, "", `${location.pathname}?watch=1&round=1&src=${encodeURIComponent(src)}`);
+    const root = document.createElement("div");
+    document.body.append(root);
+    const manifest = { version: 1 as const, entries: [] };
+    const fetch = async () => new Response("", { status: 404 });
+    app = await mountStudio(
+      root,
+      fakeServices({ manifest, examplesBase: `${location.origin}/examples/`, fetch }).services,
+    );
+    root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
 
-  expect(root.querySelector(".watch-qr")?.matches(":modal")).toBe(true);
-  expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
-  expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
+    expect(root.querySelector(".watch-qr")?.matches(":modal")).toBe(true);
+    expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
+    expect(root.querySelector(".watch-qr-caption")?.textContent).toBe(app.context.i18n.t("watch.tooLong"));
+  } finally {
+    if (size) {
+      await cdp().send("Emulation.clearDeviceMetricsOverride");
+      await page.viewport(414, 896);
+    }
+  }
 });
 
 // The smallest round face holds three lines of notice above the close button: the rest scrolls.
@@ -344,18 +364,26 @@ it("keeps the watch QR code small enough to scan, with a notice for a longer #d=
   expect(root.querySelector(".watch-qr svg.qr")).toBeNull();
 });
 
+// Watches this small have dense screens: three device pixels a CSS pixel, two on larger faces.
 it.each([
-  { size: 100, round: true },
-  { size: 140, round: true },
-  { size: 200, round: false },
-])("keeps the QR dialog of a $size px face (round: $round) inside its safe area", async ({ size, round }) => {
+  { size: 100, round: true, dpr: 3 },
+  { size: 140, round: true, dpr: 3 },
+  { size: 200, round: false, dpr: 2 },
+])("keeps the QR dialog of a $size px face (round: $round) inside its safe area", async ({ size, round, dpr }) => {
   await page.viewport(size, size);
+  await cdp().send("Emulation.setDeviceMetricsOverride", {
+    width: size,
+    height: size,
+    deviceScaleFactor: dpr,
+    mobile: false,
+  });
   try {
     const root = await mountWatch(round ? "?watch=1&round=1" : "?watch=1", false);
     root.querySelector<HTMLButtonElement>(".watch-actions button:last-child")?.click();
     const dialog = root.querySelector<HTMLElement>(".watch-qr");
-    const code = root.querySelector(".watch-qr svg")?.getBoundingClientRect();
-    if (!dialog || !code) throw new Error("no QR code");
+    const svg = root.querySelector<SVGSVGElement>(".watch-qr svg.qr");
+    const code = svg?.getBoundingClientRect();
+    if (!dialog || !svg || !code) throw new Error("no QR code");
     const box = dialog.getBoundingClientRect();
     const safe = parseFloat(getComputedStyle(dialog).paddingTop);
     expect(dialog.scrollHeight).toBeLessThanOrEqual(dialog.clientHeight);
@@ -365,9 +393,11 @@ it.each([
       expect(part.top).toBeGreaterThanOrEqual(box.top + safe - 0.5);
       expect(part.bottom).toBeLessThanOrEqual(box.bottom - safe + 0.5);
     }
-    // ...and the code stays large enough to scan.
+    // ...and the code stays large enough to scan: it fills its room, with modules a phone can read.
     expect(code.width).toBeGreaterThanOrEqual(0.4 * (box.height - 2 * safe));
+    expect((code.width * devicePixelRatio) / svg.viewBox.baseVal.width).toBeGreaterThanOrEqual(MIN_MODULE_PX);
   } finally {
+    await cdp().send("Emulation.clearDeviceMetricsOverride");
     await page.viewport(414, 896);
   }
 });
