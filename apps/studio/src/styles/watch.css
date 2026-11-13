@@ -203,10 +203,10 @@
   -webkit-line-clamp: 1;
 }
 
-/* Below this the inscribed square cannot hold even that line above the play button and the small
-   buttons at their touch sizes: the title gives way, the poster still shows the build. */
+/* Below this a small face cannot hold a title above the play button and the small buttons at
+   their touch sizes: the title gives way, the poster still shows the build. */
 @container (height < 175px) {
-  .view-watch[data-round="true"] .watch-title {
+  .view-watch .watch-title {
     display: none;
   }
 }

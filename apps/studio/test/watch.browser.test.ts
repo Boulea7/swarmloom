@@ -195,12 +195,13 @@ it.each([
   { size: 100, phase: "idle", titled: false },
   { size: 140, phase: "playing", titled: false },
   { size: 100, phase: "playing", titled: false },
-])("keeps every $phase control of a $size px round face inside its inscribed square", async (row) => {
+  { size: 100, phase: "idle", titled: false, square: true },
+])("keeps every $phase control of a $size px face inside its safe area", async (row) => {
   const { size, phase, titled } = row;
   await page.viewport(size, size);
   try {
     const title = "Willkommen bei SwarmLoom: so entsteht eine Seite";
-    const root = await mountWatch("?watch=1&round=1", phase === "playing", title);
+    const root = await mountWatch(row.square ? "?watch=1" : "?watch=1&round=1", phase === "playing", title);
     const face = root.querySelector<HTMLElement>(".view-watch");
     if (phase !== "idle") {
       root.querySelector<HTMLButtonElement>(".watch-play")?.click();
@@ -213,7 +214,6 @@ it.each([
     // all vanished would pass the bounds checks below (no rects: top Infinity, bottom -Infinity).
     const shown = (el: Element) => el.getClientRects().length > 0;
     const buttons = [...root.querySelectorAll<HTMLElement>(".watch-play, .watch-actions > *")];
-    expect([shown(heading), ...buttons.map(shown)]).toEqual([titled, true, true, true]);
     // A long title keeps to one line.
     const line = parseFloat(getComputedStyle(heading).lineHeight);
     if (titled) expect(heading.getBoundingClientRect().height).toBeLessThan(line * 2);
@@ -230,6 +230,7 @@ it.each([
     expect(bounds.right).toBeLessThanOrEqual(safe.right + 0.5);
     expect(bounds.bottom).toBeLessThanOrEqual(safe.bottom + 0.5);
     expect(bounds.left).toBeGreaterThanOrEqual(safe.left - 0.5);
+    expect([shown(heading), ...buttons.map(shown)]).toEqual([titled, true, true, true]);
   } finally {
     await page.viewport(414, 896);
   }
