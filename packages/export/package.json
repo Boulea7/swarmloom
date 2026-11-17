@@ -44,6 +44,6 @@
     "@swarmloom/adapter-terminal": "workspace:*",
     "@swarmloom/core": "workspace:*",
     "@swarmloom/formats": "workspace:*",
-    "mediabunny": "1.65.2"
+    "mediabunny": "1.66.0"
   }
 }
