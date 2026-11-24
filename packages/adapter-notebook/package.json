@@ -30,7 +30,7 @@
     "@swarmloom/adapter-markdown": "workspace:*",
     "@swarmloom/adapter-terminal": "workspace:*",
     "@swarmloom/core": "workspace:*",
-    "dompurify": "^3.4.17",
+    "dompurify": "^3.4.18",
     "highlight.js": "^11.12.0"
   }
 }
